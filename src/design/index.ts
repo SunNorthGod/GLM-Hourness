@@ -363,6 +363,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
         eligible: () => assembledAsMain.get(agent) === true,
         graph: () => graphFocus(ctx),
         report: (reported, state, reason) => { health.report(sessionIdOf(reported), state, reason) },
+        executeOn: () => executeService(ctx) !== undefined,
       })
       if (uninstall !== undefined) disposers.push(uninstall)
     }

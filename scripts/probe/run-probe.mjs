@@ -41,6 +41,18 @@
  * rework's renamed branch, an alias move and an alias push found after the
  * call, a graph-only commit passing by paths, and the pull, the hand-set
  * remote-tracking reference and the fetch against a bare origin.
+ * The drive scenario (glm-exec-drive) runs the main agent on a second root
+ * session with the loop board off: the goal the person's release starts
+ * without a command, the completion gate refusing with the gaps,
+ * worker-message-live-only, await_human and the resume once the answer is
+ * recorded, the idle block after three read-only rounds and the resume after
+ * 继续, /goal pause left paused, and update_goal complete after /wish off
+ * writing nothing on the graph; the peak hold is pinned in L2. The module
+ * scenarios (glm-exec-modules, glm-exec-modules-2) run the two loops: the
+ * not_released refusal, the one goal of the first module release and the
+ * comment of the next, the second tier's refused write and stale handback,
+ * the re-dispatch's new pins, the goal's hourness-design-wait and its
+ * resume, the design review's two records, and the throwing module reader.
  * The rules board scenarios run in scratch
  * git repositories with the row enabled by the overlay: rules-peak and
  * rules-peak-hourness drive /rules peak, glm-rules and non-glm-rules run
@@ -156,6 +168,9 @@ import { holderFileOf, readHolder } from '../../packages/hourness/dist/graph/mai
 import { runNote } from '../../packages/hourness/dist/graph/run.js'
 import { projectDirOf } from '../../packages/hourness/dist/data/project-root.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
+import { pinsOf } from '../../packages/hourness/dist/graph/pins.js'
+import { parseDispatchComment } from '../../packages/hourness/dist/execute/attempts.js'
+import { sha256Hex } from '../../packages/hourness/dist/execute/digest.js'
 import { FAILURE_SOURCE } from '../../packages/hourness/dist/lessons/failure.js'
 import { GUARD_CORRECTION_SOURCE, GUARD_LIFT_LINE } from '../../packages/hourness/dist/guard/index.js'
 import { PENDING_SOURCE as LESSONS_PENDING_SOURCE, RECUR_SOURCE as LESSONS_RECUR_SOURCE } from '../../packages/hourness/dist/lessons/notices.js'
@@ -824,12 +839,12 @@ const noDialectViolations = jsonl(join(noDialectDir, 'home', 'audit', 'violation
 // Dispatch feasibility spike (docs/ORCHESTRATION.md §2.1, §3.2; DESIGN.md
 // §2.4a). The overlay-only row scripts/probe/probe-dispatch.mjs records what
 // it observes in <scenario>/dispatch.jsonl.
-const dispatchRow = record => [
+const dispatchRow = (record, extra = {}) => [
   '- insert:',
   '    - id: glm-hourness-probe/dispatch',
   `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-dispatch.mjs')))}`,
   '      inject: [subagents, goals, agents, tools]',
-  `      config: { record: ${JSON.stringify(slash(record))} }`,
+  `      config: ${JSON.stringify({ record: slash(record), ...extra })}`,
 ]
 // The graph panel row (disabled by default until the L3 checklist passes)
 // also registers the graphLive projection the live view reads.
@@ -2338,6 +2353,191 @@ const execMergeUpstream = designScenario(EXEC_MERGE_UPSTREAM, 'glm-5.3-flash', (
 const mergeChecksOf = name => readChecks(join(runDir, name, 'ws', '.llm', 'execute'))
 const mergeRecords = { [EXEC_MERGE]: await mergeChecksOf(EXEC_MERGE), [EXEC_MERGE_UPSTREAM]: await mergeChecksOf(EXEC_MERGE_UPSTREAM) }
 
+// E8 (M7 design §3.9, §9.1 glm-exec-drive): the drive on the real runtime.
+// The release is the person's stage write in the graph before the run (D13;
+// glm-design-release covers record_human_answer's release path). The loop
+// board is off, as §9.1 has it, so the release's entry runs in M7's
+// fallback. The headless root types /wish into a second root session of the
+// workspace and wakes it; that session is the main agent and runs the
+// scripted turns and goal rounds while the root waits in probe_wait_goal,
+// which also speaks for the person: 继续 after the idle block, a question
+// after the pause. The main agent's steps, in order: focus, a sleep (the
+// drive starts), get_goal, update_goal complete (refused), get_goal, the
+// dispatch, a sleep (the worker hands back), send_message to the ended
+// worker, propose_to_human, await_human, the person's words (tell),
+// record_human_answer, get_goal, the end of the turn; three read-only goal
+// rounds (the fourth is blocked hourness-idle-rounds before it starts);
+// update_goal resume after 继续, /goal pause typed in a step (the round
+// driver cancels the turn); get_goal at the next step, /wish off,
+// update_goal complete, done. The peak hold and its resume are pinned in L2
+// (tests/execute-peak.spec.ts, §9.1).
+const EXEC_DRIVE = 'glm-exec-drive'
+const DRIVE_WHY = 'probe: the drive needs a running model'
+const DRIVE_PERSON = { start: '目标放行了，开始做吧。', go: '继续', look: '现在怎么样了？' }
+/** The person's release of a goal or module seeded in design (D13): the stage write releaseAtOf reads, as record_human_answer makes it. */
+async function stageRelease(name, ids) {
+  const engine = openEngine(join(stageWs(name), 'docs', 'graph'))
+  for (const id of ids) {
+    const current = await engine.load()
+    const written = await engine.apply('human', { op: 'edit', id, rev: current.revisions.get(id), set: { stage: 'release' }, reason: 'probe: the person released it' })
+    if (!written.ok) throw new Error(`probe: releasing ${id} in ${name} failed: ${JSON.stringify(written.error)}`)
+  }
+}
+await stageGraph(EXEC_DRIVE, [
+  ['human', { type: 'goal', title: '静态博客', stage: 'design', acceptance: ['the feed builds'] }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['src/feed.json'], acceptance: ['the feed builds'], worktree: true }],
+  ['human', { type: 'norm', id: 'norm-merge-gate', title: '合入前的检查', parent: 'goal-1', acceptance: ['`$ node -e "process.exit(0)"`'] }],
+])
+await stageRelease(EXEC_DRIVE, ['goal-1'])
+const driveRead = { tool: { name: 'Read', arguments: { file_path: join(stageWs(EXEC_DRIVE), 'README.md') } } }
+const driveGetGoal = { tool: { name: 'get_goal', arguments: {} } }
+const driveUpdate = action => ({ tool: { name: 'DeferredToolCall', arguments: { name: 'update_goal', input: { action } } }, goal: true })
+/** The main agent's script by step name; `driveAt` finds a step, whose result the next request of the session carries. */
+const driveSteps = [
+  ['focus', { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } }],
+  ['wait-start', mergeSleep(3, 'let the drive start')],
+  ['goal-started', driveGetGoal],
+  ['complete-gaps', driveUpdate('complete')],
+  ['goal-after-gaps', driveGetGoal],
+  ['dispatch', { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: DRIVE_WHY, quick: true, review: { depth: 'skip', why: 'probe: nothing to review' } } } }],
+  ['wait-handback', mergeSleep(8, 'let the worker hand back')],
+  ['message-ended', { tool: { name: 'send_message', arguments: { agent_id: '{child:task-1}', message: 'probe: one more thing' } } }],
+  ['propose', { tool: { name: 'propose_to_human', arguments: { kind: 'question', form: 'recommend', text: QUESTION_EXAMPLE.text, title: QUESTION_EXAMPLE.title, proposal: QUESTION_EXAMPLE.proposal, reason: QUESTION_EXAMPLE.reason, cost: QUESTION_EXAMPLE.cost } } }],
+  ['await', { tool: { name: 'await_human', arguments: { questions: ['question-1'], summary: 'The person decides the question first.' } } }],
+  ['person-says', { tool: { name: 'graph_show', arguments: { id: 'question-1' } }, tell: QUESTION_ANSWER }],
+  ['record', { tool: { name: 'record_human_answer', arguments: { kind: 'question', question: 'question-1', answer: 'agree', words: [QUESTION_ANSWER], recordedAs: QUESTION_EXAMPLE.proposal } } }],
+  ['goal-resumed', driveGetGoal],
+  ['end-turn', { text: 'The drive goes on in the next goal round.' }],
+  ...[1, 2, 3].flatMap(round => [[`round-${round}`, driveRead], [`round-${round}-end`, { text: 'Nothing changed in this round.' }]]),
+  ['resume', driveUpdate('resume')],
+  ['pause', { ...driveRead, line: '/goal pause' }],
+  ['goal-paused', driveGetGoal],
+  ['wish-off', { ...driveRead, line: '/wish off' }],
+  ['complete-off', driveUpdate('complete')],
+  ['done', { text: 'done' }],
+]
+const driveAt = name => driveSteps.findIndex(([step]) => step === name)
+const driveMain = driveSteps.map(([, step]) => step)
+const driveWorker = [
+  { tool: { name: 'structured_output', arguments: { status: 'blocked', summary: 'probe: the drive scenario hands back at once', commits: [], files: [], checks: [], questions: [], assumptions: [], lessons: [] } } },
+  { text: 'worker done' },
+]
+const EXEC_ON = ['- id: glm-hourness/execute', '  disabled: false', '- id: glm-hourness/loops', '  disabled: true', ...clockRow(OFF_PEAK_AT)]
+// The drive records the person's answer, and record_human_answer compares the
+// session's event times (Date.now, which the probe clock moves) with the
+// graph's history times (new Date, which it does not), so the drive runs on
+// the real clock; the rules row is off instead, so no GLM peak can hold the
+// rounds back whatever the hour (the peak half is L2's, tests/execute-peak.spec.ts).
+const DRIVE_ON = ['- id: glm-hourness/execute', '  disabled: false', '- id: glm-hourness/loops', '  disabled: true', '- id: glm-hourness/rules', '  disabled: true']
+const execDrive = designScenario(EXEC_DRIVE, 'glm-5.3-flash', ws => [
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish', say: DRIVE_PERSON.start } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_wait_goal', input: { steps: [{ phase: 'blocked', code: 'hourness-idle-rounds', say: DRIVE_PERSON.go }, { phase: 'paused', holdMs: 4000, say: DRIVE_PERSON.look }, { phase: 'complete' }], timeoutMs: 140_000 } } } },
+  { text: 'done' },
+], { git: true, extra: [...DRIVE_ON, ...dispatchRow(join(runDir, EXEC_DRIVE, 'dispatch.jsonl'), { watch: 'probe-other-' })], others: [driveMain, driveWorker] })
+
+// E8 (M7 design §3.9.7, §3.7.5, §9.1 glm-exec-modules, R5-F1, U30): the two
+// loops on the real runtime. The goal is split into module-a and module-b;
+// the person's releases and returns are their own stage writes (D13): the
+// goal and module-a before the run, the rest through probe_human_write.
+// The main agent (the root, after the simulated person's /wish) focuses the
+// goal; module-a's release starts the drive; a task under module-b is
+// refused, the one under module-a is dispatched; the main agent sends
+// module-a back to design on its own word while the worker runs (its next
+// write is refused, its handback is stale); the design review of module-b
+// runs twice (CHANGES_REQUESTED, APPROVED); the person releases module-b
+// (a comment, no second goal) and module-a again (the re-dispatch carries
+// the new release time), then sends the goal back with their words (the
+// goal blocks hourness-design-wait) and releases it again (the goal
+// resumes). glm-exec-modules-2 runs a copy of the split goal next to an
+// unsplit one with the module reader throwing (§6.6 (g)).
+const EXEC_MODULES = 'glm-exec-modules'
+const EXEC_MODULES_2 = 'glm-exec-modules-2'
+const MODULES_WHY = 'probe: the two loops need a running model'
+const MODULES_DIRECTIONS = ['数据只存在本机', '先记账再汇总']
+// File scopes, at most two: a quick dispatch takes no directory (brief.ts misfit), and quick keeps the plan step out of the scenario.
+const modulesTask = (id, parent, scope) => ['human', { type: 'task', id, title: `写 ${id}`, parent, kind: 'implement', writeScope: scope, acceptance: ['能用'], worktree: true }]
+const modulesGoal = ['human', { type: 'goal', title: '记账小工具', stage: 'design', acceptance: ['月底能看到按类别的合计'] }]
+const modulesModule = (id, title) => ['human', { type: 'feature', id, title, parent: 'goal-1', stage: 'design', acceptance: [`${title}能用`] }]
+await stageGraph(EXEC_MODULES, [
+  modulesGoal,
+  ['human', { type: 'decision', id: 'decision-fw', title: '用本地文件存账', parent: 'goal-1' }],
+  ['human', { type: 'norm', id: 'norm-directions', title: '方向清单', parent: 'goal-1', acceptance: MODULES_DIRECTIONS }],
+  modulesModule('module-a', '记一笔'),
+  modulesModule('module-b', '月底报表'),
+  ['human', { type: 'decision', id: 'decision-b', title: '报表用纯文本', parent: 'module-b' }],
+  modulesTask('task-a1', 'module-a', ['src/a/one.txt', 'src/a/two.txt']),
+  modulesTask('task-b1', 'module-b', ['src/b/report.txt']),
+])
+await stageRelease(EXEC_MODULES, ['goal-1', 'module-a'])
+await stageGraph(EXEC_MODULES_2, [
+  modulesGoal,
+  modulesModule('module-a', '记一笔'),
+  modulesTask('task-a1', 'module-a', ['src/a/one.txt']),
+  ['human', { type: 'goal', id: 'goal-2', title: '静态博客', stage: 'design', acceptance: ['the blog builds'] }],
+  modulesTask('task-2', 'goal-2', ['src/feed.json']),
+])
+await stageRelease(EXEC_MODULES_2, ['goal-1', 'module-a', 'goal-2'])
+const modulesWt = join(stageWs(EXEC_MODULES), '.worktrees', 'hz-task-a1')
+const modulesDispatch = id => ({ tool: { name: 'dispatch_task', arguments: { id, model: 'glm-5.3-flash', why: MODULES_WHY, quick: true, review: { depth: 'skip', why: 'probe: nothing to review' } } } })
+const modulesHuman = (id, stage, reason) => ({ tool: { name: 'DeferredToolCall', arguments: { name: 'probe_human_write', input: { mutation: { op: 'edit', id, set: { stage }, reason } } } } })
+const modulesReview = { tool: { name: 'dispatch_task', arguments: { id: 'module-b', model: 'glm-5.3', why: MODULES_WHY } } }
+const modulesHandBack = summary => ({ tool: { name: 'structured_output', arguments: { status: 'blocked', summary, commits: [], files: [], checks: [], questions: [], assumptions: [], lessons: [] } } })
+const modulesReviewer = verdict => [
+  { tool: { name: 'structured_output', arguments: { verdict, commit: '{git-head}', findings: verdict === 'APPROVED' ? [] : [{ id: 'f1', blocking: true, criterion: 'acceptance:0', where: 'decision-b', what: 'the report does not group by category', fix: 'group the lines by category' }], checked: ['direction:0', 'direction:1', 'acceptance:0'], lessons: [] } } },
+  { text: 'review done' },
+]
+const modulesRead = { tool: { name: 'Read', arguments: { file_path: join(stageWs(EXEC_MODULES), 'README.md') } } }
+/** The main agent's script by step name; `execModulesAt` finds a step, whose result the next request of the session carries. */
+const execModulesSteps = [
+  ['focus', { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } }],
+  ['wait-start', mergeSleep(3, 'let the drive start on the release of module-a')],
+  ['goal-started', driveGetGoal],
+  ['dispatch-b', modulesDispatch('task-b1')],
+  ['dispatch-a', modulesDispatch('task-a1')],
+  ['wait-write', mergeSleep(3, 'let the worker of module-a write')],
+  ['send-back-a', { tool: { name: 'graph_edit', arguments: { id: 'module-a', rev: '{rev:module-a}', set: { stage: 'design' }, reason: 'probe: the design of module-a has to change' } } }],
+  ['wait-stale', mergeSleep(10, 'let the worker of module-a write again and hand back')],
+  ['review-1', modulesReview],
+  ['wait-review-1', mergeSleep(6, 'let the design review hand back')],
+  ['review-2', modulesReview],
+  ['wait-review-2', mergeSleep(6, 'let the second design review hand back')],
+  ['release-b', modulesHuman('module-b', 'release', 'probe: the person released module-b')],
+  ['wait-release-b', mergeSleep(3, 'let the release of module-b land')],
+  ['release-a', modulesHuman('module-a', 'release', 'probe: the person released module-a again')],
+  ['wait-release-a', mergeSleep(3, 'let the release of module-a land')],
+  ['dispatch-a-again', modulesDispatch('task-a1')],
+  ['wait-again', mergeSleep(4, 'let the second worker of module-a hand back')],
+  ['goal-back', modulesHuman('goal-1', 'design', 'probe: the person said 目标要改，先停一下')],
+  ['read-back', modulesRead],
+  ['goal-design', driveGetGoal],
+  ['goal-release', modulesHuman('goal-1', 'release', 'probe: the person said 可以，放行')],
+  ['read-release', modulesRead],
+  ['goal-again', driveGetGoal],
+  ['done', { text: 'done', status: true }],
+]
+const execModulesAt = name => execModulesSteps.findIndex(([step]) => step === name)
+const execModules = designScenario(EXEC_MODULES, 'glm-5.3-flash', () => execModulesSteps.map(([, step]) => step), { wish: true, git: true, extra: [...EXEC_ON, ...dispatchRow(join(runDir, EXEC_MODULES, 'dispatch.jsonl'))], others: [
+  [
+    { tool: { name: 'Write', arguments: { file_path: join(modulesWt, 'src', 'a', 'one.txt'), content: 'one\n' } } },
+    mergeSleep(8, 'module-a goes back to design meanwhile'),
+    { tool: { name: 'Write', arguments: { file_path: join(modulesWt, 'src', 'a', 'two.txt'), content: 'two\n' } } },
+    modulesHandBack('probe: the design of module-a went back'),
+    { text: 'worker done' },
+  ],
+  modulesReviewer('CHANGES_REQUESTED'),
+  modulesReviewer('APPROVED'),
+  [modulesHandBack('probe: the second attempt of task-a1'), { text: 'worker two done' }],
+] })
+const execModules2 = designScenario(EXEC_MODULES_2, 'glm-5.3-flash', () => [
+  { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+  modulesDispatch('task-a1'),
+  { tool: { name: 'graph_focus', arguments: { id: 'goal-2' } } },
+  modulesDispatch('task-2'),
+  mergeSleep(4, 'let the worker of task-2 hand back'),
+  { text: 'done' },
+], { wish: true, git: true, extra: [...EXEC_ON, ...dispatchRow(join(runDir, EXEC_MODULES_2, 'dispatch.jsonl'), { breakReaders: true })], others: [[modulesHandBack('probe: the unsplit goal is spared'), { text: 'worker done' }]] })
+const execModulesGraph = await loadGraph(join(stageWs(EXEC_MODULES), 'docs', 'graph'))
+
 // The request seam over a dispatched worker (m4 design 0.6 §5.9; M7 design
 // 0.6 §3.2.1's 申报接缝; m4 §14.1's `guard-request-worker`): the worker's
 // write outside the project is refused by worker-scope with the request ref
@@ -3123,6 +3323,106 @@ function mergeUpstreamChecks() {
     [`exec merge upstream: the run exits clean with nothing from the execute row on stderr`, execMergeUpstream.status === 0 && !stderrOf(EXEC_MERGE_UPSTREAM).includes('dsh-glm-hourness/execute'), `exit ${execMergeUpstream.status}`],
   ]
 }
+
+/** A node file of a scenario workspace's graph, or undefined when it is not there. */
+const wsNode = (ws, id) => { try { return JSON.parse(readFileSync(join(ws, 'docs', 'graph', 'nodes', `${id}.json`), 'utf8')) } catch { return undefined } }
+/** The harness's comments on a node, oldest first. */
+const harnessComments = node => (node?.history ?? []).filter(entry => entry.op === 'comment' && entry.actor === 'harness').map(entry => String(entry.text ?? ''))
+const jsonOrUndefined = (text) => { try { return JSON.parse(text) } catch { return undefined } }
+
+/**
+ * E8 (M7 design §3.9, §9.1; scenario glm-exec-drive): what the drive did on
+ * the real runtime. The main agent is the second root session; `driveAt`
+ * names its scripted steps, and a step's result is in the session's next
+ * request. probe_wait_goal's notes say what the root saw while it waited.
+ */
+function driveChecks() {
+  const ws = join(runDir, EXEC_DRIVE, 'ws')
+  const main = execDrive.steps.filter(step => String(step.sessionId ?? '').startsWith('probe-other-'))
+  const root = execDrive.steps.find(step => step.other !== undefined)
+  const resultAt = name => lastToolResult(main[driveAt(name) + 1])
+  const textAt = name => resultAt(name)?.text ?? ''
+  const goalAt = name => jsonOrUndefined(textAt(name))?.goal ?? undefined
+  const notes = dispatchRecord(EXEC_DRIVE)
+  const watched = notes.filter(entry => entry.kind === 'watch-goal')
+  const waitedFor = phase => notes.find(entry => entry.kind === 'wait-goal' && entry.phase === phase)
+  const held = notes.find(entry => entry.kind === 'wait-goal-held')
+  const goalNode = wsNode(ws, 'goal-1')
+  const question = wsNode(ws, 'question-1')
+  const startComment = harnessComments(goalNode).find(text => text.startsWith('自动推进已开始'))
+  const started = goalAt('goal-started')
+  const waitingAt = watched.findIndex(entry => entry.operation === 'block' && entry.goal?.blockedReason?.code === 'hourness-waiting-human')
+  const resumedAt = watched.findIndex((entry, index) => index > waitingAt && entry.operation === 'resume' && entry.goal?.phase === 'active')
+  const idle = waitedFor('blocked')
+  const roundOf = (step, round) => messagesOf(step, 'goal').some(message => message.text.includes(`\nRound: ${round}/`))
+  const childId = jsonOrUndefined(textAt('dispatch'))?.childId
+  const said = (name, text) => (main[driveAt(name)]?.messages ?? []).some(message => message.role === 'user' && message.text === text)
+  const view = goal => goal === undefined || goal === null ? 'none' : `${goal.phase}${goal.blockedReason?.code === undefined ? '' : `/${goal.blockedReason.code}`}`
+  return [
+    [`exec drive: after the person's release the main agent's next step has a goal, with no goal command typed (only the person's /wish in the second root session), the objective names goal-1 and holds the acceptance, and goal-1 carries the 自动推进已开始 comment naming the session`, root?.other?.kind === 'success' && root.other.text === '/wish' && main.slice(0, driveAt('goal-started') + 1).every(step => step.line === undefined && step.command === undefined) && started?.phase === 'active' && String(started.objective ?? '').includes('Project graph goal goal-1') && String(started.objective ?? '').includes('the feed builds') && startComment !== undefined && startComment.includes('会话 probe-other-'), `${root?.other?.kind ?? 'no /wish'}; goal ${view(started)}; ${startComment?.slice(0, 120) ?? 'no start comment'}`],
+    [`exec drive: update_goal complete with gaps is refused by the completion gate with what is missing, and the goal stays active`, resultAt('complete-gaps')?.isError === true && textAt('complete-gaps').includes('The completion gate keeps goal goal-1 open. What is missing:') && goalAt('goal-after-gaps')?.phase === 'active', `${textAt('complete-gaps').split('\n').slice(0, 2).join(' | ').slice(0, 160)}; goal ${view(goalAt('goal-after-gaps'))}`],
+    [`exec drive: send_message to the worker that handed back is refused by worker-message-live-only`, childId !== undefined && resultAt('message-ended')?.isError === true && textAt('message-ended').includes('That worker has ended') && textAt('message-ended').includes(childId), `${childId ?? 'no child'}: ${textAt('message-ended').slice(0, 140)}`],
+    [`exec drive: await_human blocks the goal hourness-waiting-human`, textAt('await').includes('"blocked":true') && waitingAt >= 0, `${textAt('await').slice(0, 100)}; ${watched.map(entry => `${entry.operation}:${view(entry.goal)}`).join(' ') || 'no goal change'}`],
+    [`exec drive: once the person's words are recorded the question is decided and the drive resumes the goal in the main agent's own step (U12)`, question?.status === 'done' && resumedAt > waitingAt && waitingAt >= 0 && goalAt('goal-resumed')?.phase === 'active', `question ${question?.status ?? 'none'}; goal ${view(goalAt('goal-resumed'))}; resume at ${resumedAt}`],
+    [`exec drive: three goal rounds without progress block the goal hourness-idle-rounds with the idle message`, [1, 2, 3].every(round => roundOf(main[driveAt(`round-${round}`)], round)) && idle?.ok === true && idle.goal?.blockedReason?.code === 'hourness-idle-rounds' && String(idle.goal.blockedReason.message ?? '').startsWith('No progress in three goal rounds in a row'), `rounds ${[1, 2, 3].map(round => roundOf(main[driveAt(`round-${round}`)], round) ? 1 : 0).join('')}; ${JSON.stringify(idle ?? null).slice(0, 200)}`],
+    [`exec drive: the person says 继续 and update_goal resume runs`, said('resume', DRIVE_PERSON.go) && resultAt('resume')?.isError !== true && textAt('resume').includes('"phase":"active"'), `said ${said('resume', DRIVE_PERSON.go)}; ${textAt('resume').slice(0, 120)}`],
+    [`exec drive: /goal pause typed in a step pauses the goal and the drive leaves it paused: idle and paused after the hold, and paused when the person speaks again`, main[driveAt('pause')]?.line?.kind === 'success' && waitedFor('paused')?.ok === true && held?.status === 'idle' && held.goal?.phase === 'paused' && goalAt('goal-paused')?.phase === 'paused', `${main[driveAt('pause')]?.line?.kind ?? 'no line'}; held ${held?.status ?? 'none'}/${view(held?.goal)}; next ${view(goalAt('goal-paused'))}`],
+    [`exec drive: after /wish off update_goal complete is not the main agent's: it completes the goal, goal-1 gets no completion on the graph, only the comment goal 在完成门禁之外完成`, main[driveAt('wish-off')]?.line?.kind === 'success' && resultAt('complete-off')?.isError !== true && textAt('complete-off').includes('"phase":"complete"') && waitedFor('complete')?.ok === true && goalNode !== undefined && goalNode.status !== 'done' && !(goalNode.history ?? []).some(entry => entry.op === 'status' && entry.to === 'done') && harnessComments(goalNode).includes('goal 在完成门禁之外完成'), `${main[driveAt('wish-off')]?.line?.kind ?? 'no line'}; ${textAt('complete-off').slice(0, 100)}; goal-1 ${goalNode?.status ?? 'none'}; outside-gate comment ${harnessComments(goalNode).includes('goal 在完成门禁之外完成')}`],
+    [`exec drive: the run exits clean with nothing from the execute row on stderr (the peak hold and its resume after peak are pinned in L2 by tests/execute-peak.spec.ts: the headless run has no peak to cross)`, execDrive.status === 0 && !stderrOf(EXEC_DRIVE).includes('dsh-glm-hourness/execute'), `exit ${execDrive.status}; main ${main.length} request(s); ${stderrOf(EXEC_DRIVE).split('\n').find(line => line.includes('execute')) ?? 'no execute line'}`],
+  ]
+}
+
+/**
+ * E8 (M7 design §3.9.7, §3.7.5, §9.1; scenarios glm-exec-modules,
+ * glm-exec-modules-2): what the two loops did on the real runtime.
+ * `execModulesAt` names the main agent's scripted steps; a step's result is
+ * in the next request.
+ */
+function execModulesChecks() {
+  const ws = join(runDir, EXEC_MODULES, 'ws')
+  const main = execModules.steps.filter(step => step.sessionId === execModules.steps[0]?.sessionId)
+  const resultAt = name => lastToolResult(main[execModulesAt(name) + 1])
+  const textAt = name => resultAt(name)?.text ?? ''
+  const jsonAt = name => jsonOrUndefined(textAt(name))
+  const goal = wsNode(ws, 'goal-1')
+  const moduleA = wsNode(ws, 'module-a')
+  const moduleB = wsNode(ws, 'module-b')
+  const goalComments = harnessComments(goal)
+  const starts = goalComments.filter(text => text.startsWith('自动推进已开始'))
+  const releasedAgain = goalComments.find(text => text.startsWith('模块 module-a 已放行 · 放行 '))
+  const releaseOf = text => /放行 (\S+)/.exec(text ?? '')?.[1]
+  const first = jsonAt('dispatch-a')
+  const worker1 = first?.childId === undefined ? [] : bySession(execModules, first.childId)
+  const notices = main.flatMap(step => messagesOf(step, 'glm-hourness-execute'))
+  const dispatches = harnessComments(wsNode(ws, 'task-a1')).map(parseDispatchComment).filter(record => record !== undefined)
+  const pinOf = record => record?.pins.slice('pins: '.length).split(' ').find(word => word.startsWith('module-a@'))
+  const taskFinal = execModulesGraph.nodes.get('task-a1')
+  const finalPin = taskFinal === undefined ? undefined : pinsOf(execModulesGraph, taskFinal, sha256Hex).find(pin => pin.id === 'module-a')
+  const sendBack = (moduleA?.history ?? []).find(entry => entry.actor === 'llm' && entry.changes?.stage?.from === 'release' && entry.changes.stage.to === 'design')
+  const records = harnessComments(moduleB).map(text => /^设计审查 · (\S+) · (APPROVED|CHANGES_REQUESTED) · 方向清单 ([0-9a-f]{12}) · 挡路 (\d+) · 派出 (\S+)$/.exec(text)).filter(match => match !== null)
+  const digest = sha256Hex(MODULES_DIRECTIONS.map(text => text.trim()).join('\n')).slice(0, 12)
+  const reviews = [jsonAt('review-1'), jsonAt('review-2')]
+  const reviewers = reviews.map(review => review?.childId === undefined ? [] : bySession(execModules, review.childId))
+  const goals = ['goal-started', 'goal-design', 'goal-again'].map(name => jsonAt(name)?.goal)
+  const view = entry => entry === undefined || entry === null ? 'none' : `${entry.id}:${entry.phase}${entry.blockedReason?.code === undefined ? '' : `/${entry.blockedReason.code}`}`
+  const one = join(modulesWt, 'src', 'a', 'one.txt')
+  const two = join(modulesWt, 'src', 'a', 'two.txt')
+  const main2 = execModules2.steps.filter(step => step.sessionId === execModules2.steps[0]?.sessionId)
+  const unreadable = lastToolResult(main2[2])
+  const spared = lastToolResult(main2[4])
+  return [
+    [`exec modules: a task under module-b, still in design, is refused not_released`, resultAt('dispatch-b')?.isError === true && textAt('dispatch-b').includes('not_released') && textAt('dispatch-b').includes('Module module-b is not released (stage design).'), textAt('dispatch-b').slice(0, 140)],
+    [`exec modules: the task under the released module-a is dispatched and its worker writes in scope`, /^hz-task-a1-a1-/.test(first?.childId ?? '') && lastToolResult(worker1[1])?.isError !== true && existsSync(one), `${first?.childId ?? textAt('dispatch-a').slice(0, 100)}; one.txt ${existsSync(one)}`],
+    [`exec modules: module-a's release starts the drive once: one 自动推进已开始 comment naming module-a, and one goal id for the whole run`, starts.length === 1 && starts[0].includes('模块 module-a') && goals.every(entry => entry !== undefined && entry.id === goals[0].id), `${starts.length} start(s): ${starts[0]?.slice(0, 100) ?? 'none'}; goals ${goals.map(view).join(' ')}`],
+    [`exec modules: module-b's later release only comments on the goal`, goalComments.some(text => text.startsWith('模块 module-b 已放行 · 放行 ')) && starts.length === 1, goalComments.filter(text => text.startsWith('模块 ')).join(' | ').slice(0, 200) || 'no module comment'],
+    [`exec modules: the main agent sends module-a back to design on its own word; the running worker's next write is refused, its handback is stale, module-a carries the 退回设计 comment and module-b none`, sendBack !== undefined && resultAt('send-back-a')?.isError !== true && lastToolResult(worker1[3])?.isError === true && (lastToolResult(worker1[3])?.text ?? '').includes('The design this task belongs to was sent back (module module-a).') && !existsSync(two) && notices.some(message => message.text.includes('The graph moved under the task since it was dispatched') && message.text.includes('module-a changed')) && harnessComments(moduleA).some(text => text.startsWith('退回设计 · ')) && !harnessComments(moduleB).some(text => text.startsWith('退回设计 · ')), `edit ${sendBack === undefined ? 'missing' : 'by llm'}; write ${(lastToolResult(worker1[3])?.text ?? 'none').slice(0, 80)}; two.txt ${existsSync(two)}; ${harnessComments(moduleA).find(text => text.startsWith('退回设计')) ?? 'no return comment'}`],
+    [`exec modules: module-a released again: a new release time, and the re-dispatch's pins carry it (module-a's pin changed and matches the final graph)`, releasedAgain !== undefined && releaseOf(releasedAgain) !== releaseOf(starts[0]) && dispatches.length === 2 && pinOf(dispatches[0]) !== pinOf(dispatches[1]) && finalPin !== undefined && pinOf(dispatches[1]) === `module-a@${finalPin.digest}` && resultAt('dispatch-a-again')?.isError !== true, `${releaseOf(starts[0]) ?? '-'} -> ${releaseOf(releasedAgain) ?? '-'}; pins ${dispatches.map(pinOf).join(' -> ') || 'none'}; final ${finalPin?.digest ?? 'none'}`],
+    [`exec modules: the person sends the goal back to design: the goal blocks hourness-design-wait (U30); released again, the drive resumes it`, goals[1]?.phase === 'blocked' && goals[1].blockedReason?.code === 'hourness-design-wait' && goals[2]?.phase === 'active', goals.map(view).join(' ')],
+    [`exec modules: the design review of module-b is dispatched while it is in design, on the chosen model; CHANGES_REQUESTED then APPROVED leave two records on module-b with the direction list's digest`, reviews.every(review => review?.childId !== undefined) && reviewers.every(steps => steps.length > 0 && steps.every(step => step.model === 'glm-5.3')) && records.length === 2 && records[0][1] === reviews[0].childId && records[0][2] === 'CHANGES_REQUESTED' && records[0][4] === '1' && records[1][1] === reviews[1].childId && records[1][2] === 'APPROVED' && records[1][4] === '0' && records.every(match => match[3] === digest), `${records.map(match => `${match[2]} ${match[3]} 挡路 ${match[4]}`).join(' | ') || 'no record'}; digest ${digest}; reviewer models ${reviewers.map(steps => [...new Set(steps.map(step => step.model))].join(',') || 'none').join(' / ')}`],
+    [`exec modules: with the module reader throwing, the split goal's task is refused (the module structure could not be read) and the unsplit goal's task is dispatched (glm-exec-modules-2)`, unreadable?.isError === true && unreadable.text.includes('The module structure could not be read.') && spared?.isError !== true && jsonOrUndefined(spared?.text ?? '')?.childId !== undefined, `${(unreadable?.text ?? 'none').slice(0, 100)} | ${(spared?.text ?? 'none').slice(0, 100)}`],
+    [`exec modules: both runs exit 0, and the run with readable modules has nothing from the execute row on stderr`, execModules.status === 0 && execModules2.status === 0 && !stderrOf(EXEC_MODULES).includes('dsh-glm-hourness/execute'), `exit ${execModules.status}/${execModules2.status}; main ${main.length} request(s); ${stderrOf(EXEC_MODULES).split('\n').find(line => line.includes('execute')) ?? 'no execute line'}`],
+  ]
+}
 /**
  * Memory (docs/ORCHESTRATION.md §8; scenarios glm-memory, non-glm-memory,
  * glm-memory-compact, glm-worker-memory, glm-memory-depth): what the real
@@ -3642,6 +3942,8 @@ const checks = [
   ...reviewChecks(),
   ...mergeChecks(),
   ...mergeUpstreamChecks(),
+  ...driveChecks(),
+  ...execModulesChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],

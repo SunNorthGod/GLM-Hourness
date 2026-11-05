@@ -522,6 +522,31 @@ export interface GoalView extends GoalRef {
    * to resume by it, which stays with the execute row.
    */
   readonly blockedReason?: { readonly code: string, readonly message: string }
+  /** The goal's objective (dsh-goal `GoalSnapshot.objective`); the execute row recognises its own drive's goal by the `Project graph goal <id>:` prefix. */
+  readonly objective?: string
+  /**
+   * Whether the goal may continue on its own in this process (dsh-goal view,
+   * goal:880–888): `create` and `resume` arm, `pause`, `block`, `complete`
+   * and every `agent/created` disarm (goal:594–596). An `active` goal that is
+   * `disarmed` waits for a resume.
+   */
+  readonly activation?: 'armed' | 'disarmed'
+}
+
+/**
+ * What `goal/changed` carries (dsh-goal `commit`, goal:872–877): the change
+ * (its operation, the reference it names and the view after it, absent once
+ * cleared). It is emitted through `agentEvents(ctx, agent)`, which fuses the
+ * live agent into the payload, so a host-level `ctx.on('goal/changed')`
+ * receives `{agent, change}` (goal-round-driver:243).
+ */
+export interface GoalChangedPayload {
+  readonly agent: LiveAgentLike
+  readonly change: {
+    readonly operation: string
+    readonly ref: GoalRef
+    readonly goal?: GoalView
+  }
 }
 
 /**
@@ -744,13 +769,26 @@ export interface LlmCatalog {
 }
 
 /**
+ * One observation of a session (rc.3 dsh-session-query
+ * `SessionObservationReader`, session-query:450–507): the registered
+ * projections' client views at the observation's cut (`values` holds a key
+ * only for a unit with a wire view), and a `Symbol.dispose` member that
+ * releases the lease (dsh-subagent's `listChildren` disposes it after the
+ * read, subagent:2339–2352).
+ */
+export interface SessionObservationLike {
+  readonly projections?: { readonly values?: Readonly<Record<string, unknown>> }
+}
+
+/**
  * The `sessionQuery` service member the reconcile reads (rc.3 dsh-session-query
- * `observeSession`, read through dsh-subagent's `listChildren` at 2339–2352):
- * a stored session's consistent slice, from which the handback projection
- * folds a lost worker's last `structured_output` call (§3.9.6).
+ * `observeSession`, session-query:1064): an async read of one live or stored
+ * session that rejects with `SESSION_QUERY_SESSION_NOT_FOUND` when there is
+ * none; the handback projection folds a lost worker's last
+ * `structured_output` call from it (§3.9.6).
  */
 export interface SessionQueryService {
-  observeSession(sessionId: string, options?: { readonly signal?: AbortSignal }): { readonly projections?: { readonly values?: Readonly<Record<string, unknown>> } } | undefined
+  observeSession(sessionId: string, options?: { readonly signal?: AbortSignal }): Promise<SessionObservationLike>
 }
 
 /**

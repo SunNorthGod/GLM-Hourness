@@ -22,9 +22,9 @@
  * stops at the first failure, writes `result.json`, then appends the line
  * of `checks.jsonl`. Step 9 tells the main agent and comments every failed
  * task 「检查第 <n> 次没过」, counted after the person's latest word; the
- * third stops the task with the check-stuck draft (the E6 interim: the
- * notice goes to the holder directly until E8 emits `hourness.stopped`). A
- * lock that stays busy, a setup that fails, a scratch area that is not
+ * third stops the task: `hourness.stopped` goes to the loop board, whose
+ * `execute.stop-draft` action words the check-stuck draft from that
+ * comment (src/execute/asks.ts `stopDraftOf`, D11). A lock that stays busy, a setup that fails, a scratch area that is not
  * empty and a record that cannot be written leave no check line and count
  * no failure.
  *
@@ -32,8 +32,9 @@
  * counts when the `result.json` it names exists, its SHA-256 equals the
  * line's `resultDigest` and it says the same as the line.
  *
- * `trunkCheck` runs for a trunk advance in this process (E7 calls it
- * directly; E8 puts the loop board in front of it): every `$` and `when`
+ * `trunkCheck` is the `execute.trunk-check` action the loop board (or the
+ * row's fallback executor, src/execute/loop-link.ts) runs for a trunk
+ * event: every `$` and `when`
  * command must have passed on the new trunk's content, counted from the
  * verified records of commits with the same tree or differing only by
  * `only` paths; the missing commands run in the gate worktree and the
@@ -55,7 +56,6 @@ import type { HarnessResult, LoopEventRecord } from '../loops/service.ts'
 import { deliver } from '../rules/wake.ts'
 import { createUserNotice, type AgentLike, type ServiceLookup, type ToolDefinitionLike, type ToolExecutionContext, type UserNotice } from '../shared/dsh-min.ts'
 import type { AdvanceRecord } from './advance.ts'
-import { askDraft } from './asks.ts'
 import { sha256Hex } from './digest.ts'
 import type { GraphCache } from './dispatch.ts'
 import { floorPathIn } from './floor.ts'
@@ -63,6 +63,7 @@ import { acquireGateLock, ensureExecDir, type GateLockSetup } from './gate-lock.
 import { normDigest, parseGateNorm, type ParsedGate } from './gate-norm.ts'
 import type { GateLauncher, GateVerdict } from './gate-provider.ts'
 import { watchedDigest, type Git, type SnapshotSaver } from './git.ts'
+import type { LoopEmit } from './loop-link.ts'
 import { emitMetric } from './metrics.ts'
 import { writeWithRetry } from './retry.ts'
 import { latestHumanAt } from './review.ts'
@@ -439,6 +440,8 @@ export interface CheckDeps {
   /** M3's snapshot machine; tests keep the real one. */
   readonly snapshots?: SnapshotEnvironment
   readonly now?: () => Date
+  /** Hand an event to the loop board (src/execute/loop-link.ts): `hourness.stopped` after the third failure (§3.7.3). */
+  readonly emit?: (project: string, sessionId: string | undefined, event: LoopEmit) => void
 }
 
 /** One gate run: what to check and what it is about. */
@@ -654,7 +657,7 @@ function tellHolder(deps: CheckDeps, spec: GateRunSpec, notice: UserNotice, what
   if (why !== undefined) deps.report(spec.sessionId, 'degraded', `${what}送不到当前主 Agent（${short(spec.commit)}）：${why}`)
 }
 
-/** The failure comment on one task, counted after the person's latest word; the third one stops the task with the check-stuck draft. */
+/** The failure comment on one task, counted after the person's latest word; the third one stops the task and hands `hourness.stopped` on. */
 async function commentFailure(deps: CheckDeps, spec: GateRunSpec, task: string, failure: CheckCommandResult, at: string): Promise<void> {
   const now = deps.now ?? ((): Date => new Date())
   const engine = openEngine(spec.graphDir, { now })
@@ -678,11 +681,9 @@ async function commentFailure(deps: CheckDeps, spec: GateRunSpec, task: string, 
   if (written === undefined || !written.ok) deps.report(spec.sessionId, 'degraded', `检查没过的批注写不进图（${task}）`)
   if (!stop) return
   emitMetric({ event: 'execute.stop', node: task, kind: 'check', rounds: n })
-  const ask = askDraft('check-stuck', { task, title: node.title, attempt: n, command: failure.line, log: failure.log })
-  const draft = [ask.draft.title, `背景：${ask.draft.background}`, `提议：${ask.draft.proposal}`, `疑问：${ask.draft.doubt}`, `不做：${ask.draft.notTaken}`].join(' | ')
-  const body = `${task} stopped: the merge check failed ${n} times since the person's latest word (${failure.line} exit ${failure.exit}, log ${failure.log}). Put it to the person in your next batch with propose_to_human (kind question, parent ${task}); a draft that passes the checks: ${ask.draft.title} / ${ask.draft.background} / ${ask.draft.proposal} / ${ask.draft.doubt} / ${ask.draft.notTaken}; in the person's words, the four lines are: ${draft}. Other work goes on. When everything left waits for the person, call await_human with the question ids.`
-  const notice = createUserNotice('glm-hourness-loop', `${task} check stopped after ${n} failures`, body, { hournessLoop: { entry: 'execute.stopped', key: `stopped:${task}:check-${at}` } })
-  tellHolder(deps, spec, notice, '停下的提醒')
+  // The draft to the person goes through `hourness.stopped` and its `execute.stop-draft` action, keyed with the time of the comment that carries 停下 (D11).
+  const stoppedAt = written?.ok === true ? written.node.history.filter(entry => entry.op === 'comment' && entry.text === text).at(-1)?.at : undefined
+  deps.emit?.(spec.project, spec.sessionId, { event: 'hourness.stopped', key: `stopped:${task}:check-${stoppedAt ?? at}`, payload: { node: task, kind: 'check', rounds: n } })
 }
 
 /** Step 9 for a `check_commit` job: the notice, the failure comments and the stop, the metric, and the evidence hook on a pass. Returns the activation's verdict. */
@@ -821,6 +822,7 @@ export function checkCommitTool(deps: CheckDeps): ToolDefinitionLike {
         id,
         label: `hourness check ${short(commit)}`,
         cwd: project,
+        tasks,
         run: async signal => finishCheck(deps, spec, await runGate(deps, spec, signal)),
       }, agent, context.signal)
       if (way === 'sync') deps.report(agent.session?.id, 'degraded', '检查以同步方式运行：检查后端 hourness-gate 没起来，这次检查在工具调用里跑完')

@@ -804,11 +804,12 @@ test('the model catalog and the session query shapes of the execute row are impl
   assert.deepEqual(await catalog.listModels('glm'), [{ id: 'glm-5.3-flash' }])
   assert.equal((await catalog.resolveModelInfo('glm', 'glm-5.3-flash'))?.reasoning?.efforts?.length, 2)
   assert.equal(await catalog.resolveModelInfo('other', 'x'), undefined)
+  // rc.3 observeSession is async and rejects for a session it cannot find (session-query:1064, 545).
   const query: SessionQueryService = {
-    observeSession: sessionId => (sessionId === 's1' ? { projections: { values: { handback: '{}' } } } : undefined),
+    observeSession: sessionId => (sessionId === 's1' ? Promise.resolve({ projections: { values: { hournessHandback: { status: 'done' } } } }) : Promise.reject(new Error('session "gone" not found'))),
   }
-  assert.equal(query.observeSession('s1')?.projections?.values?.handback, '{}')
-  assert.equal(query.observeSession('gone'), undefined)
+  assert.deepEqual((await query.observeSession('s1')).projections?.values?.hournessHandback, { status: 'done' })
+  await assert.rejects(query.observeSession('gone'), /not found/)
 })
 
 test('glm-compact and the transcript row: a GLM compaction summary ends with the sentence naming the file the row wrote', async () => {

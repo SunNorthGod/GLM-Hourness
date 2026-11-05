@@ -8,8 +8,12 @@
  * approved tasks go to `doing` in the same write round. A design review of a
  * module is dispatched with the module id: the harness proposes the review
  * task under the module, idempotent by shape, and dispatches it (§3.7.5).
- * The review of a task and of a whole goal are later steps' (E6, E8) and
- * refuse until they land.
+ * A review task runs in the reviewed task's worktree (§3.7.1). A goal id
+ * dispatches the goal's acceptance review (§3.9.4): the main checkout as its
+ * directory, the trunk commit of now as what it reviews (a round at that
+ * commit already makes it `busy`), the dispatch comment and pins on the goal.
+ * A task whose latest dispatch the host lost (§3.9.6) gets the commits its
+ * branch already has as an earlier attempt of its brief.
  *
  * The graph is read through the row's revision-keyed cache so the
  * write-scope check of the workers sees the same revision the dispatch saw
@@ -22,7 +26,7 @@ import { exec } from 'node:child_process'
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { openEngine } from '../graph/engine.ts'
-import { DESIGN_REVIEW_ACCEPTANCE, isDesignReview, releaseOf } from '../graph/execute-stage.ts'
+import { acceptanceRounds, DESIGN_REVIEW_ACCEPTANCE, isDesignReview, releaseOf } from '../graph/execute-stage.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import { pinsOf, renderPins } from '../graph/pins.ts'
@@ -30,8 +34,9 @@ import { projectOf } from '../data/project-root.ts'
 import { peakModeService } from '../shared/peak-mode.ts'
 import { isGlmModel } from '../shared/route.ts'
 import type { AgentLike, LiveAgentLike, ServiceLookup, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
-import { briefGate, renderBrief, renderDesignReviewBrief, renderReviewBrief, type Brief, type BriefContext, type GateResult } from './brief.ts'
-import { makeChildId, nextAttempt, parseHandbackComment, registerAttempt, registeredDispatches, renderDispatchComment, type Attempt, type DispatchSummary, type HandbackComment, type PlanStatus } from './attempts.ts'
+import { briefGate, renderAcceptanceBrief, renderBrief, renderDesignReviewBrief, renderReviewBrief, type Brief, type BriefContext, type BriefInput, type GateResult } from './brief.ts'
+import { latestDispatch, lostChildOf, makeChildId, nextAttempt, parseHandbackComment, registerAttempt, registeredDispatches, renderDispatchComment, type Attempt, type DispatchSummary, type HandbackComment, type PlanStatus } from './attempts.ts'
+import { trunkBranchOf } from './check.ts'
 import { sha256Hex } from './digest.ts'
 import { dispatchDescription } from './examples.ts'
 import { agentOptionsOf, checkModelChoice, CATALOG_UNCHECKED_NOTE, type CatalogEntry, type ModelChoice } from './models.ts'
@@ -43,7 +48,7 @@ import { HANDBACK_SCHEMA, REVIEW_SCHEMA, mergeHandbackSchema } from './schemas.t
 import { DEFAULT_WATCHED, parseGateNorm } from './gate-norm.ts'
 import { createGit, watchedDigest, type Git } from './git.ts'
 import { emitMetric } from './metrics.ts'
-import { isRecord, refuse, toolShell } from '../design/tool-support.ts'
+import { errorText, isRecord, refuse, toolShell } from '../design/tool-support.ts'
 
 /** A shell command run in a directory, with its own cap; tests inject it. The handback processing takes one through the row's deps. */
 export type CommandRunner = (cwd: string, command: string, timeoutMs: number) => Promise<{ readonly code: number | undefined, readonly stdout: string, readonly stderr: string }>
@@ -203,7 +208,7 @@ const OUTPUT = {
     task: { type: 'string' },
     attempt: { type: 'integer' },
     childId: { type: 'string' },
-    role: { type: 'string', enum: ['worker', 'review'] },
+    role: { type: 'string', enum: ['worker', 'review', 'acceptance-review'] },
     worktree: { type: 'string' },
     branch: { type: 'string' },
     provider: { type: 'string' },
@@ -217,7 +222,7 @@ const OUTPUT = {
 } as const
 
 /** The provider a dispatch without one runs on: the session's route (subagent:293–303). */
-const routeOf = (agent: AgentLike): string | undefined => {
+export const routeOf = (agent: AgentLike): string | undefined => {
   const header = agent.session?.requestHeader?.()
   const fromHeader = header === undefined ? undefined : header.config?.provider
   if (fromHeader !== undefined) return fromHeader
@@ -380,7 +385,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
   const now = deps.now ?? ((): Date => new Date())
   const random = deps.random ?? Math.random
 
-  return {
+  const tool = {
     ...toolShell('dispatch_task', dispatchDescription(), PARAMETERS, OUTPUT),
     async execute(args: unknown, exec: ToolExecutionContext): Promise<DispatchSummary> {
       const agent = exec.agent
@@ -420,6 +425,14 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
       if (services === undefined) refuse('inactive', 'the subagents service is not available', 'the host needs the subagents row to start a dispatch')
       const hintCatalog = hintProvider === undefined ? undefined : await services.catalog(hintProvider)
       const reviewTask = node.kind === 'review' && !isDesignReview(graph, node)
+      // The acceptance review of a goal reviews the trunk as it is now (§3.9.4); a round at this commit already makes it busy.
+      let trunk: { readonly branch: string, readonly sha: string } | undefined
+      if (node.type === 'goal') {
+        const branch = await trunkBranchOf(git, project, graph)
+        const sha = branch === undefined ? undefined : await git.resolveCommit(project, `refs/heads/${branch}`)
+        if (branch !== undefined && sha !== undefined) trunk = { branch, sha }
+      }
+      const latestRound = node.type === 'goal' ? acceptanceRounds(node).at(-1) : undefined
       const verdict: GateResult = briefGate(graph, node, {
         args,
         running: registeredDispatches(),
@@ -430,10 +443,14 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         outputSchemaOk,
         ...(hintCatalog === undefined ? {} : { catalog: hintCatalog }),
         ...(reviewTask && deps.reviewTarget !== undefined ? { reviewTarget: deps.reviewTarget(graph, node) } : {}),
+        ...(node.type === 'goal' ? { acceptedAtTrunk: trunk !== undefined && latestRound !== undefined && trunk.sha.startsWith(latestRound.commit) } : {}),
       })
-      if (!verdict.ok) refuse(verdict.code, verdict.message, verdict.hint)
-      // The acceptance review of a goal is the drive's (E8); the review of a task dispatches from here on (E6).
-      if (verdict.subject === 'goal') refuse('invalid', 'the acceptance review of a goal is dispatched by the drive (step E8), not yet by hand', 'close the tasks of the goal; the loop board entry reminds you')
+      if (!verdict.ok) {
+        if (verdict.peakCap !== undefined) emitMetric({ event: 'execute.peak-cap', model: rawModel ?? '', ...verdict.peakCap })
+        refuse(verdict.code, verdict.message, verdict.hint)
+      }
+      const reviewedTrunk = verdict.subject !== 'goal' ? undefined
+        : trunk ?? refuse('invalid', 'the trunk of the project cannot be read', 'the acceptance review reviews the trunk: check out the main branch in the main checkout, then dispatch again')
 
       const { args: parsed } = verdict
       const provider = parsed.provider ?? routeOf(agent)
@@ -450,7 +467,10 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
       const taskReview = verdict.subject === 'review'
       const targetGraph = designReview ? await proposeDesignReview(deps, dir, graph, node, now) : graph
       const target = designReview ? findDesignReview(targetGraph, id) ?? node : node
-      const isWorkerRole = !designReview && !taskReview
+      const isWorkerRole = !designReview && !taskReview && reviewedTrunk === undefined
+      const role: DispatchSummary['role'] = isWorkerRole ? 'worker' : reviewedTrunk === undefined ? 'review' : 'acceptance-review'
+      // What the host lost of this task's previous dispatch, read before the worktree is prepared (§3.9.6 step 4).
+      const earlier = isWorkerRole ? await lostEarlier(git, project, target) : []
 
       // Worktree and setup commands: write tasks only (§3.1.2 step 4).
       let worktree: WorktreeOutcome | undefined
@@ -487,10 +507,13 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
             refuse('floor_requires_full', `the change hits the must-review floor: ${hits.map(hit => `#${hit.index} (${hit.reason})`).join(', ')}`, 'dispatch the review with depth full, or ask the person to narrow the floor')
           }
         }
+        // The main agent changed the depth the handback recorded (§3.16 `execute.review-depth`).
+        const recorded = reviewHandback?.depth === '轻审' ? 'light' : 'full'
+        if (depth !== recorded) emitMetric({ event: 'execute.review-depth', task: reviewed.id, declared: recorded, effective: depth })
       }
 
       const attempt = nextAttempt(target)
-      const childId = makeChildId(target.id, attempt, random)
+      const childId = makeChildId(target.id, attempt, random, reviewedTrunk !== undefined)
       const plan: PlanStatus = isWorkerRole ? planStatusOf(target, parsed.quick) : 'none'
       const approved = plan === 'approved' ? carriedPlan(target) : undefined
       const section = readPlanSection(target.body)
@@ -504,7 +527,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
             branch: worktree!.branch,
             base: { branch: worktree!.base, sha: worktree!.baseSha },
             ...(parsed.context === undefined ? {} : { context: parsed.context }),
-            earlier: [],
+            earlier,
             ...(approved !== undefined && section !== undefined ? { plan: { version: approved.version, steps: section.steps } } : {}),
             ...(parsed.quick === true ? { quick: true } : {}),
             gateCommands,
@@ -519,7 +542,9 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
               ...(reviewHandback === undefined ? {} : { handback: { ...(reviewHandback.head === undefined ? {} : { head: reviewHandback.head }), ...(reviewHandback.base === undefined ? {} : { base: reviewHandback.base }), status: reviewHandback.status } }),
               gateCommands,
             })
-          : renderDesignReviewBrief({ graph: targetGraph, childId, parent: agent.id, task: target })
+          : reviewedTrunk !== undefined
+            ? renderAcceptanceBrief({ graph: targetGraph, goal: target, childId, trunk: reviewedTrunk, gateCommands })
+            : renderDesignReviewBrief({ graph: targetGraph, childId, parent: agent.id, task: target })
 
       // The activation (§3.1.2 step 8); a full activation budget is slots_full like any other full slot.
       const outputSchema = isWorkerRole ? await schemaFor(target, project) : REVIEW_SCHEMA
@@ -529,7 +554,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
       try {
         activation = await services.start({
           provider: 'spawn',
-          label: `hourness ${taskReview ? 'review' : 'task'} ${target.id} attempt ${attempt}`,
+          label: reviewedTrunk !== undefined ? `hourness acceptance ${target.id} round ${attempt}` : `hourness ${taskReview ? 'review' : 'task'} ${target.id} attempt ${attempt}`,
           childId,
           request: {
             // The child's working directory is absolute: the session header
@@ -556,10 +581,12 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
       const pins = renderPins(pinsOf(targetGraph, target, sha256Hex))
       const record: Attempt = {
         childId,
-        role: isWorkerRole ? 'worker' : 'review',
+        role,
         node: target.id,
         attempt,
         graphDir: dir,
+        // An acceptance reviewer works in the main checkout, read-only but for .hourness/ (worker-scope's reviewer branch); the trunk commit is what its verdict must name (§3.9.4).
+        ...(reviewedTrunk === undefined ? {} : { worktree: resolve(project), baseSha: reviewedTrunk.sha }),
         // The register carries the absolute worktree path: the guards compare
         // it against the caller's session directory, whatever the host's
         // process cwd is (the summary shows the repository-relative form). A
@@ -595,10 +622,12 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         ...(worktree?.renamedFrom === undefined ? [] : [`旧分支留在 ${worktree.renamedFrom}`]),
         ...(checked.note === CATALOG_UNCHECKED_NOTE ? [CATALOG_UNCHECKED_NOTE] : []),
       ]
+      const base = worktree !== undefined ? { branch: worktree.base, sha: worktree.baseSha.slice(0, 12) }
+        : reviewedTrunk === undefined ? undefined : { branch: reviewedTrunk.branch, sha: reviewedTrunk.sha.slice(0, 12) }
       const comment = renderDispatchComment({
         attempt,
         childId,
-        ...(worktree === undefined ? {} : { base: { branch: worktree.base, sha: worktree.baseSha.slice(0, 12) } }),
+        ...(base === undefined ? {} : { base }),
         provider,
         model: parsed.model,
         ...(parsed.reasoningEffort === undefined ? {} : { reasoningEffort: parsed.reasoningEffort }),
@@ -625,7 +654,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         task: target.id,
         attempt,
         childId,
-        role: isWorkerRole ? 'worker' : 'review',
+        role,
         ...(worktree === undefined ? {} : { worktree: relative(project, worktree.path).replaceAll('\\', '/'), branch: worktree.branch }),
         provider,
         model: parsed.model,
@@ -650,6 +679,35 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
       return summary
     },
   }
+  // Every refusal is a fact of §3.16's table (`execute.dispatch-refused`): its code, never its text.
+  return {
+    ...tool,
+    async execute(args: unknown, exec: ToolExecutionContext): Promise<DispatchSummary> {
+      try {
+        return await tool.execute(args, exec)
+      }
+      catch (error) {
+        emitMetric({ event: 'execute.dispatch-refused', code: /^\{"code":"([a-z_]+)"/.exec(errorText(error))?.[1] ?? 'invalid' })
+        throw error
+      }
+    },
+  }
+}
+
+/**
+ * The brief's earlier attempt of a task whose latest dispatch the host lost
+ * (§3.9.6 step 4): the task's latest harness comment is the lost comment of
+ * that dispatch, and the line lists the commits its branch already has over
+ * the dispatch's base, newest first, at most ten. None otherwise.
+ */
+async function lostEarlier(git: Git, project: string, task: GraphNode): Promise<BriefInput['earlier']> {
+  const latest = task.history.filter(entry => entry.op === 'comment' && entry.actor === 'harness' && entry.text !== undefined).at(-1)?.text
+  const dispatched = latestDispatch(task)
+  if (latest === undefined || dispatched === undefined || lostChildOf(latest) !== dispatched.childId) return []
+  const base = dispatched.base?.sha
+  const commits = base === undefined ? undefined : await git.commitsBetween(project, base, `refs/heads/hz/${task.id}`)
+  const list = commits?.ok === true ? commits.value.slice(0, 10).map(commit => commit.slice(0, 12)) : []
+  return [{ outcome: `上一次丢失：分支 hz/${task.id} 上已有提交 ${list.length === 0 ? '无' : list.join('、')}，先检查再接着做`, details: [] }]
 }
 
 /** The review task of a module in the graph, by shape (§3.7.5). */

@@ -34,7 +34,8 @@ import { createUserNotice } from '../src/shared/dsh-min.ts'
 import { apply as executeApply } from '../src/execute/index.ts'
 import type { LoopEventRecord } from '../src/loops/service.ts'
 import { REQUESTS_SERVICE } from '../src/guard/request-service.ts'
-import { noticeHost } from './execute-helpers.ts'
+import { noticeHost, stopSeam } from './execute-helpers.ts'
+import { until } from './panel-helpers.ts'
 import { GOAL, TASK, gateNode, providerSubagents, stageNodes, testRepo, type TestRepo } from './execute-repo.ts'
 import { fakeInjector, fakeRuntime, schemaViolations } from './fake-rc3.ts'
 
@@ -78,9 +79,11 @@ async function rig(gate: readonly string[] | undefined, over: Partial<CheckDeps>
   const reports: string[] = []
   const metrics: MetricEvent[] = []
   const previous = setMetricSink(event => { metrics.push(event) })
+  const cache = createGraphCache(() => {})
   const deps: CheckDeps = {
     lookup,
-    cache: createGraphCache(() => {}),
+    cache,
+    emit: stopSeam(lookup, cache, repo.graphDir).emit,
     graphDirOf: () => repo.graphDir,
     execDir: root => join(root, '.llm', 'execute'),
     isMain: agent => agent.id === 'main-1',
@@ -249,12 +252,15 @@ test('a failing check leaves no passed record, comments the trailer task 检查�
     assert.deepEqual(all.map(text => text.slice(0, 7)), ['检查第 1 次', '检查第 2 次', '检查第 3 次'])
     assert.ok(all[2].endsWith(' · 停下'), all[2])
     assert.ok(!all[1].endsWith(' · 停下'))
+    // hourness.stopped goes through the loop seam; execute.stop-draft words the draft from the 停下 comment (D11).
+    await until(() => r.sent.some(notice => notice.source.kind === 'glm-hourness-loop'), 'the check-stuck draft reaches the holder')
     const stop = r.sent.find(notice => notice.source.kind === 'glm-hourness-loop')
     assert.ok(stop !== undefined, 'the check-stuck draft went to the holder')
     const loop = stop.source.hournessLoop as { entry: string, key: string }
     assert.equal(loop.entry, 'execute.stopped')
-    assert.match(loop.key, /^stopped:task-1:check-\d{4}-/)
-    assert.match(textOf(stop), /task-1 stopped: the merge check failed 3 times/)
+    const stopComment = (await openEngine(r.repo.graphDir).load()).nodes.get('task-1')?.history.filter(entry => entry.op === 'comment' && entry.text?.endsWith(' · 停下') === true).at(-1)
+    assert.equal(loop.key, `stopped:task-1:check-${stopComment?.at ?? ''}`)
+    assert.match(textOf(stop), /^task-1 stopped: the merge check failed 3 times since the person's latest word \(node -e .* exit 3, log \.llm\/execute\/checks\/[0-9a-f]{40}\/[^/]+\/0\.log\)\. Put it to the person in your next batch with propose_to_human \(kind question, parent task-1\); a draft that passes the checks: /)
     assert.ok(r.metrics.some(event => event.event === 'execute.stop' && event.kind === 'check' && event.node === 'task-1' && event.rounds === 3))
     assert.equal((await readChecks(r.execDir)).filter(record => record.passed).length, 0)
   }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Attempt } from '../src/execute/attempts.ts'
-import { BRIEF_LIMIT, briefGate, parseDispatchArgs, renderBrief, type BriefContext, type BriefInput, type GateResult } from '../src/execute/brief.ts'
+import { BRIEF_LIMIT, briefGate, parseDispatchArgs, renderAcceptanceBrief, renderBrief, type BriefContext, type BriefInput, type GateResult } from '../src/execute/brief.ts'
 import { digest12 } from '../src/execute/digest.ts'
 import { releaseOf } from '../src/graph/execute-stage.ts'
 import type { LoadedGraph } from '../src/graph/parse.ts'
@@ -275,10 +275,35 @@ test('row 13, nothing_to_review: a review task needs a current finished handback
   assert.equal(withDepth.args.depth, 'light')
 })
 
-test('the goal\'s review: a goal with acceptance and a free model is dispatched', () => {
+test('the goal\'s review: a goal with acceptance and a free model is dispatched; a round at the current trunk commit, or a running one, makes it busy (§3.9.4)', () => {
   const ok = gate(plain(), 'goal-1')
   assert.ok(ok.ok)
   assert.equal(ok.subject, 'goal')
+  const reviewed = refused(gate(plain(), 'goal-1', { acceptedAtTrunk: true }))
+  assert.equal(reviewed.code, 'busy')
+  assert.match(reviewed.message, /already has an acceptance review at the current trunk commit/)
+  const running = refused(gate(plain(), 'goal-1', { running: [attempt({ node: 'goal-1', role: 'acceptance-review', childId: 'hz-goal-1-acc-a1-000000' })] }))
+  assert.equal(running.code, 'busy')
+  assert.match(running.hint, /hz-goal-1-acc-a1-000000/)
+})
+
+test('renderAcceptanceBrief: the goal line names the trunk commit, done-when is the goal\'s acceptance as acceptance:<i>, checked needs each item with its evidence, the reviewer writes only its report', () => {
+  const graph = withNode(plain(), node({ id: 'task-2', type: 'task', parent: 'feature-1', title: 'Write the index', writeScope: ['site/index/'], ...WORK, status: 'done', evidence: [{ kind: 'commit', ref: 'c0ffee1234567890' }] }))
+  const goal = withNode(graph, { ...get(graph, 'goal-1'), acceptance: ['the blog builds', 'the feed validates'] })
+  const brief = renderAcceptanceBrief({ graph: goal, goal: get(goal, 'goal-1'), childId: 'hz-goal-1-acc-a1-abcdef', trunk: { branch: 'main', sha: 'abcdef0123456789abcdef0123456789abcdef01' }, gateCommands: ['npm test'] })
+  const lines = brief.text.split('\n')
+  assert.equal(lines[0], '# Acceptance review of goal goal-1: Static blog')
+  assert.ok(lines.includes('Review goal goal-1 at commit abcdef012345 against its acceptance.'))
+  assert.ok(lines.includes('- acceptance:0 the blog builds'))
+  assert.ok(lines.includes('- acceptance:1 the feed validates'))
+  assert.ok(lines.some(line => line.includes('task-2 "Write the index" (done, trunk commit c0ffee123456)')), 'the work of the goal is listed with its trunk commit')
+  assert.ok(lines.includes('- A finding blocks only when its criterion is acceptance:<i>, the item of the goal it shows unmet. Everything else is not blocking.'))
+  assert.ok(lines.some(line => line.startsWith('- checked must hold one entry per item below, written "acceptance:<i> <evidence>"')))
+  assert.ok(lines.includes('- You write nothing except your report ".hourness/hz-goal-1-acc-a1-abcdef.md" in your working directory.'))
+  assert.ok(lines.includes('- Not in scope: no comments.'))
+  assert.match(brief.text, /verdict \(verdict, commit abcdef012345, findings, checked, lessons\)/)
+  assert.equal(brief.digest, digest12(brief.text.slice(0, brief.text.lastIndexOf('\n\nbrief '))))
+  assert.ok(brief.text.endsWith(`brief ${brief.digest} · graph ${goal.revision}`))
 })
 
 test('the release check reads the context, not a stage: an unreleased result in the context refuses a node the graph shows as released', () => {

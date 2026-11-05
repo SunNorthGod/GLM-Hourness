@@ -5,8 +5,9 @@
  * runs what is written here, M7's fallback executor reads the same tables,
  * and the loop row itself carries none of them, so one matter never wakes
  * the main agent twice. The runtime wiring (`contribute`, `emit`, the
- * fallback and the watchdog) is E8's; `src/execute/loop-link.ts` imports
- * these tables from here.
+ * fallback and the watchdog) is in src/execute/loop-link.ts, which imports
+ * these tables from here; its contract test hands them to the board's own
+ * registry, so a field title or an entry the board would drop fails there.
  *
  * Every `tell` wakes: each link of the drive chain has to reach an idle main
  * agent, and the time entries are delivered by the host's schedule anyway.
@@ -61,7 +62,7 @@ export const EXECUTE_EVENTS: readonly LoopEventDeclaration[] = [
       { name: 'depth', type: 'string', title: '有效深浅' },
       { name: 'reviewTask', type: 'string', title: '要派的审查任务；不审时为空串' },
       { name: 'commits', type: 'number', title: '这次交回的提交数' },
-      { name: 'floorHit', type: 'string', title: '碰到必须全审清单的哪一条，unparsed 或空串' },
+      { name: 'floorHit', type: 'string', title: '碰到的必须全审类，或 unparsed' },
     ],
     personSelectable: true,
   },
@@ -85,7 +86,7 @@ export const EXECUTE_EVENTS: readonly LoopEventDeclaration[] = [
     title: '审查或检查停下了，该问你',
     fields: [
       { name: 'node', type: 'string', title: '停下的节点' },
-      { name: 'kind', type: 'string', title: 'review、check 或 acceptance' },
+      { name: 'kind', type: 'string', title: '停下的种类：审查、检查或整体审查' },
       { name: 'rounds', type: 'number', title: '停下时的轮数' },
     ],
     personSelectable: true,

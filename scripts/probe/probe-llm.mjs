@@ -57,7 +57,7 @@ import { asAttachments, glmImageRequestTarget, prepareRequestImages } from '../.
 import { encodeRequest, splitSystemPrompt } from '../../packages/glm/dist/glm-llm/anthropic.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
 import { oldestPending } from '../../packages/hourness/dist/execute/requests.js'
-import { registeredDispatches } from '../../packages/hourness/dist/execute/attempts.js'
+import { latestDispatch, registeredDispatches } from '../../packages/hourness/dist/execute/attempts.js'
 
 export const name = 'glm-hourness-probe/llm'
 export const inject = ['llm']
@@ -91,25 +91,31 @@ function checkedScript(script) {
  *   the person's question by ids that only exist at runtime;
  * - `{head:<task id>}` is the 12-hex head of that task's latest done
  *   handback, what a reviewer names as the commit it reviews;
+ * - `{child:<task id>}` is the child id of that task's latest dispatch
+ *   comment, so a script can address a worker that has ended (M7 E8);
  * - `{git-head}` is the 12-hex HEAD of the calling session's repository, so
  *   a worker can name its own commit in its handback.
  * A value that is not there leaves the text as it was.
  */
 async function withRevisions(ctx, request, call) {
   const original = JSON.stringify(call.arguments ?? {})
-  if (!/\{(rev|plan-request|ask-request|worker|review|question|head|git-head):?/.test(original)) return call
+  if (!/\{(rev|plan-request|ask-request|worker|review|question|head|child|git-head):?/.test(original)) return call
   const agent = ctx.get('agents')?.get(request.sessionId)
   const cwd = agent?.session?.header?.cwd
   const dir = ctx.get('glmHournessGraph')?.dirFor?.(cwd)
   if (dir === undefined) return call
   let text = original
-  if (text.includes('{rev:') || text.includes('{review:') || text.includes('{question:') || text.includes('{head:')) {
+  if (['{rev:', '{review:', '{question:', '{head:', '{child:'].some(mark => text.includes(mark))) {
     const graph = await loadGraph(dir)
     text = text.replace(/\{rev:([A-Za-z0-9._-]+)\}/g, (whole, id) => graph.revisions.get(id) ?? whole)
     const open = id => graph.nodes.get(id)?.status !== 'dropped' && graph.nodes.get(id)?.status !== 'superseded'
     text = text.replace(/\{review:([A-Za-z0-9._-]+)\}/g, (whole, task) => [...graph.nodes.values()].find(node => node.parent === task && node.kind === 'review' && open(node.id))?.id ?? whole)
     text = text.replace(/\{question:([A-Za-z0-9._-]+)\}/g, (whole, task) => [...graph.nodes.values()].filter(node => node.parent === task && node.type === 'question' && open(node.id)).sort((a, b) => String(a.history[0]?.at ?? '').localeCompare(String(b.history[0]?.at ?? '')))[0]?.id ?? whole)
     text = text.replace(/\{head:([A-Za-z0-9._-]+)\}/g, (whole, task) => [...(graph.nodes.get(task)?.history ?? [])].reverse().map(entry => /（最新 ([0-9a-f]{12})）/.exec(String(entry.text ?? ''))?.[1]).find(sha => sha !== undefined) ?? whole)
+    text = text.replace(/\{child:([A-Za-z0-9._-]+)\}/g, (whole, task) => {
+      const node = graph.nodes.get(task)
+      return node === undefined ? whole : latestDispatch(node)?.childId ?? whole
+    })
   }
   if (text.includes('{git-head}')) {
     // The dispatched worker commits in its worktree, which is not the session cwd: the register holds the worktree the dispatch created.

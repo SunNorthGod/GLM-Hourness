@@ -21,10 +21,37 @@
  * those stay outermost; the service's `trunkAdvanceFor` reads it (R4-F4), a
  * passing check writes the evidence a move made before it was waiting for,
  * and a review that passes after the advance completes the task with that
- * evidence. The two trunk events run the `execute.trunk` entry's full trunk
- * check in this process, once per event key, and a failure goes to the
- * holder as a loop notice (D4). The drive and the loop-board seam arrive
- * with E8 on this same entry.
+ * evidence.
+ *
+ * The seam to the loop board (§2.5, src/execute/loop-link.ts) is here: the
+ * row hands its events, entries and harness actions to `glmHournessLoops`
+ * when that service arrives (and again at every `agent/created`, V12), the
+ * service's `runAction` runs the actions (`execute.trunk-check`,
+ * `execute.stop-draft`), and the trunk, handback, review and stop events go
+ * to the board through one `emit`; an entry the board did not take, or did
+ * not run in five minutes, runs in the row's fallback executor, and its
+ * notice waits for the holder's next step when the holder is not live.
+ *
+ * The drive (§3.9, src/execute/drive.ts) runs at the holder's every
+ * `agent/pre-step` before the step and at `agent/created`: it hands over
+ * `hourness.design-released` and `hourness.host-started`, runs
+ * `execute.start-drive` and `execute.resume-drive`, resumes, blocks and
+ * holds the holder's DSH goal by the table of §3.9.1, and keeps
+ * `<exec>/drive.jsonl` (the start line at a project's first holder step, the
+ * pause lines from `goal/changed`, the exit lines from the row's dispose).
+ * The completion gate on `update_goal complete` and the batch mark after
+ * `propose_to_human` and `await_human` are installed after the
+ * trunk-advance check and before the chain's rules; `await_human` is the
+ * main agent's tool. Without the `goals` service nothing is driven and the
+ * row health says 「没有 goal 服务，不能自动推进」. `dispatch_task` with a
+ * goal id dispatches the goal's acceptance review (§3.9.4). The
+ * `execute.reconcile` action of `hourness.host-started` (§3.9.6) reads a
+ * lost dispatch's handback back from the `hournessHandback` session
+ * projection this row registers, catches up the trunk evidence through the
+ * trunk-advance check's `reconcileTrunk` and reruns the interrupted
+ * harness actions. The holder's agent carries the dispatch status notice
+ * (src/execute/notice.ts, §3.5.4), installed at its creation or at its
+ * first step as the holder.
  *
  * The row keeps the dispatch register (src/execute/attempts.ts) and the
  * revision-keyed graph cache the rules read; the graph of a project is
@@ -36,7 +63,6 @@
  * and says why in the row health. It ships disabled
  * (packages/hourness/cordis.patch.yml); the E9 verification turns it on.
  */
-import { randomBytes } from 'node:crypto'
 import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { graphService } from '../graph/service.ts'
@@ -45,7 +71,8 @@ import { projectOf } from '../data/project-root.ts'
 import { isMainAgentFor } from '../data/main-agent.ts'
 import { rowJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
-import { createUserNotice, type AgentsService, type AgentLike, type InjectHost, type PostExecuteListener, type PreExecuteListener, type ProvideHost, type ServiceLookup, type SessionLike } from '../shared/dsh-min.ts'
+import type { AgentsService, AgentLike, GoalChangedPayload, InjectHost, PostExecuteListener, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
+import { LOOPS_SERVICE, loopsService } from '../loops/service.ts'
 import { EXECUTE_SERVICE, type ExecuteService } from '../shared/execute-service.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { disposerList } from '../shared/row-support.ts'
@@ -55,10 +82,13 @@ import { latestDispatch, registeredAttempt, recordCommunication, reviewTargetOf 
 import { createGraphCache, dispatchTool, realCommandRunner, type DispatchDeps, type GraphCache } from './dispatch.ts'
 import { answerWorkerTool, askMainTool, submitPlanTool, type RequestsDeps } from './requests.ts'
 import { sha256Hex } from './digest.ts'
-import { readCalls, startHandback, stoppedInMemory, type HandbackDeps } from './handback.ts'
+import { handbackProjection, HANDBACK_PROJECTION, readCalls, settleHandback, startHandback, stoppedInMemory, type HandbackDeps } from './handback.ts'
 import { createGit } from './git.ts'
 import { faceOfRole, roleOfAgent, type FaceDeps } from './faces.ts'
-import { checkCommitTool, toHolder, trunkCheck, type CheckDeps } from './check.ts'
+import { checkCommitTool, trunkCheck, type CheckDeps } from './check.ts'
+import { createLoopLink, stopDraftAction } from './loop-link.ts'
+import { createDrive } from './drive.ts'
+import { installDispatchNotice } from './notice.ts'
 import { createGateLauncher, GATE_PROVIDER } from './gate-provider.ts'
 import { installTrunkGate } from './advance.ts'
 import { floorHits, parseFloor } from './floor.ts'
@@ -80,10 +110,12 @@ export const name = 'dsh-glm-hourness/execute'
 export interface ExecuteContext extends ServiceLookup, Partial<InjectHost>, Partial<ProvideHost> {
   on(event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
   on(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
-  /** The pre-step is a decision chain: the listener installs the face and passes the decision through. */
-  on(event: 'agent/pre-step', listener: (payload: { readonly agent: AgentLike }, next: () => Promise<unknown>) => Promise<unknown>): () => void
+  /** The pre-step is a decision chain: the listener installs the face, runs the drive's step and passes the decision through. */
+  on(event: 'agent/pre-step', listener: (payload: { readonly agent: AgentLike, readonly messages?: readonly unknown[] }, next: () => Promise<unknown>) => Promise<unknown>): () => void
   /** Every tool result before the call settles; the trunk-advance check compares the trunk here (§3.8.4). */
   on(event: 'tools/post-execute', listener: PostExecuteListener, options?: { prepend?: boolean }): () => void
+  /** Every goal change, with the live agent fused in (dsh-goal 872–877, goal-round-driver 243): the drive's journal and the completion credential. */
+  on(event: 'goal/changed', listener: (payload: GoalChangedPayload) => void): () => void
 }
 
 /** What a main agent session's row health says while dispatch works. */
@@ -99,14 +131,18 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   let rulesNote: string | undefined
   let gateNote: string | undefined
   let trunkNote: string | undefined
+  let projectionNote: string | undefined
   const health = provideRowHealth(ctx, 'execute', 'active', '已加载；派发与派发链的写入边界在本行的会话里生效')
   disposers.push(() => { health.dispose() })
   const report = (sessionId: string | undefined, state: HealthState, reason: string): void => {
     health.report(sessionId, state, reason)
   }
   const reactivate = (): void => {
-    const notes = [toolsNote, rulesNote, gateNote, trunkNote].filter(note => note !== undefined)
-    health.reactivate(notes.length > 0 ? 'degraded' : 'active', notes.length > 0 ? notes.join('；') : '已加载；派发与派发链的写入边界在本行的会话里生效')
+    // The loop seam's notes: the board being absent is information only, the rest degrades (§2.5 point 7).
+    const loopNotes = [...loopLink.notes(), ...drive.notes()]
+    const notes = [toolsNote, rulesNote, gateNote, trunkNote, projectionNote, ...loopNotes.filter(note => note.degraded).map(note => note.text)].filter(note => note !== undefined)
+    const info = loopNotes.filter(note => !note.degraded).map(note => note.text)
+    health.reactivate(notes.length > 0 ? 'degraded' : 'active', (notes.length > 0 ? [...notes, ...info] : ['已加载；派发与派发链的写入边界在本行的会话里生效', ...info]).join('；'))
   }
   const warnOnce = (() => {
     let warned = false
@@ -150,16 +186,35 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     }
   }
 
+  // The seam to the loop board (§2.5): the row's events go out through it, the board runs the harness actions through it, and it runs what the board does not.
+  const loopLink = createLoopLink({
+    lookup: ctx,
+    execDir,
+    graphDirOfRoot,
+    cache,
+    report,
+    actions: {
+      'execute.trunk-check': record => trunkCheck(checkDeps, record),
+      'execute.stop-draft': stopDraftAction(cache, graphDirOfRoot),
+      'execute.start-drive': record => drive.startDrive(record),
+      'execute.resume-drive': record => drive.resumeDrive(record),
+      'execute.reconcile': record => drive.reconcile(record),
+    },
+    notesChanged: () => { reactivate() },
+  })
+  disposers.push(() => { loopLink.dispose() })
+
   // The trunk-advance check (§3.8.4), installed below before the dispatched chain's rules; the service, the check records and the review pass read it.
   let trunkGate: ReturnType<typeof installTrunkGate> | undefined
 
-  // The service M3's guard rules judge with (§3.2.2): who a dispatch carries, live check included; and the trunk advance a running call may make (R4-F4).
+  // The service M3's guard rules judge with (§3.2.2): who a dispatch carries, live check included; the trunk advance a running call may make (R4-F4); the loop board's runner of the row's harness actions (§2.5 point 2).
   const service: ExecuteService = {
     isWorker: (agentId) => {
       const attempt = registeredAttempt(agentId)
       return attempt !== undefined && agentsService()?.get(agentId) !== undefined
     },
     trunkAdvanceFor: callId => trunkGate?.trunkAdvanceFor(callId),
+    runAction: (action, record) => loopLink.runAction(action, record),
   }
   try {
     ctx.provide?.(EXECUTE_SERVICE, service)
@@ -192,6 +247,7 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     git: createGit(),
     runCommand: realCommandRunner,
     trunkEvidence: (projectRoot, task) => trunkGate?.trunkEvidenceOf(projectRoot, task) ?? Promise.resolve(undefined),
+    emit: (project, sessionId, event) => { loopLink.emit(project, sessionId, event) },
     redispatch: async (reviewTaskId, attempt) => {
       const agents = agentsService()
       const parent = attempt.parentSession === undefined || agents === undefined ? undefined : agents.get(attempt.parentSession)
@@ -232,8 +288,30 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     git: createGit(),
     launcher,
     onPassed: (project, commit, _record, sessionId) => trunkGate?.checkedAfter(project, commit, sessionId) ?? Promise.resolve(),
+    emit: (project, sessionId, event) => { loopLink.emit(project, sessionId, event) },
   }
-  const tools = [dispatch, ...requestTools, checkCommitTool(checkDeps)]
+
+  // The drive (§3.9): the holder's goal started on a release, resumed and held by the table of §3.9.1, the completion gate, await_human, the batch marks and the reconcile after a restart (§3.9.6).
+  const drive = createDrive({
+    lookup: ctx,
+    cache,
+    graphDirOf,
+    graphDirOfRoot,
+    execDir,
+    git: createGit(),
+    isMain,
+    report,
+    emit: (project, sessionId, event) => { loopLink.emit(project, sessionId, event) },
+    journal: violation => { void journal.violation(violation) },
+    boardAttached: () => loopLink.boardAttached(),
+    runningChecks: () => launcher.running(),
+    notesChanged: () => { reactivate() },
+    handback: (attempt, settlement) => settleHandback(handbackDeps, attempt, settlement),
+    reconcileTrunk: (project, sessionId) => trunkGate?.reconcileTrunk(project, sessionId) ?? Promise.resolve(0),
+    replayInterrupted: project => loopLink.replayInterrupted(project),
+  })
+  disposers.push(() => { drive.dispose() })
+  const tools = [dispatch, ...requestTools, checkCommitTool(checkDeps), drive.awaitHuman]
 
   if (typeof ctx.inject === 'function') {
     try {
@@ -288,6 +366,44 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     }
   }
 
+  // The handback projection (§3.9.6 step 3): what the reconcile reads back of a dispatch the host lost. Without it a lost dispatch is commented lost.
+  if (typeof ctx.inject === 'function') {
+    try {
+      ctx.inject(['sessionProjections'], (projectionCtx) => {
+        try {
+          const undo = projectionCtx.sessionProjections.register(handbackProjection)
+          projectionNote = undefined
+          reactivate()
+          return undo
+        }
+        catch (error) {
+          projectionNote = `会话投影 ${HANDBACK_PROJECTION} 没注册上（${error instanceof Error ? error.message : String(error)}）：宿主重启时丢的交回读不回来，只记为丢失`
+          reactivate()
+          return undefined
+        }
+      })
+    }
+    catch (error) {
+      projectionNote = `会话投影 ${HANDBACK_PROJECTION} 没注册上（${error instanceof Error ? error.message : String(error)}）：宿主重启时丢的交回读不回来，只记为丢失`
+    }
+  }
+
+  // The hand-over to the loop board (§2.5 point 1): when its service arrives, withdrawn when it leaves. `InjectableServices` lists only the host's own services, so the name goes in as a string (the metrics row does the same).
+  if (typeof ctx.inject === 'function') {
+    const injectLoops = ctx.inject as unknown as (names: readonly string[], callback: (sub: ServiceLookup & { readonly glmHournessLoops?: unknown }) => (() => void) | void) => unknown
+    try {
+      injectLoops([LOOPS_SERVICE], (sub) => {
+        const value = sub.glmHournessLoops ?? (typeof sub.get === 'function' ? sub.get(LOOPS_SERVICE) : undefined)
+        let problem: string | undefined
+        const found = loopsService({ get: () => value }, (message) => { problem = message })
+        return loopLink.attach(found, problem)
+      })
+    }
+    catch (error) {
+      console.warn(`${name}: the loop board is not waited for; the row runs its own entries: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
   // Who a delegated caller works for, its effective directory, the violation journal: the chain's rules and the trunk-advance check share them.
   const owning: ExecuteRulesDeps['owning'] = (caller) => {
     const agents = agentsService()
@@ -317,25 +433,6 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   }
   const journalViolation: ExecuteRulesDeps['journal'] = violation => { void journal.violation(violation) }
 
-  // The full trunk check of the `execute.trunk` entry, run here once per event key until E8 hands the events to the loop board (D4). What goes wrong is said in the row health of the session whose call or step saw the move.
-  const trunkEvents = new Set<string>()
-  const runTrunkEntry = (project: string, trunk: string, event: { readonly event: string, readonly key: string, readonly payload: Readonly<Record<string, unknown>> }, sessionId: string | undefined): void => {
-    if (trunkEvents.has(event.key)) return
-    trunkEvents.add(event.key)
-    const graphDir = graphDirOfRoot(project)
-    void trunkCheck(checkDeps, { id: `ev-${randomBytes(8).toString('hex')}`, event: event.event, at: new Date().toISOString(), project, ...(sessionId === undefined ? {} : { session: sessionId }), key: event.key, payload: event.payload, merged: [] }).then((result) => {
-      if (result.outcome === 'failed') {
-        report(sessionId, 'degraded', `主干上的完整检查没跑完（${event.key}）：${result.reason}`)
-        return
-      }
-      if (result.outcome !== 'done' || result.tell === undefined) return
-      const why = toHolder(ctx, graphDir, createUserNotice('glm-hourness-loop', `${trunk} full check failed`, result.tell, { hournessLoop: { entry: 'execute.trunk', key: event.key } }))
-      if (why !== undefined) report(sessionId, 'degraded', `主干完整检查的提醒送不到当前主 Agent：${why}`)
-    }).catch((error: unknown) => {
-      report(sessionId, 'degraded', `主干完整检查的提醒没送出（${event.key}）：${error instanceof Error ? error.message : String(error)}`)
-    })
-  }
-
   // Whether a trailer task's latest dispatch's command record hit a commands or outside line of the floor (§3.8.4).
   const taskHit = async (project: string, graph: LoadedGraph, task: string): Promise<boolean> => {
     const node = graph.nodes.get(task)
@@ -360,7 +457,7 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
       isMain,
       report,
       taskHit,
-      onTrunkEvent: runTrunkEntry,
+      onTrunkEvent: (project, _trunk, event, sessionId) => { loopLink.emit(project, sessionId, event) },
     })
     const installed = trunkGate
     disposers.push(() => {
@@ -370,6 +467,21 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   }
   catch (error) {
     trunkNote = `主干前进的核对没装上：${error instanceof Error ? error.message : String(error)}`
+  }
+
+  // The completion gate (§3.9.3) and the batch mark (§3.9.7), prepend, after the trunk-advance check and before the chain's rules, so those stay outermost.
+  try {
+    disposers.push(ctx.on('tools/pre-execute', drive.completionGate, { prepend: true }))
+    disposers.push(ctx.on('tools/post-execute', drive.batchMark, { prepend: true }))
+  }
+  catch (error) {
+    rulesNote = `完成门禁没装上：${error instanceof Error ? error.message : String(error)}`
+  }
+  try {
+    disposers.push(ctx.on('goal/changed', (payload) => { void drive.onGoalChanged(payload) }))
+  }
+  catch (error) {
+    console.warn(`${name}: goal/changed is not listened to; the drive keeps no pause line and no completion credential is paired: ${error instanceof Error ? error.message : String(error)}`)
   }
 
   // The dispatched chain's execution-boundary rules (§3.2), prepend.
@@ -399,6 +511,14 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     agents: agentsService,
     report: (agentId, state, reason) => { health.report(agentId, state, reason) },
   }
+  // The dispatch status notice (§3.5.4, src/execute/notice.ts): on the holder's agent, at its creation or its first step as the holder.
+  const noticed = new WeakSet<AgentLike>()
+  const installNotice = (agent: AgentLike): void => {
+    if (noticed.has(agent) || agent.session === undefined || !isMain(agent)) return
+    noticed.add(agent)
+    const uninstall = installDispatchNotice(agent, { lookup: ctx, cache, graphDirOf, isMain, drive: session => drive.status(session), report })
+    if (uninstall !== undefined) disposers.push(uninstall)
+  }
   const installed = new WeakSet<AgentLike>()
   const installFace = (agent: AgentLike): void => {
     if (installed.has(agent)) return
@@ -410,16 +530,32 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
       return tools === assembled.tools ? assembled : { ...assembled, tools: [...tools] }
     }))
   }
+  /** The face filter and the dispatch status notice of one agent; neither failure stops the other. */
+  const installOn = (agent: AgentLike): void => {
+    try {
+      installFace(agent)
+    }
+    catch (error) {
+      console.warn(`${name}: the face filter is not installed for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    try {
+      installNotice(agent)
+    }
+    catch (error) {
+      console.warn(`${name}: the dispatch status notice is not installed for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
   try {
     disposers.push(ctx.on('agent/created', ({ agent }) => {
-      try {
-        installFace(agent)
-      }
-      catch (error) {
-        console.warn(`${name}: the face filter is not installed for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
-      }
+      installOn(agent)
       const session = agent.session
       if (session !== undefined && isMain(agent)) report(sessionIdOf(agent), 'active', EXECUTE_ACTIVE)
+      // Where inject does not reach a service of this package (V12), the hand-over rides agent creation; the same service keeps the standing one.
+      let problem: string | undefined
+      const loops = loopsService(ctx, (message) => { problem = message })
+      if (loops !== undefined || problem !== undefined) loopLink.attach(loops, problem)
+      // The holder created or restored hands over hourness.host-started; a former holder's drive goal goes (§3.9.1).
+      return drive.onCreated(agent)
     }))
   }
   catch (error) {
@@ -427,13 +563,12 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   }
   try {
     // A session that was open before this row activated gets the filter at its first step.
-    disposers.push(ctx.on('agent/pre-step', async ({ agent }, next) => {
-      try {
-        installFace(agent)
-      }
-      catch (error) {
-        console.warn(`${name}: the face filter is not installed for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
-      }
+    disposers.push(ctx.on('agent/pre-step', async ({ agent, messages }, next) => {
+      installOn(agent)
+      // The loop notices kept while the holder was not live go out at its next step (§2.5 point 6).
+      loopLink.flushHeld(sessionIdOf(agent))
+      // The drive's goal operations land before the step (§3.9.1, U12).
+      await drive.onStep(agent, messages ?? [])
       return next()
     }))
   }

@@ -46,6 +46,18 @@ export type MetricSink = (event: MetricEvent) => void
 
 let sink: MetricSink | undefined
 
+const observers = new Set<MetricSink>()
+
+/**
+ * Watch every event handed over, after the sink: the drive counts the
+ * execution activity of a goal round this way (§3.9.5, E8 D7). A throwing
+ * observer is ignored. The returned function stops watching.
+ */
+export function onMetricEvent(listener: MetricSink): () => void {
+  observers.add(listener)
+  return () => { observers.delete(listener) }
+}
+
 /** Install the exit, or `undefined` to go back to recording nothing. Returns the previous sink. */
 export function setMetricSink(next: MetricSink | undefined): MetricSink | undefined {
   const previous = sink
@@ -61,4 +73,12 @@ export function setMetricSink(next: MetricSink | undefined): MetricSink | undefi
  */
 export function emitMetric(event: MetricEvent): void {
   if (sink !== undefined) sink(event)
+  for (const observer of observers) {
+    try {
+      observer(event)
+    }
+    catch {
+      // An observer is not the exit: its failure does not reach the caller.
+    }
+  }
 }

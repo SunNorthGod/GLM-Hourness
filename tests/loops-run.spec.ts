@@ -406,6 +406,23 @@ async function untilDone(world: World, entry: string, outcome?: string): Promise
   }
 }
 
+/** What the tests read of the runtime's state.json; a field the file does not have yet reads as empty. */
+interface SavedState {
+  readonly pending: Record<string, { events: unknown[] }>
+  readonly last: Record<string, { run: string, at: string, outcome: string, reason?: string }>
+}
+
+/** The runtime's state.json once `ready` holds for it, or as it is after five seconds. */
+async function savedState(world: World, ready: (state: SavedState) => boolean): Promise<SavedState> {
+  const started = Date.now()
+  for (;;) {
+    const text = await readFile(world.store.paths.state, 'utf8').catch(() => '{}')
+    const state = { pending: {}, last: {}, ...JSON.parse(text) as Partial<SavedState> }
+    if (ready(state) || Date.now() - started > 5_000) return state
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+}
+
 /** Hand the restart event over, wait out the debounce, and wait for the run to reach `outcome`. */
 async function emitAndSettle(world: World, entry: string, outcome: string, ms = 31_000): Promise<void> {
   await emitRestart(world)
@@ -447,7 +464,8 @@ gitProjectTest('a person\'s adopted script entry runs through the shared executo
   assert.deepEqual(ended?.exits, [0], 'the exit code is on the record')
   assert.equal(typeof ended?.outputBytes === 'number' && ended.outputBytes > 0, true, 'so are the bytes of the output')
   assert.equal(world.delivered.length, 0, 'nothing was told')
-  const state = JSON.parse(await readFile(world.store.paths.state, 'utf8')) as { last: Record<string, { run: string, at: string, outcome: string, reason?: string }> }
+  // The record is written before the run's state is saved: wait for the save rather than read the file of the moment before it.
+  const state = await savedState(world, saved => saved.last[script.id] !== undefined)
   assert.equal(state.last[script.id]?.outcome, 'ran')
   await world.runtime.stop()
 })
@@ -526,7 +544,8 @@ gitProjectTest('a run that did not finish hands its events back: they wait, and 
   const done = runsOf(world).filter((record): record is DoneRecord => record.kind === 'loop-done')
   assert.deepEqual(done.map(record => record.outcome), ['unfinished'])
   assert.equal(done.find(record => record.entry === slow.id)?.exits, undefined, 'a tree that was ended has no exit code')
-  const state = JSON.parse(await readFile(world.store.paths.state, 'utf8')) as { pending: Record<string, { events: unknown[] }> }
+  // The record is written before the run's state is saved: wait for the save rather than read the file of the moment before it.
+  const state = await savedState(world, saved => Object.values(saved.pending).some(item => item.events.length > 0))
   const group = Object.values(state.pending).find(item => item.events.length > 0)
   assert.equal(group?.events.length, 1, 'the run\'s event waits in its group')
   // The next trigger joins it; the group does not run of its own accord.

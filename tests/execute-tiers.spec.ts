@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { chmodSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
 import test from 'node:test'
 import type { LoadedGraph } from '../src/graph/parse.ts'
 import {
@@ -16,6 +18,7 @@ import {
   type GoalView,
 } from '../src/execute/tiers.ts'
 import { at, comment, graphOf, node, splitGraph, stageEdit } from './execute-helpers.ts'
+import { goalNow, setStage, startedRig, withRig } from './execute-drive-rig.ts'
 
 const startComment = (session: string, release: string, module?: string): string =>
   `${module === undefined ? DRIVE_START_MARK : `模块 ${module} 已放行`} · ${RELEASE_MARK}${release} · goal goal-1 · 会话 ${session} · 主干 main`
@@ -179,3 +182,36 @@ test('nextCounters: three idle rounds block, two peak-held rounds block, progres
   // A round without the peak breaks the peak streak.
   assert.deepEqual(nextCounters({ idle: 0, peak: 1 }, false, false), { idle: 1, peak: 0, block: undefined })
 })
+
+// ---- the acknowledgement on the drive's step (design §6.6 (f); src/execute/drive.ts) ----
+
+test('(f) a return and its re-release inside one step still get the acknowledgement comment and the tier metric', () => withRig(startedRig, async (rig) => {
+  await setStage(rig, 'goal-1', 'design')
+  const back = (await rig.node('goal-1')).history.at(-1)?.at
+  await setStage(rig, 'goal-1', 'release')
+  await rig.step()
+  assert.ok((await rig.comments('goal-1')).includes(`退回设计 · ${back ?? ''} · 受影响的在跑的活：没有`))
+  assert.ok(rig.metrics.some(event => event.event === 'execute.tier' && event.tier === 3 && event.node === 'goal-1' && event.running === 0))
+  assert.deepEqual(rig.drive.status('main-1').returns, [], 'released again: nothing is listed as sent back')
+  await rig.step()
+  assert.equal((await rig.comments('goal-1')).filter(text => text.startsWith('退回设计 · ')).length, 1, 'the comment is the key')
+}))
+
+test('(f) a failed acknowledgement keeps the return remembered: the consequence holds, the notice lists it, the write is not tried again', () => withRig(startedRig, async (rig) => {
+  await setStage(rig, 'goal-1', 'design')
+  const file = join(rig.repo.graphDir, 'nodes', 'goal-1.json')
+  assert.ok(existsSync(file), 'the node file is where the store writes it')
+  chmodSync(file, 0o444)
+  try {
+    await rig.step()
+    const failed = (): number => rig.reports.filter(reason => reason.startsWith('退回设计的批注写不进图（goal-1）')).length
+    assert.equal(failed(), 1)
+    assert.deepEqual(rig.drive.status('main-1').returns.map(entry => [entry.node, entry.tier]), [['goal-1', 3]])
+    assert.equal(goalNow(rig).blockedReason?.code, 'hourness-design-wait', 'the consequence comes from the stage, not from the comment')
+    await rig.step()
+    assert.equal(failed(), 1, 'not tried again in this process')
+  }
+  finally {
+    chmodSync(file, 0o666)
+  }
+}))

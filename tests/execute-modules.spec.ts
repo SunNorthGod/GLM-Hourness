@@ -20,6 +20,8 @@ import {
 import type { LoadedGraph } from '../src/graph/parse.ts'
 import type { GraphNode, HistoryEntry } from '../src/graph/schema.ts'
 import { at, comment, designReviewTask, freeContext, getNode as get, graphOf, node, refusalOf as refusal, splitGraph, stageEdit, throwingReaders, withNode } from './execute-helpers.ts'
+import { GOAL } from './execute-repo.ts'
+import { goalNow, setStage, startedRig, withRig } from './execute-drive-rig.ts'
 
 /** Readers whose module reads throw, the strict side for the stage and the gate (R5-F3). */
 const unreadable: ModuleReaders = {
@@ -44,6 +46,8 @@ test('releaseAtOf: the time the node last entered the released state, null when 
   // A move between stages after release is not a new release.
   const moved = node({ id: 'module-a', type: 'feature', stage: 'execute' }, 1, 'llm', [stageEdit(10, 'design', 'release'), stageEdit(15, 'release', 'execute')])
   assert.equal(releaseAtOf(moved), at(10))
+  // Released from its creation (no entry moves the stage into release): the first history entry's time (§3.9.7's failure table).
+  assert.equal(releaseAtOf(node({ id: 'goal-3', type: 'goal', stage: 'release' }, 4)), at(4))
   // Proposed nodes are never in the released state.
   assert.equal(releaseAtOf(node({ id: 'm', type: 'feature', stage: 'release', status: 'proposed' }, 0, 'llm', [stageEdit(1, 'design', 'release')])), null)
 })
@@ -341,6 +345,7 @@ const facts: CompletionFacts = {
   onTrunk: (ref: string): boolean => ref === 'c1' || ref === 'acc1234567',
   isAncestor: (older: string, newer: string): boolean => older === 'c1' && newer === 'acc1234567',
   running: new Set<string>(),
+  runningChecks: [],
   pinsFresh: (): string | undefined => undefined,
 }
 
@@ -422,6 +427,8 @@ test('goalCompletion: nothing of the goal still running, no module left in desig
     goalCompletion(live, get(live, 'goal-1'), { ...facts, running: new Set(['hz-goal-9-w-zzzzzz']) }),
     { ok: true, gaps: [] },
   )
+  // A merge check still running on a task of the goal is a gap (§3.9.3 point 6); one of another goal's task is not.
+  assert.deepEqual(goalCompletion(completeGoal(), get(completeGoal(), 'goal-1'), { ...facts, runningChecks: ['task-1', 'task-9'] }).gaps, ['a merge check of task task-1 is still running'])
   // A split goal: the module in design is a gap; its design review does not count
   // (R5-F4), but a real task of that module does.
   const split = withNode(splitGraph(), designReviewTask())
@@ -442,3 +449,48 @@ test('goalCompletion: nothing of the goal still running, no module left in desig
   const gate = goalCompletion(completeGoal(), get(completeGoal(), 'goal-1'), facts, unreadable)
   assert.deepEqual(gate.gaps, ['the module structure could not be read; the completion gate waits until it can'])
 })
+
+// ---- the drive on a two-module goal (design §6.6 (a), (c); src/execute/drive.ts) ----
+
+const MODULE_A = { type: 'feature', id: 'module-a', parent: 'goal-1', title: 'Feed', stage: 'release', acceptance: ['the feed works'] }
+const MODULE_B = { type: 'feature', id: 'module-b', parent: 'goal-1', title: 'Search', stage: 'design', acceptance: ['search works'] }
+const TASK_A = { type: 'task', id: 'task-a1', parent: 'module-a', title: 'Add the feed', kind: 'implement', writeScope: ['src/feed/'], acceptance: ['the feed builds'], worktree: true }
+const splitRig = (): ReturnType<typeof startedRig> => startedRig({ nodes: [GOAL, MODULE_A, MODULE_B, TASK_A] })
+
+test('(a) drive: module A\'s release creates the one goal; B\'s later release hands over design-released with module B and its own key, and start-drive only comments', () => withRig(splitRig, async (rig) => {
+  const releasedA = rig.emitted.filter(event => event.event === 'hourness.design-released')
+  const atA = releaseAtOf(await rig.node('module-a'))
+  assert.deepEqual(releasedA.map(event => [event.key, event.payload.module]), [[`design-released:module-a:${atA}`, 'module-a']])
+  const goal = goalNow(rig)
+  assert.match(goal.objective, /The work is split into modules and the person releases each module on its own; .* call await_human\.$/)
+  assert.ok((await rig.comments('goal-1')).includes(`自动推进已开始 · 放行 ${atA} · 模块 module-a · goal ${goal.id} · 会话 main-1 · 主干 main`))
+  assert.ok(rig.live.woken.some(entry => entry.text.includes('Module module-a "Feed" of goal goal-1 is released and the drive has started. Decompose it into tasks with dispatch attributes under the module')))
+  await setStage(rig, 'module-b', 'release')
+  await rig.step()
+  const atB = releaseAtOf(await rig.node('module-b'))
+  assert.deepEqual(rig.emitted.filter(event => event.event === 'hourness.design-released').map(event => [event.key, event.payload.module]), [[`design-released:module-a:${atA}`, 'module-a'], [`design-released:module-b:${atB}`, 'module-b']])
+  assert.ok((await rig.comments('goal-1')).includes(`模块 module-b 已放行 · 放行 ${atB}`))
+  assert.ok(rig.live.woken.some(entry => entry.text.includes('Module module-b "Search" of goal goal-1 is released. Decompose it')), 'no "and the drive has started" for a later module')
+  assert.equal(rig.live.goalCalls.filter(call => call.op === 'create').length, 1, 'one goal for the whole goal')
+  assert.ok(rig.metrics.some(event => event.event === 'execute.goal' && event.op === 'module-released' && event.module === 'module-b'))
+}))
+
+test('(c) drive: the goal sent back to design blocks hourness-design-wait without asking; its re-release resumes and zeroes both counters', () => withRig(splitRig, async (rig) => {
+  await rig.round()
+  await rig.round()
+  await rig.round()
+  assert.deepEqual(rig.drive.status('main-1').counters, { idle: 2, peak: 0 })
+  await setStage(rig, 'goal-1', 'design')
+  await rig.step()
+  assert.deepEqual(goalNow(rig).blockedReason, { code: 'hourness-design-wait', message: 'The framework of goal goal-1 is being changed with the person (the goal went back to design). Nothing is dispatched until it is released again.' })
+  assert.ok((await rig.lines()).some(line => line.op === 'design-wait'))
+  assert.ok((await rig.comments('goal-1')).some(text => text.startsWith('退回设计 · ')))
+  assert.equal(rig.drive.status('main-1').returns[0]?.tier, 3)
+  await setStage(rig, 'goal-1', 'release')
+  await rig.step()
+  assert.deepEqual([goalNow(rig).phase, goalNow(rig).activation], ['active', 'armed'])
+  assert.deepEqual(rig.drive.status('main-1').counters, { idle: 0, peak: 0 })
+  assert.equal(rig.drive.status('main-1').state, 'The goal was released again. Tasks that were running when it went back are stale: dispatch them again with the new design.')
+  assert.ok((await rig.lines()).some(line => line.op === 'resume' && line.reason === 'design-released'))
+  assert.equal(rig.live.goalCalls.filter(call => call.op === 'create').length, 1)
+}))

@@ -1,4 +1,16 @@
-# M7 实施进度（E7 批）
+# M7 实施进度（E7、E8 批）
+
+## E8 2026-11-05
+
+落地（细节见 `docs/ORCHESTRATION.md` §2.1、§4.6、§4.8、§17.13）：循环板接缝 `src/execute/loop-link.ts`（`contribute`、`emit`、退路执行者、看门、`actions.jsonl`、`replayInterrupted`，服务第三个成员 `runAction`；E7 的 `runTrunkEntry` 删去）；自动推进 `src/execute/drive.ts`（放行建 goal、判断表的恢复与停住、移会话、`openRequests` 停等、空转与高峰停住、`tasks-closed`、`goal/changed`、完成门禁与凭据、`await_human` 与批次批注、对账与会话投影 `hournessHandback`）与 `drive-log.ts`（`drive.jsonl`、重启前的暂停）；派发状态提醒 `src/execute/notice.ts`；阶段提醒的 M7 几行（执行行在时）；目标整体的审查（派发、交回、收敛读法 B）；三种停下改经 `hourness.stopped` 与 `execute.stop-draft`；指标联合里 `execute.*` 每类都有调用点（FEAT-005 补 `dispatch-refused`、`plan` 的退回与等待、`ask`、`review-depth`、`peak-cap`）。
+
+偏离 D1–D17 见实施计划 `.llm/wf/m7-e8/plan.md` 与 `docs/ORCHESTRATION.md` §17.13 的一行一条；另加 D18：门禁里 `tests/metrics-calc.spec.ts` 的一例在 UTC 午夜之后必败（写入器的起止行落进第二天的文件），main 已由 `2bd13f6` 只改测试修掉，E8 的基线 `bd9a625` 没有它，本批原样带上这两份测试的改动（`tests/metrics-calc.spec.ts`、`tests/loops-row.spec.ts`，与 main 逐字相同，下次合并 main 时无冲突），`tests/loops-run.spec.ts` 同样带上 main 的 `savedState` 改法；D19：`drive.jsonl` 的 `start` 行在项目第一次有持有者走步时写，不在行激活时写。
+
+评审第一轮修正：`/wish off` 之后（不再是主 Agent 的根会话）完成或阻塞驱动的 goal 也照 §3.9.3 批注（「goal 在完成门禁之外完成」），只有 `pause` 行仍只认主 Agent；人清掉 goal 之后那一行的目标文本与 `start` 建的相同（主干名、模块那一句）；`releaseAtOf` 对从创建起就放行的节点取第一条历史的时刻（§3.9.7 失效表）；L3 `/wish off` 一行断言那条批注。L3 `glm-exec-drive` 跑在真实时钟上、规则板行关掉：`record_human_answer` 拿会话事件的时刻（探针时钟挪动的 `Date.now`）与图历史的时刻比，挪了时钟就找不到人的原话；高峰的停住与接上由 `tests/execute-peak.spec.ts` 钉住。
+
+门禁数字见 `.llm/wf/m7-e8/task-m7-e8/gate.json`。
+
+下一步：E9（骨架场景 `glm-exec-skeleton`、一次真实模型的运行、L4 首批，验证通过后启用执行行）。
 
 ## E7 本体 2026-11-04
 

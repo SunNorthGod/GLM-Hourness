@@ -42,6 +42,8 @@ interface GateJob {
   readonly label: string
   readonly cwd: string
   readonly run: (signal: AbortSignal) => Promise<GateVerdict>
+  /** The tasks the checked commit's trailers name; the completion gate waits while a check of one of them runs (§3.9.3 point 6). */
+  readonly tasks?: readonly string[]
 }
 
 export interface GateLauncher {
@@ -51,6 +53,8 @@ export interface GateLauncher {
   attach(subagents: Pick<SubagentsService, 'registerProvider' | 'startActivation'>): () => void
   /** Start a job: as an activation when the provider is registered and the start succeeds, otherwise in this call, awaited. */
   start(job: GateJob, parent: AgentLike, signal: AbortSignal): Promise<'activation' | 'sync'>
+  /** The jobs started and not settled yet, with their tasks. */
+  running(): readonly { readonly job: string, readonly tasks: readonly string[] }[]
 }
 
 const PROMPT = /^hourness-gate job (\S+)$/
@@ -64,6 +68,7 @@ function settle(job: GateJob, signal: AbortSignal): Promise<GateVerdict> {
 
 export function createGateLauncher(): GateLauncher {
   const jobs = new Map<string, GateJob>()
+  const active = new Map<string, readonly string[]>()
   let service: Pick<SubagentsService, 'registerProvider' | 'startActivation'> | undefined
 
   const provider: GateProvider = {
@@ -75,7 +80,11 @@ export function createGateLauncher(): GateLauncher {
       const id = first?.type === 'text' && typeof first.text === 'string' ? PROMPT.exec(first.text.trim())?.[1] : undefined
       const job = id === undefined ? undefined : jobs.get(id)
       if (id === undefined || job === undefined) return Promise.reject(new Error(`${GATE_PROVIDER} has no job for this prompt`))
-      if (request.signal.aborted) return Promise.reject(new Error('the check was stopped before it started'))
+      if (request.signal.aborted) {
+        jobs.delete(id)
+        active.delete(id)
+        return Promise.reject(new Error('the check was stopped before it started'))
+      }
       jobs.delete(id)
       const controller = new AbortController()
       const stop = (): void => { controller.abort() }
@@ -105,7 +114,13 @@ export function createGateLauncher(): GateLauncher {
         undo()
       }
     },
-    async start(job, parent, signal) {
+    running() {
+      return [...active].map(([id, tasks]) => ({ job: id, tasks }))
+    },
+    async start(given, parent, signal) {
+      // The job counts as running from its start until its run settles, on the backend or in this call.
+      active.set(given.id, given.tasks ?? [])
+      const job: GateJob = { ...given, run: run => given.run(run).finally(() => { active.delete(given.id) }) }
       jobs.set(job.id, job)
       if (service !== undefined) {
         try {

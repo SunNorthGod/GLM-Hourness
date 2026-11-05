@@ -9,7 +9,11 @@
  * is normalized, a full review missing an acceptance item is voided once and
  * re-dispatched with the same model, a passing round marks the review task
  * done with the patch-id evidence, two non-converging rounds stop with the
- * marker and the stop draft; a design review writes the module record.
+ * marker and the stop draft; a design review writes the module record; a
+ * goal's acceptance review, dispatched through dispatch_task, writes the
+ * round the completion gate reads, is voided on a wrong commit or missing
+ * evidence, and stops on a second round that does not improve, and again on
+ * the first failing round after the person's answer (§3.9.4).
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -18,17 +22,21 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openEngine } from '../src/graph/engine.ts'
-import { pinsOf, renderPins } from '../src/graph/pins.ts'
+import { goalCompletion } from '../src/graph/execute-stage.ts'
+import { pinsOf, renderPins, staleness } from '../src/graph/pins.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
-import type { UserNotice } from '../src/shared/dsh-min.ts'
-import { createGraphCache, realCommandRunner, type GraphCache } from '../src/execute/dispatch.ts'
+import type { AgentLike, UserNotice } from '../src/shared/dsh-min.ts'
+import { createGraphCache, dispatchTool, realCommandRunner, type DispatchDeps, type GraphCache } from '../src/execute/dispatch.ts'
+import { setMetricSink, type MetricEvent } from '../src/execute/metrics.ts'
 import { startHandback, type HandbackDeps } from '../src/execute/handback.ts'
 import { createGit } from '../src/execute/git.ts'
 import { sha256Hex } from '../src/execute/digest.ts'
 import { forgetAttempt, parseHandbackComment, recordCommunication, registerAttempt, registeredAttempt, renderDispatchComment, REVIEW_TASK_ACCEPTANCE, type Attempt } from '../src/execute/attempts.ts'
 import { roundsOf } from '../src/execute/review.ts'
 import { briefGate } from '../src/execute/brief.ts'
-import { gitSeed, noticeHost, seedGoalTask } from './execute-helpers.ts'
+import type { LoopEmit } from '../src/execute/loop-link.ts'
+import { gitSeed, noticeHost, seedGoalTask, stopSeam } from './execute-helpers.ts'
+import { until } from './panel-helpers.ts'
 import { doneEvidence, withTrunkRig, type TrunkRig } from './execute-trunk.ts'
 
 // ---- fixtures ----
@@ -70,6 +78,8 @@ interface Rig {
   readonly cache: GraphCache
   readonly deps: HandbackDeps
   readonly sent: UserNotice[]
+  /** The events handed to the loop seam (§2.5). */
+  readonly emitted: readonly LoopEmit[]
   readonly redispatches: readonly { readonly reviewTaskId: string, readonly model: string }[]
   /** The attempt as the register holds it (the caller passes this one back to startHandback). */
   readonly registered: Attempt
@@ -84,6 +94,7 @@ async function rig(project: Project, attempt: Attempt): Promise<Rig> {
   const pins = renderPins(pinsOf(graph, task, sha256Hex))
   registerAttempt({ ...attempt, graphDir: project.graphDir, pins })
   const redispatches: { reviewTaskId: string, model: string }[] = []
+  const seam = stopSeam(lookup, cache, project.graphDir)
   const deps: HandbackDeps = {
     lookup,
     cache,
@@ -95,9 +106,10 @@ async function rig(project: Project, attempt: Attempt): Promise<Rig> {
       redispatches.push({ reviewTaskId, model: same.model })
       return Promise.resolve(true)
     },
+    emit: seam.emit,
   }
   const registered: Attempt = { ...attempt, graphDir: project.graphDir, pins }
-  return { project, cache, deps, sent, redispatches, registered }
+  return { project, cache, deps, sent, emitted: seam.emitted, redispatches, registered }
 }
 
 /** The processing is done when the register entry is gone; poll for it. */
@@ -171,10 +183,14 @@ test('a done handback lands as one comment with the counts and the review task e
     assert.ok(notice !== undefined && notice.source.kind === 'glm-hourness-execute')
     assert.equal((notice.source.hournessExecute as { event: string }).event, 'handback')
     assert.match(notice.content[0].text, /handed back done/)
+    // The loop board's event (§2.5): the declared payload, keyed with the childId.
+    const handback = { event: 'hourness.handback', key: `handback:task-1:${attempt.childId}`, payload: { task: 'task-1', attempt: 1, status: 'done', depth: 'full', reviewTask: reviewTask.id, commits: 1, floorHit: '' } }
+    assert.deepEqual(rig1.emitted, [handback])
     // Idempotent: rerunning processes nothing.
     startHandback(rig1.deps, rig1.registered, structuredDone(project))
     await new Promise(done => setTimeout(done, 150))
     assert.equal(handbacksOf(graph.nodes.get('task-1')!).length, 1, 'a rerun wrote a second handback comment')
+    assert.deepEqual(rig1.emitted, [handback], 'a rerun handed the event over again')
   }
   finally {
     forgetAttempt(attempt.childId)
@@ -202,6 +218,24 @@ test('a floor hit upgrades a light dispatch; the comment names the hit and the r
     assert.equal(comment.depth, '全审')
     assert.match(comment.floorHit ?? '', /files src\/guarded\//)
     assert.ok([...graph.nodes.values()].some(entry => entry.parent === 'task-1' && entry.kind === 'review'), 'no review task under a floor hit')
+    const event = rig1.emitted.find(item => item.event === 'hourness.handback')
+    assert.equal(event?.payload.depth, 'full', 'the event carries the raised depth')
+    assert.match(String(event?.payload.floorHit), /^\d+$/, 'the event names the class that was hit')
+  }
+  finally {
+    forgetAttempt(attempt.childId)
+    rmSync(project.root, { recursive: true, force: true })
+  }
+})
+
+test('a done handback declared skip hands hourness.review-skipped over and gets no review task', async () => {
+  const project = await presetProject()
+  const attempt = workerAttempt(project, 'hz-task-1-a1-cccccc', { review: 'skip' })
+  const rig1 = await rig(project, attempt)
+  try {
+    const { graph } = await runDoneHandback(rig1, project, attempt.childId)
+    assert.ok(![...graph.nodes.values()].some(entry => entry.parent === 'task-1' && entry.kind === 'review'), 'a skipped review got a review task')
+    assert.deepEqual(rig1.emitted, [{ event: 'hourness.review-skipped', key: `review-skipped:task-1:${attempt.childId}`, payload: { task: 'task-1' } }])
   }
   finally {
     forgetAttempt(attempt.childId)
@@ -310,6 +344,7 @@ test('a full review that passes marks the review task done with the patch-id evi
     assert.ok(evidence.some(item => item.kind === 'check' && item.ref === 'review hz-task-1-r1-rrrrrr' && item.exit === 0 && /patch [0-9a-f]{30,}/.test(item.note) && item.note.includes('全审')), `the evidence is wrong: ${JSON.stringify(evidence)}`)
     assert.ok(roundsOf(reviewTask.history).some(round => round.k === 1 && round.blocking === 0 && round.depth === '全审' && round.childId === 'hz-task-1-r1-rrrrrr'), 'no round comment for the passing round')
     assert.match(rig1.sent.at(-1)?.content[0].text ?? '', /passed in round 1/)
+    assert.deepEqual(rig1.emitted.at(-1), { event: 'hourness.review-passed', key: 'review-passed:task-1:hz-task-1-r1-rrrrrr', payload: { task: 'task-1', round: 1 } })
   }
   finally {
     forgetAttempt('hz-task-1-a1-aaaaaa')
@@ -328,11 +363,16 @@ test('a blocking first round stops with the marker and the stop draft; the gate 
     const reviewTask = reviewTaskOf(graph)
     const rounds = roundsOf(reviewTask.history)
     assert.equal(rounds.at(-1)?.stopped, true, 'the first round carries no stop marker')
-    const draft = rig1.sent.at(-1)
-    assert.ok(draft !== undefined && draft.source.kind === 'glm-hourness-loop', 'no stop draft to the holder')
-    assert.equal((draft.source.hournessLoop as { entry: string }).entry, 'execute.stopped')
-    assert.match(draft.content[0].text, /review rounds, 1 blocking findings left/)
-    assert.match(draft.content[0].text, /propose_to_human \(kind question, parent task-1/)
+    // hourness.stopped, keyed with the time of the round comment that carries 停下 (D11); the draft comes from execute.stop-draft (§3.7.4).
+    const stopRound = reviewTask.history.filter(entry => entry.op === 'comment' && entry.text?.endsWith('· 停下') === true).at(-1)
+    const stopped = rig1.emitted.filter(event => event.event === 'hourness.stopped')
+    assert.deepEqual(stopped, [{ event: 'hourness.stopped', key: `stopped:${reviewTask.id}:review-${stopRound?.at ?? ''}`, payload: { node: reviewTask.id, kind: 'review', rounds: 1 } }])
+    await until(() => rig1.sent.some(notice => notice.source.kind === 'glm-hourness-loop'), 'the stop draft reaches the holder')
+    const draft = rig1.sent.filter(notice => notice.source.kind === 'glm-hourness-loop').at(-1)
+    assert.ok(draft !== undefined, 'no stop draft to the holder')
+    assert.deepEqual(draft.source.hournessLoop, { entry: 'execute.stopped', key: stopped[0].key })
+    assert.match(draft.content[0].text, /^task-1 stopped: 1 review rounds, 1 blocking findings left \(src\/guarded\/writer\.js\)\. Put it to the person in your next batch with propose_to_human \(kind question, parent task-1, sources \[/)
+    assert.match(draft.content[0].text, /in the person's words, the four lines are: 「Guard the writer」审了 1 轮还没过 \| 背景：/)
     // The gate refuses the stopped task: the marker is in the graph, no answer since.
     const verdict = briefGate(graph, reviewTask, { args: { id: reviewTask.id, model: 'probe-model', why: 'w', depth: 'full' }, running: [], slots: 3, release: { ok: true, goal: { id: 'goal-1', at: '2026-11-04T08:00:00.000Z' } }, stopped: false, outputSchemaOk: true })
     assert.equal(verdict.ok, false, 'the stopped review task was not refused')
@@ -347,7 +387,8 @@ test('a blocking first round stops with the marker and the stop draft; the gate 
     // The count restarts at the person's word: the post-answer round is k=1 again, and it is the round they gave (F21).
     assert.equal(roundsAfter.at(-1)?.k, 1)
     assert.equal(roundsAfter.at(-1)?.stopped, true, 'the post-answer round did not stop again')
-    assert.equal(rig1.sent.filter(notice => notice.source.kind === 'glm-hourness-loop').length, 2, 'no second stop draft')
+    await until(() => rig1.sent.filter(notice => notice.source.kind === 'glm-hourness-loop').length === 2, 'a second stop draft, under a key of its own')
+    assert.equal(new Set(rig1.emitted.filter(event => event.event === 'hourness.stopped').map(event => event.key)).size, 2)
   }
   finally {
     forgetAttempt('hz-task-1-a1-aaaaaa')
@@ -373,6 +414,237 @@ test('a full review that misses an acceptance item is voided once and re-dispatc
     forgetAttempt('hz-task-1-r1-rrrrrr')
     forgetAttempt('hz-task-1-r2-ssssss')
     rmSync(project.root, { recursive: true, force: true })
+  }
+})
+
+// ---- the acceptance review of a goal (§3.9.4) ----
+
+interface AcceptanceRig {
+  readonly project: Project
+  readonly cache: GraphCache
+  readonly sent: UserNotice[]
+  readonly emitted: readonly LoopEmit[]
+  readonly metrics: MetricEvent[]
+  /** The activations started, in order: what dispatch_task handed the subagents service. */
+  readonly starts: { readonly childId: string, readonly label: string, readonly model: string, readonly cwd: string }[]
+  /** dispatch_task {id: goal-1} as the main agent; resolves with the child id once its handback processing is done. */
+  review(why?: string): Promise<string>
+  /** dispatch_task {id: goal-1}, expected to refuse; the refusal. */
+  refusal(): Promise<{ readonly code: string, readonly message: string }>
+  /** The commit the main branch is at. */
+  trunk(): string
+  /** One commit on the main branch, so a new round has a new trunk commit. */
+  advance(): void
+  goal(): Promise<GraphNode>
+  dispose(): void
+}
+
+/**
+ * A goal whose only task is closed (dropped by the person, so the goal is
+ * done without it), dispatched for its acceptance review through the real
+ * dispatch_task: the subagents service settles each activation with the
+ * verdict `settle` gives for the trunk commit and the activation's number,
+ * a moment later so the dispatch comment lands first; the settlement goes
+ * to the real handback processing, and a voided round re-dispatches the
+ * way the row does.
+ */
+async function acceptanceRig(settle: (trunk: string, start: number) => unknown): Promise<AcceptanceRig> {
+  const project = await presetProject()
+  const engine = openEngine(project.graphDir)
+  const current = await engine.load()
+  const dropped = await engine.apply('human', { op: 'status', id: 'task-1', rev: current.revisions.get('task-1') ?? '', to: 'dropped', reason: 'test: the goal is done without it' })
+  assert.ok(dropped.ok, `dropping the task failed: ${JSON.stringify(dropped.ok ? {} : dropped.error)}`)
+  const trunk = (): string => git(project.root, ['rev-parse', 'refs/heads/main']).trim()
+  const starts: { childId: string, label: string, model: string, cwd: string }[] = []
+  const subagents = {
+    startActivation(spec: { readonly childId: string, readonly label: string, readonly request: { readonly cwd: string, readonly agentOptions: { readonly model: string } } }) {
+      starts.push({ childId: spec.childId, label: spec.label, model: spec.request.agentOptions.model, cwd: spec.request.cwd })
+      const settlement = settle(trunk(), starts.length)
+      return Promise.resolve({ childId: spec.childId, result: new Promise(done => setTimeout(() => done(settlement), 100)), dispose: () => Promise.resolve() })
+    },
+    resolveMaxDepth: () => 1,
+  }
+  const { lookup, sent } = noticeHost(project, { subagents })
+  const cache = createGraphCache(() => {})
+  const seam = stopSeam(lookup, cache, project.graphDir)
+  const metrics: MetricEvent[] = []
+  const previous = setMetricSink(event => { metrics.push(event) })
+  const main: AgentLike = { id: 'main-1', ctx: {} as never, session: { id: 'main-1', header: { id: 'main-1', cwd: project.root }, requestHeader: () => ({ config: { provider: 'probe', model: 'probe-main' } }) } as never }
+  const exec = (callId: string) => ({ callId, signal: new AbortController().signal, agent: main, deferContext: () => {}, concludeTurn: () => {} })
+  const execDir = (root: string): string => join(root, '.llm', 'execute')
+  const handbackDeps: HandbackDeps = {
+    lookup,
+    cache,
+    execDir,
+    report: () => {},
+    git: createGit(),
+    runCommand: realCommandRunner,
+    emit: seam.emit,
+    redispatch: async (id, attempt) => {
+      try {
+        await dispatchTool(dispatchDeps).execute({ id, model: attempt.model, why: attempt.why }, exec(`redispatch-${attempt.childId}`))
+        return true
+      }
+      catch {
+        return false
+      }
+    },
+  }
+  const dispatchDeps: DispatchDeps = {
+    lookup,
+    graphDir: () => project.graphDir,
+    cache,
+    isMainAgent: () => true,
+    designPresent: () => true,
+    slots: 3,
+    execDir,
+    report: () => {},
+    onHandback: (attempt, settlement) => startHandback(handbackDeps, attempt, settlement),
+  }
+  let calls = 0
+  return {
+    project,
+    cache,
+    sent,
+    emitted: seam.emitted,
+    metrics,
+    starts,
+    async review(why = 'the tasks of the goal are closed') {
+      const summary = await dispatchTool(dispatchDeps).execute({ id: 'goal-1', model: 'probe-review', why }, exec(`call-${++calls}`)) as { readonly childId: string }
+      await processed(summary.childId)
+      return summary.childId
+    },
+    async refusal() {
+      try {
+        await dispatchTool(dispatchDeps).execute({ id: 'goal-1', model: 'probe-review', why: 'again' }, exec(`call-${++calls}`))
+      }
+      catch (error) {
+        return JSON.parse(error instanceof Error ? error.message : String(error)) as { code: string, message: string }
+      }
+      throw new Error('the dispatch was expected to refuse')
+    },
+    trunk,
+    advance() {
+      writeFileSync(join(project.root, `notes-${++calls}.txt`), 'more\n')
+      git(project.root, ['add', '--', `notes-${calls}.txt`])
+      git(project.root, ['commit', '-q', '-m', 'more notes'])
+    },
+    goal: async () => (await openEngine(project.graphDir).load()).nodes.get('goal-1')!,
+    dispose() {
+      for (const start of starts) forgetAttempt(start.childId)
+      setMetricSink(previous)
+      rmSync(project.root, { recursive: true, force: true })
+    },
+  }
+}
+
+const harnessTexts = (node: GraphNode): string[] => node.history.flatMap(entry => entry.op === 'comment' && entry.actor === 'harness' && typeof entry.text === 'string' ? [entry.text] : [])
+
+/** The completion gate's verdict on the goal (§3.9.3), with every git fact true and nothing running, so only the graph speaks. */
+async function completionNow(rig1: AcceptanceRig): Promise<ReturnType<typeof goalCompletion>> {
+  const graph = await openEngine(rig1.project.graphDir).load()
+  return goalCompletion(graph, graph.nodes.get('goal-1')!, {
+    onTrunk: () => true,
+    isAncestor: () => true,
+    running: new Set(),
+    runningChecks: [],
+    pinsFresh: (line) => {
+      const changes = staleness(graph, line, sha256Hex)
+      return changes.length === 0 ? undefined : changes.map(change => change.id).join(', ')
+    },
+  })
+}
+
+test('the acceptance review of a goal whose tasks are closed is dispatched in the main checkout; its passing round comment is what the completion gate reads (§3.9.3 point 5)', async () => {
+  const rig1 = await acceptanceRig(trunk => ({ stopReason: 'completed', structured: { verdict: 'APPROVED', commit: trunk, findings: [], checked: ['acceptance:0 the build log .llm/logs/build.log exits 0'], lessons: [] } }))
+  try {
+    const before = await completionNow(rig1)
+    assert.deepEqual(before.gaps, ['the goal\'s acceptance review has not passed: dispatch_task goal-1 with a model and why'])
+    const childId = await rig1.review()
+    assert.match(childId, /^hz-goal-1-acc-a1-[0-9a-z]{6}$/)
+    assert.equal(rig1.starts[0]?.label, 'hourness acceptance goal-1 round 1')
+    const trunk12 = rig1.trunk().slice(0, 12)
+    const texts = harnessTexts(await rig1.goal())
+    assert.ok(texts.includes(`验收审查交回 · ${childId} · APPROVED · 提交 ${trunk12} · 挡路 0 · 不挡路 0`), `no findings comment: ${texts.join(' | ')}`)
+    const round = texts.find(text => text.startsWith('验收审查第 1 轮：'))
+    assert.match(round ?? '', new RegExp(`^验收审查第 1 轮：APPROVED · 挡路 0 · ${childId} · @${trunk12} · pins: goal-1@[0-9a-f]{12}$`))
+    assert.deepEqual(await completionNow(rig1), { ok: true, gaps: [] }, 'the gate does not read the passing round')
+    assert.ok(rig1.metrics.some(event => event.event === 'execute.acceptance-review' && event.goal === 'goal-1' && event.round === 1 && event.verdict === 'APPROVED' && event.blocking === 0 && event.model === 'probe-review'))
+    const notice = rig1.sent.at(-1)
+    assert.equal(notice?.source.kind, 'glm-hourness-execute')
+    assert.match(notice?.content[0].text ?? '', /passed in round 1 .* Call update_goal complete/)
+    // A second review at the same trunk commit is busy: the round names it.
+    assert.equal((await rig1.refusal()).code, 'busy')
+    assert.equal(rig1.emitted.filter(event => event.event === 'hourness.stopped').length, 0)
+  }
+  finally {
+    rig1.dispose()
+  }
+})
+
+test('an acceptance verdict on another commit is voided and re-dispatched with the same model and reason; a second void, for an item checked without evidence, goes back to the main agent', async () => {
+  const rig1 = await acceptanceRig((trunk, start) => ({
+    stopReason: 'completed',
+    structured: start === 1
+      ? { verdict: 'APPROVED', commit: 'deadbeef0000', findings: [], checked: ['acceptance:0 build log'], lessons: [] }
+      : { verdict: 'APPROVED', commit: trunk, findings: [], checked: ['acceptance:0'], lessons: [] },
+  }))
+  try {
+    const first = await rig1.review('why this model')
+    await until(() => rig1.starts.length === 2, 'the voided round was re-dispatched')
+    await processed(rig1.starts[1].childId)
+    assert.deepEqual(rig1.starts.map(start => start.model), ['probe-review', 'probe-review'])
+    const texts = harnessTexts(await rig1.goal())
+    assert.ok(texts.some(text => text.startsWith(`审查作废 · ${first} · the verdict names commit deadbeef0000, not the trunk commit`)), `no void comment: ${texts.join(' | ')}`)
+    assert.equal(texts.filter(text => text.startsWith('审查作废 · ')).length, 1, 'the second void wrote a comment')
+    assert.ok(texts.some(text => text.startsWith('第 2 次派发 · ') && text.includes('理由：why this model')), 'the re-dispatch did not keep the reason')
+    assert.equal(texts.filter(text => text.startsWith('验收审查第 ')).length, 0, 'a voided round left a round comment')
+    assert.ok(rig1.sent.some(notice => notice.content[0].text.includes('voided and re-dispatched once already')), 'no voided-twice notice')
+    assert.equal(rig1.starts.length, 2, 'a second void re-dispatched again')
+  }
+  finally {
+    rig1.dispose()
+  }
+})
+
+test('a failing acceptance round asks the main agent to split it into tasks; a second round that does not improve stops with the marker, hourness.stopped kind acceptance and the stop draft (§3.7.3 for the goal, B)', async () => {
+  const blocking = { id: 'f1', blocking: true, criterion: 'acceptance:0', where: 'site/', what: 'the build fails on the feed', fix: 'add the feed template' }
+  const rig1 = await acceptanceRig(trunk => ({ stopReason: 'completed', structured: { verdict: 'CHANGES_REQUESTED', commit: trunk, findings: [blocking], checked: ['acceptance:0 npm run build exit 1'], lessons: [] } }))
+  try {
+    // Round 1: the person's release came before any round, so it is no answer to the review: the main agent splits the failure into tasks.
+    await rig1.review()
+    let texts = harnessTexts(await rig1.goal())
+    assert.ok(texts.some(text => /^验收审查第 1 轮：CHANGES_REQUESTED · 挡路 1 · \S+ · @[0-9a-f]{12} · pins: goal-1@[0-9a-f]{12}$/.test(text)), 'round 1 stopped or is missing')
+    const told = rig1.sent.at(-1)?.content[0].text ?? ''
+    assert.match(told, /Split the failed acceptance into new tasks under the approved feature or task it belongs to/)
+    assert.match(told, /acceptance:0 at site\/: the build fails on the feed/)
+    assert.equal(rig1.emitted.filter(event => event.event === 'hourness.stopped').length, 0)
+    // Round 2 on a new trunk commit, as many blocking findings: not converging, it stops.
+    rig1.advance()
+    await rig1.review()
+    const goal = await rig1.goal()
+    texts = harnessTexts(goal)
+    const stopRound = goal.history.filter(entry => entry.op === 'comment' && entry.text?.startsWith('验收审查第 2 轮：') === true).at(-1)
+    assert.ok(stopRound?.text?.endsWith(' · 停下'), `round 2 carries no stop marker: ${stopRound?.text ?? 'none'}`)
+    const stopped = rig1.emitted.filter(event => event.event === 'hourness.stopped')
+    assert.deepEqual(stopped, [{ event: 'hourness.stopped', key: `stopped:goal-1:acceptance-${stopRound?.at ?? ''}`, payload: { node: 'goal-1', kind: 'acceptance', rounds: 2 } }])
+    assert.ok(rig1.metrics.some(event => event.event === 'execute.stop' && event.node === 'goal-1' && event.kind === 'acceptance' && event.rounds === 2))
+    await until(() => rig1.sent.some(notice => notice.source.kind === 'glm-hourness-loop'), 'the stop draft reaches the holder')
+    const draft = rig1.sent.filter(notice => notice.source.kind === 'glm-hourness-loop').at(-1)
+    assert.deepEqual(draft?.source.hournessLoop, { entry: 'execute.stopped', key: stopped[0]?.key })
+    assert.match(draft?.content[0].text ?? '', /^goal-1 stopped: 2 acceptance review rounds, 1 blocking findings left \(the blog builds\)\. Put it to the person/)
+    assert.ok((await completionNow(rig1)).gaps.includes('the acceptance review was stopped: the person has not answered yet'))
+    // The person answers after the stop: that word is an answer, the count restarts, and the first round that still fails stops again.
+    const answered = await openEngine(rig1.project.graphDir).apply('human', { op: 'comment', id: 'goal-1', text: '再修一轮' })
+    assert.ok(answered.ok)
+    rig1.advance()
+    await rig1.review()
+    const after = (await rig1.goal()).history.filter(entry => entry.op === 'comment' && entry.text?.startsWith('验收审查第 ') === true).at(-1)?.text ?? ''
+    assert.match(after, /^验收审查第 1 轮：CHANGES_REQUESTED · 挡路 1 · .* · 停下$/, 'the round after the answer did not stop')
+    assert.equal(new Set(rig1.emitted.filter(event => event.event === 'hourness.stopped').map(event => event.key)).size, 2)
+  }
+  finally {
+    rig1.dispose()
   }
 })
 

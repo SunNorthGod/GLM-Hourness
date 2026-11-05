@@ -29,6 +29,7 @@ import { recordCommunication, registeredAttempt, updateAttempt } from './attempt
 import type { GraphCache } from './dispatch.ts'
 import { writeWithRetry } from './retry.ts'
 import { sha256Hex } from './digest.ts'
+import { emitMetric } from './metrics.ts'
 import { checkPlan, planDigest, planPathsOfSection, readPlanSection, approvePlanSection, renderPlanSection, withPlanSection, renderApprovalComment, type Plan } from './plan.ts'
 
 /** The plan wait (§3.3.2 step 3) and the ask wait (§3.4.2). */
@@ -72,6 +73,8 @@ export interface ExecuteRequest {
 
 interface Pending {
   readonly request: ExecuteRequest
+  /** When the request was registered (milliseconds since the epoch): the dispatch status notice orders by waiting time. */
+  readonly since: number
   /** The checked plan, kept for the approval's re-check (§3.3.4); a question has none. */
   readonly plan?: Plan
   readonly resolve: (outcome: RequestOutcome) => void
@@ -96,7 +99,7 @@ function awaitAnswer<T extends RequestOutcome>(request: ExecuteRequest, plan: Pl
       resolve(outcome as T)
     }
     const timer = setTimeout(() => finish(timeout), waitMs)
-    pending.set(request.id, { request, ...(plan === undefined ? {} : { plan }), resolve: finish, timer })
+    pending.set(request.id, { request, since: Date.now(), ...(plan === undefined ? {} : { plan }), resolve: finish, timer })
     signal?.addEventListener('abort', () => finish(timeout), { once: true })
   })
 }
@@ -120,6 +123,18 @@ export function oldestPending(kind: 'plan' | 'question', graphDir?: string, task
     return entry.request
   }
   return undefined
+}
+
+/** One open request with the time it was registered. */
+export interface PendingRequest {
+  readonly request: ExecuteRequest
+  /** Milliseconds since the epoch. */
+  readonly since: number
+}
+
+/** The open requests of a project, the longest waiting first (§3.5.4): the dispatch status notice lists them. */
+export function pendingRequests(graphDir: string): readonly PendingRequest[] {
+  return [...pending.values()].filter(entry => entry.request.graphDir === graphDir).map(entry => ({ request: entry.request, since: entry.since }))
 }
 
 /** The id of a new request: `R-` plus six base-36 digits (§3.3.2 step 2). */
@@ -250,6 +265,8 @@ export function submitPlanTool(deps: RequestsDeps): ToolDefinitionLike {
       if (!checked.ok) {
         const rejects = (planRejects.get(attempt.childId) ?? 0) + 1
         planRejects.set(attempt.childId, rejects)
+        // §3.16's 退回: the check sends the plan back to the worker; nobody waited.
+        emitMetric({ event: 'execute.plan', task: attempt.node, version: (readPlanSection(node.body)?.version ?? 0) + 1, outcome: 'revise', steps: isRecord(args) && Array.isArray(args.steps) ? args.steps.length : 0, waitedMs: 0 })
         if (rejects >= PLAN_REJECT_LIMIT) {
           planRejects.delete(attempt.childId)
           refuse('plan_rejected', 'plan rejected 4 times; hand back with status blocked', 'hand the task back; the main agent can dispatch it again with better instructions')
@@ -293,7 +310,12 @@ export function submitPlanTool(deps: RequestsDeps): ToolDefinitionLike {
         `${renderPlanSection(plan, version, 'pending')}\n\nReview it: answer_worker {"request": "${id}", "verdict": "approve"} approves this version; {"request": "${id}", "verdict": "revise", "text": "what to change"} sends it back to the worker. The worker's call stays open for 30 minutes.`,
         agent.session?.id,
       )
+      const planMetric = { event: 'execute.plan', task: attempt.node, version, steps: plan.steps.length } as const
+      emitMetric({ ...planMetric, outcome: 'to-main', waitedMs: 0 })
+      const asked = Date.now()
       const outcome = await awaitAnswer<PlanOutcome>(request, plan, deps.planWaitMs ?? PLAN_WAIT_MS, { status: 'timeout', hint: PLAN_TIMEOUT_HINT }, exec.signal)
+      // 批准, 打回 (the main agent's revise) and 超时 of §3.16's table.
+      emitMetric({ ...planMetric, outcome: outcome.status === 'revise' ? 'rejected' : outcome.status, waitedMs: Date.now() - asked })
       if (outcome.status === 'approved') return { status: 'approved', version }
       if (outcome.status === 'revise') return { status: 'revise', version, text: outcome.text }
       return { status: 'timeout', version, hint: outcome.hint }
@@ -357,7 +379,9 @@ export function askMainTool(deps: RequestsDeps): ToolDefinitionLike {
         `${question}${options === undefined ? '' : `\nOptions the worker sees: ${options.join(' | ')}`}\nThe worker continues on its own assumption if nobody answers within 20 minutes: ${assumption}\n\nAnswer with answer_worker {"request": "${request.id}", "text": "..."} — the answer is the result of the worker's call.`,
         agent.session?.id,
       )
+      const asked = Date.now()
       const outcome = await awaitAnswer<QuestionOutcome>(request, undefined, deps.askWaitMs ?? ASK_WAIT_MS, { status: 'timeout', hint: ASK_TIMEOUT_HINT }, exec.signal)
+      emitMetric({ event: 'execute.ask', task: attempt.node, waitedMs: Date.now() - asked, outcome: outcome.status })
       if (outcome.status === 'answered') {
         recordCommunication(attempt.childId, 'answered')
         return { status: 'answered', text: outcome.text }

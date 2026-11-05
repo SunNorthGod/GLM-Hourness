@@ -2,13 +2,18 @@
  * The execute row's loop-board tables (M7 design 0.6 §2.5, §3.11.1): the
  * nine events and seven default entries go through the loop board's own
  * `validateEntry` with zero issues, the referenced events, actions and
- * placeholders all resolve, and every word to the main agent wakes it.
+ * placeholders all resolve, every word to the main agent wakes it, and the
+ * loop link's contribution passes the board's `validateContribution` whole.
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateEntry, type EntryContext } from '../src/loops/model.ts'
 import type { LoopEventDeclaration } from '../src/loops/trigger.ts'
 import { EXECUTE_ACTIONS, EXECUTE_ENTRIES, EXECUTE_EVENTS } from '../src/execute/entries.ts'
+import { createGraphCache } from '../src/execute/dispatch.ts'
+import { createLoopLink } from '../src/execute/loop-link.ts'
+import { LOOP_EVENT_TABLE } from '../src/loops/events.ts'
+import { validateContribution } from '../src/loops/registry.ts'
 
 const TABLE = new Map<string, LoopEventDeclaration>(EXECUTE_EVENTS.map(event => [event.id, event]))
 const ACTIONS = new Set(EXECUTE_ACTIONS.map(action => action.id))
@@ -58,6 +63,23 @@ test('every tell to the main agent wakes it, and no wake field is false', () => 
     assert.equal(tell.wake, true, `${tell.entry}.${tell.where} must wake`)
     assert.ok(tell.text.length >= 1 && tell.text.length <= 2000)
   }
+})
+
+test('the loop link hands these three tables over with a run, and the board\u2019s validateContribution keeps every item under glm-hourness/execute (§2.5 point 1)', () => {
+  const link = createLoopLink({ lookup: { get: () => undefined }, execDir: root => root, graphDirOfRoot: root => root, cache: createGraphCache(() => {}), report: () => {}, actions: {}, notesChanged: () => {} })
+  const { contribution } = link
+  assert.equal(contribution.events, EXECUTE_EVENTS)
+  assert.equal(contribution.entries, EXECUTE_ENTRIES)
+  assert.equal(contribution.actions, EXECUTE_ACTIONS)
+  assert.equal(typeof contribution.run, 'function')
+  const check = validateContribution({ plugin: 'dsh-hourness', row: 'glm-hourness/execute' }, contribution, { table: LOOP_EVENT_TABLE, owners: new Map(), now: new Date('2026-11-02T01:00:00Z') })
+  assert.ok(check.ok, check.ok ? '' : check.reason)
+  assert.deepEqual(check.dropped, [])
+  assert.deepEqual(check.events.map(event => event.id), EXECUTE_EVENTS.map(event => event.id))
+  assert.deepEqual(check.actions.map(action => action.id), EXECUTE_ACTIONS.map(action => action.id))
+  assert.deepEqual(check.entries.map(entry => entry.definition.id), EXECUTE_ENTRIES.map(entry => entry.id))
+  assert.ok(check.entries.every(entry => entry.waitingOn.length === 0), 'an entry waits for an event nobody declares')
+  link.dispose()
 })
 
 test('the debounces and hourly caps follow the table of §3.11.1', () => {

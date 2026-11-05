@@ -119,8 +119,11 @@
       # tool faces of the chain, the plan and communication tools, the handback
       # processing and the review loop, the merge gate (check_commit on the
       # external check provider hourness-gate, trunk-advance-checked before and
-      # after a call, the full trunk check) and the glmHournessExecute service.
-      # The drive and the loop-board seam arrive with E8.
+      # after a call, the full trunk check), the drive (the holder's DSH goal from
+      # a release without a command, the completion gate on update_goal complete,
+      # await_human, the idle and peak stops, the reconcile after a restart, the
+      # dispatch status notice), the loop-board seam (contribute, emit, runAction,
+      # M7's fallback executor and watchdog) and the glmHournessExecute service.
       # Ships disabled until the E9 verification (L3 skeleton scenario, one real
       # model run, the first L4 batch); AGENTS.md turns it on then.
       name: dsh-hourness/execute

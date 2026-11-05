@@ -24,10 +24,13 @@
  * this file.
  */
 import type { ServiceLookup } from '../shared/dsh-min.ts'
+import type { HarnessResult, LoopEventRecord } from '../shared/loop-records.ts'
 import type { LoopEntryDefinition } from './model.ts'
 import type { LoopEventDeclaration } from './trigger.ts'
 
 export type { LoopEventDeclaration, LoopEventField, LoopEventParam } from './trigger.ts'
+/** The record a harness action gets and the result it gives; shared with the execute row's service (src/shared/loop-records.ts). */
+export type { HarnessResult, LoopEventRecord } from '../shared/loop-records.ts'
 
 /** The cordis service name the loop row provides. */
 export const LOOPS_SERVICE = 'glmHournessLoops'
@@ -42,24 +45,6 @@ export interface ContributionSource {
   readonly row: string
 }
 
-/** One event of the inbox, with what was merged into the same run by the debounce. */
-export interface LoopEventRecord {
-  /** ev-<16 hex digits> */
-  readonly id: string
-  readonly event: string
-  readonly at: string
-  /** The absolute path of the project root. */
-  readonly project: string
-  readonly session?: string
-  readonly key: string
-  readonly payload: Readonly<Record<string, unknown>>
-  readonly merged: readonly { readonly id: string, readonly key: string, readonly payload: Readonly<Record<string, unknown>> }[]
-}
-
-export type HarnessResult =
-  | { readonly outcome: 'done', readonly tell?: string }
-  | { readonly outcome: 'skipped', readonly reason: string }
-  | { readonly outcome: 'failed', readonly reason: string, readonly tell?: string }
 
 /** One event a row hands over (design §3.1). */
 export interface LoopEventInput {

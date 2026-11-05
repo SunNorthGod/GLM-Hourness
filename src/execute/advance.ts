@@ -663,7 +663,7 @@ interface TrunkGateDeps extends Pick<ExecuteRulesDeps, 'lookup' | 'register' | '
   readonly report: (sessionId: string | undefined, state: 'active' | 'degraded', reason: string) => void
   /** Whether a trailer task's own command record hit a `commands` or `outside` line of the floor (§3.8.4). */
   readonly taskHit: (project: string, graph: LoadedGraph, task: string) => Promise<boolean>
-  /** Hand one trunk event on: E7 runs the `execute.trunk` entry in this process (D4), E8 emits it. `sessionId` is the session whose call or step saw the move, for the row health. */
+  /** Hand one trunk event on: the row emits it to the loop board (src/execute/loop-link.ts), whose `execute.trunk` entry runs the full trunk check. `sessionId` is the session whose call or step saw the move, for the row health. */
   readonly onTrunkEvent: (project: string, trunk: string, event: TrunkEvent, sessionId: string | undefined) => void
   /** The clock of the records' times; tests pin it. */
   readonly now?: () => Date
@@ -819,13 +819,16 @@ function floorLineOf(verdict: AdvanceVerdict): { readonly floorLine?: string } {
  * unchecked move was waiting for (a write that fails is said in that
  * session's row health); and `trunkEvidenceOf(project, task)`, the evidence of
  * the task's newest checked advance after its latest dispatch, which the
- * review-pass path writes on the task's completion (D2).
+ * review-pass path writes on the task's completion (D2); and
+ * `reconcileTrunk(project, sessionId)`, the reconcile's trunk step after a
+ * host restart (§3.9.6 step 5, E8).
  */
 export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
   readonly dispose: () => void
   readonly trunkAdvanceFor: (callId: string) => TrunkAdvance | undefined
   readonly checkedAfter: (project: string, commit: string, sessionId?: string) => Promise<void>
   readonly trunkEvidenceOf: (project: string, task: string) => Promise<readonly Evidence[] | undefined>
+  readonly reconcileTrunk: (project: string, sessionId?: string) => Promise<number>
 } {
   const git = deps.git
   const warn = dialectWarner('execute')
@@ -1543,6 +1546,65 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
     }
   }
 
+  /**
+   * After a host restart (§3.9.6 step 5): an ok local line whose trailer
+   * tasks lack their evidence gets it through the evidence path (the host
+   * left between the line and the evidence; a task already noted at that
+   * `to` is skipped); and a local trunk at a commit that has a passed check
+   * record but no line reaching it (the host left after the move, before
+   * the compare) is judged the way the post-execute branch judges a move,
+   * from the newest local line's `to`, else from the trunk's previous reflog
+   * value: the ok line and the evidence, or the `ok: false` line, the
+   * violation `detected-after` and the notice. The count of tasks completed
+   * with their trunk evidence.
+   */
+  async function reconcileTrunk(project: string, sessionId?: string): Promise<number> {
+    const setup = await setupOf(project)
+    if (setup === undefined) return 0
+    const execDir = deps.execDir(project)
+    const lines = await readAdvances(execDir)
+    const graph = await loadGraph(project)
+    const gate = parseGateNorm(graph.nodes.get('norm-merge-gate'))
+    const checks = await readChecks(execDir)
+    let written = 0
+    for (const line of lines) {
+      const checked = line.check
+      if (line.ref !== 'local' || line.ok !== true || line.by !== undefined || (typeof checked !== 'string' && line.only !== true)) continue
+      const waiting = (line.tasks ?? []).filter((task) => {
+        const node = graph.nodes.get(task)
+        return node !== undefined && node.status !== 'done' && !node.history.some(entry => entry.op === 'comment' && entry.text?.startsWith(`进主干 ${short(line.to)}`) === true)
+      })
+      if (waiting.length === 0) continue
+      const record = typeof checked === 'string' ? evidenceRecord(checks.filter(entry => entry.commit === checked && entry.passed)) : undefined
+      const trailers = await git.taskTrailers(project, line.from, line.to)
+      if (!trailers.ok || (typeof checked === 'string' && record === undefined)) continue
+      for (const task of waiting) {
+        const trailerCommit = trailers.value.find(entry => entry.tasks.includes(task))?.commit
+        if (trailerCommit === undefined) continue
+        const outcome = await recordTrunkEvidence(project, task, { trailerCommit, record, only: gate.only, from: line.from, to: line.to, checkedAfter: line.checkedAfter === true, sessionId })
+        if (outcome === 'done') written += 1
+      }
+    }
+    const refs = await git.trunkRefs(project, setup.trunk, setup.remote)
+    const local = refs.ok ? refs.value.local : undefined
+    if (!refs.ok || local === undefined || lines.some(line => line.ref === 'local' && line.to === local)) return written
+    if (!checks.some(entry => entry.passed && entry.commit === local)) return written
+    const from = lines.filter(line => line.ref === 'local').at(-1)?.to ?? await git.resolveCommit(project, `refs/heads/${setup.trunk}@{1}`)
+    if (from === undefined || from === local) return written
+    // Claimed first, as a compare claims: a call that began before this read does not record the same move again.
+    lastSeen.set(pathKey(project), refs.value)
+    claims.set(`${pathKey(project)}\nlocal`, { value: local, at: Date.now() })
+    const base: Baseline = {
+      project, setup, local: from, remote: refs.value.remote,
+      agentId: sessionId ?? '', sessionId: sessionId ?? '', tool: 'reconcile', callId: 'reconcile', invocations: [], startedAt: Date.now(),
+    }
+    await localMoved(base, base, from, local)
+    const added = (await readAdvances(execDir)).at(-1)
+    if (added?.ref !== 'local' || added.ok !== true || added.to !== local) return written
+    const after = await loadGraph(project)
+    return written + (added.tasks ?? []).filter(task => after.nodes.get(task)?.status === 'done').length
+  }
+
   const undos = [
     ctx.on('tools/pre-execute', preExecute, { prepend: true }),
     ctx.on('tools/post-execute', postExecute, { prepend: true }),
@@ -1557,5 +1619,6 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
     trunkAdvanceFor: callId => advancing.get(callId)?.value,
     checkedAfter,
     trunkEvidenceOf,
+    reconcileTrunk,
   }
 }

@@ -30,10 +30,10 @@ export interface Attempt {
   readonly attempt: number
   /** The project graph directory the dispatch was made against (§3.3.2's request and §3.6.2's processing read it). */
   readonly graphDir: string
-  /** Absolute path of the worktree; workers only. */
+  /** Absolute path of the worktree: a worker's own, a task reviewer's reviewed task's, the main checkout for an acceptance review. */
   readonly worktree?: string
   readonly branch?: string
-  /** The commit the worktree was cut from, 40 hex digits; workers only (§3.6.2's change reads the diff from here). */
+  /** The commit the worktree was cut from, 40 hex digits (§3.6.2's change reads the diff from here); for an acceptance review, the trunk commit it reviews (§3.9.4). */
   readonly baseSha?: string
   /** The declared review depth of a write task (§3.1.1, default full). */
   readonly review?: 'full' | 'light' | 'skip'
@@ -177,12 +177,28 @@ export function renderDispatchComment(entry: DispatchComment): string {
 }
 
 const DISPATCH_START = /^第 (\d+) 次派发 · (\S+) · /
+const DISPATCH_BASE = /^基线 (\S+)@([0-9a-f]{7,40})$/
+const DISPATCH_MODEL = /^模型 ([^/\s]+)\/(\S+?)(?: (\S+))?，理由：(.*)$/
+const DISPATCH_REVIEW = /^审查：(全审|轻审|不审)/
+const DEPTH_OF_WORD: Readonly<Record<string, keyof typeof DEPTH_WORDS>> = { 全审: 'full', 轻审: 'light', 不审: 'skip' }
 
-/** What a dispatch comment says that later steps need: the attempt, the child id and the pins line. */
+/**
+ * What a dispatch comment says that later steps need: the attempt, the child
+ * id and the pins line; the base, the model choice and the declared review
+ * depth when the comment carries them, from which the reconcile rebuilds a
+ * dispatch the register lost with the host (§3.9.6).
+ */
 export interface DispatchRecord {
   readonly attempt: number
   readonly childId: string
   readonly pins: string
+  /** Branch and short commit the work was cut from (a worker), or the trunk commit an acceptance review reviews. */
+  readonly base?: { readonly branch: string, readonly sha: string }
+  readonly provider?: string
+  readonly model?: string
+  readonly reasoningEffort?: string
+  readonly why?: string
+  readonly review?: keyof typeof DEPTH_WORDS
 }
 
 /** Reads a dispatch comment; undefined when the text is not one. */
@@ -191,7 +207,30 @@ export function parseDispatchComment(commentText: string): DispatchRecord | unde
   const start = DISPATCH_START.exec(lines[0] ?? '')
   const pins = lines.at(-1)
   if (start === null || lines.length < 2 || pins === undefined || !pins.startsWith('pins: ')) return undefined
-  return { attempt: Number(start[1]), childId: start[2], pins }
+  const parts = (lines[0] ?? '').split(' · ').slice(2)
+  const base = parts.map(part => DISPATCH_BASE.exec(part)).find(match => match !== null)
+  const model = parts.map(part => DISPATCH_MODEL.exec(part)).find(match => match !== null)
+  const review = parts.map(part => DISPATCH_REVIEW.exec(part)).find(match => match !== null)
+  return {
+    attempt: Number(start[1]),
+    childId: start[2],
+    pins,
+    ...(base === undefined ? {} : { base: { branch: base[1], sha: base[2] } }),
+    ...(model === undefined ? {} : { provider: model[1], model: model[2], ...(model[3] === undefined ? {} : { reasoningEffort: model[3] }), why: model[4] }),
+    ...(review === undefined ? {} : { review: DEPTH_OF_WORD[review[1]] }),
+  }
+}
+
+/** The comment of a dispatch the host lost before it handed back (§3.9.6 step 4); the child id makes it the dispatch's processing mark. */
+export function renderLostComment(attempt: number, childId: string): string {
+  return `第 ${attempt} 次在宿主重启时丢失 · ${childId}`
+}
+
+const LOST = /^第 (\d+) 次在宿主重启时丢失 · (\S+)$/
+
+/** The child id a lost comment names, or undefined when the text is not one. */
+export function lostChildOf(text: string): string | undefined {
+  return LOST.exec(text)?.[2]
 }
 
 function dispatchRecords(node: GraphNode): DispatchRecord[] {

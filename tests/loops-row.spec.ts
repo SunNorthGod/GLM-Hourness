@@ -229,7 +229,7 @@ rowTest('view.json carries what the runtime kept: each entry\'s last run in the 
     { k: 'loop-duplicate', by: 'loops', at: '2026-11-01T09:30:00.000Z', body: { event: 'loops.host-restarted', key: 'host-restarted:p:1', from: 'loops', firstSeen: '2026-11-01T09:29:00.000Z' } },
     doneEvent(B, 'run-0000000000b1', '2026-11-01T10:00:00.000Z', 'reported', { exits: [1] }),
     { k: 'loop-task-delete', by: 'loops', at: '2026-11-01T10:30:00.000Z', body: { entry: A, scheduleId: 'task-1', why: 'holder-archived', deleted: true } },
-  ])
+  ], 'cli', { now: () => NOW })
   assert.equal(written.rejected, 0, 'the journal takes every fixture event')
   await fixture.runtime.create()
   const view = await viewOf(fixture.root)
@@ -253,7 +253,7 @@ rowTest('after every beat of a project it runs the row writes view.json again, s
   await agreed(fixture, tellEntry(A))
   await fixture.runtime.create()
   assert.deepEqual((await viewOf(fixture.root)).recent, [])
-  await appendEvents(fixture.root, [doneEvent(A, 'run-0000000000a2', '2026-11-02T00:30:00.000Z', 'delivered')])
+  await appendEvents(fixture.root, [doneEvent(A, 'run-0000000000a2', '2026-11-02T00:30:00.000Z', 'delivered')], 'cli', { now: () => NOW })
   fixture.beats[0]?.run()
   // The beat's write comes less than 2 seconds after the last one on this fixed clock: it waits for its timer.
   for (let tries = 0; tries < 100 && !fixture.delayed.some(entry => entry.ms === 2_000); tries++) await new Promise(resolve => setTimeout(resolve, 20))

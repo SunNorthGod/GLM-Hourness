@@ -66,10 +66,12 @@ function entersRelease(change: { readonly from: unknown, readonly to: unknown })
  * When the node last entered the released state: the `at` of the latest
  * history entry that changed its `stage` from before `release` (or from
  * none) to `release` or later. Null when the node is not in the released
- * state now (not approved, doing or done, or its stage is before `release`),
- * has no stage, or no entry says when. A module sent back to design and
- * released again gets a new time, which is what makes work dispatched before
- * the return stale (§3.5.3).
+ * state now (not approved, doing or done, or its stage is before `release`)
+ * or has no stage. A node no entry moved into the released state was
+ * released from its creation: its first history entry's `at` (§3.9.7's
+ * failure table), null when it has no history. A module sent back to design
+ * and released again gets a new time, which is what makes work dispatched
+ * before the return stale (§3.5.3).
  */
 export function releaseAtOf(node: GraphNode): string | null {
   const now = node.status === 'approved' || node.status === 'doing' || node.status === 'done'
@@ -79,7 +81,7 @@ export function releaseAtOf(node: GraphNode): string | null {
     const change = entry.changes?.stage
     if (change !== undefined && entersRelease(change)) return entry.at
   }
-  return null
+  return node.history.at(0)?.at ?? null
 }
 
 /** Whether a stage write moved the node from `release` or later back to `design` (the second and third tier, §3.9.7). */
@@ -299,6 +301,8 @@ export interface CompletionFacts {
   readonly isAncestor: (older: string, newer: string) => boolean
   /** The childIds of dispatches alive in this process: workers, reviews, acceptance reviews, checks. */
   readonly running: ReadonlySet<string>
+  /** The task ids a merge check that is still running covers (the check backend's jobs, §3.9.3 point 6). */
+  readonly runningChecks: readonly string[]
   /**
    * The pins line of the acceptance review, checked against the goal now;
    * the reason it is stale, or undefined when it is fresh. The caller runs
@@ -413,6 +417,8 @@ export function goalCompletion(graph: LoadedGraph, goal: GraphNode, facts: Compl
   }
   const running = new Set([...all.filter(node => node.type === 'task').flatMap(dispatchedChildren), ...dispatchedChildren(goal)].filter(childId => facts.running.has(childId)))
   for (const childId of [...running].slice(0, 10)) gaps.push(`dispatch ${childId} is still running`)
+  const ids = new Set(all.map(node => node.id))
+  for (const task of [...new Set(facts.runningChecks)].filter(id => ids.has(id)).slice(0, 10)) gaps.push(`a merge check of task ${task} is still running`)
   try {
     if (readers.isSplit(graph, goal)) {
       for (const module of modulesInDesign(graph, goal, readers)) {

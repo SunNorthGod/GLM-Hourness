@@ -14,7 +14,7 @@ import type { GraphNode } from '../src/graph/schema.ts'
 import type { DerivedMessage, UserNotice } from '../src/shared/dsh-min.ts'
 import { designHost, healthOf, type DesignHost, type FakeAgent } from './design-host.ts'
 import { GOAL_BODY, design, graphOf, interview, node, splitDesign } from './graph-memory.ts'
-import { withNode } from './execute-helpers.ts'
+import { stageEdit, withNode } from './execute-helpers.ts'
 import { captureWarnings, seedAsHuman } from './graph-helpers.ts'
 
 /** Words a stage reminder must not carry: the question cards are gone, the human is asked in plain chat. */
@@ -444,4 +444,77 @@ test('a node of that id that is not a norm goes without the line, and the remind
   const reminder = stageReminder(withNode(graph, node({ id: 'norm-delegations', type: 'task', parent: 'goal-1' })), 'goal-1')
   assert.equal(reminder.text.includes(DELEGATION_LINE), false)
   assert.match(reminder.degraded ?? '', /norm-delegations 不是 norm 节点/)
+})
+// ---------------------------------------------------------------- with the execute row (M7 E8 D10)
+
+const DRIVE_RELEASED = 'The design is released and the harness has started the drive: decompose into tasks with dispatch attributes and dispatch them; do not wait for the person.'
+const MERGE_GATE = 'Before release, propose norm-merge-gate under the goal: read the project\'s build and test setup and list each command as `$ <command>`.'
+const MERGE_HEAD = (trunk: string): string => `To integrate a reviewed task: in its worktree rebase onto ${trunk} (dispatch a worker if it conflicts)`
+const BACK_LINE = (id: string): string => `Module ${id} went back to design: write its decisions and plan again and put its release page to the person; nothing in it is dispatched until then.`
+const START_COMMENT = { at: '2026-10-30T08:00:01.000Z', actor: 'harness' as const, op: 'comment' as const, text: '自动推进已开始 · 放行 2026-10-30T08:00:00.000Z · goal goal-1 · 会话 s1 · 主干 trunk-x' }
+
+/** An unsplit goal at `stage` with the given tasks under it. */
+function drivenGoal(tasks: readonly Partial<GraphNode>[], stage: 'release' | 'execute' = 'release', started = true): ReturnType<typeof graphOf> {
+  const goal = node({ id: 'goal-1', type: 'goal', stage }, 0, 'human')
+  return graphOf([
+    started ? { ...goal, history: [...goal.history, START_COMMENT] } : goal,
+    ...tasks.map((fields, index) => node({ id: `task-${index + 1}`, type: 'task', parent: 'goal-1', ...fields }, 2 + index)),
+  ])
+}
+
+test('with the execute row: the release line says the drive started, followed by the segment of the derived stage', () => {
+  const executing = stageReminder(drivenGoal([{}]), 'goal-1', true)
+  assert.ok(executing.text.includes(DRIVE_RELEASED), executing.text)
+  assert.ok(!executing.text.includes('decomposition and dispatch come next'))
+  assert.ok(executing.text.includes('Stage execute: dispatch the ready tasks with dispatch_task'), executing.text)
+  const decomposing = stageReminder(drivenGoal([]), 'goal-1', true)
+  assert.ok(decomposing.text.includes('Stage decompose: nothing here is ready to dispatch.'), decomposing.text)
+  const merging = stageReminder(drivenGoal([{ status: 'done' }]), 'goal-1', true)
+  assert.ok(merging.text.includes(MERGE_HEAD('trunk-x')), merging.text)
+  assert.ok(merging.text.includes('git pull on trunk-x is refused.'))
+  const noStart = stageReminder(drivenGoal([{ status: 'done' }], 'release', false), 'goal-1', true)
+  assert.ok(noStart.text.includes(MERGE_HEAD('the main branch')), 'without the start comment the trunk is the main branch')
+  const off = stageReminder(drivenGoal([{}]), 'goal-1')
+  assert.ok(off.text.endsWith('The design is released. Tell the human in one line; decomposition and dispatch come next.'), 'without the row the text is unchanged')
+})
+
+test('with the execute row: a hand-written execute stage reads its segment instead of not belonging to the design loop', () => {
+  const reminder = stageReminder(drivenGoal([{}], 'execute'), 'goal-1', true)
+  assert.ok(reminder.text.includes('is at stage execute.'), reminder.text)
+  assert.ok(reminder.text.includes('Stage execute: dispatch the ready tasks'))
+  assert.ok(!reminder.text.includes('does not belong to the design loop'))
+})
+
+test('with the execute row: a split goal keeps the module lines; a released module in focus adds its segment', () => {
+  const graph = splitGoal('release')
+  const top = stageReminder(graph, 'goal-1', true)
+  assert.ok(top.text.includes('The framework, the module list and the directions are released.'), top.text)
+  assert.ok(!top.text.includes(DRIVE_RELEASED))
+  const inModule = stageReminder(graph, 'task-0', true)
+  assert.ok(inModule.text.includes('This module is released.'), inModule.text)
+  assert.ok(inModule.text.includes('Stage execute: dispatch the ready tasks'), inModule.text)
+  assert.ok(!stageReminder(graph, 'task-0').text.includes('Stage execute:'), 'without the row no segment')
+})
+
+test('with the execute row: a module that went back to design says that nothing in it is dispatched until it is released again', () => {
+  const graph = splitGoal('release')
+  const back = withNode(graph, node({ id: 'module-2', type: 'feature', parent: 'goal-1', stage: 'design', title: '模块2' }, 4, 'llm', [stageEdit(5, 'design', 'release'), stageEdit(6, 'release', 'design')]))
+  assert.ok(lines(stageReminder(back, 'goal-1', true)).includes(BACK_LINE('module-2')))
+  assert.ok(lines(stageReminder(back, 'task-1', true)).includes(BACK_LINE('module-2')), 'the focus inside the module')
+  assert.ok(!stageReminder(back, 'goal-1').text.includes('went back to design:'), 'without the row the line is not there')
+  assert.ok(!stageReminder(graph, 'task-1', true).text.includes('went back to design:'), 'a module never released is only in design')
+})
+
+test('with the execute row: the design stage asks for norm-merge-gate and norm-review-floor while the graph lacks them', () => {
+  const both = stageReminder(smallDesign(), 'goal-1', true)
+  assert.ok(both.text.includes(MERGE_GATE), both.text)
+  assert.ok(both.text.includes('Before release, propose norm-review-floor under the goal: one acceptance item per kind of change that must be fully reviewed'), both.text)
+  assert.ok(both.text.includes('`files <paths>`, `deletes`, `commands <commands>` or `outside`'))
+  const gate = node({ id: 'norm-merge-gate', type: 'norm', parent: 'goal-1', acceptance: ['$ npm test'] })
+  const floor = node({ id: 'norm-review-floor', type: 'norm', parent: 'goal-1', acceptance: ['守卫：`files src/guard/`'] })
+  const neither = stageReminder(smallDesign({}, [gate, floor]), 'goal-1', true)
+  assert.ok(!neither.text.includes('Before release, propose norm-'), neither.text)
+  const split = stageReminder(splitDesign().graph, 'goal-1', true)
+  assert.ok(split.text.includes(MERGE_GATE), 'the big loop asks too')
+  assert.ok(!stageReminder(smallDesign(), 'goal-1').text.includes('Before release, propose norm-'), 'without the row neither sentence')
 })

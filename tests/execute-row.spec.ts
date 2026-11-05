@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { openEngine } from '../src/graph/engine.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import { EXECUTE_TOOL_NAMES, GRAPH_TOOL_NAMES, WORKER_TOOL_NAMES } from '../src/shared/tool-names.ts'
@@ -170,7 +171,7 @@ function rulesOver(project: Project, cache: ReturnType<typeof createGraphCache>,
 
 // ---- the row wiring ----
 
-test('the execute row registers dispatch_task and check_commit, dispatch_task\u2019s description is the example constant\u2019s text, and glmHournessExecute is provided', () => {
+test('the execute row registers dispatch_task, check_commit and await_human, dispatch_task\u2019s description is the example constant\u2019s text, glmHournessExecute is provided with its three members, the drive listens to goal/changed with the completion gate in the pre-execute chain, and the hournessHandback projection is registered', async () => {
   const runtime = fakeRuntime({ natives: [] })
   // The host's tools service, as inject would hand it over.
   runtime.ctx.provide('tools', {
@@ -182,16 +183,25 @@ test('the execute row registers dispatch_task and check_commit, dispatch_task\u2
       return () => { runtime.scoped.splice(runtime.scoped.indexOf(definition), 1) }
     },
   })
-  ;(runtime.ctx as { inject?: unknown }).inject = fakeInjector({ tools: runtime.ctx.get('tools') }, runtime.ctx).inject
+  // The session state service, recording what registers (rc.3 session-projection register).
+  const projections: string[] = []
+  const sessionProjections = { register: (definition: { readonly key: string }) => { projections.push(definition.key); return () => {} }, snapshot: () => ({ values: {} }), stateOf: () => undefined }
+  ;(runtime.ctx as { inject?: unknown }).inject = fakeInjector({ tools: runtime.ctx.get('tools'), sessionProjections }, runtime.ctx).inject
   executeApply(runtime.ctx, {})
+  assert.deepEqual(projections, ['hournessHandback'], 'the row registers the handback projection the reconcile reads (§3.9.6 step 3)')
   const registered = runtime.scoped.find<ToolDefinitionLike>(tool => tool.name === 'dispatch_task')
   assert.ok(registered !== undefined, 'the row did not register dispatch_task')
   assert.equal(registered.description, dispatchDescription())
   assert.ok(runtime.scoped.some(tool => tool.name === 'check_commit'), 'the row did not register check_commit')
+  assert.ok(runtime.scoped.some(tool => tool.name === 'await_human'), 'the row did not register await_human (§3.9.5)')
+  assert.ok(runtime.listeners.some(entry => entry.event === 'goal/changed'), 'the drive does not listen to goal/changed')
+  assert.ok(runtime.listeners.filter(entry => entry.event === 'tools/pre-execute').every(entry => entry.options?.prepend === true), 'the completion gate and the chain rules are prepended')
   const service = runtime.ctx.get(EXECUTE_SERVICE) as ExecuteService | undefined
   assert.ok(service !== undefined && service.isWorker('nobody') === false, 'glmHournessExecute.isWorker is provided')
   assert.equal(typeof service.trunkAdvanceFor, 'function', 'glmHournessExecute.trunkAdvanceFor is provided (R4-F4)')
   assert.equal(service.trunkAdvanceFor('no-such-call'), undefined)
+  assert.equal(typeof service.runAction, 'function', 'glmHournessExecute.runAction is provided (§2.5 point 2)')
+  assert.deepEqual(await service.runAction('execute.no-such-action', { id: 'ev-0000000000000000', event: 'hourness.host-started', at: '2026-11-04T08:00:00.000Z', project: process.cwd(), key: 'host-started:main-1:1', payload: {}, merged: [] }), { outcome: 'failed', reason: 'unknown action execute.no-such-action' })
 })
 
 test('EXECUTE_RULES carries the eight code gates, all enforce on day one (§12.1)', () => {
@@ -311,15 +321,42 @@ test('the request seam (m4 design 0.6 \u00a75.9): an approved grant passes an ou
   }
 })
 
-test('a dispatch without model or why is invalid with the catalog hint; the goal review and the task review refuse until their steps land', async () => {
+test('a dispatch without model or why is invalid with the catalog hint; a goal id dispatches its acceptance review on the trunk commit, busy while it runs and once a round names that commit (§3.9.4); a review task without a handback refuses', async () => {
   const project = await presetProject([WORK_TASK])
   try {
-    const { deps, cleanup } = depsFor(project, fakeSubagents().service)
+    const subagents = fakeSubagents()
+    const { deps, cleanup } = depsFor(project, subagents.service)
     const missing = await refusedOf(() => dispatch(deps, project.root, { id: 'task-1', why: 'x' }))
     assert.equal(missing.code, 'invalid')
     assert.match(missing.message, /model is required/)
-    const goal = await refusedOf(() => dispatch(deps, project.root, { id: 'goal-1', model: 'probe-model', why: 'x' }))
-    assert.match(goal.message, /acceptance review of a goal/)
+    const trunk = spawnSync('git', ['rev-parse', 'refs/heads/main'], { cwd: project.root, encoding: 'utf8' }).stdout.trim()
+    const review = await dispatch(deps, project.root, { id: 'goal-1', model: 'probe-model', why: 'the tasks are closed' }) as { childId: string, role: string, task: string }
+    assert.equal(review.role, 'acceptance-review')
+    assert.equal(review.task, 'goal-1')
+    assert.match(review.childId, /^hz-goal-1-acc-a1-[0-9a-z]{6}$/)
+    const spec = subagents.started.at(-1) as { label: string, request: { cwd: string, outputSchema?: unknown, prompt: readonly { text?: string }[] } }
+    assert.equal(spec.label, 'hourness acceptance goal-1 round 1')
+    assert.equal(spec.request.cwd, resolve(project.root), 'the acceptance reviewer works in the main checkout')
+    assert.deepEqual(spec.request.outputSchema, REVIEW_SCHEMA)
+    assert.match(spec.request.prompt[0]?.text ?? '', new RegExp(`Review goal goal-1 at commit ${trunk.slice(0, 12)} against its acceptance`))
+    const registered = registeredAttempt(review.childId)
+    assert.equal(registered?.role, 'acceptance-review')
+    assert.equal(registered?.worktree, resolve(project.root))
+    assert.equal(registered?.baseSha, trunk, 'the register keeps the trunk commit the verdict must name')
+    const goalNode = (await openEngine(project.graphDir).load()).nodes.get('goal-1')
+    const dispatchComment = goalNode?.history.filter(entry => entry.op === 'comment' && entry.actor === 'harness').at(-1)?.text ?? ''
+    assert.match(dispatchComment, new RegExp(`^第 1 次派发 · ${review.childId} · 基线 main@${trunk.slice(0, 12)} · `))
+    assert.match(dispatchComment, /\npins: goal-1@[0-9a-f]{12}$/)
+    assert.equal(goalNode?.status, 'doing', 'an approved goal goes to doing with its acceptance review, as a task does')
+    const running = await refusedOf(() => dispatch(deps, project.root, { id: 'goal-1', model: 'probe-model', why: 'again' }))
+    assert.equal(running.code, 'busy')
+    cleanup(review.childId)
+    const engine = openEngine(project.graphDir)
+    const written = await engine.apply('harness', { op: 'comment', id: 'goal-1', text: `验收审查第 1 轮：CHANGES_REQUESTED · 挡路 1 · ${review.childId} · @${trunk.slice(0, 12)} · pins: goal-1@000000000000` })
+    assert.ok(written.ok)
+    const reviewed = await refusedOf(() => dispatch(deps, project.root, { id: 'goal-1', model: 'probe-model', why: 'again' }))
+    assert.equal(reviewed.code, 'busy')
+    assert.match(reviewed.message, /already has an acceptance review at the current trunk commit/)
     const reviewTask = { ...WORK_TASK, id: 'review-1', kind: 'review' as const, writeScope: [], acceptance: ['the review'] }
     const withReview = await presetProject([reviewTask])
     try {
@@ -390,7 +427,7 @@ test('the GLM peak cap limits a second GLM dispatch to slots_full; a non-GLM mod
 
 test('with the execute service on, the main agent\u2019s no-write denial points at dispatch_task; without it, at the subagent tool', async () => {
   const withExecute = designHost()
-  ;withExecute.services.set(EXECUTE_SERVICE, { isWorker: () => false, trunkAdvanceFor: () => undefined } satisfies ExecuteService)
+  ;withExecute.services.set(EXECUTE_SERVICE, { isWorker: () => false, trunkAdvanceFor: () => undefined, runAction: () => Promise.resolve({ outcome: 'skipped', reason: 'test' }) } satisfies ExecuteService)
   designApply(withExecute.ctx)
   const agent = withExecute.addAgent('s1')
   assert.equal((await withExecute.execute(agent, '/wish'))?.result.kind, 'success')

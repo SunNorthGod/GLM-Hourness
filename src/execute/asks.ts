@@ -12,10 +12,16 @@
  * recommend shape — the design named this `proposalLineRefusal`, which the
  * merged M3 carries as the record check — and `plainWordsIn` on every line),
  * so a draft the harness hands over never comes back refused.
+ *
+ * `stopDraftOf` words the notice of a stopped review, check or acceptance
+ * review from the graph alone; the `execute.stop-draft` action of the loop
+ * board (src/execute/loop-link.ts) returns it as its tell (D11).
  */
+import type { LoadedGraph } from '../graph/parse.ts'
 import { PROPOSAL_LIMITS, codePointCount, proposalRecordRefusal, type ProposalRecord } from '../graph/proposal.ts'
-import { PLAIN_LIMITS } from '../graph/schema.ts'
+import { PLAIN_LIMITS, type GraphNode } from '../graph/schema.ts'
 import { plainWordsIn } from '../graph/plain-question.ts'
+import { roundsOf } from './review.ts'
 
 /** The five matters the harness words (§3.7.4's table; the last two come with the weekly report, P2). */
 export type AskKind = 'review-stuck' | 'check-stuck' | 'acceptance-stuck' | 'norm-ladder' | 'floor-add'
@@ -214,5 +220,76 @@ export function draftRefusal(draft: Draft): { readonly message: string, readonly
   }
   const words = plainWordsIn([draft.title, draft.ask, draft.background, draft.proposal, draft.doubt, draft.notTaken].join('\n'))
   if (words.length > 0) return { message: `the draft uses ${words[0]}`, hint: 'say it in the plain words the person reads' }
+  return undefined
+}
+
+// ---- the stop notice (§3.7.4, `execute.stop-draft`) ----
+
+/** What `hourness.stopped` carries: the stopped node (the review task, the task, the goal), the kind, the rounds. */
+export interface StopPayload {
+  readonly node: string
+  readonly kind: string
+  readonly rounds: number
+}
+
+const CHECK_STOP = /^检查第 (\d+) 次没过：(.*) exit (\S+) · (.*) · 停下$/
+const ACCEPTANCE_STOP = /^验收审查第 (\d+) 轮：\S+ · 挡路 (\d+) · (\S+) · .* · 停下$/
+const BLOCKING_LINE = /^- \[blocking\] (\S+) at (.+?): /
+
+/** The harness comments of a node, oldest first. */
+const harnessComments = (node: GraphNode): readonly string[] =>
+  node.history.flatMap(entry => entry.op === 'comment' && entry.actor === 'harness' && entry.text !== undefined ? [entry.text] : [])
+
+/** The blocking findings of one reviewer's handback comment (`<head> · <childId> · …` then one `- [blocking] <criterion> at <where>: …` line each). */
+function blockingOf(node: GraphNode, head: string, childId: string): readonly { readonly criterion: string, readonly where: string }[] {
+  const text = harnessComments(node).filter(comment => comment.startsWith(`${head} · ${childId} · `)).at(-1)
+  return (text ?? '').split('\n').flatMap((line) => {
+    const found = BLOCKING_LINE.exec(line)
+    return found === null ? [] : [{ criterion: found[1], where: found[2] }]
+  })
+}
+
+const fieldsOf = (ask: Ask): string => `${ask.draft.title} / ${ask.draft.background} / ${ask.draft.proposal} / ${ask.draft.doubt} / ${ask.draft.notTaken}`
+const linesOf = (ask: Ask): string => [ask.draft.title, `背景：${ask.draft.background}`, `提议：${ask.draft.proposal}`, `疑问：${ask.draft.doubt}`, `不做：${ask.draft.notTaken}`].join(' | ')
+const AFTER = 'Other work goes on. When everything left waits for the person, call await_human with the question ids.'
+
+/**
+ * The stop notice the holder reads, from the graph alone (§3.7.4, D11): a
+ * review from the review task's stopped round comment and the blocking
+ * places of that reviewer's 「审查交回」 comment; a check from the task's
+ * 「检查第 n 次没过：… · 停下」 comment; an acceptance review from the goal's
+ * stopped 「验收审查第 k 轮」 comment and the blocking items of that
+ * reviewer's 「验收审查交回」 comment. Undefined when the graph holds no
+ * such stop for the node.
+ */
+export function stopDraftOf(graph: LoadedGraph, payload: StopPayload): string | undefined {
+  const node = graph.nodes.get(payload.node)
+  if (node === undefined) return undefined
+  if (payload.kind === 'review') {
+    const reviewed = node.parent === undefined ? undefined : graph.nodes.get(node.parent)
+    const round = roundsOf(node.history).filter(entry => entry.stopped).at(-1)
+    if (reviewed === undefined || round === undefined) return undefined
+    const where = blockingOf(node, '审查交回', round.childId).map(finding => finding.where)
+    const ask = askDraft('review-stuck', { task: reviewed.id, title: reviewed.title, rounds: round.k, blocking: round.blocking, files: where.slice(0, 3) })
+    return `${reviewed.id} stopped: ${round.k} review rounds, ${round.blocking} blocking findings left (${where.slice(0, 3).join(', ') || 'none named'}). Put it to the person in your next batch with propose_to_human (kind question, parent ${reviewed.id}, sources [${node.id}]); a draft that passes the checks: ${fieldsOf(ask)} — in the person's words, the four lines are: ${linesOf(ask)}. ${AFTER}`
+  }
+  if (payload.kind === 'check') {
+    const found = harnessComments(node).map(text => CHECK_STOP.exec(text)).filter(match => match !== null).at(-1)
+    if (found === undefined) return undefined
+    const [, n, line, exit, log] = found
+    const ask = askDraft('check-stuck', { task: node.id, title: node.title, attempt: Number(n), command: line, log })
+    return `${node.id} stopped: the merge check failed ${n} times since the person's latest word (${line} exit ${exit}, log ${log}). Put it to the person in your next batch with propose_to_human (kind question, parent ${node.id}); a draft that passes the checks: ${fieldsOf(ask)}; in the person's words, the four lines are: ${linesOf(ask)}. ${AFTER}`
+  }
+  if (payload.kind === 'acceptance') {
+    const found = harnessComments(node).map(text => ACCEPTANCE_STOP.exec(text)).filter(match => match !== null).at(-1)
+    if (found === undefined) return undefined
+    const [, k, blocking, childId] = found
+    const failing = blockingOf(node, '验收审查交回', childId).map(finding => {
+      const index = /^acceptance:(\d+)$/.exec(finding.criterion)?.[1]
+      return (index === undefined ? undefined : node.acceptance?.[Number(index)]) ?? finding.criterion
+    })
+    const ask = askDraft('acceptance-stuck', { goal: node.id, title: node.title, failing: failing.slice(0, 3) })
+    return `${node.id} stopped: ${k} acceptance review rounds, ${blocking} blocking findings left (${failing.slice(0, 3).join('; ') || 'none named'}). Put it to the person in your next batch with propose_to_human (kind question, parent ${node.id}); a draft that passes the checks: ${fieldsOf(ask)}; in the person's words, the four lines are: ${linesOf(ask)}. ${AFTER}`
+  }
   return undefined
 }

@@ -13,6 +13,8 @@ import { MODULE_READERS, releaseOf, type ModuleReaders } from '../src/graph/exec
 import type { LoadedGraph } from '../src/graph/parse.ts'
 import type { Actor, GraphNode, HistoryEntry, Stage, Status } from '../src/graph/schema.ts'
 import type { BriefContext, GateResult } from '../src/execute/brief.ts'
+import type { GraphCache } from '../src/execute/dispatch.ts'
+import { createLoopLink, stopDraftAction, type LoopEmit } from '../src/execute/loop-link.ts'
 import type { ServiceLookup, UserNotice } from '../src/shared/dsh-min.ts'
 
 export type Fields = Omit<Partial<GraphNode>, 'history'> & Pick<GraphNode, 'id' | 'type'>
@@ -50,6 +52,33 @@ export function noticeHost(project: { readonly root: string, readonly graphDir: 
     get: (name: string) => name === 'agents' ? agents : name === 'glmHournessData' ? { userHome: home } : extra[name],
   }
   return { lookup, sent }
+}
+
+/**
+ * The row's loop seam without a board, so its entries run in the fallback
+ * executor, with the `execute.stop-draft` action: the stop notice reaches
+ * the holder the way it does in the row. Every event handed over is kept in
+ * `emitted`; only `hourness.stopped` goes on, so the tell-main notices of
+ * the other events do not land between the facts a spec reads.
+ */
+export function stopSeam(lookup: ServiceLookup, cache: GraphCache, graphDir: string): { readonly emit: (project: string, sessionId: string | undefined, event: LoopEmit) => void, readonly emitted: LoopEmit[] } {
+  const link = createLoopLink({
+    lookup,
+    execDir: root => join(root, '.llm', 'execute'),
+    graphDirOfRoot: () => graphDir,
+    cache,
+    report: () => {},
+    actions: { 'execute.stop-draft': stopDraftAction(cache, () => graphDir) },
+    notesChanged: () => {},
+  })
+  const emitted: LoopEmit[] = []
+  return {
+    emitted,
+    emit: (project, sessionId, event) => {
+      emitted.push(event)
+      if (event.event === 'hourness.stopped') link.emit(project, sessionId, event)
+    },
+  }
 }
 
 /** A history time: second `n` after 2026-10-30T08:00:00Z. */

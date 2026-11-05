@@ -13,13 +13,18 @@
  * checked for coverage (a round that misses an item is voided and
  * re-dispatched once with the same model and reason), one round comment is
  * written per round (§3.7.3) and the convergence table decides pass, stop
- * (the marker the brief gate reads, plus the stop draft to the person,
- * §3.7.4) or a factual notice. A pass on a task whose current attempt
+ * (the marker the brief gate reads, and `hourness.stopped`, whose
+ * `execute.stop-draft` action words the draft to the person, §3.7.4, D11)
+ * or a factual notice. A done handback, a review that is skipped and a pass
+ * hand `hourness.handback`, `hourness.review-skipped` and
+ * `hourness.review-passed` to the loop board (§2.5). A pass on a task whose current attempt
  * already reached the trunk completes the task with the evidence of that
  * advance and removes its clean worktree (§3.8.4: the trunk-advance check
  * left it in progress while the review was pending).
  * A module's design review writes the record
- * the module release gate reads (§3.7.5). Every step checks the graph for
+ * the module release gate reads (§3.7.5); a goal's acceptance review writes
+ * its findings and its round comment on the goal, the completion gate's
+ * fifth item, and stops the way a task review does (§3.9.4). Every step checks the graph for
  * the same childId first, so a restart's reconciliation can rerun it
  * (§3.6.2).
  *
@@ -43,15 +48,15 @@ import { deliver } from '../rules/wake.ts'
 import { looksSecret } from '../data/secret-shape.ts'
 import { LESSONS_SERVICE } from '../lessons/service.ts'
 import { projectOf } from '../data/project-root.ts'
-import { askDraft } from './asks.ts'
 import type { Attempt, HandbackComment } from './attempts.ts'
+import type { LoopEmit } from './loop-link.ts'
 import { communicationOf, forgetAttempt, parseDispatchComment, parseHandbackComment, renderHandbackComment, REVIEW_TASK_ACCEPTANCE, taskReviewOf } from './attempts.ts'
 import type { CommandRunner, GraphCache } from './dispatch.ts'
 import { sha256Hex } from './digest.ts'
 import { floorHits, parseFloor, type FloorCall, type FloorChange } from './floor.ts'
 import { emitMetric } from './metrics.ts'
-import { isDesignReview } from '../graph/execute-stage.ts'
-import { converge, normalizeVerdict, renderRoundComment, roundsOf, roundsSinceHuman, latestHumanAt, type Round } from './review.ts'
+import { acceptanceRounds, isDesignReview } from '../graph/execute-stage.ts'
+import { converge, normalizeVerdict, renderAcceptanceComment, renderRoundComment, roundsOf, roundsSinceHuman, latestHumanAt, type Round } from './review.ts'
 import { handbackProblems, reviewProblems } from './schemas.ts'
 import { writeWithRetry } from './retry.ts'
 import type { Git } from './git.ts'
@@ -82,6 +87,8 @@ export interface HandbackDeps {
   readonly redispatch?: (reviewTaskId: string, attempt: Attempt) => Promise<boolean>
   /** The evidence of the task's newest checked trunk advance since its latest dispatch (src/execute/advance.ts): the trailer commit and the check's commands; `undefined` while this attempt has not reached the trunk. */
   readonly trunkEvidence?: (projectRoot: string, task: string) => Promise<readonly Evidence[] | undefined>
+  /** Hand an event to the loop board (src/execute/loop-link.ts): `hourness.handback`, `hourness.review-skipped`, `hourness.review-passed`, `hourness.stopped` (§2.5). */
+  readonly emit?: (project: string, sessionId: string | undefined, event: LoopEmit) => void
 }
 
 /** The stop markers this process wrote itself when the graph refused the comment (§3.7.3); the brief gate reads them through the row. */
@@ -97,12 +104,115 @@ export function stoppedInMemory(nodeId: string): boolean {
   return stoppedInProcess.has(nodeId)
 }
 
+/** Run the processing of one settled activation to its end; never rejects. The reconcile awaits it (§3.9.6 step 3). */
+export async function settleHandback(deps: HandbackDeps, attempt: Attempt, settlement: unknown): Promise<void> {
+  try {
+    await processHandback(deps, attempt, settlement)
+  }
+  catch (error) {
+    deps.report(undefined, 'degraded', `交回处理没跑完（${attempt.childId}）：${errorText(error)}；这次交回的批注可能没写上，重新派发按新的一轮算`)
+  }
+}
+
 /** Enter the processing of one settled activation; never throws, never rejects. */
 export function startHandback(deps: HandbackDeps, attempt: Attempt, settlement: unknown): void {
-  void processHandback(deps, attempt, settlement).catch((error: unknown) => {
-    deps.report(undefined, 'degraded', `交回处理没跑完（${attempt.childId}）：${errorText(error)}；这次交回的批注可能没写上，重新派发按新的一轮算`)
-  })
+  void settleHandback(deps, attempt, settlement)
 }
+
+// ---- the handback projection (§3.9.6 step 3) ----
+
+/** The key of the session projection a lost dispatch's handback is read back from. */
+export const HANDBACK_PROJECTION = 'hournessHandback'
+
+const STRUCTURED_OUTPUT = 'structured_output'
+/** At most this many calls wait for their results; a call whose result never came is dropped first. */
+const PENDING_KEPT = 8
+
+/** What the projection keeps of one session. */
+interface HandbackState {
+  /** Not a subagent's session: nothing to fold. */
+  readonly inert: boolean
+  /** Events a fork inherited are not this session's own calls. */
+  readonly skipBelowSeq: number
+  /** The `structured_output` calls whose result has not come yet: the call id and its arguments. */
+  readonly pending: readonly { readonly id: string, readonly args: Readonly<Record<string, unknown>> }[]
+  /** The arguments of the last `structured_output` call whose result was not an error, or null. */
+  readonly handback: Readonly<Record<string, unknown>> | null
+}
+
+/** The arguments of a tool-call block: the provider's JSON text, or already an object; undefined when they are not an object. */
+function callArguments(block: Record<string, unknown>): Readonly<Record<string, unknown>> | undefined {
+  let input: unknown = block.arguments ?? block.input
+  if (typeof input === 'string') {
+    try {
+      input = JSON.parse(input)
+    }
+    catch {
+      return undefined
+    }
+  }
+  return isRecord(input) ? input : undefined
+}
+
+/**
+ * Fold one session event (the src/design/talk.ts pattern): an assistant
+ * message's `structured_output` call blocks wait for their `tool/result`
+ * by call id; a result that is not an error makes the call's arguments the
+ * handback, the way the subagent runtime captures it (subagent
+ * structured.js: the capture commits only after a successful result). The
+ * same state comes back when nothing changed.
+ */
+function handbackApply(state: HandbackState, event: { readonly type: string, readonly seq: number, readonly data?: unknown }): HandbackState {
+  if (state.inert || event.seq < state.skipBelowSeq || !isRecord(event.data) || !isRecord(event.data.message)) return state
+  const { message } = event.data
+  if (event.type === 'assistant/message' && Array.isArray(message.content)) {
+    const calls = message.content.flatMap((block) => {
+      if (!isRecord(block) || block.type !== 'tool-call' || block.name !== STRUCTURED_OUTPUT || typeof block.id !== 'string') return []
+      const args = callArguments(block)
+      return args === undefined ? [] : [{ id: block.id, args }]
+    })
+    return calls.length === 0 ? state : { ...state, pending: [...state.pending, ...calls].slice(-PENDING_KEPT) }
+  }
+  if (event.type !== 'tool/result' || typeof message.toolCallId !== 'string') return state
+  const call = state.pending.find(entry => entry.id === message.toolCallId)
+  if (call === undefined) return state
+  const pending = state.pending.filter(entry => entry !== call)
+  return message.isError === true ? { ...state, pending } : { ...state, pending, handback: call.args }
+}
+
+function parseHandbackState(value: unknown): HandbackState {
+  if (!isRecord(value) || typeof value.inert !== 'boolean' || typeof value.skipBelowSeq !== 'number' || !Array.isArray(value.pending) || (value.handback !== null && !isRecord(value.handback))) {
+    throw new TypeError('handback state: inert, skipBelowSeq, pending and handback are required')
+  }
+  return value as unknown as HandbackState
+}
+
+function parseHandbackView(value: unknown): Readonly<Record<string, unknown>> | null {
+  if (value !== null && !isRecord(value)) throw new TypeError('handback view: an object or null')
+  return value
+}
+
+/**
+ * The session projection `hournessHandback` (§3.9.6 step 3, U6): per
+ * subagent session, the last `structured_output` arguments whose result was
+ * not an error. Its view is that value or null; a session observation
+ * carries it in `projections.values` (only units with a view are there,
+ * session-projection:141–153), which is how the reconcile reads the
+ * handback of a dispatch the host lost.
+ */
+export const handbackProjection = {
+  key: HANDBACK_PROJECTION,
+  stateVersion: 1,
+  stateSchema: { parse: parseHandbackState },
+  init: (header: unknown, inheritedEventCount: number): HandbackState => ({
+    inert: !isRecord(header) || header.origin !== 'subagent',
+    skipBelowSeq: inheritedEventCount,
+    pending: [],
+    handback: null,
+  }),
+  apply: handbackApply,
+  wire: { viewSchema: { parse: parseHandbackView }, view: (state: HandbackState): Readonly<Record<string, unknown>> | null => state.handback },
+} as const
 
 async function processHandback(deps: HandbackDeps, attempt: Attempt, settlement: unknown): Promise<void> {
   const graph = await deps.cache.load(attempt.graphDir)
@@ -120,6 +230,11 @@ async function processHandback(deps: HandbackDeps, attempt: Attempt, settlement:
     forgetAttempt(attempt.childId)
     return
   }
+  if (attempt.role === 'acceptance-review') {
+    await acceptanceHandback(deps, attempt, node, settlement)
+    forgetAttempt(attempt.childId)
+    return
+  }
   if (isDesignReview(graph, node)) {
     await designReviewHandback(deps, attempt, graph, node, settlement)
     forgetAttempt(attempt.childId)
@@ -129,12 +244,18 @@ async function processHandback(deps: HandbackDeps, attempt: Attempt, settlement:
   forgetAttempt(attempt.childId)
 }
 
-/** Whether the graph already carries this childId's processing (§3.6.2's idempotency): the worker's summary or ending comment, the reviewer's round comment, the module's design-review record. */
-function alreadyProcessed(graph: LoadedGraph, attempt: Attempt): boolean {
+/** Whether the graph already carries this childId's processing (§3.6.2's idempotency): the worker's summary or ending comment, the reviewer's round comment, the module's design-review record, the acceptance review's round, ending or void; the reconcile asks the same (§3.9.6 step 2). */
+export function alreadyProcessed(graph: LoadedGraph, attempt: Attempt): boolean {
   const node = graph.nodes.get(attempt.node)
   if (node !== undefined) {
     if (attempt.role === 'worker') {
       const mine = node.history.some(entry => entry.op === 'comment' && entry.actor === 'harness' && entry.text !== undefined && (parseHandbackComment(entry.text)?.childId === attempt.childId || ENDED.exec(entry.text)?.[3] === attempt.childId))
+      if (mine) return true
+    }
+    else if (attempt.role === 'acceptance-review') {
+      // The goal's round comment, the reviewer's ending comment or the void of this round (§3.9.4).
+      const mine = acceptanceRounds(node).some(round => round.childId === attempt.childId) || node.history.some(entry => entry.op === 'comment' && entry.actor === 'harness' && entry.text !== undefined
+        && (ENDED.exec(entry.text)?.[3] === attempt.childId || entry.text.startsWith(`第 ${attempt.attempt} 次结束：verdict invalid · ${attempt.childId} · `) || entry.text.startsWith(`审查作废 · ${attempt.childId} · `)))
       if (mine) return true
     }
     else if (roundsOf(node.history).some(round => round.childId === attempt.childId)) return true
@@ -236,6 +357,8 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
   // The effective depth (§3.7.1) of a done handback: the change and the command record against the floor.
   let depth: '全审' | '轻审' | undefined
   let floorHit: string | undefined
+  // The event's `floorHit` (§2.5): `unparsed`, the class that was hit, or empty.
+  let hitClass = ''
   if (status === 'done' && stale.length === 0) {
     const floor = parseFloor(graph.nodes.get('norm-review-floor'))
     const change = await changeOf(deps.git, worktree, attempt.baseSha, commits.at(-1))
@@ -245,13 +368,23 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
     if (floor.unparsed.length > 0) {
       depth = '全审'
       floorHit = '清单有判不了的条目'
+      hitClass = 'unparsed'
     }
     else if (hits.length > 0) {
       depth = '全审'
       const entry = floor.entries.find(candidate => String(candidate.index) === hits[0].index)
       floorHit = `审查改为全审：碰到必须全审清单第 ${hits[0].index} 类（${entry?.text ?? hits[0].reason}）`
+      hitClass = hits[0].index
     }
     else depth = declared === 'light' ? '轻审' : declared === 'skip' ? undefined : '全审'
+    emitMetric({
+      event: 'execute.review-depth',
+      task: node.id,
+      declared,
+      effective: depth === '全审' ? 'full' : depth === '轻审' ? 'light' : 'skip',
+      ...(hitClass === '' || hitClass === 'unparsed' ? {} : { hit: hitClass }),
+      ...(hitClass === 'unparsed' ? { unparsed: true } : {}),
+    })
   }
   const counts = communicationOf(attempt.childId)
   const summary: HandbackComment = {
@@ -320,6 +453,15 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
   const depthWord = depth === undefined ? '不审' : depth
   const summaryText = `Task ${node.id} attempt ${attempt.attempt} handed back done: ${commits.length} commit(s), ${files.length} file(s), effective review depth ${depth === undefined ? 'none (skip)' : depthWord}${depth === undefined ? '' : reviewTask === undefined ? ', but its review task could not be created' : `, waiting for your review dispatch of ${reviewTask.id}`}.`
   notify(deps, attempt.graphDir, 'handback', attempt, `Task ${node.id} handed back done.`, `${summaryText}${problems.length > 0 ? `\nSemantic problems of the handback: ${problems.join('; ')}` : ''}`)
+  // The loop board's entries take it from here (§2.5): dispatch the review, or integrate a task that is not reviewed.
+  if (depth === undefined) deps.emit?.(projectRoot, attempt.parentSession, { event: 'hourness.review-skipped', key: `review-skipped:${node.id}:${attempt.childId}`, payload: { task: node.id } })
+  else {
+    deps.emit?.(projectRoot, attempt.parentSession, {
+      event: 'hourness.handback',
+      key: `handback:${node.id}:${attempt.childId}`,
+      payload: { task: node.id, attempt: attempt.attempt, status, depth: depth === '全审' ? 'full' : 'light', reviewTask: reviewTask?.id ?? '', commits: commits.length, floorHit: hitClass },
+    })
+  }
 }
 
 function stringList(value: unknown): readonly string[] | undefined {
@@ -476,30 +618,25 @@ async function voidRound(deps: HandbackDeps, attempt: Attempt, node: GraphNode, 
   return 'redispatched'
 }
 
-/** The stop draft of §3.7.4 delivered to the holder, the way the loop board's fallback executor sends it (E8 wires the board in front of this). */
-function deliverStopDraft(deps: HandbackDeps, attempt: Attempt, node: GraphNode, reviewed: GraphNode, rounds: number, blocking: number, where: readonly string[], key: string): void {
-  const ask = askDraft('review-stuck', { task: reviewed.id, title: reviewed.title, rounds, blocking, files: where.slice(0, 3) })
-  const draft = `${ask.draft.title}\n背景：${ask.draft.background}\n提议：${ask.draft.proposal}\n疑问：${ask.draft.doubt}\n不做：${ask.draft.notTaken}`
-  const text = `${reviewed.id} stopped: ${rounds} review rounds, ${blocking} blocking findings left (${where.slice(0, 3).join(', ') || 'none named'}). Put it to the person in your next batch with propose_to_human (kind question, parent ${reviewed.id}, sources [${node.id}]); a draft that passes the checks: ${ask.draft.title} / ${ask.draft.background} / ${ask.draft.proposal} / ${ask.draft.doubt} / ${ask.draft.notTaken} — in the person's words, the four lines are: ${draft.replace(/\n/g, ' | ')}. Other work goes on. When everything left waits for the person, call await_human with the question ids.`
-  const notice = createUserNotice('glm-hourness-loop', `${reviewed.id} review stopped after ${rounds} rounds`, text, { hournessLoop: { entry: 'execute.stopped', key } })
-  const holder = mainAgentOf(holderHome(deps.lookup), attempt.graphDir)
-  const way = holder === undefined ? undefined : deliver(deps.lookup, holder.sessionId, notice)
-  if (way === undefined || way.kind !== 'sent') {
-    const why = holder === undefined ? '项目没有主 Agent 记录' : way === undefined || way.kind === 'gone' ? '持有者的会话不在了' : way.kind === 'failed' ? way.why : '没有可用的 agent 注册表'
-    deps.report(attempt.parentSession, 'degraded', `停下的提醒送不到当前主 Agent（${node.id}）：${why}`)
-  }
-}
+type ReviewKind = 'review' | 'design review' | 'acceptance review'
+const capitalized = (kind: ReviewKind): string => `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`
 
 /** The reviewer settled without a structured verdict: the ending comment and the notice; the next dispatch starts a fresh round (§3.7.2). */
-async function endWithoutVerdict(deps: HandbackDeps, attempt: Attempt, node: GraphNode, kind: 'review' | 'design review', stopReason: string): Promise<void> {
+async function endWithoutVerdict(deps: HandbackDeps, attempt: Attempt, node: GraphNode, kind: ReviewKind, stopReason: string): Promise<void> {
   await comment(deps, attempt.graphDir, node.id, `第 ${attempt.attempt} 次结束：${stopReason} · ${attempt.childId}`)
-  notify(deps, attempt.graphDir, 'review', attempt, `${kind === 'review' ? 'Review' : 'Design review'} ${node.id} ended without a verdict (${stopReason}).`, `The reviewer settled as ${stopReason} with no structured verdict; dispatch the ${kind} again.`)
+  notify(deps, attempt.graphDir, 'review', attempt, `${capitalized(kind)} ${node.id} ended without a verdict (${stopReason}).`, `The reviewer settled as ${stopReason} with no structured verdict; dispatch the ${kind} again.`)
 }
 
 /** The verdict the reviewer brought does not parse: the ending comment names the schema problems (§3.7.2). */
-async function endWithInvalidVerdict(deps: HandbackDeps, attempt: Attempt, node: GraphNode, kind: 'review' | 'design review', problems: string): Promise<void> {
+async function endWithInvalidVerdict(deps: HandbackDeps, attempt: Attempt, node: GraphNode, kind: ReviewKind, problems: string): Promise<void> {
   await comment(deps, attempt.graphDir, node.id, `第 ${attempt.attempt} 次结束：verdict invalid · ${attempt.childId} · ${problems}`)
-  notify(deps, attempt.graphDir, 'review', attempt, `${kind === 'review' ? 'Review' : 'Design review'} ${node.id} brought an unusable verdict.`, `${problems}; dispatch the ${kind} again.`)
+  notify(deps, attempt.graphDir, 'review', attempt, `${capitalized(kind)} ${node.id} brought an unusable verdict.`, `${problems}; dispatch the ${kind} again.`)
+}
+
+/** The history time of the newest comment on a node with exactly this text, read back after the write: the key of a stop (D11). */
+async function commentAt(graphDir: string, nodeId: string, text: string): Promise<string | undefined> {
+  const graph = await openEngine(graphDir).load().catch(() => undefined)
+  return graph?.nodes.get(nodeId)?.history.filter(entry => entry.op === 'comment' && entry.text === text).at(-1)?.at
 }
 
 async function taskReviewHandback(deps: HandbackDeps, attempt: Attempt, graph: LoadedGraph, node: GraphNode, settlement: unknown): Promise<void> {
@@ -557,6 +694,7 @@ async function taskReviewHandback(deps: HandbackDeps, attempt: Attempt, graph: L
     markStoppedInMemory(node.id)
     deps.report(attempt.parentSession, 'degraded', `停下的标记写不进图（${node.id}）：本进程内照样拒绝派发，图恢复可写后补写`)
   }
+  const projectRoot = (attempt.worktree === undefined ? undefined : projectOf(attempt.worktree)?.root) ?? dirname(dirname(attempt.graphDir))
   if (convergence.action === 'pass') {
     // §3.7.3: the review task is done, with the evidence the trunk check later reads; a reviewed task that already reached the trunk goes with it.
     const patchId = await patchIdOf(deps, attempt, handback)
@@ -567,7 +705,6 @@ async function taskReviewHandback(deps: HandbackDeps, attempt: Attempt, graph: L
     })
     if (!finished.ok) deps.report(attempt.parentSession, 'degraded', `审查任务的完成写不进图（${node.id}）：${finished.error.message}`)
     // A reviewed task already on the trunk waited for this pass (§3.8.4, D2): it goes done with the evidence of its trunk advance.
-    const projectRoot = (attempt.worktree === undefined ? undefined : projectOf(attempt.worktree)?.root) ?? dirname(dirname(attempt.graphDir))
     const trunkEvidence = reviewed.status === 'done' || deps.trunkEvidence === undefined
       ? undefined
       : await deps.trunkEvidence(projectRoot, reviewed.id).catch((error: unknown) => {
@@ -588,12 +725,15 @@ async function taskReviewHandback(deps: HandbackDeps, attempt: Attempt, graph: L
     }
     notify(deps, attempt.graphDir, 'review', attempt, `Task ${reviewed.id} round ${k}: APPROVED.`, `The review of ${reviewed.id} passed in round ${k} (${depth}); the review task ${node.id} is done. Continue with the merge checks.`)
     emitMetric({ event: 'execute.review', task: reviewed.id, round: k, depth: depth === '全审' ? 'full' : 'light', model: attempt.model, blocking: 0, nonBlocking: nonBlocking.length, demoted: normalized.demoted })
+    deps.emit?.(projectRoot, attempt.parentSession, { event: 'hourness.review-passed', key: `review-passed:${reviewed.id}:${attempt.childId}`, payload: { task: reviewed.id, round: k } })
     return
   }
   if (stopping) {
-    // §3.7.3: the marker is on this round's comment (written above), then the stop draft to the person.
+    // §3.7.3: the marker is on this round's comment (written above); the stop draft goes to the person through `hourness.stopped`, keyed with that comment's time (D11).
     emitMetric({ event: 'execute.stop', node: reviewed.id, kind: 'review', rounds: k })
-    deliverStopDraft(deps, attempt, node, reviewed, k, blocking.length, blocking.map(finding => finding.where), `stopped:${node.id}:review-${current.at}`)
+    const roundText = renderRoundComment(k, blocking.length, nonBlocking.length, depth, attempt.childId, true)
+    const stoppedAt = roundWritten ? await commentAt(attempt.graphDir, node.id, roundText) : undefined
+    deps.emit?.(projectRoot, attempt.parentSession, { event: 'hourness.stopped', key: `stopped:${node.id}:review-${stoppedAt ?? current.at}`, payload: { node: node.id, kind: 'review', rounds: k } })
     return
   }
   if (blocking.length > 0) {
@@ -664,4 +804,95 @@ async function designReviewHandback(deps: HandbackDeps, attempt: Attempt, graph:
   emitMetric({ event: 'execute.review', task: module.id, round: k, depth: 'full', model: attempt.model, blocking: blocking.length, nonBlocking: nonBlocking.length, demoted: normalized.demoted })
   const line = normalized.verdict === 'APPROVED' ? `Module ${module.id} design review round ${k}: APPROVED` : `Module ${module.id} design review round ${k}: CHANGES_REQUESTED, ${blocking.length} blocking`
   notify(deps, attempt.graphDir, 'review', attempt, line, `${line}.\n${blocking.map(finding => `- ${finding.criterion} at ${finding.where}: ${finding.what} (fix: ${finding.fix})`).join('\n')}`)
+}
+
+// ---- the acceptance review of a goal (§3.9.4) ----
+
+const ACCEPTANCE_CHECKED = /^acceptance:(\d+)(?!\d)[\s:：,，.—–-]*(\S.*)?$/
+
+/** The goal's acceptance items `checked` does not cover with evidence: each needs an entry `acceptance:<i> <evidence>` (§3.9.4). */
+function uncovered(checked: readonly string[], count: number): readonly number[] {
+  const covered = new Set<number>()
+  for (const entry of checked) {
+    const match = ACCEPTANCE_CHECKED.exec(entry.trim())
+    if (match !== null && match[2] !== undefined) covered.add(Number(match[1]))
+  }
+  return Array.from({ length: count }, (_, index) => index).filter(index => !covered.has(index))
+}
+
+/**
+ * The verdict of a goal's acceptance review (§3.9.4, design 0.2 §3.9.4): a
+ * verdict that names another commit than the trunk commit of the dispatch,
+ * or does not cover every acceptance item with its evidence, voids the round
+ * once (a second void goes back to the main agent); otherwise the findings
+ * comment and the round comment `验收审查第 k 轮：…` on the goal, which the
+ * completion gate's fifth item reads. `k` counts the goal's rounds since the
+ * person's latest word on the goal or a question under it; the release the
+ * person wrote before any round is no answer to the review, so the table's
+ * "after the person answered" row needs a word that came after an earlier
+ * round. A stop marks the round and hands `hourness.stopped` (kind
+ * `acceptance`) to the loop board.
+ */
+async function acceptanceHandback(deps: HandbackDeps, attempt: Attempt, goal: GraphNode, settlement: unknown): Promise<void> {
+  const structured = isRecord(settlement) && isRecord(settlement.structured) ? settlement.structured : undefined
+  const stopReason = isRecord(settlement) && typeof settlement.stopReason === 'string' && settlement.stopReason !== '' ? settlement.stopReason : 'error'
+  if (structured === undefined) {
+    await endWithoutVerdict(deps, attempt, goal, 'acceptance review', stopReason)
+    return
+  }
+  const verdict = verdictOf(settlement)
+  if (verdict === undefined) {
+    await endWithInvalidVerdict(deps, attempt, goal, 'acceptance review', problemsOf(settlement))
+    return
+  }
+  const trunk = attempt.baseSha ?? ''
+  const named = verdict.commit.toLowerCase()
+  const sameCommit = trunk !== '' && /^[0-9a-f]{7,40}$/.test(named) && (trunk.startsWith(named) || named.startsWith(trunk))
+  const missing = uncovered(verdict.checked, (goal.acceptance ?? []).length)
+  const fault = !sameCommit ? `the verdict names commit ${verdict.commit.slice(0, 40)}, not the trunk commit ${trunk.slice(0, 12)} the review was dispatched at`
+    : missing.length > 0 ? `checked does not cover acceptance:${missing.join(', acceptance:')} with its evidence` : undefined
+  if (fault !== undefined) {
+    await voidRound(deps, attempt, goal, fault)
+    return
+  }
+  const normalized = normalizeVerdict(goal, verdict)
+  const blocking = normalized.findings.filter(finding => finding.blocking)
+  const nonBlocking = normalized.findings.filter(finding => !finding.blocking)
+  const trunk12 = trunk.slice(0, 12)
+  const findingLines = normalized.findings.map(finding => `- [${finding.blocking ? 'blocking' : 'non-blocking'}] ${finding.criterion} at ${finding.where}: ${finding.what} (fix: ${finding.fix})`)
+  await comment(deps, attempt.graphDir, goal.id, `验收审查交回 · ${attempt.childId} · ${normalized.verdict} · 提交 ${trunk12} · 挡路 ${blocking.length} · 不挡路 ${nonBlocking.length}${normalized.demoted > 0 ? ` · 改为不挡路 ${normalized.demoted} 条：没有挂到验收条目上` : ''}${findingLines.length > 0 ? `\n${findingLines.join('\n')}` : ''}`)
+  // The rounds are read from the goal after the findings comment (the graph is the source of truth).
+  const fresh = await deps.cache.load(attempt.graphDir)
+  const freshGoal = fresh.nodes.get(goal.id)
+  if (freshGoal === undefined) return
+  const questions = [...fresh.nodes.values()].filter(entry => entry.type === 'question' && entry.parent === goal.id)
+  const humanAt = latestHumanAt([freshGoal.history, ...questions.map(entry => entry.history)])
+  const all = acceptanceRounds(freshGoal)
+  const since: Round[] = all.filter(round => humanAt === undefined || round.at > humanAt)
+    .map(round => ({ k: round.k, blocking: round.blocking, nonBlocking: 0, depth: '全审', childId: round.childId, at: round.at, stopped: round.stopped }))
+  const answered = humanAt !== undefined && all.some(round => round.at <= humanAt)
+  const k = (since.at(-1)?.k ?? 0) + 1
+  const current: Round = { k, blocking: blocking.length, nonBlocking: nonBlocking.length, depth: '全审', childId: attempt.childId, at: new Date().toISOString(), stopped: false }
+  const convergence = converge([...since, current], answered)
+  const stopping = convergence.action === 'stop'
+  const roundText = renderAcceptanceComment(k, normalized.verdict, blocking.length, attempt.childId, trunk12, attempt.pins, stopping)
+  const written = await comment(deps, attempt.graphDir, goal.id, roundText)
+  if (!written) {
+    if (stopping) markStoppedInMemory(goal.id)
+    deps.report(attempt.parentSession, 'degraded', `验收审查的轮次批注写不进图（${goal.id}，${attempt.childId}）：完成门禁读不到这一轮${stopping ? '；本进程内照样拒绝派发，图恢复可写后补写' : ''}`)
+  }
+  emitMetric({ event: 'execute.acceptance-review', goal: goal.id, round: k, model: attempt.model, verdict: normalized.verdict, blocking: blocking.length })
+  const projectRoot = (attempt.worktree === undefined ? undefined : projectOf(attempt.worktree)?.root) ?? dirname(dirname(attempt.graphDir))
+  if (stopping) {
+    // §3.7.3 for the goal: the marker is on this round's comment; the stop draft goes to the person through `hourness.stopped` (D11).
+    emitMetric({ event: 'execute.stop', node: goal.id, kind: 'acceptance', rounds: k })
+    const stoppedAt = written ? await commentAt(attempt.graphDir, goal.id, roundText) : undefined
+    deps.emit?.(projectRoot, attempt.parentSession, { event: 'hourness.stopped', key: `stopped:${goal.id}:acceptance-${stoppedAt ?? current.at}`, payload: { node: goal.id, kind: 'acceptance', rounds: k } })
+    return
+  }
+  if (convergence.action === 'pass') {
+    notify(deps, attempt.graphDir, 'review', attempt, `Goal ${goal.id} acceptance review round ${k}: APPROVED.`, `The acceptance review of goal ${goal.id} passed in round ${k} at ${trunk12}. Call update_goal complete; the completion gate checks what is left.`)
+    return
+  }
+  notify(deps, attempt.graphDir, 'review', attempt, `Goal ${goal.id} acceptance review round ${k}: ${blocking.length} blocking finding(s).`, `Round ${k} of the acceptance review at ${trunk12} found ${blocking.length} blocking:\n${blocking.map(finding => `- ${finding.criterion} at ${finding.where}: ${finding.what} (fix: ${finding.fix})`).join('\n')}\nSplit the failed acceptance into new tasks under the approved feature or task it belongs to, dispatch them, and once they are on the trunk dispatch the acceptance review again: dispatch_task {id: "${goal.id}"} with a model and why.`)
 }
