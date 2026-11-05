@@ -45,6 +45,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "合入步（wf_f32235c26051667e merge）失败，main 没动：合入 origin/main 55e6cb2 得本地合并提交 9807003（没有推），build 与 preflight 绿，npm test 连跑三次都败在 tests/loops-run.spec.ts 第 12 项（state.json 的 last[...].outcome 读到 undefined，预期 ran），单独跑该 spec 25/25；探针与棘轮没跑。这一项不在本分支的改动里。原因已由 habits-prompts 的提交 4598fa7 查明并修在测试上：src/loops/run.ts 先写 loop-done 记录再 await inbox.save()，测试只等到记录出现就去读 state.json；修法是第 12 项像第 15 项一样经 savedState 等 last[entry] 写出（5 秒上限）。编排方定：不另开修测试的线，等 habits-prompts 合入 main 后重派本节点的合入步，合入最新 origin/main 再跑全量门禁。"
+    },
+    {
+      "at": "2026-11-05T18:26:39.886Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "habits-prompts 已合入 main（51af510），带进 tests/loops-run.spec.ts 第 12 项的根因修法。编排方重派合入 compact-recall-redact-land（wf_3dc7f998ae602870）：在原工作树合入最新 origin/main 后重跑全量门禁，绿了快进 main、推两个远端、在主检出重建 dist。transcript 行出厂停用，本次合入不做桌面核对；桌面版因 cookie 超限起不来（见 norm-verify-tiers），等人批准修复，这一步不启动桌面版。记录 .agents/tasks/compact-recall-redact/land.md。"
     }
   ]
 }
