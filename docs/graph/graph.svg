@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1579" height="18824" viewBox="0 0 1579 18824" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="4fa9f4948f9b">
-<title>项目图 · 修订 4fa9f4948f9b · 265 个节点</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1579" height="18901" viewBox="0 0 1579 18901" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="8adf71fe2d15">
+<title>项目图 · 修订 8adf71fe2d15 · 266 个节点</title>
 <defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6b7280"/></marker><marker id="graph-arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7c3aed"/></marker></defs>
-<rect width="1579" height="18824" fill="#ffffff"/>
+<rect width="1579" height="18901" fill="#ffffff"/>
 <g data-legend="true" transform="translate(20 20)">
 <rect width="596" height="134" rx="8" fill="#f9fafb" stroke="#e5e7eb"/>
-<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 4fa9f4948f9b · 265 个节点</text>
+<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 8adf71fe2d15 · 266 个节点</text>
 <text x="10" y="48.2" font-size="12" fill="#6b7280">状态</text>
 <rect x="54" y="37" width="28" height="14" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="88" y="48.2" font-size="12" fill="#111827">完成</text>
@@ -95,9 +95,9 @@
 <path data-edge="parent" data-node="zcode-3171" data-to="glm-house" d="M215 1799C247 1799 247 3383.5 279 3383.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="zcode-3171-follow" data-to="glm-house" d="M215 1799C247 1799 247 3469.5 279 3469.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-zcode-3171" data-to="glm-house" d="M215 1799C247 1799 247 3555.5 279 3555.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m0" data-to="hourness" d="M215 11136C247 11136 247 3662.5 279 3662.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="orch" data-to="hourness" d="M215 11136C247 11136 247 11020.5 279 11020.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m2" data-to="orch" d="M508 11020.5C540 11020.5 540 4224.5 572 4224.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m0" data-to="hourness" d="M215 11174.5C247 11174.5 247 3662.5 279 3662.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="orch" data-to="hourness" d="M215 11174.5C247 11174.5 247 11059 279 11059" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m2" data-to="orch" d="M508 11059C540 11059 540 4224.5 572 4224.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="q-graph-design" data-to="m2" d="M861 4224.5C893 4224.5 893 3742.5 925 3742.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m2-2" data-to="m2" d="M861 4224.5C893 4224.5 893 3819.5 925 3819.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m2-1" data-to="m2" d="M861 4224.5C893 4224.5 893 3887.5 925 3887.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -115,7 +115,7 @@
 <path data-edge="parent" data-node="q-graph-details" data-to="m2" d="M861 4224.5C893 4224.5 893 4597.5 925 4597.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-1" data-to="m2" d="M861 4224.5C893 4224.5 893 4656.5 925 4656.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m2-7" data-to="m2" d="M861 4224.5C893 4224.5 893 4715.5 925 4715.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m3" data-to="orch" d="M508 11020.5C540 11020.5 540 5452.5 572 5452.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m3" data-to="orch" d="M508 11059C540 11059 540 5452.5 572 5452.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m3-2" data-to="m3" d="M861 5452.5C893 5452.5 893 4786.5 925 4786.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m3-3" data-to="m3" d="M861 5452.5C893 5452.5 893 4845.5 925 4845.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m3-4" data-to="m3" d="M861 5452.5C893 5452.5 893 4904.5 925 4904.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -135,7 +135,7 @@
 <path data-edge="parent" data-node="d-main-agent-no-ask-card" data-to="m3" d="M861 5452.5C893 5452.5 893 5973.5 925 5973.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m3-metrics-wiring" data-to="m3" d="M861 5452.5C893 5452.5 893 6050.5 925 6050.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m3-5" data-to="m3" d="M861 5452.5C893 5452.5 893 6118.5 925 6118.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m4" data-to="orch" d="M508 11020.5C540 11020.5 540 6482 572 6482" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m4" data-to="orch" d="M508 11059C540 11059 540 6482 572 6482" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m4-gate" data-to="m4" d="M861 6482C893 6482 893 6189.5 925 6189.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m4-rules" data-to="m4" d="M861 6482C893 6482 893 6248.5 925 6248.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m4-checks" data-to="m4" d="M861 6482C893 6482 893 6307.5 925 6307.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -146,8 +146,8 @@
 <path data-edge="parent" data-node="m4-reanchor-violations" data-to="m4" d="M861 6482C893 6482 893 6629.5 925 6629.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m4-reanchor-norms" data-to="m4" d="M861 6482C893 6482 893 6706.5 925 6706.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m4-request-card" data-to="m4" d="M861 6482C893 6482 893 6774.5 925 6774.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-native-panel" data-to="orch" d="M508 11020.5C540 11020.5 540 6854.5 572 6854.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m5" data-to="orch" d="M508 11020.5C540 11020.5 540 7348.5 572 7348.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-native-panel" data-to="orch" d="M508 11059C540 11059 540 6854.5 572 6854.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m5" data-to="orch" d="M508 11059C540 11059 540 7348.5 572 7348.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m5-4" data-to="m5" d="M861 7348.5C893 7348.5 893 6934.5 925 6934.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m5-2" data-to="m5" d="M861 7348.5C893 7348.5 893 6993.5 925 6993.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m5-3" data-to="m5" d="M861 7348.5C893 7348.5 893 7061.5 925 7061.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -162,7 +162,7 @@
 <path data-edge="parent" data-node="lessons-4" data-to="lessons" d="M1210 7626.5C1242 7626.5 1242 7644.5 1274 7644.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="lessons-3" data-to="lessons" d="M1210 7626.5C1242 7626.5 1242 7703.5 1274 7703.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="lessons-1" data-to="lessons" d="M1210 7626.5C1242 7626.5 1242 7762.5 1274 7762.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="rules" data-to="orch" d="M508 11020.5C540 11020.5 540 8162 572 8162" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="rules" data-to="orch" d="M508 11059C540 11059 540 8162 572 8162" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-rules-human-only" data-to="rules" d="M861 8162C893 8162 893 7842.5 925 7842.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-32" data-to="rules" d="M861 8162C893 8162 893 7910.5 925 7910.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-33" data-to="rules" d="M861 8162C893 8162 893 7969.5 925 7969.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -173,18 +173,18 @@
 <path data-edge="parent" data-node="d-main-agent-peak-exempt" data-to="rules" d="M861 8162C893 8162 893 8327.5 925 8327.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-rules-in-repo" data-to="rules" d="M861 8162C893 8162 893 8404.5 925 8404.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="rules-r4d" data-to="rules" d="M861 8162C893 8162 893 8481.5 925 8481.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="dogfood" data-to="orch" d="M508 11020.5C540 11020.5 540 8609 572 8609" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="dogfood" data-to="orch" d="M508 11059C540 11059 540 8609 572 8609" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-dogfood-scope" data-to="dogfood" d="M861 8609C893 8609 893 8570.5 925 8570.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-rules-peak-slice" data-to="dogfood" d="M861 8609C893 8609 893 8647.5 925 8647.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-role-cards" data-to="orch" d="M508 11020.5C540 11020.5 540 8736.5 572 8736.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-dispatch" data-to="orch" d="M508 11020.5C540 11020.5 540 8813.5 572 8813.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-async-cards" data-to="orch" d="M508 11020.5C540 11020.5 540 8890.5 572 8890.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-driver" data-to="orch" d="M508 11020.5C540 11020.5 540 8976.5 572 8976.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="risk-orch-distribution" data-to="orch" d="M508 11020.5C540 11020.5 540 9062.5 572 9062.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-decision-tiers" data-to="orch" d="M508 11020.5C540 11020.5 540 9130.5 572 9130.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-audit-trail" data-to="orch" d="M508 11020.5C540 11020.5 540 9198.5 572 9198.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-verify-tiers" data-to="orch" d="M508 11020.5C540 11020.5 540 9275.5 572 9275.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m8" data-to="orch" d="M508 11020.5C540 11020.5 540 9646 572 9646" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-role-cards" data-to="orch" d="M508 11059C540 11059 540 8736.5 572 8736.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-dispatch" data-to="orch" d="M508 11059C540 11059 540 8813.5 572 8813.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-async-cards" data-to="orch" d="M508 11059C540 11059 540 8890.5 572 8890.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-driver" data-to="orch" d="M508 11059C540 11059 540 8976.5 572 8976.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="risk-orch-distribution" data-to="orch" d="M508 11059C540 11059 540 9062.5 572 9062.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-decision-tiers" data-to="orch" d="M508 11059C540 11059 540 9130.5 572 9130.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-audit-trail" data-to="orch" d="M508 11059C540 11059 540 9198.5 572 9198.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-verify-tiers" data-to="orch" d="M508 11059C540 11059 540 9275.5 572 9275.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m8" data-to="orch" d="M508 11059C540 11059 540 9646 572 9646" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m8-detail-layout" data-to="m8" d="M861 9646C893 9646 893 9355.5 925 9355.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m8-doing-layout" data-to="m8" d="M861 9646C893 9646 893 9414.5 925 9414.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m8-ui-audit" data-to="m8" d="M861 9646C893 9646 893 9482.5 925 9482.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -194,25 +194,25 @@
 <path data-edge="parent" data-node="guide-metrics-line" data-to="onboarding" d="M1210 9743.5C1242 9743.5 1242 9743.5 1274 9743.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m8-plain-language" data-to="m8" d="M861 9646C893 9646 893 9841.5 925 9841.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m8-row-titles" data-to="m8" d="M861 9646C893 9646 893 9927.5 925 9927.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-10" data-to="orch" d="M508 11020.5C540 11020.5 540 10016.5 572 10016.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="split" data-to="orch" d="M508 11020.5C540 11020.5 540 10271 572 10271" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-10" data-to="orch" d="M508 11059C540 11059 540 10016.5 572 10016.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="split" data-to="orch" d="M508 11059C540 11059 540 10271 572 10271" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-18" data-to="split" d="M861 10271C893 10271 893 10105.5 925 10105.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-13" data-to="split" d="M861 10271C893 10271 893 10173.5 925 10173.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-14" data-to="split" d="M861 10271C893 10271 893 10241.5 925 10241.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-15" data-to="split" d="M861 10271C893 10271 893 10309.5 925 10309.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-16" data-to="split" d="M861 10271C893 10271 893 10368.5 925 10368.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-17" data-to="split" d="M861 10271C893 10271 893 10436.5 925 10436.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="bootstrap" data-to="orch" d="M508 11020.5C540 11020.5 540 10534.5 572 10534.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="bootstrap" data-to="orch" d="M508 11059C540 11059 540 10534.5 572 10534.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-bootstrap-released" data-to="bootstrap" d="M861 10534.5C893 10534.5 893 10534.5 925 10534.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="ablation" data-to="orch" d="M508 11020.5C540 11020.5 540 10623.5 572 10623.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="metrics" data-to="orch" d="M508 11020.5C540 11020.5 540 10751 572 10751" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="ablation" data-to="orch" d="M508 11059C540 11059 540 10623.5 572 10623.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="metrics" data-to="orch" d="M508 11059C540 11059 540 10751 572 10751" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-metrics-ratios-person-only" data-to="metrics" d="M861 10751C893 10751 893 10712.5 925 10712.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-metrics-steps-by-checks" data-to="metrics" d="M861 10751C893 10751 893 10798.5 925 10798.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="risk-shared-desktop" data-to="orch" d="M508 11020.5C540 11020.5 540 10896.5 572 10896.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-11" data-to="orch" d="M508 11020.5C540 11020.5 540 10982.5 572 10982.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-12" data-to="orch" d="M508 11020.5C540 11020.5 540 11050.5 572 11050.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="reading-digest" data-to="orch" d="M508 11020.5C540 11020.5 540 11118.5 572 11118.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m6" data-to="orch" d="M508 11020.5C540 11020.5 540 11705.5 572 11705.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="risk-shared-desktop" data-to="orch" d="M508 11059C540 11059 540 10896.5 572 10896.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-11" data-to="orch" d="M508 11059C540 11059 540 10982.5 572 10982.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-12" data-to="orch" d="M508 11059C540 11059 540 11050.5 572 11050.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="reading-digest" data-to="orch" d="M508 11059C540 11059 540 11118.5 572 11118.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m6" data-to="orch" d="M508 11059C540 11059 540 11705.5 572 11705.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m6-host-export" data-to="m6" d="M861 11705.5C893 11705.5 893 11216.5 925 11216.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m6-reminder-text" data-to="m6" d="M861 11705.5C893 11705.5 893 11302.5 925 11302.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m6-probe" data-to="m6" d="M861 11705.5C893 11705.5 893 11388.5 925 11388.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -226,7 +226,7 @@
 <path data-edge="parent" data-node="m6-rules-probe" data-to="m6" d="M861 11705.5C893 11705.5 893 12049.5 925 12049.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m6-script-gate" data-to="m6" d="M861 11705.5C893 11705.5 893 12126.5 925 12126.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m6-metrics-events" data-to="m6" d="M861 11705.5C893 11705.5 893 12203.5 925 12203.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m7" data-to="orch" d="M508 11020.5C540 11020.5 540 12825 572 12825" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m7" data-to="orch" d="M508 11059C540 11059 540 12825 572 12825" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-plan-approval" data-to="m7" d="M861 12825C893 12825 893 12301.5 925 12301.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-37" data-to="m7" d="M861 12825C893 12825 893 12378.5 925 12378.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-38" data-to="m7" d="M861 12825C893 12825 893 12446.5 925 12446.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -243,70 +243,71 @@
 <path data-edge="parent" data-node="m7-habits" data-to="m7" d="M861 12825C893 12825 893 13221.5 925 13221.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="risk-calib-read" data-to="m7" d="M861 12825C893 12825 893 13298.5 925 13298.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m7-10" data-to="m7" d="M861 12825C893 12825 893 13366.5 925 13366.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-recommend-last" data-to="orch" d="M508 11020.5C540 11020.5 540 13446.5 572 13446.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="recommend-last" data-to="orch" d="M508 11020.5C540 11020.5 540 13532.5 572 13532.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="prompt-fixes" data-to="orch" d="M508 11020.5C540 11020.5 540 13618.5 572 13618.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-failure-plans" data-to="orch" d="M508 11020.5C540 11020.5 540 13695.5 572 13695.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-28" data-to="orch" d="M508 11020.5C540 11020.5 540 13772.5 572 13772.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="field-trial" data-to="orch" d="M508 11020.5C540 11020.5 540 13870.5 572 13870.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-recommend-last" data-to="orch" d="M508 11059C540 11059 540 13446.5 572 13446.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="recommend-last" data-to="orch" d="M508 11059C540 11059 540 13532.5 572 13532.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="prompt-fixes" data-to="orch" d="M508 11059C540 11059 540 13618.5 572 13618.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-failure-plans" data-to="orch" d="M508 11059C540 11059 540 13695.5 572 13695.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-28" data-to="orch" d="M508 11059C540 11059 540 13772.5 572 13772.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="field-trial" data-to="orch" d="M508 11059C540 11059 540 13870.5 572 13870.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-video-paper-style" data-to="field-trial" d="M861 13870.5C893 13870.5 893 13870.5 925 13870.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-counter-line" data-to="orch" d="M508 11020.5C540 11020.5 540 13968.5 572 13968.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-29" data-to="orch" d="M508 11020.5C540 11020.5 540 14054.5 572 14054.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="prompt-audit" data-to="orch" d="M508 11020.5C540 11020.5 540 14149.5 572 14149.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-option-card" data-to="orch" d="M508 11020.5C540 11020.5 540 14244.5 572 14244.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-inertia-breaker" data-to="orch" d="M508 11020.5C540 11020.5 540 14330.5 572 14330.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-31" data-to="orch" d="M508 11020.5C540 11020.5 540 14407.5 572 14407.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-30" data-to="orch" d="M508 11020.5C540 11020.5 540 14484.5 572 14484.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-plain-questions" data-to="orch" d="M508 11020.5C540 11020.5 540 14561.5 572 14561.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-auto-drive" data-to="orch" d="M508 11020.5C540 11020.5 540 14647.5 572 14647.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-main-agent-models" data-to="orch" d="M508 11020.5C540 11020.5 540 14733.5 572 14733.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-main-agent-shell" data-to="orch" d="M508 11020.5C540 11020.5 540 14810.5 572 14810.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-one-main-agent" data-to="orch" d="M508 11020.5C540 11020.5 540 14896.5 572 14896.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-design-onepage" data-to="orch" d="M508 11020.5C540 11020.5 540 14991.5 572 14991.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-chat-not-cards" data-to="orch" d="M508 11020.5C540 11020.5 540 15086.5 572 15086.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="schedules" data-to="orch" d="M508 11020.5C540 11020.5 540 15181.5 572 15181.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-defaults-readonly" data-to="orch" d="M508 11020.5C540 11020.5 540 15276.5 572 15276.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-rules-visible" data-to="orch" d="M508 11020.5C540 11020.5 540 15362.5 572 15362.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="user-journey" data-to="orch" d="M508 11020.5C540 11020.5 540 15448.5 572 15448.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-boards-as-hooks" data-to="orch" d="M508 11020.5C540 11020.5 540 15534.5 572 15534.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-alignment-rounds" data-to="orch" d="M508 11020.5C540 11020.5 540 15620.5 572 15620.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-script-timeout" data-to="orch" d="M508 11020.5C540 11020.5 540 15706.5 572 15706.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-agent-examples" data-to="orch" d="M508 11020.5C540 11020.5 540 15792.5 572 15792.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-subagent-sonnet" data-to="orch" d="M508 11020.5C540 11020.5 540 15878.5 572 15878.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-freeze-until-dogfood" data-to="orch" d="M508 11020.5C540 11020.5 540 15955.5 572 15955.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-code-rules-enforce" data-to="orch" d="M508 11020.5C540 11020.5 540 16032.5 572 16032.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-credentials-readable" data-to="orch" d="M508 11020.5C540 11020.5 540 16109.5 572 16109.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-build-all-released" data-to="orch" d="M508 11020.5C540 11020.5 540 16186.5 572 16186.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-timeout-measured" data-to="orch" d="M508 11020.5C540 11020.5 540 16272.5 572 16272.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-desktop-direct-use" data-to="orch" d="M508 11020.5C540 11020.5 540 16367.5 572 16367.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-user-graph-one-graph" data-to="orch" d="M508 11020.5C540 11020.5 540 16462.5 572 16462.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="user-graph" data-to="orch" d="M508 11020.5C540 11020.5 540 16569.5 572 16569.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-counter-line" data-to="orch" d="M508 11059C540 11059 540 13968.5 572 13968.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-29" data-to="orch" d="M508 11059C540 11059 540 14054.5 572 14054.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="prompt-audit" data-to="orch" d="M508 11059C540 11059 540 14149.5 572 14149.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-option-card" data-to="orch" d="M508 11059C540 11059 540 14244.5 572 14244.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-inertia-breaker" data-to="orch" d="M508 11059C540 11059 540 14330.5 572 14330.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-31" data-to="orch" d="M508 11059C540 11059 540 14407.5 572 14407.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-30" data-to="orch" d="M508 11059C540 11059 540 14484.5 572 14484.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-plain-questions" data-to="orch" d="M508 11059C540 11059 540 14561.5 572 14561.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-auto-drive" data-to="orch" d="M508 11059C540 11059 540 14647.5 572 14647.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-main-agent-models" data-to="orch" d="M508 11059C540 11059 540 14733.5 572 14733.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-main-agent-shell" data-to="orch" d="M508 11059C540 11059 540 14810.5 572 14810.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-one-main-agent" data-to="orch" d="M508 11059C540 11059 540 14896.5 572 14896.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-design-onepage" data-to="orch" d="M508 11059C540 11059 540 14991.5 572 14991.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-chat-not-cards" data-to="orch" d="M508 11059C540 11059 540 15086.5 572 15086.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="schedules" data-to="orch" d="M508 11059C540 11059 540 15181.5 572 15181.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-defaults-readonly" data-to="orch" d="M508 11059C540 11059 540 15276.5 572 15276.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-rules-visible" data-to="orch" d="M508 11059C540 11059 540 15362.5 572 15362.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="user-journey" data-to="orch" d="M508 11059C540 11059 540 15448.5 572 15448.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-boards-as-hooks" data-to="orch" d="M508 11059C540 11059 540 15534.5 572 15534.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-alignment-rounds" data-to="orch" d="M508 11059C540 11059 540 15620.5 572 15620.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-script-timeout" data-to="orch" d="M508 11059C540 11059 540 15706.5 572 15706.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-agent-examples" data-to="orch" d="M508 11059C540 11059 540 15792.5 572 15792.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-subagent-sonnet" data-to="orch" d="M508 11059C540 11059 540 15878.5 572 15878.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-freeze-until-dogfood" data-to="orch" d="M508 11059C540 11059 540 15955.5 572 15955.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-code-rules-enforce" data-to="orch" d="M508 11059C540 11059 540 16032.5 572 16032.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-credentials-readable" data-to="orch" d="M508 11059C540 11059 540 16109.5 572 16109.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-build-all-released" data-to="orch" d="M508 11059C540 11059 540 16186.5 572 16186.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-timeout-measured" data-to="orch" d="M508 11059C540 11059 540 16272.5 572 16272.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-desktop-direct-use" data-to="orch" d="M508 11059C540 11059 540 16367.5 572 16367.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-user-graph-one-graph" data-to="orch" d="M508 11059C540 11059 540 16462.5 572 16462.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="user-graph" data-to="orch" d="M508 11059C540 11059 540 16569.5 572 16569.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-user-graph-released" data-to="user-graph" d="M861 16569.5C893 16569.5 893 16569.5 925 16569.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-ask-three-gates" data-to="orch" d="M508 11020.5C540 11020.5 540 16685.5 572 16685.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-five-runs" data-to="orch" d="M508 11020.5C540 11020.5 540 16780.5 572 16780.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-status-hub" data-to="orch" d="M508 11020.5C540 11020.5 540 16866.5 572 16866.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="status-hub" data-to="orch" d="M508 11020.5C540 11020.5 540 16973.5 572 16973.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-ask-three-gates" data-to="orch" d="M508 11059C540 11059 540 16685.5 572 16685.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-five-runs" data-to="orch" d="M508 11059C540 11059 540 16780.5 572 16780.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-status-hub" data-to="orch" d="M508 11059C540 11059 540 16866.5 572 16866.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="status-hub" data-to="orch" d="M508 11059C540 11059 540 16973.5 572 16973.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-status-hub-released" data-to="status-hub" d="M861 16973.5C893 16973.5 893 16973.5 925 16973.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-tests-required-gate" data-to="orch" d="M508 11020.5C540 11020.5 540 17080.5 572 17080.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-docs-tracked-for-handover" data-to="orch" d="M508 11020.5C540 11020.5 540 17166.5 572 17166.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-wip-branch-push" data-to="orch" d="M508 11020.5C540 11020.5 540 17252.5 572 17252.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-handover-on-request" data-to="orch" d="M508 11020.5C540 11020.5 540 17338.5 572 17338.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-publish-as-is" data-to="orch" d="M508 11020.5C540 11020.5 540 17415.5 572 17415.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-license-polyform" data-to="orch" d="M508 11020.5C540 11020.5 540 17492.5 572 17492.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="license-files" data-to="orch" d="M508 11020.5C540 11020.5 540 17578.5 572 17578.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="risk-1" data-to="orch" d="M508 11020.5C540 11020.5 540 17664.5 572 17664.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-finish-then-bootstrap" data-to="orch" d="M508 11020.5C540 11020.5 540 17732.5 572 17732.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-github-mirror-main" data-to="orch" d="M508 11020.5C540 11020.5 540 17800.5 572 17800.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-npm-after-done" data-to="orch" d="M508 11020.5C540 11020.5 540 17877.5 572 17877.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-parallel-lanes-desktop-free" data-to="orch" d="M508 11020.5C540 11020.5 540 17954.5 572 17954.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-desktop-cdp-only" data-to="orch" d="M508 11020.5C540 11020.5 540 18040.5 572 18040.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-habits-into-framework" data-to="orch" d="M508 11020.5C540 11020.5 540 18135.5 572 18135.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="habits-prompts" data-to="orch" d="M508 11020.5C540 11020.5 540 18221.5 572 18221.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="inject-via-prestep" data-to="orch" d="M508 11020.5C540 11020.5 540 18298.5 572 18298.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-graph-programming" data-to="hourness" d="M215 11136C247 11136 247 18378.5 279 18378.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-27" data-to="hourness" d="M215 11136C247 11136 247 18455.5 279 18455.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-merge-gate" data-to="hourness" d="M215 11136C247 11136 247 18541.5 279 18541.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-review-floor" data-to="hourness" d="M215 11136C247 11136 247 18609.5 279 18609.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-tests-required-gate" data-to="orch" d="M508 11059C540 11059 540 17080.5 572 17080.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-docs-tracked-for-handover" data-to="orch" d="M508 11059C540 11059 540 17166.5 572 17166.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-wip-branch-push" data-to="orch" d="M508 11059C540 11059 540 17252.5 572 17252.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-handover-on-request" data-to="orch" d="M508 11059C540 11059 540 17338.5 572 17338.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-publish-as-is" data-to="orch" d="M508 11059C540 11059 540 17415.5 572 17415.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-license-polyform" data-to="orch" d="M508 11059C540 11059 540 17492.5 572 17492.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="license-files" data-to="orch" d="M508 11059C540 11059 540 17578.5 572 17578.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="risk-1" data-to="orch" d="M508 11059C540 11059 540 17664.5 572 17664.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-finish-then-bootstrap" data-to="orch" d="M508 11059C540 11059 540 17732.5 572 17732.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-github-mirror-main" data-to="orch" d="M508 11059C540 11059 540 17800.5 572 17800.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-npm-after-done" data-to="orch" d="M508 11059C540 11059 540 17877.5 572 17877.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-parallel-lanes-desktop-free" data-to="orch" d="M508 11059C540 11059 540 17954.5 572 17954.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-desktop-cdp-only" data-to="orch" d="M508 11059C540 11059 540 18040.5 572 18040.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-habits-into-framework" data-to="orch" d="M508 11059C540 11059 540 18135.5 572 18135.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="habits-prompts" data-to="orch" d="M508 11059C540 11059 540 18221.5 572 18221.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="inject-via-prestep" data-to="orch" d="M508 11059C540 11059 540 18298.5 572 18298.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="probe-run-dir-outside-repo" data-to="orch" d="M508 11059C540 11059 540 18375.5 572 18375.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-graph-programming" data-to="hourness" d="M215 11174.5C247 11174.5 247 18455.5 279 18455.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-27" data-to="hourness" d="M215 11174.5C247 11174.5 247 18532.5 279 18532.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-merge-gate" data-to="hourness" d="M215 11174.5C247 11174.5 247 18618.5 279 18618.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-review-floor" data-to="hourness" d="M215 11174.5C247 11174.5 247 18686.5 279 18686.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="depends" data-node="ablation" data-to="split" d="M861 10284.4C941 10284.4 941 10633.3 861 10633.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
 <path data-edge="depends" data-node="bootstrap" data-to="split" d="M861 10284.4C928.9 10284.4 928.9 10547.9 861 10547.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
 <path data-edge="depends" data-node="dogfood" data-to="m3" d="M861 5465.9C941 5465.9 941 8622.4 861 8622.4" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
@@ -833,11 +834,11 @@ d-zcode-3171 · 决策 · 已批准 · 未验证</title>
 <g data-id="hourness" data-type="goal" data-status="doing" data-tone="doing">
 <title>开发由系统保证：任何模型在 DSH 里沿项目图干活，人在图上编程
 hourness · 目标 · 进行中</title>
-<rect x="0" y="11089" width="215" height="94" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2.5"/>
-<text x="107.5" y="11112.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">开发由系统保证：任何模型在</text>
-<text x="107.5" y="11133.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">DSH 里沿项目图干活，人在</text>
-<text x="107.5" y="11154.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">图上编程</text>
-<text x="107.5" y="11171.4" text-anchor="middle" font-size="11" fill="#6b7280">hourness</text>
+<rect x="0" y="11127.5" width="215" height="94" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2.5"/>
+<text x="107.5" y="11151.3" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">开发由系统保证：任何模型在</text>
+<text x="107.5" y="11172.3" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">DSH 里沿项目图干活，人在</text>
+<text x="107.5" y="11193.3" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">图上编程</text>
+<text x="107.5" y="11209.9" text-anchor="middle" font-size="11" fill="#6b7280">hourness</text>
 </g>
 <g data-id="m0" data-type="feature" data-status="done" data-tone="done">
 <title>M0 文档沉淀
@@ -849,9 +850,9 @@ m0 · 特性 · 完成</title>
 <g data-id="orch" data-type="feature" data-status="approved" data-tone="todo">
 <title>编排层：LLM 之上的工作流
 orch · 特性 · 已批准</title>
-<rect x="279" y="10996" width="229" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="393.5" y="11017.6" text-anchor="middle" font-size="13" fill="#111827">编排层：LLM 之上的工作流</text>
-<text x="393.5" y="11033.4" text-anchor="middle" font-size="11" fill="#6b7280">orch</text>
+<rect x="279" y="11034.5" width="229" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="393.5" y="11056.1" text-anchor="middle" font-size="13" fill="#111827">编排层：LLM 之上的工作流</text>
+<text x="393.5" y="11071.9" text-anchor="middle" font-size="11" fill="#6b7280">orch</text>
 </g>
 <g data-id="m2" data-type="feature" data-status="done" data-tone="done">
 <title>M2 项目图行走骨架
@@ -2519,37 +2520,45 @@ inject-via-prestep · 任务 · 进行中</title>
 <text x="716.5" y="18304.6" text-anchor="middle" font-size="13" fill="#111827">件箱里，桌面版能直接关掉</text>
 <text x="716.5" y="18320.4" text-anchor="middle" font-size="11" fill="#6b7280">inject-via-prestep</text>
 </g>
+<g data-id="probe-run-dir-outside-repo" data-type="task" data-status="doing" data-tone="doing">
+<title>探针的临时运行目录挪到仓库外面
+probe-run-dir-outside-repo · 任务 · 进行中</title>
+<rect x="572" y="18342" width="289" height="67" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+<text x="716.5" y="18363.6" text-anchor="middle" font-size="13" fill="#111827">探针的临时运行目录挪到仓</text>
+<text x="716.5" y="18381.6" text-anchor="middle" font-size="13" fill="#111827">库外面</text>
+<text x="716.5" y="18397.4" text-anchor="middle" font-size="11" fill="#6b7280">probe-run-dir-outside-repo</text>
+</g>
 <g data-id="d-graph-programming" data-type="decision" data-status="approved" data-tone="todo">
 <title>第一理念：在图上编程
 d-graph-programming · 决策 · 已批准 · 未验证</title>
-<polygon points="291,18354 496,18354 508,18378.5 496,18403 291,18403 279,18378.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="393.5" y="18375.6" text-anchor="middle" font-size="13" fill="#111827">第一理念：在图上编程</text>
-<text x="393.5" y="18391.4" text-anchor="middle" font-size="11" fill="#6b7280">d-graph-programming · 未验证</text>
+<polygon points="291,18431 496,18431 508,18455.5 496,18480 291,18480 279,18455.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="393.5" y="18452.6" text-anchor="middle" font-size="13" fill="#111827">第一理念：在图上编程</text>
+<text x="393.5" y="18468.4" text-anchor="middle" font-size="11" fill="#6b7280">d-graph-programming · 未验证</text>
 </g>
 <g data-id="question-27" data-type="question" data-status="done" data-tone="done">
 <title>「减轻人的负担而质量不降」要不要写进编排层目标并量化
 question-27 · 待决 · 完成
 拍板：B 写进编排层目标的正文，并加一条可量化的验收</title>
-<polygon points="291,18413 496,18413 508,18455.5 496,18498 291,18498 279,18455.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="393.5" y="18434.6" text-anchor="middle" font-size="13" fill="#111827">「减轻人的负担而质量不</text>
-<text x="393.5" y="18452.6" text-anchor="middle" font-size="13" fill="#111827">降」要不要写进编排层目标</text>
-<text x="393.5" y="18470.6" text-anchor="middle" font-size="13" fill="#111827">并量化</text>
-<text x="393.5" y="18486.4" text-anchor="middle" font-size="11" fill="#6b7280">question-27 · 选 B</text>
+<polygon points="291,18490 496,18490 508,18532.5 496,18575 291,18575 279,18532.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="393.5" y="18511.6" text-anchor="middle" font-size="13" fill="#111827">「减轻人的负担而质量不</text>
+<text x="393.5" y="18529.6" text-anchor="middle" font-size="13" fill="#111827">降」要不要写进编排层目标</text>
+<text x="393.5" y="18547.6" text-anchor="middle" font-size="13" fill="#111827">并量化</text>
+<text x="393.5" y="18563.4" text-anchor="middle" font-size="11" fill="#6b7280">question-27 · 选 B</text>
 </g>
 <g data-id="norm-merge-gate" data-type="norm" data-status="approved" data-tone="todo">
 <title>合入主干前必须全部通过的命令
 norm-merge-gate · 规范 · 已批准</title>
-<rect x="279" y="18508" width="229" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="393.5" y="18529.6" text-anchor="middle" font-size="13" fill="#111827">合入主干前必须全部通过的</text>
-<text x="393.5" y="18547.6" text-anchor="middle" font-size="13" fill="#111827">命令</text>
-<text x="393.5" y="18563.4" text-anchor="middle" font-size="11" fill="#6b7280">norm-merge-gate</text>
+<rect x="279" y="18585" width="229" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="393.5" y="18606.6" text-anchor="middle" font-size="13" fill="#111827">合入主干前必须全部通过的</text>
+<text x="393.5" y="18624.6" text-anchor="middle" font-size="13" fill="#111827">命令</text>
+<text x="393.5" y="18640.4" text-anchor="middle" font-size="11" fill="#6b7280">norm-merge-gate</text>
 </g>
 <g data-id="norm-review-floor" data-type="norm" data-status="approved" data-tone="todo">
 <title>本仓库必须全审的改动
 norm-review-floor · 规范 · 已批准</title>
-<rect x="279" y="18585" width="229" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="393.5" y="18606.6" text-anchor="middle" font-size="13" fill="#111827">本仓库必须全审的改动</text>
-<text x="393.5" y="18622.4" text-anchor="middle" font-size="11" fill="#6b7280">norm-review-floor</text>
+<rect x="279" y="18662" width="229" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="393.5" y="18683.6" text-anchor="middle" font-size="13" fill="#111827">本仓库必须全审的改动</text>
+<text x="393.5" y="18699.4" text-anchor="middle" font-size="11" fill="#6b7280">norm-review-floor</text>
 </g>
 </g>
 </svg>
