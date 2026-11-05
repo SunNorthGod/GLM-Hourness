@@ -669,6 +669,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-board-page（wf_a34e9ff57206a017）收敛循环第 1 轮集成复核：在 9b16c20 上 build 0、preflight 0、npm test 0（3055 个测试，3054 通过、0 失败、1 跳过）、探针 399/399（规则页 7 项检查全过）、棘轮 73/18/1；没有发现接缝缺陷，没有新提交，origin/rules-board-page = 9b16c20。下一步：本轮评审。"
+    },
+    {
+      "at": "2026-11-05T03:31:02.358Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page 第 1 轮评审 CHANGES_REQUESTED（评审文档 2026-11-05-112043-review.md）。F1（HIGH）：页面第 4 组读的是规则行自己的门禁流水，不是代码规则各行写的按项目流水，7 天计数恒为 0。F2（LOW）：每 15 秒重读整份流水。下一步：收敛循环的修复轮。"
     }
   ]
 }
