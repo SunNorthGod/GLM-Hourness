@@ -93,6 +93,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面版启动失败「desktop welcome: Web authentication failed」的原因（habits-prompts 合入步只读调查，.agents/tasks/habits-prompts/desktop-start-failure.md）：每次宿主启动按端口发一个 30 天的 dsh-auth-<sha256(127.0.0.1:端口)> cookie，cookie 不分端口，connectDesktopWelcome 用 net.fetch credentials:'include' 把 127.0.0.1 下的全部带上；累计 71 个约 16 KB，超过 node:http 默认 16384 字节的请求头上限，宿主回 431。人同意清除。另交 desktop-close-docs（wf_674d79b3e6a53992）同批写进 DEVELOPMENT.md §1.1 的重启规程（启动前数这类 cookie，超过 50 个就备份后删除）、FACTS.md §3 一行与 §7 事故一行；可作为反馈交 DSH 上游。"
+    },
+    {
+      "at": "2026-11-05T18:37:42.605Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面版启动失败（desktop welcome: Web authentication failed）已修：habits-prompts 合入步备份 %APPDATA%\\@deepseek-ai\\dsh-desktop\\Network\\Cookies 后删掉 host 127.0.0.1 的 71 个 dsh-auth-* cookie，桌面版随即正常启动，没有新的崩溃日志。原因见 .agents/tasks/habits-prompts/desktop-start-failure.md：每次启动宿主按随机端口发一个 30 天有效的 cookie，cookie 不分端口，约 70 次启动后 Cookie 请求头超过 node:http 的 16384 字节上限，宿主回 431。之后的任务书已写明遇到同一报错照此处理。FACTS.md 一行与上游反馈待记。"
     }
   ]
 }
