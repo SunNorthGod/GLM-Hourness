@@ -1,0 +1,30 @@
+{
+  "id": "m4-reanchor-norms",
+  "type": "task",
+  "title": "压缩之后，把这个目标下的规范再给模型看一遍",
+  "why": "压缩后规则细节最容易失真，重锚时把规范的标题一并交给模型，少按走样的规矩干活",
+  "status": "approved",
+  "parent": "m4",
+  "kind": "implement",
+  "body": "压缩之后的那一次投影，除 m4-reanchor-violations 的本会话违规计数，再附焦点所在目标下已批准的规范节点（norm-*）的标题，每条一行；只在压缩后注入一次，平时不加。模块 src/graph/reminder.ts。同一件做一次 L3 实测：压缩之后宿主 dsh-agent-instructions 的基线（用户级与项目 AGENTS.md）是否重新出现在请求里，子 agent 是否收到；报告 2.2 只读了代码。等 m4-reanchor-violations 合入 main 后开工。",
+  "acceptance": [
+    "压缩之后那一步的注入列出焦点所在目标下已批准的规范节点标题，每条一行；没有规范节点时不加这一段；平时的步不加",
+    "L3 核对压缩后用户级与项目 AGENTS.md 是否重新进请求、子 agent 是否收到，结果写进 FACTS.md；ORCHESTRATION.md §2.5 写明；L2 钉住，L3 glm-graph-compact 通过，改动在 main 上"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m4-reanchor-violations"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-05T13:48:50.005Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "d-habits-into-framework 的长会话规则重读一条（报告 3.1 的 H2）：ORCHESTRATION.md §2.5 写的重锚规范摘要没做；m4-reanchor-violations 在做违规计数，不往在跑的线里扩，它合入后另开。",
+      "relay": "其余是\n哦，ide那条也加进去吧",
+      "to": "approved"
+    }
+  ]
+}

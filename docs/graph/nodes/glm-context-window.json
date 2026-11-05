@@ -58,6 +58,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "合入步（wf_d964b9e854bc29a0 merge）报告：c452b17 在 main 上，origin 与 github 一致，四道门禁与棘轮绿，工作树与分支已删。桌面核对没做成：20:23 经 CDP 9333 发 Browser.close，人的桌面版（主进程 72104，15:41 启动）到 21:12 仍在，窗口仍开，9333 的 /json/version 仍回 200，关闭请求没有生效；按规程没杀进程，桌面锁已释放。编排方定：不再等它自己退出，请人手动重启桌面版，之后另派一步做本节点的桌面核对（缺省 512000 下行加载无新错误，改 contextWindow 后声明值随之变化）。核对之前本节点不关。"
+    },
+    {
+      "at": "2026-11-05T13:48:51.622Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人约 21:20 手动关了桌面版（主进程 72104 已退出，9333 不再应答）。派 glm-context-window-desktop-check（wf_f773f9cedc7b4708）做本节点的桌面核对：在人的 profile 上不改配置，核对缺省 512000 下行加载没有新错误；在隔离实例（端口 9339，独立 user-data-dir 与 DSH_HOME）里核对改成合法值后声明值跟着变、非法值降级到 512000 并写进行健康；结束时人的桌面版留在 9333 上运行。记录 .agents/tasks/glm-context-window-2026-11-05/desktop-check.md。"
     }
   ]
 }

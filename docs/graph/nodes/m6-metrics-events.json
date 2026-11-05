@@ -3,7 +3,7 @@
   "type": "task",
   "title": "GLM 包的四类事件交给指标流水",
   "why": "额度读取、上游限额、登录被拒与高峰提醒都记进同一份流水，便于对账",
-  "status": "doing",
+  "status": "done",
   "parent": "m6",
   "kind": "implement",
   "tier": "standard",
@@ -20,6 +20,24 @@
     {
       "type": "depends",
       "to": "metrics"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "133a876",
+      "note": "GLM 包的四类事件交给指标流水"
+    },
+    {
+      "kind": "commit",
+      "ref": "cf0ed57",
+      "note": "合入 main 的合并提交，origin 与 github 经 ls-remote 一致"
+    },
+    {
+      "kind": "test",
+      "ref": "build、preflight、npm test、npm run -s probe on cf0ed57",
+      "exit": 0,
+      "note": "探针 420/420，棘轮 eslint 73 / knip 18 / jscpd 1"
     }
   ],
   "history": [
@@ -78,6 +96,32 @@
       "actor": "llm",
       "op": "comment",
       "text": "合入步（wf_2bf0ad146e8238b2 merge）在跑：分支已合入 origin/main，origin/m6-metrics-events 在 201007c，还没进 main。进 main 后关节点，并在 m4-suppressions 一侧补 N1 的批注（第 1 条的指标事件已由 3f59b61 交过）。"
+    },
+    {
+      "at": "2026-11-05T13:48:50.951Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "m6-metrics-events（wf_2bf0ad146e8238b2）完成：评审 APPROVED，没有挡路发现；合入 main cf0ed57，src/glm-llm/index.ts 一处冲突两边都留；合入树门禁全绿。验证层 L2；合入步时桌面版在运行，没有重启（不杀进程），当前 main 上的行加载由 glm-context-window-desktop-check（wf_f773f9cedc7b4708）一并核对。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "133a876",
+          "note": "GLM 包的四类事件交给指标流水"
+        },
+        {
+          "kind": "commit",
+          "ref": "cf0ed57",
+          "note": "合入 main 的合并提交，origin 与 github 经 ls-remote 一致"
+        },
+        {
+          "kind": "test",
+          "ref": "build、preflight、npm test、npm run -s probe on cf0ed57",
+          "exit": 0,
+          "note": "探针 420/420，棘轮 eslint 73 / knip 18 / jscpd 1"
+        }
+      ]
     }
   ]
 }
