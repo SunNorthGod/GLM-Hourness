@@ -221,6 +221,7 @@
 | `remote.workspaceFiles.stat` 对目录报错：它只描述普通文件（README 的方法表「one regular file」，每次先 `lstat` 拒收错的文件种类）；要目录的绝对路径，取目录里一个文件的 `readBytes` 返回的 `absolutePath` 的上一级 | `reference/dsh-desktop-0.2.1-rc.3/dsh-api-workspace-files/README.md`:32、54〔实读〕；panel-2 Q4 走查里面板的本机记录键从没算出来〔实证 2026-11-05〕 |
 | 第三方客户端包 inject `uiWorkspace` 能拿到服务；`uiWorkspace.openSession` 是类方法，读 `this.lifetime.signal`，拆成独立函数再调会抛 `TypeError: Cannot read properties of undefined (reading 'signal')` | `dsh-client-ui-workspace/lib/client.js`:1471〔实读〕；panel-2 Q4 走查控制台〔实证 2026-11-05〕 |
 | 开场画面上点「第一次用？看看项目图怎么用 ›」，`sidebarRight.openTab` 打开了项目图页签，没有抛错 | panel-2 Q4 隔离实例〔实证 2026-11-05〕 |
+| DSH 桌面宿主的浅色主题：`body` 上没有 `data-ds-dark-theme`（宿主 CSS 里的深色覆盖写在 `body[data-ds-dark-theme]` 下；外观为跟随系统时，系统切到浅色这个属性就去掉），`html` 的 `color-scheme` 为 `light`。浅色 token：正文 `#0f1115`、次级文字 `#61666b`、三级文字 `#81858c`、强调色 `#4176e6`；三级文字与强调色在白底上 3.71:1 与 4.23:1，不到 4.5:1，次级文字 5.80:1 | `reference/dsh-desktop-0.2.1-rc.3/dsh-web-frontend/dist/assets/index-BNyAYEM7.css` 的 `body[data-ds-dark-theme]` 规则与 boot token〔实读 2026-11-05〕；`.agents/tasks/ui-audit/findings.md` Q-07〔实证 2026-10-29〕；panel-2 Q4 隔离实例的浅色测量〔实证 2026-11-05〕 |
 | 隔离实例窗口不在前台时，CDP `Page.captureScreenshot` 不返回（30 秒超时），`--disable-renderer-backgrounding` 与 `--disable-backgrounding-occluded-windows` 也不改变；DOM 读取与 `Input.dispatch*` 照常 | panel-2 Q4 隔离实例〔实证 2026-11-05〕 |
 
 ## 4. 许可与来源

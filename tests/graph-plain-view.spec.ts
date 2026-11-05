@@ -14,7 +14,7 @@ import type { AwaitingEntry } from '../src/graph/live.ts'
 import type { LoadedGraph } from '../src/graph/parse.ts'
 import { blockersOf } from '../src/graph/projection.ts'
 import {
-  agoText, changesSince, frameworkChanging, liveLine, moduleRowText, moduleStateOf, modulesView,
+  agoText, askLines, changesSince, frameworkChanging, liveLine, moduleRowText, moduleStateOf, modulesView,
   needsOf, planOf, progressLine, questionView, quote, remainingOf, shortTitle, statusPhrase, toolWords, whyOf,
   type ModulesGoalView, type NeedEntry, type Plan,
 } from '../src/graph/plain-view.ts'
@@ -372,6 +372,20 @@ test('questionView: the ask fields as they are, no option keys, and the decision
   assert.equal(closed.legacy, true)
   assert.equal(closed.decided?.label, '甲')
   assert.equal(closed.decided?.words, '可以')
+})
+
+test('askLines: by way of asking, in the order of done condition 6, as far as set; none for a legacy card', () => {
+  const ask = (fields: Partial<GraphNode>): GraphNode => node({ id: 'q-1', type: 'question', parent: 'goal-1', ask: '可以吗？', ...fields })
+  const graph = graphOf([node({ id: 'goal-1', type: 'goal' })])
+  const recommend = askLines(ask({ form: 'recommend', proposal: '先不收押金', reason: '要对账', cost: '丢了难追', notTaken: '先收押金' }))
+  assert.deepEqual(recommend, [{ label: '推荐', text: '先不收押金' }, { label: '理由', text: '要对账' }, { label: '代价', text: '丢了难追' }, { label: '不选的那种', text: '先收押金' }])
+  assert.deepEqual(askLines(ask({ form: 'choose', proposal: '发邮件', reason: '不常登录', ways: ['标红', '发邮件'] })),
+    [{ label: '推荐', text: '发邮件' }, { label: '理由', text: '不常登录' }, { text: '1. 标红' }, { text: '2. 发邮件' }])
+  assert.deepEqual(askLines(ask({ form: 'want', proposal: '一次导入一批' })), [{ label: '猜测', text: '一次导入一批' }])
+  assert.deepEqual(askLines(ask({ form: 'look', proposal: '借书页草图' })), [{ label: '给你看的', text: '借书页草图' }])
+  assert.deepEqual(askLines(ask({ ask: undefined, options: [{ key: 'A', label: '甲', consequence: '' }] })), [])
+  for (const line of recommend) clean(line.label ?? '', graph)
+  for (const label of ['猜测', '给你看的']) clean(label, graph)
 })
 
 test('agoText', () => {

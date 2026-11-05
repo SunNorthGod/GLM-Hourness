@@ -52,8 +52,8 @@ function LoopsBlock({ state, onOpenBoard }: { readonly state: BoardState, readon
   )
 }
 
-/** The 复制 /wish button of block 3 (§6.4): the result written beside it. */
-function CopyWish(): ReactElement {
+/** The 复制 /wish button of block 3 (§6.4) and of the empty graph's home (§4.10): the result written beside it. */
+export function CopyWish(): ReactElement {
   const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle')
   const copy = (): void => {
     void writeClipboard('/wish').then(ok => { setCopied(ok ? 'copied' : 'failed') })

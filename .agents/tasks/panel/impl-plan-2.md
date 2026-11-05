@@ -19,7 +19,7 @@
 
 ## 2. 这一轮能做的批次
 
-每批一个提交，文档同批；每批跑全量门禁（§4），四道退出码为 0、探针全绿后推 `origin/panel-2`。执行顺序 Q1、Q2、Q3、Q5、Q4（L4 在最后，核对的是最后的构建）。`提交与落地`一列：每批在下一批的提交里补记上一批的提交号，本批写「本批」。
+每批一个提交，文档同批；每批跑全量门禁（§4），四道退出码为 0、探针全绿后推 `origin/panel-2`。执行顺序 Q1、Q2、Q3、Q5、Q4（L4 在最后，核对的是最后的构建）；评审 `.llm/panel-2/review.json` 之后 Q6。`提交与落地`一列：每批在下一批的提交里补记上一批的提交号，本批写「本批」。
 
 人 2026-11-05 的答复（编排方转达，原话「没问题就把线全开吧」，同意编排方的三条建议）：一、可见信号换源（原 §3 第一行）照建议做，新增 Q5；二、第 1、6、9、17 条按 §5 改字，意思不变，新字写进 `.agents/tasks/plain-ui/onepage-done.md`，逐条对照写进 `.agents/tasks/panel/conditions-rewrite.md`，写进图归编排方；三、流程条的「等你拍板」随 Q1 统一为「等你回话」。
 
@@ -31,7 +31,8 @@
 | Q3 | 现有节点改写的对照表（设计 §5.5 的 agent 一半）：`.agents/tasks/panel/title-rewrite.md`，每个未关闭节点一行（id、旧标题、新标题或「不改」、`why`），新标题与 `why` 全部过 Q2 的 `plainIssues`；末尾一段按 `d-ask-three-gates` 的 `recommend` 问法写好交给人的话（问话、推荐、理由、不选的那种），附件即表。不写图 | 2（agent 一半；人回话与写图在等） | 无代码；核对用一次性脚本跑 `plainIssues`（不入库） | 本文件 §3 的等待表、`docs/HANDOFF.md` 面板一行 | 无 | — | `8341832`（合并 `d96d009` 之后；门禁 0/0/0/0，test 2972 个全过，probe 384/384，棘轮 73/18/1）。取图 `d96d009`（合入 origin/main `cb7d02c`），修订号 `f8d50739d4f7`，未关闭 126 个，126 行；改标题 37 行（读入带写法提示的 34 个，加用了换词表上的词的 3 个），其余「不改」；每行都写 `why`；一次性脚本核对输出为空 |
 | Q5 | 可见信号换源（人 2026-11-05 同意）：面板可见改为「挂载着、窗口有焦点，且 `IntersectionObserver` 没有报不相交」（观察器只作加强：桌面宿主里它连初始回调都不派发，`docs/FACTS.md` §3），不再读 `document.visibilityState`；`seen.ts` 加 `watchVisibility`（注入窗口焦点与观察器，纯逻辑）；`Panel.tsx` 的到达与离开改用它，挂载时补发 `mount`（此前从不发，第一次到达读不到本机记录）；`MainChat.tsx` 的读取时机抽成 `main-chat.ts` 的 `recordReads`：挂载时读一次（不管可见与否），变为可见时读，可见期间每 30 秒读 | 4（「上次看之后」在桌面版上能记下）；6 的「去哪回话」一行在桌面版上读得到主 Agent 记录 | L2：`tests/graph-panel-model.spec.ts` 加 `watchVisibility`（初值、焦点、观察器否决、只在变化时报、停止后不报）、`recordReads`（挂载读一次、变可见读并轮询、隐藏停轮询、可见挂载不重复读）与挂载到达读记录；L3 不涉及（客户端没有 L3） | 设计 §6.8 可见的定义、`docs/ORCHESTRATION.md` §2.10 版面一条的「上次看之后」与「主 Agent 的位置」一条、`docs/FACTS.md` §3 那一行的「可改用」改成已改 | Q4 里做走查 C/D（离开与回来后「上次看之后」的窗口、主 Agent 记录的读取） | 能 | `002238d`（门禁 0/0/0/0，test 2975 个全过，probe 384/384，棘轮 73/18/1）。落地与计划的不同：`seen.ts` 的状态另存在 ref 里，卸载时的离开在 cleanup 里同步写本机记录（原先经 `setSeen` 的更新函数写，卸载之后 React 不再调用它，离开从不写入）；观察器只在面板正文挂上之后接上（效果按 `snapshot.status === 'ready'` 重订）；静态检查加一条：`ui/src/graph` 下没有 `visibilityState` 比较与 `visibilitychange` 监听 |
 | Q4a | Q4 走查中查出的两处缺陷，都让已定的行为在桌面版上不成立，修法不改设计：（1）「上次看之后」的本机记录键从没算出来：面板对 `docs/graph` 目录调 `workspaceFiles.stat`，宿主的 stat 只认普通文件、对目录报错，键一直是空的，记录既不读也不写（P4 起就这样；设计 §6.8 本来写的是取 `readBytes` 返回的 `absolutePath`）；改成数据源记下第一个节点文件 `absolutePath` 的上一级（`source.ts` 的 `nodesDirAbsolute`），`statAbsolute` 删去。（2）「去主 Agent 的对话回话 ›」点了抛错不跳：面板把 `uiWorkspace.openSession` 拆下来传，方法丢了 `this`；改经 `main-chat.ts` 的 `openerOf` 在服务上调用 | 4（在桌面版上记下离开）；6 的去哪回话一行能跳 | L2：`tests/graph-panel-model.spec.ts` 加 `openerOf`（带 `this` 的服务、没有服务）与数据源的 `nodesDirAbsolute`；L3 不涉及 | `docs/ORCHESTRATION.md` §2.10 两处、`docs/FACTS.md` §3 新的宿主事实 | 修后在隔离实例上复核走查 C/D | 能 | `87566d1`（门禁 0/0/0/0，test 第三次 2976 个全过；前两次各有 `loops-run.spec` #13 一项在两把探针锁都被别的线占着时超时，单跑 3/3 过；probe 384/384，棘轮 73/18/1）。桌面复核：成立 |
-| Q4 | 桌面 L4（本分支 Q3 之后的构建）：隔离实例（独立 `--user-data-dir`、独立 `DSH_HOME`、独立 CDP 端口、命令行标记，两个包经 junction 指向本工作树的 `packages/`），按设计 §10.3 第 1、3、4、5（部分）、7、8、9、10、11 项核对，另记阻断②的现状；报告 `.agents/tasks/panel/l4-<日期>.md` | 1（首屏不滚动）、11、12（第 4 块除外）、13（未登录一支）、14（接管行不在的一支）、15、16；5、6、7 复核 | 无新 L2/L3 | `.agents/tasks/panel/l4-<日期>.md`、`docs/HANDOFF.md`、`docs/ORCHESTRATION.md` §2.10 验证一条、`docs/FACTS.md` §3（新的宿主事实，例如 `sidebarRight.openTab` 在开场画面的结果、`uiWorkspace` 是否注入） | 本批就是 | 能：实例只加载本工作树的产物；锁目录 `.llm/desktop-lock` 建在主检出（编排方 2026-11-05 准许，同 probe-lock 的例外） | 本批。报告 `.agents/tasks/panel/l4-2026-11-05.md`。成立：1（五段、无页签、首屏）、12（第 4 块除外）、14（接管行不在的一支）、15、16、走查 C/D（Q4a 之后）、键盘；部分：1 与 6 的第一件问话不在首页（F1）、2 的类型名（F4）、浅色对比度（F2）、空图首页（F5），交编排方；没做：11 单装组合；13 读到已登录一支与报错要凭证。截图做不成（窗口不在前台时 CDP 截图不返回），全部读 DOM |
+| Q4 | 桌面 L4（本分支 Q3 之后的构建）：隔离实例（独立 `--user-data-dir`、独立 `DSH_HOME`、独立 CDP 端口、命令行标记，两个包经 junction 指向本工作树的 `packages/`），按设计 §10.3 第 1、3、4、5（部分）、7、8、9、10、11 项核对，另记阻断②的现状；报告 `.agents/tasks/panel/l4-<日期>.md` | 1（首屏不滚动）、11、12（第 4 块除外）、13（未登录一支）、14（接管行不在的一支）、15、16；5、6、7 复核 | 无新 L2/L3 | `.agents/tasks/panel/l4-<日期>.md`、`docs/HANDOFF.md`、`docs/ORCHESTRATION.md` §2.10 验证一条、`docs/FACTS.md` §3（新的宿主事实，例如 `sidebarRight.openTab` 在开场画面的结果、`uiWorkspace` 是否注入） | 本批就是 | 能：实例只加载本工作树的产物；锁目录 `.llm/desktop-lock` 建在主检出（编排方 2026-11-05 准许，同 probe-lock 的例外） | `7d90fa0`（门禁 0/0/0/0，test 第二次 2976 个全过，第一次 `loops-run.spec` #13 计时失败、单跑 3/3 过；probe 384/384，棘轮 73/18/1）。报告 `.agents/tasks/panel/l4-2026-11-05.md`。成立：1（五段、无页签、首屏）、12（第 4 块除外）、14（接管行不在的一支）、15、16、走查 C/D（Q4a 之后）、键盘；部分：1 与 6 的第一件问话不在首页（F1）、2 的类型名（F4）、浅色对比度（F2）、空图首页（F5），交编排方；没做：11 单装组合；13 读到已登录一支与报错要凭证。截图做不成（窗口不在前台时 CDP 截图不返回），全部读 DOM |
+| Q6 | 评审 `.llm/panel-2/review.md` 的四处必修（编排方 2026-11-05 定，Q4 的 F1、F2、F4、F5），修法不改设计：（F1）首页「需要你」第一件整件显示，待决写问话与按问法带的几行（`plain-view.ts` 新的 `askLines`：推荐、猜测或给你看的，理由，代价，几种做法，不选的那种，按第 6 条的次序；`common.tsx` 的 `Options` 用它，所以第二层的「需要你」与节点页「选项」一节同样显示这几行），其余几件写题目与问话，只在对话里的一件仍写它的那段话；（F4）`NodeRow` 去掉类型名，只写状态；（F2）浅色主题（`body` 上没有 `data-ds-dark-theme`）灰字改用次级文字 token、链接把正文色按 20% 混进强调色（`styles.ts` 的 `LIGHT_TOKENS`）；（F5）图里一个节点都没有时首页只有效果是一节、「在输入框打 /wish，后面跟一句你想做的」与「复制 /wish」（`Guide.tsx` 的 `CopyWish` 改为导出） | 1、6（首页第一件与其余几件）、2（列表行）、§1.3 与 §10.3 第 10 项（浅色对比度）、§4.10（空图） | L2：新 `tests/graph-panel-render.spec.ts`（进 `npm test` 链，在 `graph-panel-hooks` 旁边；把 `Home.tsx`、`common.tsx`、`Plan.tsx`、`MainChat.tsx` 编译到一个同步渲染的 React 替身上读出字），`tests/graph-plain-view.spec.ts` 加 `askLines`；L3 不涉及 | `docs/ORCHESTRATION.md` §2.10 版面、打包、验证三条，`docs/HANDOFF.md` 面板一行，`docs/FACTS.md` §3 浅色主题一行，`l4-2026-11-05.md` 发现表 | 四处的桌面复核随合入时的 L4（编排方通知） | 能，但按编排方通知放到合入时 | 本批。批前合入 origin/main `70b1143`（合并提交 `50e535b`，`package.json` 测试链冲突取两边的并集：本分支的 `graph-plain.spec.ts` 与 main 的 `script-gate.spec.ts`；合并后门禁 0/0/0/0，test 3003 个全过，probe 390/390，棘轮 73/18/1，已推） |
 
 顺序依赖：Q3 要 Q2 的 `plainIssues` 与 `PLAIN_LIMITS.why`；Q5 只改客户端，与 Q2、Q3 互不依赖；Q4 在 Q1–Q3 与 Q5 之后，核对的是最后的构建。Q1 与 Q2 互不依赖，Q1 先做是因为它小，先把 HANDOFF 改到合入后的状态。
 
@@ -49,8 +50,9 @@
 | 第 14 条：接管行在的一支（「建一张项目图」按钮、指向 `/wish` 的那一节字、判图法） | `/hourness-init` 不在 main | 接管线（bootstrap-implementation） |
 | 第 17 条：真图上的「框架与模块」与「在开发」一档 | 图上没有 `norm-directions`；`moduleStateOf` 的「在开发」要 M7 的 `derivedStage`（E1b，在 `origin/m7`） | 编排方与人写方向清单；M7 线 |
 | 第 13 条：读到已登录一支的桌面核对 | 隔离实例里没有 GLM 凭证；不往隔离实例拷用户的凭证 | 合入后的批次 L4（用人的 profile）或人当场登录 |
-| Q4 的发现 F1（首页第一件不显示问话，第 1、6 条）、F4（行里写类型名，第 2 条）、F2（浅色主题灰字与链接对比度不到 4.5:1）、F5（空图首页其余各节照常显示） | 修法要改人看到的东西（F1、F4 照做完条件原文改；F2 牵涉宿主 token；F5 照设计 §4.10），按纪律不在 L4 里修 | 编排方定，定了以后本线一批修 |
+| Q4 的发现 F1、F2、F4、F5 的桌面复核 | 编排方 2026-11-05 定为必修，Q6 已修；桌面复核随合入时的 L4（编排方通知） | 合入时的 L4 |
 | 第 11 条单装组合、第 13 条读到已登录一支与没登录时的中文报错 | 单装要在隔离实例的 profile 里关一个包的客户端行再重启，本次没排进去；已登录一支要人的凭证 | 合入后的批次 L4（用人的 profile） |
+| 首页「需要你」每件下面一行去主 Agent 的对话（第 6 条「每件下面一行」、设计 §4.3） | 首页只在第一件下面画这一行（P 批次起如此，Q6 没改）；第二层的全部列表每件都有。Q6 修 F1 时读到，不在评审的四处里，改了是人看到的变化 | 编排方定要不要在首页每件下面都加 |
 | 上手页第 3 块「人设设置位」一行、「`/wish` 没注册」一支 | 要客户端看得见的设置在场信号与命令注册信号；Q4 只记录有没有这两种信号，不改代码 | Q4 的记录出来后由编排方排 |
 
 ## 4. 每批的门禁与纪律
@@ -112,6 +114,10 @@ main 上的问法是 `d-ask-three-gates`：一句问话（`ask`），按四种�
       - 截图与 CDP 记录放 `.llm\panel-2\l4\`（不入库）。关掉隔离实例、删锁之后写报告 `.agents/tasks/panel/l4-<日期>.md`：每项结论、对应的做完条件、截图文件名、控制台账目、桌面锁与主检出 `view.json` 的记录；同批改 `docs/HANDOFF.md` 面板一行、`docs/ORCHESTRATION.md` §2.10 验证一条（「新版面在桌面版的 L4 核对待做」改成本次结果）、`docs/FACTS.md` §3（新得到的宿主事实，按该表的格式带〔实证 日期〕）。
       Files: `.agents/tasks/panel/l4-<日期>.md`（新）、`docs/HANDOFF.md`、`docs/ORCHESTRATION.md`、`docs/FACTS.md`；`.llm\panel-2\l4\*`（不入库）
       Verify: 报告里每项有结论与证据；实例已关、锁已删；之后跑 §4 四道门禁退出码 0（隔离实例关掉之后才重建）。一个提交推 `origin/panel-2`。核对中发现的缺陷不在本项里修：写进报告，修法若改变人看到的东西，交编排方定。
+
+- [x] 10. （Q6，评审的四处必修）先合入 origin/main 并跑全量门禁；再按 §2 表里 Q6 一行改 `src/graph/plain-view.ts`（`askLines`）、`ui/src/graph/common.tsx`（`Options`、`NodeRow`）、`ui/src/graph/Home.tsx`（`NeedCard`、空图）、`ui/src/graph/Guide.tsx`（导出 `CopyWish`）、`ui/src/graph/styles.ts`（`LIGHT_TOKENS`、`--g-link`），文档同批。
+      Files: 上面几个文件、`tests/graph-panel-render.spec.ts`（新）、`tests/graph-plain-view.spec.ts`、`package.json`、`docs/ORCHESTRATION.md`、`docs/HANDOFF.md`、`docs/FACTS.md`、`.agents/tasks/panel/l4-2026-11-05.md`、本文件
+      Verify: §4 四道门禁退出码 0，棘轮不升；桌面复核随合入时的 L4。一个提交推 `origin/panel-2`。
 
 ## 7. 规划时的基线
 

@@ -4,10 +4,24 @@
  * come from the DSH theme tokens (--dsw-*), so the panel follows the
  * light and dark themes; motion is CSS only and stops under
  * prefers-reduced-motion.
+ *
+ * The light theme is the host's body without `data-ds-dark-theme` (the
+ * attribute the host's own CSS keys its dark tokens on, docs/FACTS.md §3).
+ * There the host's tertiary label and business colour read 3.71:1 and
+ * 4.23:1 on white, under the 4.5:1 of plain-ui 1.3 §1.3, so grey text takes
+ * the secondary label and links mix the ink into the business colour
+ * (LIGHT_TOKENS, pinned by tests/graph-panel-render.spec.ts).
  */
+export const LIGHT_TOKENS = {
+  ink3: 'var(--dsw-alias-label-secondary,#61666b)',
+  link: 'color-mix(in srgb,var(--dsw-alias-state-business-primary,#4176e6) 80%,var(--dsw-alias-label-primary,#0f1115))',
+} as const
+
 export const PANEL_CSS = `
-.glmg{--g-done:var(--dsw-alias-state-success-primary,#3fb950);--g-doing:var(--dsw-alias-state-warn-primary,#d29922);--g-wait:var(--dsw-alias-state-error-primary,#f85149);--g-accent:var(--dsw-alias-state-business-primary,#2f81f7);--g-purple:#a371f7;--g-ink:var(--dsw-alias-label-primary,#e6e6e6);--g-ink2:var(--dsw-alias-label-secondary,#b5b5b5);--g-ink3:var(--dsw-alias-label-tertiary,#8a8a8a);--g-line:var(--dsw-alias-border-l2,rgba(127,127,127,.18));--g-line-strong:var(--dsw-alias-border-l1,rgba(127,127,127,.28));--g-hover:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.1));--g-layer:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.06));
+.glmg{--g-done:var(--dsw-alias-state-success-primary,#3fb950);--g-doing:var(--dsw-alias-state-warn-primary,#d29922);--g-wait:var(--dsw-alias-state-error-primary,#f85149);--g-accent:var(--dsw-alias-state-business-primary,#2f81f7);--g-link:var(--g-accent);--g-purple:#a371f7;--g-ink:var(--dsw-alias-label-primary,#e6e6e6);--g-ink2:var(--dsw-alias-label-secondary,#b5b5b5);--g-ink3:var(--dsw-alias-label-tertiary,#8a8a8a);--g-line:var(--dsw-alias-border-l2,rgba(127,127,127,.18));--g-line-strong:var(--dsw-alias-border-l1,rgba(127,127,127,.28));--g-hover:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.1));--g-layer:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.06));
   position:relative;display:flex;flex-direction:column;height:100%;min-height:0;color:var(--g-ink);font-family:var(--dsw-font-family,inherit);font-size:13px;line-height:1.5}
+/* the light theme: grey text and links at 4.5:1 or more on the host's light fills */
+body:not([data-ds-dark-theme]) .glmg{--g-ink3:${LIGHT_TOKENS.ink3};--g-link:${LIGHT_TOKENS.link}}
 .glmg *{box-sizing:border-box}
 .glmg-head{display:flex;align-items:center;gap:8px;padding:10px 14px 6px;min-width:0}
 .glmg-goal{flex:1;min-width:0;color:var(--g-ink3);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -32,7 +46,7 @@ export const PANEL_CSS = `
 .glmg-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .glmg-meta{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;color:var(--g-ink3);font-size:11.5px}
 .glmg-text{margin:8px 0 0;color:var(--g-ink2);font-size:12.5px;line-height:1.65;overflow-wrap:anywhere}
-.glmg-more{margin-top:2px;padding:0;border:0;background:none;color:var(--g-accent);font:inherit;font-size:12px;cursor:pointer}
+.glmg-more{margin-top:2px;padding:0;border:0;background:none;color:var(--g-link);font:inherit;font-size:12px;cursor:pointer}
 /* folding (common.tsx Folded): the height limit is inline, in lines of the box's own line height */
 .glmg-fold .clamp{overflow:hidden}
 .glmg-fold .faded{-webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 1.6lh),transparent);mask-image:linear-gradient(180deg,#000 calc(100% - 1.6lh),transparent)}
