@@ -62,6 +62,19 @@ test('Config schema exposes home/plan/provider with coding-plan default', () => 
   assert.ok(json.includes('<DSH home>/glm-hourness'))
 })
 
+test('Config contextWindow: default 512000; the Loader\'s validation passes any value through, so the row decides', () => {
+  const validate = (config: unknown): unknown => Config['~standard'].validate(config)
+  assert.deepEqual(validate({}), { value: { plan: 'coding-plan', provider: 'glm-zcode', contextWindow: 512_000 } })
+  assert.deepEqual(validate({ contextWindow: 600_000 }), { value: { plan: 'coding-plan', provider: 'glm-zcode', contextWindow: 600_000 } })
+  // An out-of-range or non-integer value reaches apply (it falls back there, with the row health saying so) instead of the Loader refusing the row.
+  for (const contextWindow of [5, 2_000_000, 600_000.5, '512k']) {
+    assert.deepEqual(validate({ contextWindow }), { value: { plan: 'coding-plan', provider: 'glm-zcode', contextWindow } }, String(contextWindow))
+  }
+  const json = JSON.stringify(Config)
+  assert.ok(json.includes('default 512000'))
+  assert.ok(json.includes('An integer from 128000 to 1000000'))
+})
+
 test('上手记录 (channel-model): done、seen 三个会话与清掉，本机记录坏了安静', () => {
   const backing = new Map<string, string>()
   const storage = { getItem: (key: string) => backing.get(key) ?? null, setItem: (key: string, value: string) => { backing.set(key, value) }, removeItem: (key: string) => { backing.delete(key) } } as Storage

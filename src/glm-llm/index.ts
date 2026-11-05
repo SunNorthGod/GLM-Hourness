@@ -11,6 +11,7 @@ import { ZcodeAdapter } from './zcode.ts'
 import { credentialHome } from '../shared/data-home.ts'
 import { homeField, planField } from './config-fields.ts'
 import { asAttachments } from './images.ts'
+import { GLM_CONTEXT_WINDOW } from './models.ts'
 import Schema from '../shared/schemastery.ts'
 import { provideRowHealth } from '../shared/health.ts'
 import type { AdapterRegistry, AgentsService, FsPathService, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
@@ -37,13 +38,22 @@ export interface GlmConfig {
   readonly plan?: 'coding-plan' | 'start-plan'
   /** Registered provider route id; defaults to `glm-zcode` to avoid the pi-ai `glm` route. */
   readonly provider?: string
+  /** The context window declared to DSH, as written: anything but an integer in GLM_CONTEXT_WINDOW's range falls back to the default (docs/DESIGN.md §4.6). */
+  readonly contextWindow?: unknown
 }
+
+const { default: WINDOW_DEFAULT, min: WINDOW_MIN, max: WINDOW_MAX } = GLM_CONTEXT_WINDOW
 
 /** Runtime Config schema: the channel knobs as real switches in the DSH plugin manager. */
 export const Config = Schema.object({
   home: homeField,
   plan: planField,
   provider: Schema.string().default('glm-zcode').description('Provider route id registered on the LLM seam.'),
+  // The `any` member lets a value outside the range through the Loader's
+  // validation, so the row falls back to the default and says so in its
+  // health; the integer field alone would make the Loader refuse the whole
+  // channel row (AGENTS.md: activation degrades, never fails).
+  contextWindow: Schema.union([Schema.natural().min(WINDOW_MIN).max(WINDOW_MAX), Schema.any()]).default(WINDOW_DEFAULT).description(`Context window in tokens: declared to DSH (its compaction and budgets) and used for each step's output budget, which takes the smaller of this and the ZCode catalog's ${WINDOW_MAX}. An integer from ${WINDOW_MIN} to ${WINDOW_MAX}; default ${WINDOW_DEFAULT}. Any other value falls back to the default and the row health says so.`),
 })
 
 /** cordis plugin identity. */
@@ -54,18 +64,37 @@ export function apply(ctx: (LlmContextLike | { llm?: LlmContextLike }) & Service
   const home = credentialHome(config.home)
   const provider = config.provider ?? 'glm-zcode'
   const plan = config.plan ?? 'coding-plan'
-  const health = provideRowHealth(ctx, 'glm-llm', 'active', `已注册路由 ${provider}（套餐 ${plan}，凭证目录 ${home}）`)
+  const window = contextWindowOf(config.contextWindow)
+  if (window.refused !== undefined) console.warn(`dsh-glm-hourness/glm-llm: ${window.refused}`)
+  const health = provideRowHealth(ctx, 'glm-llm', window.refused === undefined ? 'active' : 'degraded', `已注册路由 ${provider}（套餐 ${plan}，凭证目录 ${home}，上下文窗口 ${window.value}）${window.refused === undefined ? '' : `；${window.refused}`}`)
   const unregister = registrarOf(ctx)([provider], new ZcodeAdapter({
     home,
     ...(config.plan === undefined ? {} : { plan: config.plan }),
+    contextWindow: window.value,
     ...imageServices(ctx),
     sessionHeader: sessionHeaders(ctx),
-    report: (sessionId, state, reason) => health.report(sessionId, state, reason),
+    // A session's report replaces the activation text, so a refused window rides on each report and keeps an answered request partly in effect.
+    report: (sessionId, state, reason) => window.refused === undefined
+      ? health.report(sessionId, state, reason)
+      : health.report(sessionId, state === 'active' ? 'degraded' : state, `${reason}；${window.refused}`),
   }))
   return () => {
     unregister()
     health.dispose()
   }
+}
+
+/**
+ * The configured context window: an integer in GLM_CONTEXT_WINDOW's range,
+ * the default when absent, else the default with the words for the row
+ * health. Never throws: the shown value is cut, and only a number or a
+ * string is written out.
+ */
+function contextWindowOf(value: unknown): { readonly value: number, readonly refused?: string } {
+  if (value === undefined || value === null) return { value: WINDOW_DEFAULT }
+  if (typeof value === 'number' && Number.isInteger(value) && value >= WINDOW_MIN && value <= WINDOW_MAX) return { value }
+  const shown = typeof value === 'number' ? String(value) : typeof value === 'string' ? JSON.stringify(value.slice(0, 40)) : typeof value
+  return { value: WINDOW_DEFAULT, refused: `上下文窗口配置 ${shown} 不是 ${WINDOW_MIN} 到 ${WINDOW_MAX} 之间的整数，按缺省 ${WINDOW_DEFAULT}` }
 }
 
 /**
