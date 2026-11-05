@@ -89,6 +89,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面批次 L4 没做本节点的真机核对：transcript 行出厂停用，要改人的 profile 才能打开；compact-recall-redact（导出遮掉凭证）合入之前也不在人的 profile 上打开这一行。L4 顺延到 compact-recall-redact 合入之后，届时在隔离实例里做，不改人的 profile。"
+    },
+    {
+      "at": "2026-11-05T23:15:04.736Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "compact-recall-redact 已合入 main（3aa7e8e），导出文件遮掉像凭证的片段。本节点的 L4 按 2026-11-05 的批注照旧顺延：在隔离实例里做，不改人的 profile；是否默认启用 transcript 行另交人定。"
     }
   ]
 }

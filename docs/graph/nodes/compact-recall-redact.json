@@ -3,13 +3,31 @@
   "type": "task",
   "title": "压缩后导出的会话原文遮掉凭证",
   "why": "导出文件留在项目里，遮掉之后不会因为模型回读原文而把密钥带出去",
-  "status": "doing",
+  "status": "done",
   "parent": "bottom",
   "kind": "implement",
   "body": "compact-recall 的 transcript 行导出的明文会话文件可能带有会话里出现过的凭证字符串。先核实：用沙盒导出一份含假凭证的会话，确认是否真的原样带出。若带出，导出时按本仓库已有的密钥识别（gitleaks 规则或 src/memory 的 secret_like 判定，以现有代码为准，不另造）把像凭证的片段换成占位，写明被遮了几处；遮掉失败时不导出这一段并在行健康写明。不改续接原句（ZCode 3.17.1 逐字）。",
   "acceptance": [
     "导出文件里像凭证的片段被换成占位，其余原文不变；先有一份核实记录写明改动前是否真的带出",
     "遮掉失败时不写出未遮的内容，行健康写明；L2 钉住，L3 glm-compact-transcript 通过，改动在 main 上"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "7a5553d",
+      "note": "redact credential-like strings in the compaction transcript export"
+    },
+    {
+      "kind": "commit",
+      "ref": "3aa7e8e",
+      "note": "合入 main 的合并提交，之后 main 快进到 31e853f，两个远端一致"
+    },
+    {
+      "kind": "test",
+      "ref": "build、preflight、npm test、check-lint、npm run -s probe on 3aa7e8e",
+      "exit": 0,
+      "note": "npm test 3201/3201，棘轮 73/18/1，探针 423/423；记录 .agents/tasks/compact-recall-redact/land.md"
+    }
   ],
   "history": [
     {
@@ -63,6 +81,32 @@
       "actor": "llm",
       "op": "comment",
       "text": "合入步（wf_3dc7f998ae602870）按 (a) 重跑：合入 origin/main 到 3aa7e8e，build、preflight、npm test（3201/3201）、check-lint（73/18/1）绿，探针 423/423，glm 的 Edit 与 Read 两项这次没撞上 1175。本步各次探针：3a42496 421/421、837f7be 419/421、830a903 421/423、3fe2b42 423/423、3aa7e8e 423/423（合入的提交）。origin/main 已是 3aa7e8e；github 当时连不上，仍在 596f31e。编排方让该步补推 github、在主检出按 main HEAD 重建 dist、删分支与工作树后结束；transcript 行出厂停用，不重启桌面版。验收「改动在 main 上」已满足，节点等该步结束再关。"
+    },
+    {
+      "at": "2026-11-05T23:15:04.421Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "compact-recall-redact（实现 wf_f32235c26051667e，合入 wf_3dc7f998ae602870）完成：评审 APPROVED、没有挡路项；合入 main 3aa7e8e（ff-only），之后快进到 31e853f（只有 docs/graph），origin 与 github 经 ls-remote 一致。合入树门禁 build、preflight、npm test 3201/3201、check-lint 73/18/1 绿，探针 423/423；合入期间两次探针各败 glm 的 Edit 与 Read 两项（ReplaceFileW Win32 1175，仓库树下的文件被 DSH 之外的进程短暂占住，与本分支无关，根因由 probe-run-dir-outside-repo 修），重跑两次全绿，没有带红探针合入。主检出 dist 重建，build-info 31e853f，已跟踪文件干净。transcript 行出厂停用，没有重启桌面版；L4 照节点批注顺延到在隔离实例里核对。改动前导出确实带出凭证、改动后遮掉的核实记录在 DESIGN.md §2.4。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "7a5553d",
+          "note": "redact credential-like strings in the compaction transcript export"
+        },
+        {
+          "kind": "commit",
+          "ref": "3aa7e8e",
+          "note": "合入 main 的合并提交，之后 main 快进到 31e853f，两个远端一致"
+        },
+        {
+          "kind": "test",
+          "ref": "build、preflight、npm test、check-lint、npm run -s probe on 3aa7e8e",
+          "exit": 0,
+          "note": "npm test 3201/3201，棘轮 73/18/1，探针 423/423；记录 .agents/tasks/compact-recall-redact/land.md"
+        }
+      ]
     }
   ]
 }
