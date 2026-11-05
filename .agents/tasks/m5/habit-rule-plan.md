@@ -1,0 +1,46 @@
+# m5-habit-rule：根因、取舍与计划
+
+项目图节点 `m5-habit-rule`「记习惯前先问，从提示词升成规则」。上一步（root-cause）被上游 503 截断、没有留下文件，本文件由 code 步骤补写：先写根因，再写做法与实施记录。
+
+## 1. 根因（实读代码，2026-11-05，main 7560058）
+
+起因：2026-11-04 桌面批次（`m5` 节点 2026-11-03T21:05 的批注）里，GLM-5.3-Flash 要把一条从改动里猜出的习惯记下时，没有用 `memory_habit`，而是用 DSH 通用问答卡问了人；人回绝之后，回绝没有进 `memory_habit` 的记录，「28 天不再问」只在那个会话的上下文里成立。
+
+1. `memory_habit` 在 GLM 路由上是延迟工具。`src/shared/tool-names.ts` 把它放在 `LEARNING_TOOL_NAMES`，不在 `ORCHESTRATION_RESIDENT_TOOLS`；`src/toolsearch/exposure.ts` 的 `isConfiguredDeferred` 因此把它从请求的工具面里拿掉，只在工具检索的公告里列一个名字。模型要先调 `LocalToolSearch` 取到定义、再经 `DeferredToolCall` 调它，`HABIT_DESCRIPTION`（问法、每周上限、28 天）在取到定义之前模型看不到。`tests/contracts.spec.ts` 钉着它延迟。
+2. 通用问答卡是常驻的。`RESIDENT_TOOLS` 含 `AskUserQuestion` 与 `ask_user_question`；只有主 Agent 模式（`/wish`）下设计行把它从工具面拿掉并由 `main-agent-ask` 拦下（`src/design/talk.ts` `HIDDEN_FROM_MAIN_AGENT`）。普通会话里它就在眼前。
+3. 指向 `memory_habit` 的提示只有四处，都不在模型稳定能看到的位置：`memory_store` 的 `relay` 参数说明末句；`ask_first` 拒绝的 `hint`（只在不带 `relay` 存偏好被拒之后出现）；学习摘要提醒（满 7 天且有未落点的组才发）；`memory_habit` 自己的说明（延迟，见第 1 条）。GLM 方言的 `# Memory` 一节（`src/glm-prompt/localize.ts` `MEMORY_L1`）不提它。
+4. 没有任何代码规则管「习惯先问」。记忆行不注册 `tools/pre-execute` 监听器（`tests/memory-row.spec.ts` 钉着），`ask_first` 与 `relay_not_said` 是工具自己的报错，不进违规流水、没有规则编号、不在规则总表里。
+5. 因此有两条绕开 `memory_habit` 的路，代码都不拦：
+   - 问答卡：卡上的回答是工具结果，不是人发来的消息（`src/design/talk.ts` `personTextOf` 只认 `source.kind: 'user'` 的 `user/message`）。回绝没有任何记录；答应时 `memory_store` 的 `relay` 在人最近一条消息里找不到，得 `relay_not_said`（桌面批次里出现两次），模型转而引用人更早的原话入库。
+   - 对话里直接问：人回「好」之后，`memory_store` 带 `relay: "好"`（或人回话里复述习惯的半句）能通过 `saidLatest`，记成偏好，没有 `ask` 记录、不计每周上限；人回「不用」时同样什么都不记。
+
+一句话：模型看得见、拿得到的是通用问答卡和 `memory_store`，看不见 `memory_habit`；「先问再记」只是写在参数说明里的提示，没有一条规则在调用边界上拦。
+
+桌面批次那个会话是不是主 Agent 模式没有留下记录；从它用了问答卡、批注没有提到 `main-agent-ask` 拦下推断不是。
+
+## 2. 可选做法与取舍
+
+| 做法 | 管得住什么 | 代价 |
+| --- | --- | --- |
+| A. `memory_habit` 列为常驻工具，`# Memory` 一节点名它 | 模型从第一步就看得见定义与 28 天的说法（根因第 1、3 条） | 每个 GLM 请求多一份工具定义（约 2.5 KB，进前缀缓存）；仍是提示，模型可以不用 |
+| B. 规则拦「把人只是答应的习惯直接记成偏好」 | `memory_store` 一侧的绕路（根因第 5 条第二项）：`relay` 是一句光秃秃的同意（`isPlainYes`），或 `relay` 的词大半出自 agent 在人这条消息之前问人的那句话 | 判定是启发式：人复述 agent 问过的话也算「答应」，要再走一次 `memory_habit`；会话被压缩到看不见 agent 那一问时放过 |
+| C. 规则拦「在通用问答卡上问习惯」 | 桌面批次实际走的那条路（根因第 5 条第一项）：卡上的问题带「记住、习惯、偏好、以后都……」这类词就拦，正路是 `memory_habit ask` | 词表是许可清单，问别的事带了这些词也会被拦；错拦时人一句话撤下 |
+| D. 拦对话里直接问 | 对话文本不是工具调用，`tools/pre-execute` 看不到；只能事后读回复文字猜 | 不做：猜错就是打断正常对话，且拦不住已经说出口的话 |
+
+选 A + B + C，做成一条规则 `habit-ask-first`（记忆行装，规则总表 `memory:habit-ask-first`）：
+
+- 只靠 A 仍是提示，节点的 why 正是「提示词管不住模型绕开专门的工具去问」。
+- 只靠 B、C 而不做 A，GLM 上的正路仍要先检索再经 `DeferredToolCall`，Flash 在桌面批次里正是没走这一步；纠正提醒点名的工具要在眼前。
+- D 不做，留作已知缺口：模型在对话里直接问、人说「不用」时，回绝不进记录。B 让这条路记不进任何东西（人答应了也得回到 `memory_habit`），A、C 与规则声明让正路是最顺手的那条。两档模型的真实运行检验这一点。
+
+人直接说出口的习惯照旧直接记：人的消息不是回答 agent 的一问，或回答里自己说出了 agent 没问过的习惯，`relay` 照常通过（`saidLatest` 不变）。汇报细度 `reporting-depth` 不在规则里：`memory_habit` 记不了这一条（它带 `value`），人的话照 §3.7 由主 Agent 直接记。
+
+## 3. 实施（照 §2）
+
+- 规则：`src/memory/habit-rule.ts`（判定、纠正提醒、经 `installRuleGate` 安装）；记忆行 `src/memory/index.ts` 安装它，违规写会话项目的 `.llm/audit/violations.jsonl`（与记忆的项目目录同一处）。
+- 规则总表：`src/guard/catalog.ts` 的 `GUARD_RULES` 加一条，行 `memory`，`liftVia: 'any'`（`guard_lift` 与 `/rules lift memory:habit-ask-first` 两条入口都走现有的撤下记录）。总数 10 → 11：guard 行六条、图行一条、循环板两条、指标流水一条、记忆行一条；主 Agent 的九条不变。
+- 规则声明：guard 行的 `glm:guard` 一节在记忆行生效且规则没撤下时多一行。
+- 常驻：`memory_habit` 进 `ORCHESTRATION_RESIDENT_TOOLS`；`learning_signals` 仍延迟。`# Memory` 一节加一句（`MEMORY_L3`）。
+- L2：拦下（光秃秃的同意、复述 agent 的问、卡上问习惯）、放行（直述、与问话无关的回答、汇报细度、卡上问别的事）、撤下（撤下记录在时规则不拦）、违规流水带规则编号、纠正提醒写正路。
+- L3：探针场景 `glm-memory-habit` 改为直接调用常驻的 `memory_habit`，加卡上问习惯被拦、答应的「好」被拦两步，核对违规流水。
+- 真实运行：GLM-5.3 与 GLM-5.3-Flash 各两个会话，共用同一份用户级记忆：第一个会话人回绝一条习惯，第二个会话再让模型看同样的改动，核对没有再问。记录写进 `.agents/tasks/m5/habit-rule-runs.md`。
