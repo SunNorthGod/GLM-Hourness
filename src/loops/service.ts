@@ -103,9 +103,18 @@ export interface Contribution {
   readonly actions?: readonly { readonly id: string, readonly title: string }[]
   /** The board calls it to run a harness action. It does not throw: a failure is in the result. Required when `actions` is not empty. */
   run?(action: string, event: LoopEventRecord): Promise<HarnessResult>
-  /** For the page only: the lines shown when an entry is opened. Synchronous, does not throw, at most 20 lines of 160 code points. */
+  /**
+   * For the page only: the lines shown when an entry is opened, for the project root given. Synchronous, does not
+   * throw, at most `DETAILS_MAX_LINES` lines of `DETAILS_MAX_WIDTH` code points. The board calls it each time it
+   * writes view.json; an answer that throws or does not keep to this is shown as unreadable and told to the row health.
+   */
   details?(entry: string, project: string): readonly string[]
 }
+
+/** The most lines a hand-over's `details` may give for one entry (loop board design §3.1). */
+export const DETAILS_MAX_LINES = 20
+/** The most code points of one line of `details`. */
+export const DETAILS_MAX_WIDTH = 160
 
 export type ContributeResult =
   | { readonly ok: true, readonly dispose: () => void, readonly accepted: readonly string[], readonly dropped: readonly { readonly id: string, readonly reason: string }[] }

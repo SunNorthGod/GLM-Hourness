@@ -127,7 +127,7 @@ export function createBoards(deps: BoardsDeps): Boards {
   }
 
   /** What is wrong with one project in one respect (`kind`): the whole list replaces the one before. */
-  function note(root: string, kind: 'files' | 'view', lines: readonly string[]): void {
+  function note(root: string, kind: 'files' | 'view' | 'details', lines: readonly string[]): void {
     const key = `${root}\n${kind}`
     const labelled = lines.map(line => `${basename(root)}：${line}`)
     if (JSON.stringify(problems.get(key) ?? []) === JSON.stringify(labelled)) return
@@ -177,10 +177,14 @@ export function createBoards(deps: BoardsDeps): Boards {
   async function show(root: string, store: LoopStore, board: BoardRead): Promise<LoopsView> {
     const nowMs = deps.io.now()
     const peak = deps.peakOf?.(root)
+    // Each plugin's entry with what its hand-over's details give for this project; one that cannot be read is said on the row health.
+    const read = deps.registry.entries().map(item => ({ item, details: deps.registry.detailsOf(item.entry.id, root) }))
+    note(root, 'details', read.flatMap(({ item, details }) => details?.ok === false ? [`「${item.entry.title}」的明细读不到：${details.reason}`] : []))
+    const plugin = read.map(({ item, details }) => details === undefined ? item : { ...item, details })
     const view = buildView({
       at: new Date(nowMs).toISOString(),
       project: projectKey(root),
-      plugin: deps.registry.entries(),
+      plugin,
       board,
       events: deps.registry.events(),
       runtime: await runtimeOf(store, nowMs),
