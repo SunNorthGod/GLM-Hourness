@@ -26,6 +26,12 @@
       "reason": "运行 m4-reanchor-violations（wf_b007fba3eafafeec）开工",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-05T11:33:02.410Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-reanchor-violations（wf_b007fba3eafafeec）第一轮代码步撞上上游「No available accounts」，没有任何提交；评审在空 diff 上 CHANGES_REQUESTED（两条验收都没满足，.agents/tasks/m4-reanchor-violations/review.json）。第二轮代码步在跑。"
     }
   ]
 }

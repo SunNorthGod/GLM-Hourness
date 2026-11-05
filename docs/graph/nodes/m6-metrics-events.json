@@ -60,6 +60,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "实现已在分支 m6-metrics-events（133a876，已推 origin，基于 main 8560d80，未合入）：四种事件经 src/glm-llm/metrics.ts 的 glmMetricSink 交指标服务（by: glm）；额度读取的归属由 QuotaRequest.asker 带（/glm-status、/hourness 带会话，循环板带项目目录），上游限额与登录被拒归模型请求的会话，高峰提醒归 agent 的会话；服务不在时不交、不告警，事件里没有令牌、指纹与请求头。门禁：build 0、npm test 0（3172 通过 0 失败，新 spec tests/glm-metrics.spec.ts 16 项），探针 420/420（各场景流水里有 glm.quota-read 与 glm.peak-reminder，没有拒收）。剩合入 main；验收两条按 L2 已核。"
+    },
+    {
+      "at": "2026-11-05T11:33:02.689Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方补记：上一条批注（main b6bbbf7）是 m6-metrics-events 的代码步自己写进 docs/graph 并推 main 的，违反任务书「不动 docs/graph」。内容属实，保留不回退；已告诉该步之后不再写图或推 main。下一步评审。"
     }
   ]
 }
