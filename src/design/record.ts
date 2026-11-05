@@ -31,9 +31,10 @@ import { ANSWER_MARKS, DELEGATED, DELEGATIONS_ID, DELEGATION_LIMIT, DELEGATION_R
 import type { ToolDefinitionLike } from '../shared/dsh-min.ts'
 import { RECORD_HUMAN_ANSWER } from '../shared/tool-names.ts'
 import { askBoard, attachDigest, boardOfBody, piecesNotShown } from './attach.ts'
-import { emitMetric } from './metrics.ts'
+import { toMetricsId } from '../shared/metrics.ts'
+import { emitDesign, msOf, optionalId, type DesignMetricEvent } from './metrics.ts'
 import type { DesignToolDeps } from './propose.ts'
-import { normalizeTalk, personSaid, type Shown, type TalkState } from './talk.ts'
+import { normalizeTalk, personSaid, quotedMessage, type Shown, type TalkState } from './talk.ts'
 import { confirmGate, errorText, isRecord, mainAgentCall, moduleOfGoal, openGoal, readGraph, refuse, refuseWith, releaseReady, toolShell } from './tool-support.ts'
 
 const ANSWERS = ['agree', 'add', 'reject'] as const satisfies readonly AnswerKind[]
@@ -190,6 +191,7 @@ export function recordTool(deps: DesignToolDeps): ToolDefinitionLike {
       const { context, agent } = mainAgentCall(deps.isMainAgent, exec, { message: `${RECORD_HUMAN_ANSWER} is for the main agent`, hint: 'only the main agent records the human\'s words; the human turns main agent mode on with /wish' })
       let emitted = false
       let kind = 'question'
+      const emit: Emit = (event) => { emitDesign(deps.lookup, agent, event) }
       try {
         const args = parseArgs(raw)
         kind = args.kind
@@ -202,17 +204,17 @@ export function recordTool(deps: DesignToolDeps): ToolDefinitionLike {
           refuse('unavailable', 'the harness cannot read this session\'s messages, so nothing was recorded', 'tell the human that their reply could not be recorded')
         }
         const refusedWords = (said: Extract<ReturnType<typeof personSaid>, { ok: false }>, extra: string): never => {
-          emitMetric({ event: 'design.answer-refused', kind, reason: said.offBoundary ? 'words-off-boundary' : 'words-not-found' })
+          emit({ k: 'design.answer-refused', body: { kind, code: said.offBoundary ? 'words-off-boundary' : 'words-not-found' } })
           emitted = true
           return refuse('invalid', said.reason, said.offBoundary ? `${WORDS_HINT}; ${BOUNDARY_HINT}${extra}` : `${WORDS_HINT}${extra}`, 'words')
         }
-        if (args.kind === 'delegation') return await delegate(where, graph, state, args, context.callId, refusedWords)
-        if (args.kind === 'confirm') return await confirm(where, graph, state, args, context.callId, refusedWords)
-        if (args.kind === 'release') return await release(where, graph, state, args, context.callId, refusedWords)
-        return await answer(deps, where, graph, state, args, context.callId, refusedWords)
+        if (args.kind === 'delegation') return await delegate(where, graph, state, args, context.callId, refusedWords, emit)
+        if (args.kind === 'confirm') return await confirm(where, graph, state, args, context.callId, refusedWords, emit)
+        if (args.kind === 'release') return await release(where, graph, state, args, context.callId, refusedWords, emit)
+        return await answer(deps, where, graph, state, args, context.callId, refusedWords, emit)
       }
       catch (error) {
-        if (!emitted) emitMetric({ event: 'design.answer-refused', kind, reason: codeOf(error) })
+        if (!emitted) emit({ k: 'design.answer-refused', body: { kind, code: toMetricsId(codeOf(error)) } })
         throw error
       }
     },
@@ -221,8 +223,15 @@ export function recordTool(deps: DesignToolDeps): ToolDefinitionLike {
 
 type Where = NonNullable<ReturnType<DesignToolDeps['graph']>>
 type Refuse = (said: Extract<ReturnType<typeof personSaid>, { ok: false }>, extra: string) => never
+type Emit = (event: DesignMetricEvent) => void
 
-async function answer(deps: DesignToolDeps, where: Where, graph: LoadedGraph, state: TalkState, args: QuestionArgs, call: string, refusedWords: Refuse): Promise<Record<string, unknown>> {
+/** The wait and `noted` of a recorded answer: from the showing to the message the first quote is in, and whether the main agent's message before it restated the answer. */
+function replyOf(state: TalkState, words: readonly string[], since: number): { readonly ms: number, readonly noted: boolean } {
+  const reply = quotedMessage(state, words[0] ?? '', since)
+  return { ms: reply === undefined ? 0 : msOf(reply.time - since), noted: reply?.restated ?? false }
+}
+
+async function answer(deps: DesignToolDeps, where: Where, graph: LoadedGraph, state: TalkState, args: QuestionArgs, call: string, refusedWords: Refuse, emit: Emit): Promise<Record<string, unknown>> {
   const node = graph.nodes.get(args.question)
   if (node === undefined) refuse('not_found', `no node "${args.question}"`, 'pass the id propose_to_human returned', 'question')
   if (node.type !== 'question' || node.options !== undefined) refuse('invalid', `"${node.id}" is not a question in the proposal shape`, 'pass the id of a question you put with propose_to_human', 'question')
@@ -240,20 +249,20 @@ async function answer(deps: DesignToolDeps, where: Where, graph: LoadedGraph, st
   await write(where.dir, graph, node, args, said.ok ? said.relay : '', call, tail)
   const handedBack = args.answer === 'agree' ? await handBack(deps, where, node, said.ok ? said.relay : '') : undefined
   const outcome = args.answer === 'agree' ? 'decided' : args.answer === 'add' ? 'added' : 'rejected'
-  const firstReply = state.people.find(message => message.time > start)
-  emitMetric({
-    event: 'design.answer-recorded',
-    kind: 'question',
-    form: node.form,
-    answer: args.answer,
-    outcome,
-    goal: goalOf(graph, node.id)?.id,
-    question: node.id,
-    delayMs: firstReply === undefined ? undefined : firstReply.time - start,
-    codePoints: codePointCount(said.ok ? said.relay : ''),
-    restated: firstReply?.restated,
-    delegated,
-    pickedRecommended: node.form === 'choose' && args.answer === 'agree' && !delegated ? args.way === node.ways?.length : undefined,
+  emit({
+    k: 'design.answer-recorded',
+    body: {
+      kind: 'question',
+      ...optionalId('form', node.form),
+      answer: args.answer,
+      outcome,
+      goal: toMetricsId(goalOf(graph, node.id)?.id),
+      pending: toMetricsId(node.id),
+      ...replyOf(state, args.words, start),
+      units: codePointCount(said.ok ? said.relay : ''),
+      delegated,
+      ...node.form === 'choose' && args.answer === 'agree' && !delegated ? { pickedRecommended: args.way === node.ways?.length } : {},
+    },
   })
   return { outcome, message: messageOf(outcome, node.id), ...handedBack === undefined ? {} : { handedBack } }
 }
@@ -269,7 +278,7 @@ async function answer(deps: DesignToolDeps, where: Where, graph: LoadedGraph, st
  * note the goal and move nothing. Nothing is kept of `recordedAs` when the
  * human agrees: the goal's state is the record.
  */
-async function confirm(where: Where, graph: LoadedGraph, state: TalkState, args: ConfirmArgs, call: string, refusedWords: Refuse): Promise<Record<string, unknown>> {
+async function confirm(where: Where, graph: LoadedGraph, state: TalkState, args: ConfirmArgs, call: string, refusedWords: Refuse, emit: Emit): Promise<Record<string, unknown>> {
   const goal = openGoal(graph, args.goal)
   const shown = state.shown.filter(entry => entry.kind === 'confirm' && entry.goal === goal.id && entry.module === undefined).at(-1)
   if (shown === undefined) refuse('not_shown', `the requirement of "${goal.id}" was not put to the human in this session`, 'show it with propose_to_human first, in this session', 'goal')
@@ -287,17 +296,7 @@ async function confirm(where: Where, graph: LoadedGraph, state: TalkState, args:
     if (!noted.ok) refuseWith(noted)
   }
   const outcome = args.answer === 'agree' ? 'confirmed' : args.answer === 'add' ? 'added' : 'rejected'
-  const firstReply = state.people.find(message => message.time > shown.time)
-  emitMetric({
-    event: 'design.answer-recorded',
-    kind: 'confirm',
-    answer: args.answer,
-    outcome,
-    goal: goal.id,
-    delayMs: firstReply === undefined ? undefined : firstReply.time - shown.time,
-    codePoints: codePointCount(relay),
-    restated: firstReply?.restated,
-  })
+  emit({ k: 'design.answer-recorded', body: { kind: 'confirm', answer: args.answer, outcome, goal: toMetricsId(goal.id), pending: toMetricsId(goal.id), ...replyOf(state, args.words, shown.time), units: codePointCount(relay) } })
   return { outcome, message: confirmMessage(outcome, goal.id), ...outcome === 'confirmed' ? { stage: 'design' } : {} }
 }
 
@@ -445,7 +444,7 @@ function releaseMessage(outcome: 'released' | 'partial' | 'added' | 'rejected', 
  * have been whole in what the main agent said. Agreeing is releaseWrites;
  * adding and rejecting note the goal or the module and move nothing.
  */
-async function release(where: Where, graph: LoadedGraph, state: TalkState, args: ReleaseArgs, call: string, refusedWords: Refuse): Promise<Record<string, unknown>> {
+async function release(where: Where, graph: LoadedGraph, state: TalkState, args: ReleaseArgs, call: string, refusedWords: Refuse, emit: Emit): Promise<Record<string, unknown>> {
   const goal = openGoal(graph, args.goal)
   const module = args.module === undefined ? undefined : moduleOfGoal(graph, goal, args.module)
   const target = module ?? goal
@@ -468,18 +467,7 @@ async function release(where: Where, graph: LoadedGraph, state: TalkState, args:
     if (!noted.ok) refuseWith(noted)
   }
   const outcome = released === undefined ? args.answer === 'add' ? 'added' : 'rejected' : released.complete ? 'released' : 'partial'
-  const firstReply = state.people.find(message => message.time > shown.time)
-  emitMetric({
-    event: 'design.answer-recorded',
-    kind: 'release',
-    answer: args.answer,
-    outcome,
-    goal: goal.id,
-    module: module?.id,
-    delayMs: firstReply === undefined ? undefined : firstReply.time - shown.time,
-    codePoints: codePointCount(relay),
-    restated: firstReply?.restated,
-  })
+  emit({ k: 'design.answer-recorded', body: { kind: 'release', answer: args.answer, outcome, goal: toMetricsId(goal.id), ...optionalId('module', module?.id), pending: toMetricsId(module?.id ?? goal.id), ...replyOf(state, args.words, shown.time), units: codePointCount(relay) } })
   const split = module !== undefined || isSplit(graph, goal)
   return {
     outcome,
@@ -663,7 +651,7 @@ function kindOfItem(item: string): string {
  * lasting authorisation rests on; here the words are checked against the
  * latest message the human sent, then the node is written with them as relay.
  */
-async function delegate(where: Where, graph: LoadedGraph, state: TalkState, args: DelegationArgs, call: string, refusedWords: Refuse): Promise<Record<string, unknown>> {
+async function delegate(where: Where, graph: LoadedGraph, state: TalkState, args: DelegationArgs, call: string, refusedWords: Refuse, emit: Emit): Promise<Record<string, unknown>> {
   // The words are a record made on the spot, not an old message turned into a new authorisation.
   const said = personSaid(state, args.words, state.people.at(-2)?.time ?? 0)
   if (!said.ok) refusedWords(said, `; ${LATEST_HINT}`)
@@ -672,7 +660,7 @@ async function delegate(where: Where, graph: LoadedGraph, state: TalkState, args
   const mark = answerCallMark(call)
   const reason = `${args.undo ? REVOKE_REASON : DELEGATION_REASON}${args.scope}${mark}`
   const result = await delegation(engine, where, graph, args, relay, reason)
-  emitMetric({ event: 'design.delegation', action: result.action, count: result.scopes.length, codePoints: codePointCount(args.scope), store: 'graph' })
+  emit({ k: 'design.delegation', body: { action: result.action, count: result.scopes.length, scopeUnits: codePointCount(args.scope), where: 'graph' } })
   const told = args.undo ? '这类我以后还是先问你' : `以后「${args.scope}」这类我定，只在下一批里告诉你，不对就说`
   const message = result.outcome === 'unchanged'
     ? `Nothing changed: "${args.scope}" is already a kind you decide.`
