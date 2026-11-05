@@ -1689,7 +1689,7 @@ L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读�
 - V13（宿主正常退出时卸载函数会跑、`goals.resume` 那时成功）：一次性的无头运行器退出时不卸载规则行：退出后心跳文件还在，goal 仍是 `paused`，单仍是 `deferred`、没有 `resumedAt`，流水里没有卸载的那条 `ticket-update`，stderr 没有告警。所以对这种宿主走的是设计写的「不跑」那一支：下一次激活时接手（`adopt` 与 `adoptLive`，L2 测过）。桌面版正常退出时卸载函数跑不跑没有核实（桌面版不动），代码两种情形都照做：卸载跑了就恢复，没跑就靠接手。探针场景钉的是两者自洽：心跳文件不在则 goal 已恢复且单上有 `resumedAt`，在则 goal 与单都是暂停时的样子。
 - 场景还核对：主 Agent 与非 GLM 子 agent 的调用照常执行、没有单；被拒的调用不执行，拒绝文字是设计 §6.4 的那一段（含「Your goal is paused.」）；流水依次是 `ticket-open`（harness）、`peak-mode-set`（人）、`ticket-update`（harness，单转 `done`，带 `resumedAt`）；用户级目录下没有 `rules/`。
 
-### 16.14 规则页的数据：`view.json` 与投影 `hournessRules`（`src/rules/view.ts`、`view-build.ts`、`view-writer.ts`、`projection.ts`，`src/guard/records.ts` 的 `journalRecords`，接线在 `index.ts`）与面板的规则板（`ui/src/rules/`）〔数据已实现 2026-11-05，L2、L3；规则板页面已实现 2026-11-05，L2，桌面版未核对〕
+### 16.14 规则页的数据：`view.json` 与投影 `hournessRules`（`src/rules/view.ts`、`view-build.ts`、`view-writer.ts`、`view-journal.ts`、`projection.ts`，`src/guard/records.ts` 的 `journalRecords`，接线在 `index.ts`）与面板的规则板（`ui/src/rules/`）〔数据已实现 2026-11-05，L2、L3；规则板页面已实现 2026-11-05，L2，桌面版未核对〕
 
 规则行在宿主侧把规则页要的数据算好，写进项目的 `<项目根>/.llm/rules/view.json`（`RulesPaths.view`）；会话投影 `hournessRules` 只交 `{projectKey, viewFile}`，客户端按 `viewFile` 读这一个文件，经 `changes` 与定时重读跟进。投影与循环板的 `hournessLoops` 是同一个定义（`src/loops/projection.ts` 的 `viewFileProjection`）：状态在会话开始时按会话头的 `cwd` 算出，会话里的事件不改它；没有工作目录或不在 git 项目里时两项都是 `null`。投影经 `ctx.inject(['sessionProjections'], …)` 注册（`src/shared/row-support.ts` 的 `whenPresent`），不进行的 `inject` 名单、不改补丁；宿主没有 `inject` 或服务不在时行健康部分生效，原因写「宿主没有 inject，没有注册会话投影 hournessRules」或「会话投影 hournessRules 等 sessionProjections 服务」，门与命令照常。
 
@@ -1698,11 +1698,11 @@ L2：`tests/peak-mode.spec.ts`（共用契约：上限与挡住的标记、读�
 **谁的数。**
 
 - 7 天次数都经 M4 的统计函数与分类器：代码规则的次数是 `ruleStats(records, {since: '7d', now})`（`src/guard/measure.ts`）的 `denials.dialect + denials.other`，晚到的拦下也算；规则板自己的条目与人设的规则另把 `classifyRecord` 判为 `deferral` 的排队算进真挡，`rule-record` 算作只记下。目录 id 到流水里规则 id 的对应只在 `journalRuleOf` 一处：guard 框架与 M3 主 Agent 的规则记的是不带行前缀的 id（`loops:files-only` 记作 `files-only`），规则板写 `rules:<id>`（`rules:files-only`、`rules:builtin:…`、`rules:r-…`），所以 `loops:files-only` 与 `rules:files-only` 不串。
-- 流水是规则行的门写的那一本（`dataHomes(ctx, config.home)` 下的 `auditPaths(...).violations`，与 `rowJournal` 同一个目录），按行解析经 `journalRecords`（`src/guard/records.ts`），guard 行的状态视图也调它。
+- 流水读一本（`src/rules/view-journal.ts` 的 `journalsReader`）：项目流水 `projectHomeFor(ctx, config.home, cwd)` 下的 `audit/violations.jsonl`。规则行自己的门（`projectJournal`，§16.11）与 guard 框架装门的几行（guard、graph、loops、design、metrics）都按项目把记录写在这里，guard 行的状态视图（同页的 `rules/denials`）读的也是它；数据目录服务的 `projectHome` 下那本不读，它不按项目分。按行解析经 `journalRecords`（`src/guard/records.ts`），guard 行的状态视图也调它。按文件的大小与修改时刻缓存：没变时不再读，直接用上次解析出的记录。
 - 撤下一行：`GUARD_RULES` 里 `liftVia: 'any'` 的条目写「跟主 Agent 说「撤下<标题>」」（这些行都经 `installRuleGate` 装门，门读撤下记录，`guard_lift` 撤下对它们真生效）；`guard:lift-files-only` 没有撤法，原因「它护着撤下记录本身，只能在规则板上撤，规则板还没接上」；`design:*` 与 `rules:files-only` 没有撤法，原因「这一条不在撤下的办法里，现在撤不了」（`resolveLiftRule` 只认 `GUARD_RULES`）；`glmHournessLifts` 的 `lifted(cwd)` 里有的另写撤下时刻与「要恢复：跟主 Agent 说「恢复<标题>」」。代码规则不写 `/rules lift`：main 上它只写规则板自己的 `rule-lift`。
 - `items` 是 `collectStatus(ctx, sessionId, 'all', now)` 里 `owner === 'rules'` 的全部条目，原样放进来（今天是 `rules/peak`、`rules/denials`、`rules/lifts`；状态板块设计 §3.1 的一件事一处算）；同一次收集里 `rules`、`guard` 两行 `outcome === 'error'` 的原因进 `statusProblems`。同一项目的几个会话只取其中一个去问收集器。
 
-**何时写。** 会话的 `agent/created` 处理完（`settle` 与接手等待单之后）、每次 `/rules` 之后（命令等写完再回话）、门的一条流水写入落定之后安静 1 秒（`VIEW_DEBOUNCE_MS`）、每 15 秒（`BEAT_MS`，跟进 guard 的拦下、撤下与时钟）。对每个有已知会话的项目算一份；内容（不计 `at` 与条目的 `asOf`）与上次写的相同时不写；写法是同目录的临时文件加改名（`writeAtomic`，经行的 `config.io`），写入依次进行。行卸载时先把还欠着的那一次算好（这时各行的状态视图还在）再撤其余部分，卸载函数等它写完。一次性的无头运行器退出时不卸载规则行（§16.13 的 V13），而探针的场景比 1 秒的去抖跑得快，所以探针在 `glm-rules` 与 `non-glm-rules` 的最后一步打一次 `/rules show`，让行写出那时的样子。
+**何时写。** 会话的 `agent/created` 处理完（`settle` 与接手等待单之后）、每次 `/rules` 之后（命令等写完再回话）、门的一条流水写入落定之后安静 1 秒（`VIEW_DEBOUNCE_MS`）、每 15 秒（`BEAT_MS`，跟进 guard 的拦下、撤下与时钟）。对每个有已知会话的项目算一份（流水没变时不重读，见「谁的数」；收集器里 guard 行的状态视图每次照它自己的做法整读项目流水，那是 `/hourness` 报告也用的同一个视图，这里不改）；内容（不计 `at` 与条目的 `asOf`）与上次写的相同时不写；写法是同目录的临时文件加改名（`writeAtomic`，经行的 `config.io`），写入依次进行。行卸载时先把还欠着的那一次算好（这时各行的状态视图还在）再撤其余部分，卸载函数等它写完。一次性的无头运行器退出时不卸载规则行（§16.13 的 V13），而探针的场景比 1 秒的去抖跑得快，所以探针在 `glm-rules` 与 `non-glm-rules` 的最后一步打一次 `/rules show`，让行写出那时的样子。
 
 **写不出时。** 告警一次（一串失败一次，成功之后再失败才再告警），行健康部分生效「规则页的数据写不出：<原因>」（激活状态与每个已知会话的说明都写），下一次写成功后换回；门、命令和服务不受影响，激活期不抛错。某个项目的数据算不出（读状态或流水抛错）时跳过这个项目并告警，别的项目照写。收集器对抛错的状态视图每次调用都告警，所以那种情形下每 15 秒有一行。
 

@@ -15,6 +15,7 @@ import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
 import { projectKey } from '../src/graph/main-agent-holder.ts'
 import { peakStatusItems } from '../src/report/panel.ts'
 import { collectStatus } from '../src/report/status.ts'
+import { DATA_SERVICE } from '../src/shared/data-home.ts'
 import type { StatusItem } from '../src/shared/status.ts'
 import type { UserNotice } from '../src/shared/dsh-min.ts'
 import { collectHealth, healthServiceName } from '../src/shared/health.ts'
@@ -1011,6 +1012,34 @@ rowTest('view.json is written when a session starts and after /rules peak 不做
   assert.deepEqual(second?.items, rulesItems(runtime, NOW))
   assert.deepEqual(second?.items[0]?.fields, { peakMode: 'stop', peakModeOrigin: 'human' })
 }, { rules: BLOCKING_FILE })
+
+/** A denial as the guard framework's rows journal it in the project: the bare rule id, no mode. */
+const guardDenialLine = (minutesAgo: number, command: string): string => JSON.stringify({ at: new Date(NOW - minutesAgo * MINUTE).toISOString(), rule: 'workspace-containment', tool: 'pwsh', correction: 'no', call: { tool: 'pwsh', command } })
+const projectJournalOf = (root: string): string => join(root, '.llm', 'audit', 'violations.jsonl')
+const dataJournalOf = (root: string): string => join(root, 'data-home', 'audit', 'violations.jsonl')
+
+rowTest('without a home of its own the page counts the project journal the gate and the guard rows write, not the data service\'s journal, and follows an append', async ({ root, runtime, exec, beat, until }) => {
+  await runtime.create()
+  assert.equal((await exec('pwsh', { command: 'echo rules-probe-blocked' })).isError, true)
+  await until(() => readFileSync(projectJournalOf(root), 'utf8').includes(`rules:${BLOCK_PROBE.id}`))
+  await beat()
+  const first = await pageOf(root)
+  const containment = first?.code.find(entry => entry.id === 'guard:workspace-containment')
+  assert.deepEqual([containment?.denials7d, containment?.last.map(entry => entry.what)], [1, ['pwsh cat ../shared']], 'the data service\'s journal is not counted')
+  assert.equal(first?.rules[0]?.enforce7d, 1, 'the gate\'s own line in the project journal')
+  await appendFile(projectJournalOf(root), `${guardDenialLine(1, 'cat ../other')}\n`)
+  await beat()
+  assert.equal((await pageOf(root))?.code.find(entry => entry.id === 'guard:workspace-containment')?.denials7d, 2, 'the grown journal is read again')
+}, {
+  rules: BLOCKING_FILE,
+  setup: async ({ root, runtime }) => {
+    runtime.services.set(DATA_SERVICE, { userHome: join(root, 'user'), projectHome: join(root, 'data-home') })
+    for (const [file, command] of [[projectJournalOf(root), 'cat ../shared'], [dataJournalOf(root), 'cat ../elsewhere']] as const) {
+      await mkdir(join(file, '..'), { recursive: true })
+      await writeFile(file, `${guardDenialLine(5, command)}\n`)
+    }
+  },
+})
 
 test('view.json is not written again while its content is the same, only its moments; a change writes it', async () => {
   const clock = fakeClock('2026-10-28T07:00:00.000Z')

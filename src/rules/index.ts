@@ -59,10 +59,8 @@ import { basename, join } from 'node:path'
 import { projectHomeFor } from '../data/project-home.ts'
 import { projectOf } from '../data/project-root.ts'
 import { liftService } from '../guard/lift-service.ts'
-import { journalRecords } from '../guard/records.ts'
 import { auditPaths, projectJournal, type ProjectJournal } from '../memory/audit.ts'
 import { collectStatus } from '../report/status.ts'
-import { dataHomes } from '../shared/data-home.ts'
 import type { AgentCommandInvocationLike, AgentLike, AgentsService, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike, ToolsLike } from '../shared/dsh-min.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { PEAK_MODE_SERVICE } from '../shared/peak-mode.ts'
@@ -83,10 +81,11 @@ import type { HostRef } from './request.ts'
 import { projectHealth } from './row-health.ts'
 import { RULES_DECLARATION, RULES_SERVICE, type RulesService } from './service.ts'
 import { rulesStatusItems } from './status.ts'
-import { DEFAULT_RULES_DIR, readText, realStoreIo, type RulesPaths, type StoreIo } from './store.ts'
+import { DEFAULT_RULES_DIR, realStoreIo, type RulesPaths, type StoreIo } from './store.ts'
 import { createTicketDesk } from './tickets.ts'
 import { rulesShowTool } from './tool.ts'
 import { buildRulesView, VIEW_ROWS } from './view-build.ts'
+import { journalsReader } from './view-journal.ts'
 import { createViewWriter } from './view-writer.ts'
 import type { RulesView } from './view.ts'
 
@@ -219,10 +218,13 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
 
   /**
    * The rules page's data of each project a known session works in (§16.14), or of the project of `only`:
-   * the project's state, the violation journal of the home the row's own journal writes to, the lifts,
-   * the heartbeats, the row states and the collector's items with owner `rules`, asked with one session
-   * of the project. Computed on the spot; a project whose data cannot be read is left out with a warning.
+   * the project's state, the project's violation journal (the one the row's own gate and the guard
+   * framework's rows write, and the guard status view reads), the lifts, the heartbeats, the row states
+   * and the collector's items with owner `rules`, asked with one session of the project. Computed on the
+   * spot, the journal reread only when it changed (view-journal.ts); a project whose data cannot be read
+   * is left out with a warning.
    */
+  const journals = journalsReader()
   function composeViews(only?: string): Array<{ readonly paths: RulesPaths, readonly view: RulesView }> {
     const target = only === undefined ? undefined : projectOf(only)?.root
     const projects = new Map<string, { readonly sessionId: string, readonly cwd: string }>()
@@ -236,7 +238,8 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
         const project = read(cwd)
         if (project === undefined) continue
         const at = now()
-        const journal = auditPaths(dataHomes(ctx, config.home)).violations
+        const projectHome = projectHomeFor(ctx, config.home, cwd)
+        const records = journals([projectHome === undefined ? undefined : auditPaths({ projectHome }).violations])
         const pricing = pricingService(ctx)
         const collected = collectStatus(ctx, sessionId, 'all', at)
         const scripts = Object.values(project.read.state.rules ?? {}).flatMap(rule => rule.action.kind === 'script' ? [{ id: rule.id, file: rule.action.script.file }] : [])
@@ -246,7 +249,7 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
           reading: reading(),
           hoursZh: pricing === undefined ? undefined : peakHoursOf(pricing)?.zh,
           rows: Object.fromEntries(VIEW_ROWS.map(row => [row, activationState(ctx, row)])),
-          records: journal === undefined ? [] : journalRecords(readText(journal) ?? ''),
+          records,
           lifted: liftService(ctx)?.lifted(cwd) ?? [],
           liveHosts: liveHeartbeats(readHeartbeats(project.paths).heartbeats, at).map(heartbeat => heartbeat.host),
           missingScripts: new Set(scripts.filter(script => !existsSync(join(root, script.file))).map(script => script.id)),
