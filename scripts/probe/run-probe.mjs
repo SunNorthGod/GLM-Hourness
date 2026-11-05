@@ -443,13 +443,18 @@ const compacted = runScenario('glm-compact', 'glm-5.3', [
 // GLM compaction with the transcript row enabled through the overlay (it
 // ships disabled): the checkpoint ends with ZCode's transcript sentence
 // naming the plaintext export under the scenario home, and the model reads
-// that file with Read ({transcript}, scripts/probe/probe-llm.mjs).
+// that file with Read ({transcript}, scripts/probe/probe-llm.mjs). The task
+// text carries two fake credentials (a Bearer value, a named-prefix key),
+// assembled from parts so that no line of this file is a token for the
+// secret scan; the export must carry neither (src/data/transcript.ts).
 const transcriptHome = join(runDir, 'glm-compact-transcript', 'home')
+const TRANSCRIPT_FAKES = [['Bearer', 'probe0123456789ABCDEFGHIJ'].join(' '), ['sk', '-'].join('') + 'probe0123456789abcdefgh']
+const TRANSCRIPT_FAKES_LINE = 'Probe credentials: [redacted] and [redacted].'
 const compactTranscript = runScenario('glm-compact-transcript', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
   { tool: { name: 'Read', arguments: { file_path: '{transcript}' } } },
   { text: 'done', status: true },
-], 'Read package.json, read the transcript the summary names, then reply done.', [
+], `Read package.json, read the transcript the summary names, then reply done. Probe credentials: ${TRANSCRIPT_FAKES.join(' and ')}.`, [
   '- id: compaction-basic',
   '  config: { thresholdRatio: 0.02, retainTokens: 0 }',
   '- id: glm-hourness/transcript',
@@ -2374,6 +2379,10 @@ const transcriptLines = transcriptText.split('\n')
 const transcriptLong = transcriptLines.filter(line => Array.from(line).length > 1000)
 const transcriptSplit = transcriptLines.some(line => Array.from(line).length === 1000 && line.includes('"test:1"'))
 const transcriptRead = [...compactTranscript.steps, ...compactTranscript.compactions].flatMap(request => request.messages).find(message => message.role === 'tool' && message.text.includes('Transcript of session'))
+// The fake credentials of the task text reach the session's first request; the export carries neither, reads them as [redacted] and counts its replacements in the header.
+const transcriptFakesAsked = compactTranscript.steps[0]?.messages.some(message => message.role === 'user' && TRANSCRIPT_FAKES.every(fake => message.text.includes(fake))) === true
+const transcriptFakesLeft = TRANSCRIPT_FAKES.filter(fake => transcriptText.includes(fake)).length
+const transcriptReplaced = transcriptLines.slice(0, 5).map(line => /Replaced in this export: (\d+)\.$/.exec(line)?.[1]).find(count => count !== undefined)
 
 // The memory row journals one usage record per model call from the
 // llm/stream request fields (rc.3 GenerateOptions: provider, model,
@@ -3300,6 +3309,7 @@ const checks = [
   ['glm compact transcript: the sentence names <scenario home>/transcripts/<session id>.txt, which starts with the header line for that session', transcriptPath !== undefined && resolve(transcriptPath) === resolve(transcriptHome, 'transcripts', `${transcriptSession}.txt`) && resolve(transcriptPath).startsWith(`${resolve(transcriptHome, 'transcripts')}${sep}`) && transcriptLines[0]?.startsWith(`Transcript of session ${transcriptSession}, exported `) === true, `${transcriptPath ?? 'no path'}; ${transcriptLines[0]?.slice(0, 120) ?? ''}`],
   ['glm compact transcript: the model\'s Read of the named file returns the export (a recorded request carries that tool result)', transcriptRead !== undefined && transcriptRead.isError !== true, transcriptRead === undefined ? `no tool result with the export text in ${compactTranscript.steps.length} step(s) and ${compactTranscript.compactions.length} compaction(s)` : transcriptRead.text.slice(0, 160).replace(/\n/g, ' | ')],
   ['glm compact transcript: no line of the export is longer than 1000 code points, and the long test:1 line of package.json is split', transcriptText.length > 0 && transcriptLong.length === 0 && transcriptSplit, `${transcriptLines.length} line(s); ${transcriptLong.length} over 1000; split test:1 line ${transcriptSplit}`],
+  ['glm compact transcript: the two fake credentials of the task reach the session but not the export, which reads them as [redacted] and counts its replacements in the header; /glm-status gives the same count', transcriptFakesAsked && transcriptFakesLeft === 0 && transcriptText.includes(TRANSCRIPT_FAKES_LINE) && Number(transcriptReplaced) >= TRANSCRIPT_FAKES.length && healthOf(compactTranscript).transcript?.reason.includes(`遮掉 ${transcriptReplaced} 处`) === true, `in the first request: ${transcriptFakesAsked}; left in the export: ${transcriptFakesLeft} of ${TRANSCRIPT_FAKES.length}; redacted task line: ${transcriptText.includes(TRANSCRIPT_FAKES_LINE)}; header count: ${transcriptReplaced ?? 'none'}`],
   ['glm compact transcript: in glm-compact (transcript row disabled, the shipped default) no checkpoint names a transcript', checkpointsOf(compacted).length > 0 && checkpointsOf(compacted).every(message => !message.text.includes(TRANSCRIPT_MARK)), `${checkpointsOf(compacted).length} checkpoint(s)`],
   ['glm compact transcript: /glm-status of the session lists the transcript row in effect with the export it wrote', healthOf(compactTranscript).transcript?.status === ACTED && healthOf(compactTranscript).transcript.reason.startsWith('压缩前导出'), JSON.stringify(healthOf(compactTranscript).transcript ?? null)],
   ['memory usage: one record per GLM step with the request provider, model and session id', glmUsage.length === glm.steps.length && glmUsage.every(record => record.provider === 'glm-probe' && record.model === 'glm-5.3' && typeof record.sessionId === 'string' && record.sessionId.length > 0), `${glmUsage.length} record(s) for ${glm.steps.length} step(s); first: ${JSON.stringify(glmUsage[0] ?? null).slice(0, 120)}`],

@@ -1,13 +1,14 @@
 /**
  * Text that looks like a secret (M5 design §5.6): the three groups of fixed
  * cases (taken, refused with the class, the shapes that must not trip it),
- * the rejection texts, and `redactSecrets` agreeing with `looksSecret` on the
- * same cases. The secret-shaped samples are assembled from parts so that no
- * line of this file is itself a token for the repository's secret scan.
+ * the rejection texts, `redactSecrets` agreeing with `looksSecret` on the
+ * same cases, and the count `redactSecretsCounted` gives. The secret-shaped
+ * samples are assembled from parts so that no line of this file is itself a
+ * token for the repository's secret scan.
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { findSecret, looksSecret, redactSecrets, type SecretClass } from '../src/data/secret-shape.ts'
+import { findSecret, looksSecret, redactSecrets, redactSecretsCounted, type SecretClass } from '../src/data/secret-shape.ts'
 
 const GHP = ['ghp', '_'].join('') + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'
 const MIXED_TOKEN = ['aB3dE5gH7jK9mN1pQ3sT', '5vW7yZ9bD1fH3jL5nP7r'].join('')
@@ -114,4 +115,14 @@ test('redactSecrets hides each matching run and leaves the rest; it changes a te
   for (const skip of [['hex'], ['token', 'hex']] as const) {
     for (const text of samples) assert.equal(redactSecrets(text, skip) === text, looksSecret(text, skip) === undefined, `${JSON.stringify(text)} skipping ${skip.join()}`)
   }
+})
+
+test('redactSecretsCounted gives the text redactSecrets gives and counts each replaced run; a PEM block is hidden from its header to its END line', () => {
+  const pemBlock = [PEM, 'MIIEowIBAAKCAQEA/x9Q2w3e4r5t6y7u8i9o0p', 'Zx1Cv2Bn3Mm4==', ['-----END', 'RSA PRIVATE KEY-----'].join(' ')].join('\n')
+  const text = `key:\n${pemBlock}\nthen ${GHP} and ${SHA256}`
+  assert.deepEqual(redactSecretsCounted(text), { text: 'key:\n[redacted]\nthen [redacted] and [redacted]', replaced: 3 })
+  assert.equal(redactSecrets(text), redactSecretsCounted(text).text)
+  assert.deepEqual(redactSecretsCounted('plain src/a.ts'), { text: 'plain src/a.ts', replaced: 0 })
+  assert.deepEqual(redactSecretsCounted(SHA256, ['hex']), { text: SHA256, replaced: 0 }, 'skip is honoured')
+  assert.equal(looksSecret(pemBlock), 'pem', 'the class of a whole block is still pem')
 })
