@@ -3,7 +3,7 @@
   "type": "task",
   "title": "第二次返工先提醒、汇报说清可靠度、规范写意图",
   "why": "人的工程习惯里不等 M7 的三处先落到框架里，别的项目的模型也照做",
-  "status": "doing",
+  "status": "done",
   "parent": "orch",
   "kind": "implement",
   "body": "d-habits-into-framework 的一部分，依据报告 .agents/tasks/habits-framework/report.md 3.1。三处：节点第二次从做完重开时，graph_status 的结果带一句「这是第二次修，先找出原因写进节点再改」（src/graph/reopen.ts、tools.ts）；主 Agent 身份段的 TALK_GUIDE 加一句汇报可靠度，身份段上限 3000 抬到 3200（m7 分支同一断言合入时取 3200）；graph_propose 的工具说明对规范节点加一句写意图、不穷举。CHARTER.md §9 与 ORCHESTRATION.md §2.4、主 Agent 对话一节同批改写。",
@@ -12,6 +12,23 @@
     "主 Agent 身份段有一句：每个结论说清读过、跑过还是推断，先前的结论被推翻、检查没过放在最前面说；身份段不超过 3200 字符，抬上限的理由写在断言旁",
     "提规范节点时，提议工具的说明写明正文写意图与判断依据，不列哪些算哪些不算，能量的检查写成检查行或门禁行",
     "CHARTER.md §9 与 ORCHESTRATION.md 同批改写；L2 钉住，门禁全绿，改动在 main 上，桌面版重启后没有新错误"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "4598fa7",
+      "note": "第二次返工先提醒、汇报说清可靠度、规范写意图，CHARTER §9 与 ORCHESTRATION 同批"
+    },
+    {
+      "kind": "commit",
+      "ref": "51af510",
+      "note": "合入 main，两个远端一致"
+    },
+    {
+      "kind": "test",
+      "ref": "build、preflight、npm test、check-lint、npm run -s probe on the merged tree",
+      "exit": 0
+    }
   ],
   "history": [
     {
@@ -53,6 +70,31 @@
       "actor": "llm",
       "op": "comment",
       "text": "人同意清 cookie（原话见 d-desktop-cdp-only 2026-11-06 的编辑）。编排方告知合入步（wf_7bd410e5bb88654f land）：桌面版不在运行时备份 %APPDATA%\\@deepseek-ai\\dsh-desktop\\Network\\Cookies 与 Cookies-journal 到 .agents/tasks/habits-prompts/，删掉 host_key='127.0.0.1' 且 name 以 dsh-auth- 开头的行，再按 9333 启动，核对没有新的崩溃报告、两个包的启用行都在运行、dist 等于 main HEAD。结果记在 desktop-start-failure.md。"
+    },
+    {
+      "at": "2026-11-05T18:37:42.293Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "habits-prompts（wf_7bd410e5bb88654f）完成：评审 APPROVED，没有挡路项；合入 main 51af510，origin 与 github 经 ls-remote 一致，合入树门禁全绿，棘轮 eslint 73 / knip 18 / jscpd 1；主检出 dist 按 main 重建；桌面版在删掉 71 个过期 dsh-auth cookie（已备份）之后启动，没有新的崩溃日志，9333 应答，启用的行都在运行，控制台没有本项目包的错误。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "4598fa7",
+          "note": "第二次返工先提醒、汇报说清可靠度、规范写意图，CHARTER §9 与 ORCHESTRATION 同批"
+        },
+        {
+          "kind": "commit",
+          "ref": "51af510",
+          "note": "合入 main，两个远端一致"
+        },
+        {
+          "kind": "test",
+          "ref": "build、preflight、npm test、check-lint、npm run -s probe on the merged tree",
+          "exit": 0
+        }
+      ]
     }
   ]
 }
