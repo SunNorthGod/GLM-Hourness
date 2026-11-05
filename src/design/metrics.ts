@@ -10,12 +10,19 @@
  * the metrics row the sink does nothing and says nothing: the facts are
  * still in the violation journal, the snapshot journal, the graph's history
  * and the session log.
+ *
+ * Ids built from outside text (session ids, node ids, tool names) go
+ * through `toMetricsId`: a value that is not id-shaped is written `other`
+ * and a missing required one `none`, so that one field never loses the
+ * whole event. `pending` is the matter put to the human: the question for a
+ * question, the goal (or the module) for a confirm and a release, so that a
+ * showing and the answer to it pair up.
  */
 import type { ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
-import { emitMetric, METRICS_ID_PATTERN, type DesignBodies, type MetricsWhere } from '../shared/metrics.ts'
+import { emitMetric, metricsWhereOf, toMetricsId, type BodyEventOf, type DesignBodies, type MetricsWhere } from '../shared/metrics.ts'
 
 /** One of the design row's ten kinds, before the sink adds the submitter. */
-export type DesignMetricEvent = { [K in keyof DesignBodies]: { readonly k: K, readonly body: DesignBodies[K] } }[keyof DesignBodies]
+export type DesignMetricEvent = BodyEventOf<DesignBodies>
 
 /** Where the design row and its rules hand their events. Never throws. */
 export type DesignMetricSink = (event: DesignMetricEvent, where: MetricsWhere) => void
@@ -25,38 +32,37 @@ export function designMetricSink(ctx: ServiceLookup): DesignMetricSink {
   return (event, where) => { emitMetric(ctx, { ...event, by: 'design' }, where) }
 }
 
-/** Where an event of a session belongs: the session and its working directory, each only when it is there. */
-export function whereOf(session: Pick<SessionLike, 'id' | 'header'> | undefined): MetricsWhere {
-  const cwd = session?.header.cwd
-  return {
-    ...(session === undefined || session.id === '' ? {} : { sessionId: session.id }),
-    ...(typeof cwd === 'string' && cwd !== '' ? { dir: cwd } : {}),
-  }
+/** Hand one event of an agent's session: filed under the session and its working directory. Never throws. */
+export function emitDesign(lookup: ServiceLookup, agent: { readonly session?: SessionLike | undefined } | undefined, event: DesignMetricEvent): void {
+  designMetricSink(lookup)(event, metricsWhereOf(agent?.session))
 }
 
-/** A value for an id field: itself when it has the shape of an id (§4.4), else `other`, so that the event is not refused whole for it; `none` when there is none and the field is required. */
-export function metricId(value: string | undefined): string {
-  if (value === undefined || value === '') return 'none'
-  return METRICS_ID_PATTERN.test(value) ? value : 'other'
-}
-
-/** An optional id field: left out when there is none, else shaped by `metricId`. */
+/** An optional id field: left out when there is none, else shaped by `toMetricsId`. */
 export function optionalId<K extends string>(key: K, value: string | undefined): { readonly [P in K]?: string } {
-  return (value === undefined || value === '' ? {} : { [key]: metricId(value) }) as { readonly [P in K]?: string }
+  return (value === undefined || value === '' ? {} : { [key]: toMetricsId(value) }) as { readonly [P in K]?: string }
 }
 
-/** How the holder record of a project changed (`design.holder-moved`): written by /wish, moved here, taken over, written over an unreadable one, deleted by /wish off, or deleted because the /wish that wrote it did not take effect. */
+/** A count of milliseconds for an int field: whole, never below zero. */
+export function msOf(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0
+}
+
+/**
+ * How the holder record of a project changed (`design.holder-moved`):
+ * written by /wish (`wish`), moved here by /wish here (`here`), taken over
+ * from a session that is gone or not in main agent mode (`takeover`),
+ * written over a record that could not be read (`unreadable`), deleted by
+ * /wish off (`off`), or deleted because the /wish that wrote it did not take
+ * effect (`lapsed`: cancelled, failed, or found at the session's creation
+ * with its mode off).
+ */
 export interface HolderMove {
   readonly how: 'wish' | 'here' | 'takeover' | 'unreadable' | 'off' | 'lapsed'
   readonly from?: string
   readonly to?: string
 }
 
-/** The body of `design.holder-moved`: the session ids shaped as ids. */
-export function holderMovedBody(move: HolderMove): DesignBodies['design.holder-moved'] {
-  return {
-    how: move.how,
-    ...(move.from === undefined ? {} : { from: metricId(move.from) }),
-    ...(move.to === undefined ? {} : { to: metricId(move.to) }),
-  }
+/** The event of a holder move: the session ids shaped as ids. */
+export function holderMoved(move: HolderMove): DesignMetricEvent {
+  return { k: 'design.holder-moved', body: { how: move.how, ...optionalId('from', move.from), ...optionalId('to', move.to) } }
 }
