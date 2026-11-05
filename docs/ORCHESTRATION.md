@@ -1128,7 +1128,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 
 ### 8.4 写入
 
-- 取消基于路径与文件名的拒绝判据（`defaultKnowableFromGit`、`shouldStore`、行配置 `knowableFromGit` 已删）。写入时要求标明类型，`feedback`、`project` 要有 `Why:` 一行，`project` 要有一个能认出的出处（图里的节点 id、项目里存在的文件、提交号、地址）；`feedback` 必须写明范围；`user`、`feedback` 要有人的原话；像密钥的文本（令牌形状，不是路径或长标识符）整条拒收（`secret_like`）；与同类型的已有条目相似（名字与说明的词重合 0.6 以上，或出处相同）要带 `confirmNew` 才存。同名条目是更新，`type` 不能变。
+- 取消基于路径与文件名的拒绝判据（`defaultKnowableFromGit`、`shouldStore`、行配置 `knowableFromGit` 已删）。写入时要求标明类型，`feedback`、`project` 要有 `Why:` 一行，`project` 要有一个能认出的出处（图里的节点 id、项目里存在的文件、提交号、地址）；`feedback` 必须写明范围；`user`、`feedback` 要有人的原话；像密钥的文本（令牌形状，不是路径或长标识符）整条拒收（`secret_like`；判定在 `src/data/secret-shape.ts`，同一张表也给循环板脚本的输出与 GLM 压缩时导出的会话原文遮掉凭证，`DESIGN.md` §2.4「会话原文」）；与同类型的已有条目相似（名字与说明的词重合 0.6 以上，或出处相同）要带 `confirmNew` 才存。同名条目是更新，`type` 不能变。
 - 并发：每份流水旁一把锁文件（`src/data/lock.ts`），锁内重读、判写、追加，写不到锁得 `busy`。
 - 分工：git 管「是什么」，记忆管「为什么」与偏好。
 ### 8.5 学习流水线
