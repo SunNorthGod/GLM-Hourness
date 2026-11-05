@@ -44,6 +44,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-05 答循环用完怎么办，原话「那就多试试，现在可能只是不稳」。编排方给 m4-reanchor-violations（wf_b007fba3eafafeec）的 build-loop 再加 4 轮，运行已恢复。前两轮都因上游「No available accounts」没写出代码，不是任务本身的问题。"
+    },
+    {
+      "at": "2026-11-05T12:55:22.063Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "加预算后的第 3 轮 code 步又被上游 503「No available accounts」截断，分支仍停在 37fe1a0，没有实现提交，工作区干净。这一轮评审在跑，按空 diff 会再判 CHANGES_REQUESTED；预算 6 轮，这轮之后剩 3 轮。"
     }
   ]
 }

@@ -72,6 +72,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m6-metrics-events（wf_2bf0ad146e8238b2）评审 APPROVED，没有挡路发现（工作树 .agents/tasks/m6-metrics-events-review/review.json、review.md）。不挡路 3 条，其中 N1：m4-suppressions 第 1 条的指标事件已由 3f59b61 交过，合入时在 m4 一侧补一条批注写明。下一步合入 main。"
+    },
+    {
+      "at": "2026-11-05T12:55:21.812Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入步（wf_2bf0ad146e8238b2 merge）在跑：分支已合入 origin/main，origin/m6-metrics-events 在 201007c，还没进 main。进 main 后关节点，并在 m4-suppressions 一侧补 N1 的批注（第 1 条的指标事件已由 3f59b61 交过）。"
     }
   ]
 }
