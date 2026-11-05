@@ -645,6 +645,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 E8 FEAT-005（wf_36d1d690c7e1de90）完成，本地提交 b750c0c（m7 分支，未推送）。串行门禁在树 f67a601 上：build 0、preflight 0、npm test 0（3163 条，0 失败，棘轮 eslint 73 / knip 18 / jscpd 1）、探针 467/467，glm-exec-drive 与 glm-exec-modules 全绿，gate.json 已写。下一步 e8-converge（E8 收敛评审），之后 E9、真模型运行、合入与 L4。"
+    },
+    {
+      "at": "2026-11-05T16:34:30.038Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 合入 main 时：habits-prompts（4598fa7）把 tests/design-mode.spec.ts 的身份段整段上限改为 3200、对话一段上限改为 2000，m7 分支上同两处断言仍是 3000 与 1800，合入时取 main 的数。"
     }
   ]
 }
