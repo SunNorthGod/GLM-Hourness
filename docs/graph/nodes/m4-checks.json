@@ -237,6 +237,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m4-checks-loop-details 合入步（wf_0977f7098cfafeae merge）：分支合入 origin/main 688b2d3（cfa1e5a，已推），四道门禁绿（探针 420/420，棘轮 73/18/1）。主检出 git merge --ff-only 被拒：主检出里有别的线没提交的已跟踪改动 knip.js、package.json、src/design/propose.ts、ui/src/loops/LoopsPage.tsx，另有未跟踪 src/memory/effect.ts。编排方核对散列：五份都和 ablation、m5-rule-expected-effect、status-hub-3 工作树里的同名文件不同，是写进了主检出的游离副本，各线自己的工作树完好。编排方定：由该步把这五个文件 git stash push -u 收进主检出的 stash（不弹回，留着备查，报告写 stash 编号），然后继续快进、推两个远端、主检出 build、桌面核对；并告知 ablation 与 m5-rule-expected-effect 的 code 步只在自己的工作树里改。"
+    },
+    {
+      "at": "2026-11-05T19:30:47.461Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks-loop-details（wf_0977f7098cfafeae）合入 main：合并提交 cfa1e5a 快进，其上是编排方的 e4d246e，origin 与 github 都在 e4d246e。合入树门禁全绿（探针 420/420，棘轮 73/18/1）。桌面核对：Browser.close 后 6 秒退出（没有确认框），重启后在真实的循环板页面上，「改完文件就跑检查」的讲细点列出检查行与五条规矩，图行条目显示「第三次返工之前」那一条。验收第 5 条（批次 L4 的 B1）因此满足。主检出里别的线留下的未提交改动收在 stash@{0}，没有放回，等相关的线合入后再清。"
     }
   ]
 }
