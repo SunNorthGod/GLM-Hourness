@@ -29,6 +29,18 @@
       "reason": "运行 habits-prompts（wf_7bd410e5bb88654f）开工，工作树 .worktrees/habits-prompts，基点 cf0ed57",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-05T16:08:34.624Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "habits-prompts（wf_7bd410e5bb88654f）code 步完成：提交 4598fa7 推到 origin/habits-prompts，build、preflight、npm test、check-lint（eslint 73 / knip 18 / jscpd 1）、探针 420/420 全部退出 0；报告 .agents/tasks/habits-prompts/code-report.md。下一步评审。"
+    },
+    {
+      "at": "2026-11-05T16:34:29.732Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "评审（wf_7bd410e5bb88654f review）APPROVED，没有挡路项，记录 .agents/tasks/habits-prompts/review.md。不挡路 2 条：一是主 Agent 对话一段的上限 1800 抬到 2000、graph_propose 说明的上限 700 抬到 900，超出 Q3 原话只说的整段 3200，两处都是加句子所需，理由写在断言旁，提交说明写明；二是与本节点无关的 tests/loops-run.spec.ts 第 12 项修复放在了功能提交里（AGENTS.md 第 7 条一件事一个提交）。编排方保留现状：这项修复是那条偶发失败的根因修法，也正挡着 compact-recall-redact 的合入；提交已推，拆开要改写已推的历史。合入步在跑。"
     }
   ]
 }
