@@ -16,18 +16,24 @@ import { THING_LABELS, type ThingState } from './notice.ts'
 import type { Thing } from './present.ts'
 import { takeoverAttachOf } from './service.ts'
 import type { OpenTakeover } from './takeover.ts'
-import { PLACEHOLDERS } from './templates.ts'
+import { NORM_TEMPLATES, PLACEHOLDERS } from './templates.ts'
 import { touchPaths } from './touch.ts'
 
 const THINGS: readonly Thing[] = ['cost', 'touch']
 
+/** The labels of a norm template's body (a line that starts with a name and a full-width colon): a label's value runs to the next of them. */
+const TEMPLATE_LABELS: ReadonlyMap<string, readonly string[]> = new Map(NORM_TEMPLATES.map(template => [
+  template.id,
+  template.body.split('\n').flatMap(line => /^([^：\n]+)：/.exec(line)?.[1] ?? []),
+]))
+
 /** The attach of one thing of one takeover, as propose_to_human takes it. */
 const thingAttach = (takeoverId: string, thing: Thing): string => `bootstrap:${takeoverId}:${thing}`
 
-/** The value of a thing's label in its norm; undefined when the norm or the label is not there. */
+/** The value of a thing's label in its norm, up to the next label of the template; undefined when the norm or the label is not there. */
 function labelValue(graph: LoadedGraph, thing: Thing): string | undefined {
   const { label, norm } = THING_LABELS[thing]
-  return labeledSections(graph.nodes.get(norm)?.body, [label]).get(label)
+  return labeledSections(graph.nodes.get(norm)?.body, TEMPLATE_LABELS.get(norm) ?? [label]).get(label)
 }
 
 /** Whether the label holds an answer: there, not empty, and not the template's placeholder. */
