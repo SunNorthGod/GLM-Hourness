@@ -511,6 +511,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-05 对编排方交的四件答「都按你说的来」：一、记忆两问按建议（m5-4 关，m5-habit-rule 建）；二、m4-gate 验收第 6 条按建议改字后带证据关闭，M7 那半句挪进 m7 的验收；三、d-interview-cards 由 d-main-agent-no-ask-card 替掉；四、d-freeze-until-dogfood 与 d-finish-then-bootstrap 冲突处按后者办，规则板一路建 rules-r4d。"
+    },
+    {
+      "at": "2026-11-05T10:40:48.243Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "习惯融进框架的调查重派 investigate-habits-into-framework-retry（wf_6ff0de9e869c0de0）：上一次 wf_502bec1b9882532c 被上游返回截断，没有留下报告。这次要求边查边写，报告 .agents/tasks/habits-framework/report.md。另开 m5-habit-rule（wf_b5171bd117c811ba）与 m4-reanchor-violations（wf_b007fba3eafafeec）；m7-handback-path-check 等 M7 合入 main 后开。"
     }
   ]
 }
