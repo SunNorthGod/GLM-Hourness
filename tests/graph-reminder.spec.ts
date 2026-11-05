@@ -8,6 +8,7 @@ import { apply } from '../src/graph/index.ts'
 import { CHECKPOINT_SOURCE, GOAL_ROUND_SOURCE, PROJECTION_SOURCE } from '../src/graph/reminder.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import type { AgentLike, UserNotice } from '../src/shared/dsh-min.ts'
+import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings, seedAsHuman } from './graph-helpers.ts'
 
@@ -95,13 +96,41 @@ async function withWorkspace(body: (workspace: string, graph: string) => Promise
   }
 }
 
-function reminderTest(name: string, body: (fixture: Fixture) => Promise<void>): void {
+/** With `journal`, the row's home is `<workspace>/.llm`, so the re-anchoring reads the violation journal under it. */
+function reminderTest(name: string, body: (fixture: Fixture) => Promise<void>, options: { journal?: true } = {}): void {
   test(name, () => withWorkspace(async (workspace, graph) => {
     const runtime = fakeRuntime({ natives: [], cwd: workspace })
-    apply(runtime.ctx, {})
+    apply(runtime.ctx, options.journal === undefined ? {} : { home: join(workspace, '.llm') })
     await runtime.create()
     await body(fixture(runtime, workspace, graph))
   }))
+}
+
+/** The violation journal the row reads when the test runs with `journal`. */
+function journalOf(workspace: string): string {
+  return join(workspace, '.llm', 'audit', 'violations.jsonl')
+}
+
+async function writeJournal(workspace: string, lines: readonly string[]): Promise<void> {
+  await mkdir(join(workspace, '.llm', 'audit'), { recursive: true })
+  await writeFile(journalOf(workspace), lines.map(line => `${line}\n`).join(''))
+}
+
+/** One guard denial as the gates journal it (src/guard/records.ts ViolationRecord). */
+function denial(rule: string, sessionId: string, extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({ at: '2026-11-05T10:00:00.000Z', rule, tool: 'Write', agentId: sessionId, sessionId, scope: 'dialect', correction: 'take the right path', ...extra })
+}
+
+/** How the re-anchoring opens the denied rules. */
+const DENIED = 'Calls the harness denied in this session, by rule (rule id: times). These rules still apply: take the right path a denial named instead of repeating the call.'
+
+function graphHealthOf(runtime: FakeRuntime): { state: string, reason: string } | undefined {
+  return (runtime.services.get(healthServiceName('graph')) as RowHealthView).session(runtime.agent.session!.id)
+}
+
+/** Compaction replaces the visible history with one checkpoint message. */
+function compact(runtime: FakeRuntime, id: string): void {
+  runtime.history.splice(0, runtime.history.length, userMessage('Summary:\n…', { kind: CHECKPOINT_SOURCE, compactionId: id }))
 }
 
 function text(notice: UserNotice): string {
@@ -190,6 +219,94 @@ reminderTest('after a compaction the projection is anchored again, once per chec
   assert.deepEqual([facts(again).reason, facts(again).anchor], ['compaction', 'c-2'])
   assert.deepEqual(await step(), [])
 })
+
+reminderTest('the re-anchoring after a compaction lists the rules denied in this session with their counts and the goal\'s non-goals; no other step does', async ({ focus, step, human, rev, runtime, workspace }) => {
+  const own = runtime.agent.session!.id
+  await writeJournal(workspace, [
+    denial('graph-files-only', own),
+    denial('file-tools-only', own),
+    denial('graph-files-only', own, { tool: 'Bash' }),
+    // A late denial of the workspace-change fallback counts as a denial; a rules-board denial carries mode enforce.
+    JSON.stringify({ at: '2026-11-05T10:01:00.000Z', rule: 'file-tools-only', mode: 'late', via: 'turn-end', sessionId: own, paths: ['x.txt'], correction: 'use the file tools' }),
+    denial('rules:r-block', own, { mode: 'enforce' }),
+    // Not counted: another session's denial, a follow-up, a record-only call, a gap line and a line that does not parse.
+    denial('workspace-containment', 'agent-2'),
+    JSON.stringify({ kind: 'followup', at: '2026-11-05T10:02:00.000Z', rule: 'graph-files-only', tool: 'Write', sessionId: own, scope: 'dialect', denial: 'abc123abc123', outcome: 'repeat' }),
+    JSON.stringify({ at: '2026-11-05T10:03:00.000Z', rule: 'rules:r-note', tool: 'Bash', sessionId: own, mode: 'record' }),
+    JSON.stringify({ kind: 'gap', at: '2026-11-05T10:04:00.000Z', row: 'guard', lost: 2, classes: { denial: 2 }, since: '2026-11-05T09:00:00.000Z', until: '2026-11-05T09:30:00.000Z' }),
+    '{ not json',
+  ])
+  await human({ op: 'edit', id: 'goal-1', rev: await rev('goal-1'), reason: '划范围', set: { nonGoals: ['不接 DSH 运行时', '不做多人协作'] } })
+  await focus('task-1')
+  const [first] = await step()
+  assert.ok(first !== undefined)
+  assert.ok(!text(first).includes(DENIED) && !text(first).includes('Non-goals'), 'the step after graph_focus carries neither')
+  compact(runtime, 'c-1')
+  const [anchored] = await step({ messages: [], step: 3 })
+  assert.ok(anchored !== undefined)
+  assert.equal(facts(anchored).reason, 'compaction')
+  assert.equal(facts(anchored).digest, facts(first).digest, 'the extra lines stay out of the digest')
+  const close = '\n</system-reminder>'
+  assert.equal(text(anchored), `${text(first).slice(0, -close.length)}\n${[
+    'Non-goals of goal goal-1, outside the scope of this work (graph_show gives the goal\'s acceptance):',
+    '- 不接 DSH 运行时',
+    '- 不做多人协作',
+    DENIED,
+    '- file-tools-only: 2',
+    '- graph-files-only: 2',
+    '- rules:r-block: 1',
+  ].join('\n')}${close}`)
+  assert.deepEqual(await step(), [], 'the next step sees the same digest and adds nothing')
+  const round = userMessage('<goal_round>\nObjective: "项目图"\nRound: 2/256\n</goal_round>', { kind: GOAL_ROUND_SOURCE, goalId: 'goal-a', revision: 1, round: 2 })
+  const [beat] = await step({ messages: [round] })
+  assert.ok(beat !== undefined)
+  assert.equal(text(beat), text(first), 'a goal round carries the projection alone')
+  assert.equal(graphHealthOf(runtime)?.state, 'active')
+}, { journal: true })
+
+reminderTest('a session without denials re-anchors with the projection alone, whether the journal exists or not', async ({ focus, step, runtime, workspace }) => {
+  await focus('task-1')
+  const [first] = await step()
+  assert.ok(first !== undefined)
+  compact(runtime, 'c-1')
+  const [bare] = await step({ messages: [], step: 3 })
+  assert.ok(bare !== undefined)
+  assert.equal(text(bare), text(first), 'no journal yet: no denial, no section')
+  await writeJournal(workspace, [
+    denial('graph-files-only', 'agent-2'),
+    JSON.stringify({ kind: 'followup', at: '2026-11-05T10:02:00.000Z', rule: 'graph-files-only', tool: 'Write', sessionId: runtime.agent.session!.id, scope: 'dialect', denial: 'abc123abc123', outcome: 'none' }),
+  ])
+  compact(runtime, 'c-2')
+  const [again] = await step()
+  assert.ok(again !== undefined)
+  assert.equal(facts(again).reason, 'compaction')
+  assert.equal(text(again), text(first), 'another session\'s denial and this session\'s follow-up add no section')
+  assert.equal(graphHealthOf(runtime)?.state, 'active')
+}, { journal: true })
+
+reminderTest('a journal that cannot be read leaves the denials out of the re-anchoring, never the step, and the row health says so until a read succeeds', async ({ focus, step, runtime, workspace }) => {
+  // A directory where the journal file should be: reading it fails, not with ENOENT.
+  await mkdir(journalOf(workspace), { recursive: true })
+  await focus('task-1')
+  const [first] = await step()
+  assert.ok(first !== undefined)
+  assert.equal(graphHealthOf(runtime)?.state, 'active', 'a step that is not a re-anchoring does not read the journal')
+  compact(runtime, 'c-1')
+  const { result: [anchored], warnings } = await captureWarnings(() => step({ messages: [], step: 3 }))
+  assert.ok(anchored !== undefined, 'the step still re-anchors')
+  assert.equal(text(anchored), text(first))
+  assert.deepEqual(warnings, [], 'the projection is not skipped')
+  const health = graphHealthOf(runtime)
+  assert.equal(health?.state, 'degraded')
+  assert.match(health?.reason ?? '', /；压缩后重锚没带本会话的拦截计数：读不到违规流水（EISDIR）$/)
+  await rm(journalOf(workspace), { recursive: true })
+  await writeJournal(workspace, [denial('graph-files-only', runtime.agent.session!.id)])
+  compact(runtime, 'c-2')
+  const [recovered] = await step()
+  assert.ok(recovered !== undefined)
+  assert.ok(text(recovered).endsWith(`${DENIED}\n- graph-files-only: 1\n</system-reminder>`), text(recovered))
+  assert.equal(graphHealthOf(runtime)?.state, 'active', 'the read that succeeds withdraws the note')
+}, { journal: true })
 
 reminderTest('every goal round carries the projection', async ({ focus, step }) => {
   await focus('task-1')
