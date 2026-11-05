@@ -28,6 +28,12 @@
       "reason": "运行 m5-habit-rule（wf_b5171bd117c811ba）开工：先查模型为什么没用 memory_habit，写进计划，再照计划把「记习惯前先问」做成规则",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-05T15:13:35.232Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-habit-rule（wf_b5171bd117c811ba）的 root-cause 步被上游 503「No available accounts」打断，没有留下根因报告；code 步已在没有根因报告的情况下开跑。编排方告知 code 步先补做根因分析并写进任务目录的报告，再改代码。"
     }
   ]
 }
