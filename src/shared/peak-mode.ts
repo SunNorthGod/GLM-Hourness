@@ -17,7 +17,7 @@
  * malformed value counts as absent and is reported to the reader's
  * `problem` callback, as pricingService does.
  */
-import type { ServiceLookup } from './dsh-min.ts'
+import type { ServiceLookup } from './cordis-min.ts'
 
 /** The cordis service name the rules row provides. */
 export const PEAK_MODE_SERVICE = 'glmHournessPeakMode'

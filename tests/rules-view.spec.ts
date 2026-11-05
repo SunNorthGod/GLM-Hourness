@@ -13,42 +13,15 @@ import { effectiveTimeoutSeconds } from '../src/loops/trigger.ts'
 import type { StatusItem } from '../src/shared/status.ts'
 import { BUILTIN_RULES, CATALOG } from '../src/rules/builtin.ts'
 import { emptyState, type ProjectState, type Rule, type Ticket } from '../src/rules/model.ts'
-import type { PeakReading } from '../src/rules/peak.ts'
-import type { ProjectRead } from '../src/rules/repo.ts'
 import { buildRulesView, LIFT_BOARD_ONLY, LIFT_NOT_OFFERED, VIEW_ROWS, type RulesViewInput } from '../src/rules/view-build.ts'
 import { journalRuleOf, parseRulesView, RULES_VIEW_VERSION, type RulesView } from '../src/rules/view.ts'
-import { ruleOf, scriptRef, SHA_OTHER } from './rules-fixtures.ts'
+import { projectReadOf as readOf, ruleOf, scriptRef, SHA_OTHER, VIEW_PEAK_END as PEAK_END, viewInputOf } from './rules-fixtures.ts'
 
 /** Wednesday 15:00 in UTC+8, inside GLM's peak hours; the peak ends at 18:00. */
 const NOW_MS = Date.parse('2026-10-28T15:00:00+08:00')
-const PEAK_END = '2026-10-28T10:00:00.000Z'
-const ROOT = 'C:/work/app'
-const IN_PEAK: PeakReading = { peak: true, until: PEAK_END }
 const ago = (days: number, minutes = 0): string => new Date(NOW_MS - days * 86_400_000 - minutes * 60_000).toISOString()
 
-function readOf(state: ProjectState, over: Partial<ProjectRead> = {}): ProjectRead {
-  return { state, load: { state, source: 'snapshot', reasons: [], nextSeq: state.seq + 1, fresh: false }, repo: { kind: 'in-sync' }, ...over }
-}
-
-function inputOf(over: Partial<RulesViewInput> = {}): RulesViewInput {
-  return {
-    root: ROOT,
-    read: readOf(emptyState()),
-    reading: IN_PEAK,
-    hoursZh: '工作日 14:00–18:00',
-    rows: {},
-    records: [],
-    lifted: [],
-    liveHosts: [],
-    missingScripts: new Set(),
-    items: [],
-    statusProblems: [],
-    host: { pid: 4242 },
-    ...over,
-  }
-}
-
-const view = (over: Partial<RulesViewInput> = {}): RulesView => buildRulesView(inputOf(over), NOW_MS)
+const view = (over: Partial<RulesViewInput> = {}): RulesView => buildRulesView(viewInputOf(over), NOW_MS)
 
 /** A denial as the guard framework journals it: the bare rule id, no mode. */
 const guardDenial = (rule: string, at: string, command = 'echo hi'): GuardRecord => ({ at, rule, tool: 'pwsh', correction: 'no', call: { tool: 'pwsh', command } })
