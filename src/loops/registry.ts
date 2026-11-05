@@ -23,8 +23,9 @@ import { pluginLabel } from '../shared/plugin-labels.ts'
 import { CHANNEL_SOURCE } from './channel.ts'
 import { LOOP_EVENT_TABLE } from './events.ts'
 import { validateEntry, type LoopEntry, type LoopEntryDefinition } from './model.ts'
-import type { ContributeResult, Contribution, ContributionSource } from './service.ts'
+import { DETAILS_MAX_LINES, DETAILS_MAX_WIDTH, type ContributeResult, type Contribution, type ContributionSource } from './service.ts'
 import type { LoopEventDeclaration } from './trigger.ts'
+import type { DetailsRead } from './view.ts'
 
 /** Who the loop row is when it hands its own entries over. */
 export const LOOPS_SOURCE: ContributionSource = { plugin: 'dsh-hourness', row: 'glm-hourness/loops' }
@@ -346,6 +347,21 @@ export interface LoopsRegistry {
   runOfAction(action: string): NonNullable<Contribution['run']> | undefined
   /** The row that declared this event (`<row>` of its hand-over), for the record of what handed an event over; undefined for an event nobody declares. */
   declarerOf(event: string): string | undefined
+  /**
+   * What the hand-over that brought this entry gives the page for one project root (design §3.1 `details`):
+   * undefined when no held hand-over has the entry or its source gives no details; otherwise the lines, or why
+   * the page cannot show them (the call threw, or its answer broke the limits of service.ts). Never throws.
+   */
+  detailsOf(entry: string, project: string): DetailsRead | undefined
+}
+
+/** A hand-over's answer to `details` as the page can show it: a list of single lines within the limits of service.ts. */
+function detailsRead(lines: unknown): DetailsRead {
+  if (!Array.isArray(lines)) return { ok: false, reason: '给的不是一张列表' }
+  if (lines.length > DETAILS_MAX_LINES) return { ok: false, reason: `给了 ${lines.length} 行，至多 ${DETAILS_MAX_LINES} 行` }
+  const bad = lines.findIndex(line => !isText(line, 1, DETAILS_MAX_WIDTH))
+  if (bad >= 0) return { ok: false, reason: `第 ${bad + 1} 行不是 1 到 ${DETAILS_MAX_WIDTH} 个字的一行` }
+  return { ok: true, lines: lines as readonly string[] }
 }
 
 /** "Event X is nobody's now (the part of <package> is off); this entry does not run." */
@@ -482,6 +498,21 @@ export function createRegistry(options: RegistryOptions = {}): LoopsRegistry {
         const source = held.contribution
         if (typeof source.run !== 'function') return undefined
         return (actionId, event) => source.run?.(actionId, event) ?? Promise.resolve({ outcome: 'failed', reason: 'run 不在了' })
+      }
+      return undefined
+    },
+    detailsOf(entry, project) {
+      for (const held of holders.values()) {
+        if (!held.check.entries.some(item => item.definition.id === entry)) continue
+        const source = held.contribution
+        if (typeof source.details !== 'function') return undefined
+        try {
+          // Called through the hand-over, so the row's own `this` is its own object.
+          return detailsRead(source.details(entry, project))
+        }
+        catch (error) {
+          return { ok: false, reason: `抛错：${error instanceof Error ? error.message : String(error)}` }
+        }
       }
       return undefined
     },
