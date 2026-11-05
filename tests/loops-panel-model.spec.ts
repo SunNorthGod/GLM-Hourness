@@ -15,6 +15,7 @@ import { scriptStandingOf } from '../src/loops/boards.ts'
 import { loopsBoard } from '../ui/src/loops/board.ts'
 import { buildLoopsPage, type LoopItem } from '../ui/src/loops/model.ts'
 import { holdLoopsSource, LoopsSource } from '../ui/src/loops/source.ts'
+import { projectRootOfView, readScriptText, scriptTextHead } from '../ui/src/graph/script-text.ts'
 import { BOARD_ORDER } from '../ui/src/graph/boards.ts'
 import { fakeRemote, fakeSessions, until } from './panel-helpers.ts'
 
@@ -298,6 +299,33 @@ test('the host reads a script\'s standing with the executor\'s test: the agreed 
   }
 })
 
+test('讲细点 reads a script from the project root of the board\'s view.json, its size first: the text, over 64 KiB not read, no file, a failed read, no root', async () => {
+  const big = 'x'.repeat(65_537)
+  const fake = fakeRemote({ 'C:/p/docs/loops/scripts/u-1.mjs': 'console.log(1)\n', 'C:/p/docs/loops/scripts/big.mjs': big, 'C:/p/docs/loops/scripts/bad.mjs': 'x' })
+  assert.deepEqual(projectRootOfView('C:/p/.llm/loops/view.json'), { root: 'C:/p', separator: '/' })
+  assert.deepEqual(projectRootOfView('C:\\p\\.llm\\rules\\view.json'), { root: 'C:\\p', separator: '\\' })
+  assert.equal(projectRootOfView('C:/p/view.json'), null)
+  const project = { root: 'C:/p', separator: '/' }
+  const read = (file: string) => readScriptText(fake.remote.workspaceFiles, 's1', project, file, new AbortController().signal)
+  assert.deepEqual(await read('docs/loops/scripts/u-1.mjs'), { kind: 'text', text: 'console.log(1)\n' })
+  assert.deepEqual(await read('docs/loops/scripts/big.mjs'), { kind: 'too-large' })
+  assert.equal(fake.readsOf('C:/p/docs/loops/scripts/big.mjs'), 0, 'a file over 64 KiB is not read')
+  assert.deepEqual(await read('docs/loops/scripts/gone.mjs'), { kind: 'missing' })
+  fake.fail('C:/p/docs/loops/scripts/bad.mjs', 'boom')
+  assert.deepEqual(await read('docs/loops/scripts/bad.mjs'), { kind: 'failed', message: 'boom' })
+  const file = 'docs/loops/scripts/u-1.mjs'
+  const heads = ([{ kind: 'reading' }, { kind: 'text', text: '' }, { kind: 'too-large' }, { kind: 'missing' }, { kind: 'failed', message: 'boom' }, { kind: 'no-root' }] as const).map(shown => scriptTextHead(shown, file))
+  assert.deepEqual(heads, [
+    `正在读脚本原文：${file}`,
+    `脚本原文：${file}`,
+    `脚本 ${file} 超过 64 KiB，这里不显示原文`,
+    `脚本文件不见了：${file}`,
+    '脚本原文读不出：boom',
+    '脚本原文读不出：不知道这个项目在哪',
+  ])
+  assert.deepEqual(plainWordsIn(heads.join('\n')), [])
+})
+
 // --- The timeout cell of a plugin entry's checks (plain-ui 1.3 §4.7, §8.2) ---
 
 /** The day the cell writes, on the clock of this machine. */
@@ -469,7 +497,7 @@ test('讲细点 has the hand-over\'s lines, the history newest first with 第一
 
 /** The string literals with Chinese in them of the files that make what the person reads. */
 async function fixedStrings(): Promise<string> {
-  const files = ['src/loops/view.ts', 'src/loops/commands.ts', 'ui/src/loops/model.ts', 'ui/src/loops/timeouts.ts', 'ui/src/loops/source.ts', 'ui/src/loops/LoopsPage.tsx']
+  const files = ['src/loops/view.ts', 'src/loops/commands.ts', 'ui/src/loops/model.ts', 'ui/src/loops/timeouts.ts', 'ui/src/loops/source.ts', 'ui/src/loops/LoopsPage.tsx', 'ui/src/graph/script-text.ts', 'ui/src/graph/ScriptDetails.tsx']
   const texts = await Promise.all(files.map(file => readFile(join(import.meta.dirname, '..', ...file.split('/')), 'utf8')))
   return texts.flatMap(text => text.match(/'[^'\n]*[\u4e00-\u9fff][^'\n]*'|`[^`]*[\u4e00-\u9fff][^`]*`|>[^<>{}\n]*[\u4e00-\u9fff][^<>{}\n]*</g) ?? []).join('\n')
 }
@@ -597,4 +625,5 @@ test('no file under ui/src/loops/ calls commands.execute or renders a write cont
   const files = (await readdir(dir)).filter(name => /\.(ts|tsx)$/.test(name))
   assert.ok(files.length >= 4, `the page package is there: ${files.length}`)
   for (const file of files) assert.equal(WRITE_MARK.test(await readFile(join(dir, file), 'utf8')), false, `${file} must not write: no commands.execute, no button, toggle or form`)
+  for (const file of ['script-text.ts', 'ScriptDetails.tsx']) assert.equal(WRITE_MARK.test(await readFile(join(dir, '..', 'graph', file), 'utf8')), false, `the shared 讲细点 of a script (ui/src/graph/${file}) must not write either`)
 })

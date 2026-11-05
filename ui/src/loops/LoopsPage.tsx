@@ -6,7 +6,8 @@
  * folded), and the last runs. Only reading: no button, toggle or form, and
  * no command call — what the person can change is written under the item as
  * what to tell the main agent or which command to type, and the only thing
- * to open is 讲细点. The data comes from the page source (./source.ts) over
+ * to open is 讲细点 (a script entry's text is read only when it opens,
+ * ../graph/ScriptDetails.tsx). The data comes from the page source (./source.ts) over
  * the loop row's session projection hournessLoops; this file registers the
  * board in the panel's table (ui/src/graph/boards.ts). The board hands over
  * no status entries and no home line yet (docs/ORCHESTRATION.md §18.7).
@@ -15,6 +16,7 @@ import { TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactElement } from 'react'
 import type { ClientContext, RemoteRoot, SessionsClient } from '../dsh.ts'
 import { registerBoard } from '../graph/boards.ts'
+import { ScriptDetails, ScriptReadContext } from '../graph/ScriptDetails.tsx'
 import { loopsBoard } from './board.ts'
 import type { LoopItem, LoopsPageModel } from './model.ts'
 import { holdLoopsSource, type LoopsSnapshot, type LoopsSource } from './source.ts'
@@ -61,10 +63,7 @@ function EntryItem({ row }: { readonly row: LoopItem }): ReactElement {
       {row.checkLines.map((line, index) => <div className="glmo-line" key={`${index}:${line}`}>{line}</div>)}
       {row.workLines.map((line, index) => <div className="glmo-line" key={`work:${index}:${line}`}>{line}</div>)}
       {row.changeLine === null ? null : <div className="glmo-grey">{row.changeLine}</div>}
-      <details>
-        <summary>讲细点</summary>
-        {row.details.map((line, index) => <div key={`${index}:${line}`}>{line}</div>)}
-      </details>
+      <ScriptDetails lines={row.details} file={row.script} />
     </div>
   )
 }
@@ -151,7 +150,11 @@ function makeLoopsPage(remote: RemoteRoot, sessions: SessionsClient): (props: { 
       return () => { held.release() }
     }, [remote, sessionId, viewFile])
     if (viewFile === null || source === undefined) return null
-    return <LoopsContent source={source} />
+    return (
+      <ScriptReadContext.Provider value={{ files: remote.workspaceFiles, sessionId, viewFile }}>
+        <LoopsContent source={source} />
+      </ScriptReadContext.Provider>
+    )
   }
 }
 
