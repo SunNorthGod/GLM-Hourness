@@ -45,6 +45,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面批次 L4 的记录已出（.agents/tasks/l4-batch-2026-11-05/l4.md，B3）：两次 Browser.close 都没有回应，桌面版约 12 分钟后（15:20:52）才自己退出，没有崩溃日志；这一步没有杀进程，等它退出后才 build 与重启。60 秒的等待上限对人的实例不够，要不要放宽、放到多少由编排方定。它也让指标行自查报「1 个进程没有正常退出」。"
+    },
+    {
+      "at": "2026-11-05T12:41:08.980Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4（wf_be2ff3a8b7d83155）完成，记录 .agents/tasks/l4-batch-2026-11-05/l4.md（d22057f，origin 与 github 一致）；挡路 1 条（B1，m4-checks 第 5 条），已派 m4-checks-loop-details 修。B3 的处理由编排方定：经 CDP 发 Browser.close 之后每 30 秒看一次，至多等 15 分钟，仍不杀进程，15 分钟还没退出就停下报告；DEVELOPMENT.md §1.1 的 L4 行由 m4-checks-loop-details 同批改。另记：本批的步骤自己在主检出写了十个节点的批注（违反任务书「不改 docs/graph」），这些改动被编排方的提交 40e014f 一并带进 main；内容与 l4.md 一致，保留不回退。"
     }
   ]
 }
