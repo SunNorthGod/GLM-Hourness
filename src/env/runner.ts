@@ -41,7 +41,7 @@ import type { GraphNode } from '../graph/schema.ts'
 import { graphService } from '../graph/service.ts'
 import { commandText, runCommand, type CommandRequest, type ScriptResult } from '../loops/script.ts'
 import type { ListedRun } from '../loops/service.ts'
-import { loopsService } from '../loops/service.ts'
+import { DETAILS_MAX_LINES, DETAILS_MAX_WIDTH, loopsService } from '../loops/service.ts'
 import { matchesFilter } from '../loops/trigger.ts'
 import type { ViewCheck } from '../loops/view.ts'
 import type { DerivedMessage, ServiceLookup, UserNotice } from '../shared/dsh-min.ts'
@@ -77,10 +77,8 @@ const KILL_SETTLE_MS = 1_500
 const LOG_KEEP_MS = 7 * 24 * 3600 * 1000
 /** Sessions the checker remembers; the oldest leaves first. */
 const SESSION_LIMIT = 64
-/** At most this many checks and lines on the loop board's page (design §6.8). */
+/** At most this many checks on the loop board's page (design §6.8); the lines and their width are the board's limits (src/loops/service.ts). */
 const DETAIL_CHECKS = 10
-const DETAIL_LINES = 20
-const DETAIL_WIDTH = 160
 
 const fold = (path: string): string => process.platform === 'win32' ? path.toLowerCase() : path
 const slashes = (path: string): string => path.split(sep).join('/')
@@ -627,8 +625,8 @@ export function createChecker(options: CheckerOptions): Checker {
       // One line per check, the check and its command: the timeout is the page's own cell now (`checks`, plain-ui 1.3 §11 「1.0 的对接」第 4 条).
       return snapshot.checks.slice(0, DETAIL_CHECKS).map((check) => {
         const title = check.title === '' ? check.key : check.title
-        return codePoints(`${title}：改了 ${check.paths.join('、')} 之后跑 · ${codePoints(commandText(check.argv), 40)}`, DETAIL_WIDTH)
-      }).slice(0, DETAIL_LINES)
+        return codePoints(`${title}：改了 ${check.paths.join('、')} 之后跑 · ${codePoints(commandText(check.argv), 40)}`, DETAILS_MAX_WIDTH)
+      }).slice(0, DETAILS_MAX_LINES)
     },
     checks(project) {
       const snapshot = snapshots.get(fold(project))

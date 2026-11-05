@@ -15,11 +15,16 @@
  * record in the quota journal and one console warning per reason (not being
  * logged in is the state of a new install: the line and the row health say
  * it, the console does not, and the experience plan is no failure at all);
- * it never throws and never changes a request.
+ * it never throws and never changes a request. Every read this reader starts
+ * hands one `glm.quota-read` to the metrics sink when it ends (M6 design
+ * §14.2): who started it, for whom (`QuotaRequest.asker`), how it ended and
+ * how long it took.
  */
 import { randomUUID } from 'node:crypto'
+import type { MetricsWhere } from '../shared/metrics.ts'
 import { formatMoment, type LoginView, type MomentZone, type QuotaReading, type QuotaRequest, type QuotaView, type QuotaWindowView } from '../shared/quota.ts'
 import { rateShareAt } from './credits.ts'
+import { metricsWhere, quotaReadBody, type GlmMetricSink, type QuotaReadEnd } from './metrics.ts'
 import type { QuotaJournal, QuotaRecord, StoredRecord } from './quota-journal.ts'
 import { nameWindows, parseQuotaBody, type NamedWindow } from './quota-parse.ts'
 import { projectWindow, samePeriod, type WindowPoint, type WindowState } from './quota-projection.ts'
@@ -40,9 +45,9 @@ const WAIT_MAX_MS = 15_000
 const HISTORY_MAX = 32
 const JOURNAL_LARGE_BYTES = 8 * 1024 * 1024
 
-/** What the reader needs of the channel adapter. */
+/** What the reader needs of the channel adapter; `where` files a refused login the token mint meets. */
 interface QuotaCredentials {
-  usageAuthorization(): Promise<string>
+  usageAuthorization(where?: MetricsWhere): Promise<string>
   loginIdentity(): Promise<LoginIdentity>
 }
 
@@ -56,6 +61,8 @@ export interface QuotaReaderOptions {
   readonly zone?: MomentZone
   /** The deadline of one read; default `QUOTA_TIMEOUT_MS`. */
   readonly timeoutMs?: number
+  /** Where each read's `glm.quota-read` goes; without it none is made. */
+  readonly metric?: GlmMetricSink
 }
 
 /** What the row health says about the quota (`quotaHealthText`). */
@@ -111,6 +118,27 @@ export function quotaHealthText(health: QuotaHealth, now: number, zone?: MomentZ
   if (health.skippedLines > 0) parts.push(`额度流水有 ${health.skippedLines} 行读不懂`)
   if (health.journalBytes >= JOURNAL_LARGE_BYTES) parts.push('额度流水已到 8 MiB，轮换要另行设计')
   return parts.join('；')
+}
+
+/** Who started a read and where its event belongs. */
+interface Asker {
+  readonly kind: 'command' | 'service'
+  readonly where: MetricsWhere
+}
+
+/**
+ * The asker of a request as the reader trusts it: the request crosses from
+ * the other package, so a kind it does not know is a service's and a member
+ * that is not a string is left out.
+ */
+function askerOf(asker: QuotaRequest['asker']): Asker {
+  const value: unknown = asker
+  if (typeof value !== 'object' || value === null) return { kind: 'service', where: {} }
+  const { kind, sessionId, dir } = value as Record<string, unknown>
+  return {
+    kind: kind === 'command' ? 'command' : 'service',
+    where: metricsWhere(typeof sessionId === 'string' ? sessionId : undefined, typeof dir === 'string' ? dir : undefined),
+  }
 }
 
 type ReadingEntry = StoredRecord & { readonly record: Extract<QuotaRecord, { readonly kind: 'reading' }> }
@@ -223,45 +251,42 @@ export function createQuotaReader(options: QuotaReaderOptions): QuotaReader {
     await journal.append({ at: new Date(at).toISOString(), kind: 'failure', reason, ...(keys === undefined || keys.length === 0 ? {} : { keys }) })
   }
 
-  const failWith = (reason: string): Promise<void> => fail(reason, failureText(reason))
+  /** Record a failure and say how the read ended. */
+  const failed = async (reason: string, text: string, keys?: readonly string[]): Promise<QuotaReadEnd> => {
+    await fail(reason, text, keys)
+    return { ok: false, reason }
+  }
 
-  const requestQuota = async (authorization: string): Promise<void> => {
+  const failWith = (reason: string): Promise<QuotaReadEnd> => failed(reason, failureText(reason))
+
+  const requestQuota = async (authorization: string): Promise<QuotaReadEnd> => {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     /** A read that did not answer: out of time, or the network failed. */
-    const unreachable = (): Promise<void> => failWith(controller.signal.aborted ? 'timeout' : 'network')
+    const unreachable = (): Promise<QuotaReadEnd> => failWith(controller.signal.aborted ? 'timeout' : 'network')
     try {
       let response: Response
       try {
         response = await until(fetchImpl(QUOTA_URL, { method: 'GET', headers: { authorization, 'x-request-id': randomUUID() }, signal: controller.signal }), controller.signal)
       }
       catch {
-        await unreachable()
-        return
+        return await unreachable()
       }
       if (!response.ok) {
         await response.body?.cancel().catch(() => { /* already closed */ })
-        await failWith(`http-${response.status}`)
-        return
+        return await failWith(`http-${response.status}`)
       }
       let text: string | undefined
       try {
         text = await cappedText(response, controller.signal)
       }
       catch {
-        await unreachable()
-        return
+        return await unreachable()
       }
-      if (text === undefined) {
-        await failWith('too-large')
-        return
-      }
+      if (text === undefined) return await failWith('too-large')
       const at = now()
       const parsed = parseQuotaBody(text, at)
-      if (!parsed.ok) {
-        await fail(parsed.reason, parsed.text, parsed.keys)
-        return
-      }
+      if (!parsed.ok) return await failed(parsed.reason, parsed.text, parsed.keys)
       await journal.append({
         at: new Date(at).toISOString(),
         kind: 'reading',
@@ -270,31 +295,49 @@ export function createQuotaReader(options: QuotaReaderOptions): QuotaReader {
         dropped: parsed.dropped,
         ...(parsed.dropped > 0 && parsed.keys.length > 0 ? { keys: parsed.keys } : {}),
       })
+      return { ok: true, at, limits: parsed.limits, dropped: parsed.dropped }
     }
     finally {
       clearTimeout(timer)
     }
   }
 
-  const readOnce = async (): Promise<void> => {
+  const readEnd = async (where: MetricsWhere): Promise<QuotaReadEnd> => {
     try {
       let authorization: string
       try {
-        authorization = await adapter.usageAuthorization()
+        authorization = await adapter.usageAuthorization(where)
       }
       catch (error) {
-        await failWith(credentialReason(error))
-        return
+        return await failWith(credentialReason(error))
       }
-      await requestQuota(authorization)
+      return await requestQuota(authorization)
     }
     catch (error) {
-      await fail('read-error', `额度：读取出错（${error instanceof Error ? error.message.slice(0, 80) : 'unknown'}）`)
+      return await failed('read-error', `额度：读取出错（${error instanceof Error ? error.message.slice(0, 80) : 'unknown'}）`)
     }
   }
 
-  /** The read in progress, a new one when one is due, or nothing; boxed, so that the async function does not wait for it. */
-  const readDue = async (): Promise<{ readonly job: Promise<void> } | undefined> => {
+  /**
+   * One read, then its `glm.quota-read`: who asked, for whom, how it ended
+   * and how long it took. The experience plan has no quota and sends
+   * nothing, so it is no read and makes no event (it writes no journal
+   * record either).
+   */
+  const readOnce = async (asker: Asker): Promise<void> => {
+    const started = now()
+    const end = await readEnd(asker.where)
+    if (options.metric === undefined || (!end.ok && end.reason === 'start-plan')) return
+    try {
+      options.metric({ k: 'glm.quota-read', body: quotaReadBody(end, now() - started, asker.kind) }, asker.where)
+    }
+    catch {
+      // The sink never throws; a read is never failed by its event.
+    }
+  }
+
+  /** The read in progress, a new one when one is due, or nothing; boxed, so that the async function does not wait for it. A read joined keeps its starter's asker. */
+  const readDue = async (asker: Asker): Promise<{ readonly job: Promise<void> } | undefined> => {
     if (inflight !== undefined) return { job: inflight }
     const { records } = await journal.read()
     if (inflight !== undefined) return { job: inflight }
@@ -304,7 +347,7 @@ export function createQuotaReader(options: QuotaReaderOptions): QuotaReader {
       if (limit === undefined || limit.atMs <= lastStartedAt) return undefined
     }
     lastStartedAt = started
-    inflight = readOnce().finally(() => { inflight = undefined })
+    inflight = readOnce(asker).finally(() => { inflight = undefined })
     return { job: inflight }
   }
 
@@ -361,7 +404,7 @@ export function createQuotaReader(options: QuotaReaderOptions): QuotaReader {
     async view(request: QuotaRequest = {}): Promise<QuotaView> {
       const wait = typeof request.waitMs === 'number' && Number.isFinite(request.waitMs) ? Math.min(Math.max(request.waitMs, 0), WAIT_MAX_MS) : 0
       if (request.read !== false) {
-        const due = await readDue()
+        const due = await readDue(askerOf(request.asker))
         if (due !== undefined && wait > 0) {
           let timer: ReturnType<typeof setTimeout> | undefined
           const waited = new Promise<void>(resolve => { timer = setTimeout(resolve, wait) })

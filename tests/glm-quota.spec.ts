@@ -27,7 +27,7 @@ import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { PRICING_SERVICE, pricingService, quotaOf } from '../src/shared/pricing.ts'
 import { quotaLines } from '../src/shared/quota.ts'
 import type { CommandDefinitionLike } from '../src/shared/dsh-min.ts'
-import { fakeProjectToken, PAT_KEY_ID, patPlane, zcodeDataDir } from './glm-fixtures.ts'
+import { fakeProjectToken, modelRequest, PAT_KEY_ID, patPlane, zcodeDataDir } from './glm-fixtures.ts'
 import { serviceStore } from './fake-rc3.ts'
 
 const MINUTE_MS = 60_000
@@ -183,16 +183,9 @@ async function warned(run: () => Promise<unknown>): Promise<string[]> {
   return (await withWarnings(run)).messages
 }
 
-/** The model request these specs make, read to its end: the error the stream ends with, or undefined. */
-function runModelRequest(adapter: ZcodeAdapter): Promise<unknown> {
-  return (async () => {
-    for await (const chunk of adapter.stream({ provider: 'glm-zcode', model: 'glm-5.3', sessionId: 's1', messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }], system: 'be brief' } as never)) void chunk
-  })().then(() => undefined, (error: unknown) => error)
-}
-
 /** The model request the adapter makes: two rejections in a row end the stream with an error. */
 async function streamOnce(adapter: ZcodeAdapter): Promise<unknown> {
-  const failure = await runModelRequest(adapter)
+  const failure = await modelRequest(adapter)
   assert.ok(failure instanceof Error, 'the stream ends with an error')
   return failure
 }
@@ -561,7 +554,7 @@ test('a model request that is refused again after a new token is a refused login
 
 test('a model request refused once, then accepted after the new token, is no refused login', async () => {
   const h = await harness({ model: call => (call === 1 ? modelRejection() : modelAnswer()) })
-  assert.equal(await runModelRequest(h.adapter), undefined, 'the retry with the new token went through')
+  assert.equal(await modelRequest(h.adapter), undefined, 'the retry with the new token went through')
   assert.equal(h.pat.mints(), 2, 'the token was minted again before the retry')
   assert.deepEqual(kinds(h.records(), 'login-rejected'), [])
   assert.deepEqual((await h.reader.view({ read: false })).login, { state: 'ok' })

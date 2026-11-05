@@ -81,6 +81,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "本周（2026-11-05 周四）的阅读派 investigate-reading-digest-1105（wf_f8a7db34778f087b，只读）：读 2026-10-29 至 11-05 Anthropic 与 OpenAI 的 agent 工程文章与 harness engineering 新论文，先查 orch 2026-10-30T17:20 批注里六篇的后续，每篇写讲了什么、对本项目有什么用、建议。报告 .agents/tasks/reading-digest/2026-11-05.md。"
+    },
+    {
+      "at": "2026-11-05T09:27:21.083Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "本周阅读的第一次运行 investigate-reading-digest-1105（wf_f8a7db34778f087b）因上游额度错误（quota exhausted）中断，状态显示完成，但报告 .agents/tasks/reading-digest/2026-11-05.md 没有写出。编排方重派 investigate-reading-digest-1105-retry（wf_e4e22f8e78f0b14b），范围不变，改为每读完一篇就追加进报告，中途断了也留得下已读的部分。"
+    },
+    {
+      "at": "2026-11-05T10:37:20.654Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "本周阅读完成（investigate-reading-digest-1105-retry，wf_e4e22f8e78f0b14b；首次运行 wf_f8a7db34778f087b 因上游额度错误中断未留报告），报告 .agents/tasks/reading-digest/2026-11-05.md。两家窗口内几乎没有新的 agent 工程文章；2026-10-30 批注列的七篇（批注写六篇，第五条含两篇）都没有新版本；更正：2609.00006 是七个子系统（摘要只列出六个），不是六块。提成节点两件：m4-reanchor-violations（压缩之后提醒本会话被拦过的规则）、m7-handback-path-check（交回时确定性核对改动路径）；第三件（M5 规则提议加「预期效果」、撤规则写明替补）是新规范，交人定。下次起点：Anthropic、OpenAI 2026-11-05 起，arXiv 2026-11-05 公布起，下次到期 2026-11-12。"
     }
   ]
 }

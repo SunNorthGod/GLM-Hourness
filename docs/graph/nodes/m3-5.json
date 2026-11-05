@@ -3,13 +3,31 @@
   "type": "task",
   "title": "要人定的事",
   "why": "要人定的事在图上留着，人没当场回话也不会丢",
-  "status": "doing",
+  "status": "done",
   "parent": "m3",
   "kind": "implement",
   "body": "要人定的事在图上留一张待决，主 Agent 在对话里提出（ORCHESTRATION.md §5；d-chat-not-cards 之后不出卡）；取代 L1/L2/L3。出工作区申报的场景归 M4（question-24 A）。",
   "acceptance": [
     "要人定的事在图上留一张待决，主 Agent 在对话里提出；人当场回话就由人定；没回话时这张待决留在「需要你」里，人之后在同一个主 Agent 的对话里回话也算",
     "代码与晨报里没有 L1/L2/L3，晨报的决策一节取自图"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "5b6e77d",
+      "note": "M3 第 10 步：要人定的事读图，语义评审 APPROVED"
+    },
+    {
+      "kind": "commit",
+      "ref": "2bf2b16",
+      "note": "m3 合入 main 的合并提交"
+    },
+    {
+      "kind": "test",
+      "ref": "tests/record-human-answer.spec.ts",
+      "exit": 0,
+      "note": "没当场回的事经 record_human_answer 落成带 relay 的 decide；2026-11-03 桌面交互 L4 实走过"
+    }
   ],
   "history": [
     {
@@ -139,6 +157,32 @@
           "to": "要人定的事在图上留着，人没当场回话也不会丢"
         }
       }
+    },
+    {
+      "at": "2026-11-05T10:05:46.619Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "项目图对账 A 半（.agents/tasks/graph-reconcile-2026-11-05/report-a.md，investigate-graph-reconcile-1105-a，wf_354a8b952020a5fa）核实：验收逐条有证据，提交都在 origin/main（merge-base --is-ancestor 退出码 0），验证层不要求 L4 或 L4 已做过",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "5b6e77d",
+          "note": "M3 第 10 步：要人定的事读图，语义评审 APPROVED"
+        },
+        {
+          "kind": "commit",
+          "ref": "2bf2b16",
+          "note": "m3 合入 main 的合并提交"
+        },
+        {
+          "kind": "test",
+          "ref": "tests/record-human-answer.spec.ts",
+          "exit": 0,
+          "note": "没当场回的事经 record_human_answer 落成带 relay 的 decide；2026-11-03 桌面交互 L4 实走过"
+        }
+      ]
     }
   ]
 }

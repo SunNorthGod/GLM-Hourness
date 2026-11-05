@@ -35,7 +35,7 @@ export interface LoopItem {
   readonly workLines: readonly string[]
   /** A person's script entry: its file from the project root, read when 讲细点 opens; null for the others. */
   readonly script: string | null
-  /** 讲细点: why it is there, the hand-over's lines, the history and last timeouts of its checks, its own rules, the id and its state, in small print. */
+  /** 讲细点: why it is there, the lines its plugin gives for this project, the history and last timeouts of its checks, its own rules, its state and the id, in small print. */
   readonly details: readonly string[]
 }
 
@@ -121,8 +121,8 @@ function itemOf(entry: ViewEntry, nowMs: number, tell: PageTell): LoopItem {
       ...(entry.why === undefined ? [] : [`为什么有它：${entry.why}`]),
       ...textsOf(entry.details),
       ...cells.flatMap(cell => cell.details),
-      // The entry's own rules (loop board design §2.1 「<名字>自己的规矩」); for M4's checker the step's 20 seconds are here, not in the timeout cell (plain-ui 1.3 §4.7, P12-05).
-      ...(ownRules.length === 0 ? [] : [`「${entry.title}」自己的规矩：`, ...ownRules]),
+      // The entry's own rules (main's wording since m4-checks B1); for M4's checker the step's 20 seconds are here, not in the timeout cell (plain-ui 1.3 §4.7, P12-05).
+      ...(ownRules.length === 0 ? [] : ['它自己的规矩：', ...ownRules.map(rule => `· ${rule}`)]),
       `状态：${STATE_WORDS[entry.state] ?? entry.state}`,
       `id：${entry.id}`,
     ],

@@ -52,6 +52,18 @@
           "to": "人在一页上看到本项目生效的经验，也能删掉不对的"
         }
       }
+    },
+    {
+      "at": "2026-11-05T10:05:02.543Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "对账 A 半（.agents/tasks/graph-reconcile-2026-11-05/report-a.md）：第 1–3 条已在隔离实例上过（.agents/tasks/m5/l4-2026-11-05.md），第 4 条只有 L2。人的 profile 里 lessons 行出厂 disabled，今天的批次 L4 在人的桌面版上看不到经验页；依赖 m5-1 已关。"
+    },
+    {
+      "at": "2026-11-05T11:57:25.008Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4（wf_be2ff3a8b7d83155）：人的 profile 里经验行仍是出厂 disabled: true（/hourness-status「未加载」），页脚「经验 ›」打开是「这个项目还没有经验」。在人的 profile 上的 L4 照旧等经验行在出厂包里启用之后；隔离实例上的那一轮已在 .agents/tasks/m5/l4-2026-11-05.md。"
     }
   ]
 }

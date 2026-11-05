@@ -346,7 +346,7 @@ interface Heard {
 
 /** The view of one plugin entry, the checker's, whose hand-over gives these checks and detail lines. */
 const checkerView = (checks: readonly unknown[], details: readonly string[] = []): LoopsView =>
-  buildView({ at: AT, project: 'p', plugin: [{ entry: pluginEntry(CHECKER), state: 'active' }], board: undefined, events: LOOP_EVENT_TABLE, page: () => ({ details, checks: checks as never }) })
+  buildView({ at: AT, project: 'p', plugin: [{ entry: pluginEntry(CHECKER), state: 'active', details: { ok: true, lines: details } }], board: undefined, events: LOOP_EVENT_TABLE, checks: () => checks as never })
 
 /** The checker's row on the page of that view, and what the cell told. */
 function checkerRow(checks: readonly unknown[], details: readonly string[] = []): { readonly row: LoopItem, readonly heard: Heard } {
@@ -361,7 +361,7 @@ test('buildView puts a plugin entry\'s own rules and what its hand-over gives th
   const view = checkerView([check({ seconds: 60, source: { kind: 'ceiling' } })], ['Lint：改了 *.txt 之后跑 · node lint.mjs {files}'])
   const [entry] = view.entries
   assert.deepEqual([entry?.ownRules, entry?.details, entry?.checks], [['一步最多等 20 秒'], ['Lint：改了 *.txt 之后跑 · node lint.mjs {files}'], [check({ seconds: 60, source: { kind: 'ceiling' } })]])
-  const [bare] = buildView({ at: AT, project: 'p', plugin: [{ entry: pluginEntry({ ...CHECKER, ownRules: [] }), state: 'active' }], board: undefined, events: LOOP_EVENT_TABLE, page: () => ({ details: [], checks: [] }) }).entries
+  const [bare] = buildView({ at: AT, project: 'p', plugin: [{ entry: pluginEntry({ ...CHECKER, ownRules: [] }), state: 'active', details: { ok: true, lines: [] } }], board: undefined, events: LOOP_EVENT_TABLE, checks: () => [] }).entries
   assert.deepEqual([bare?.ownRules, bare?.details, bare?.checks], [undefined, undefined, undefined])
 })
 
@@ -474,8 +474,8 @@ test('讲细点 has the hand-over\'s lines, the history newest first with 第一
     `${momentText(history[1].at)} · 5 秒 · 第一个值 · 你估 1 秒，会话未记`,
     'Lint：lint最近的超时：',
     ...timeouts.slice(0, 5).map(item => `${momentText(item.at)} · 限 5 秒 · 跑了 5.2 秒 · 算没跑完，下一次改动照常再跑`),
-    '「改完文件就跑检查」自己的规矩：',
-    '一步最多等 20 秒',
+    '它自己的规矩：',
+    '· 一步最多等 20 秒',
     '状态：在用',
     'id：env.checks-after-edit',
   ])

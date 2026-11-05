@@ -49,14 +49,14 @@ export interface ViewEntry {
   /** 谁带来的. */
   readonly from: string
   readonly why?: string
+  /** The entry's own rules (design §2.1 `ownRules`), one line each, as the entry gives them. */
+  readonly ownRules?: readonly string[]
+  /** A plugin's entry: the lines its hand-over's `details` gives for this project (design §3.1), or the one sentence that they cannot be read. */
+  readonly details?: readonly string[]
   /** The last run, when the board has one. */
   readonly last?: OutcomeView
   /** ISO time of the next run of a `once`, `daily` or `weekly` entry that runs now; none for `every` (DSH aligns it to its task's anchor) and cron (DSH computes it). */
   readonly next?: string
-  /** A plugin entry's own rules, as its hand-over lists them (design §8.2 讲细点). */
-  readonly ownRules?: readonly string[]
-  /** A plugin entry's detail lines for this project, from its hand-over's `details` (design §8.2 讲细点). */
-  readonly details?: readonly string[]
   /** The checks a plugin entry runs in this project with their timeouts, from its hand-over's `checks` (plain-ui 1.3 §4.7, §8.2). */
   readonly checks?: readonly ViewCheck[]
   /** A person's script or check entry: the line of the version agreed to, a check's command line, and the timeout line (design §8.2 item 5, plain-ui 1.3 §4.7). */
@@ -196,7 +196,14 @@ interface ViewPluginEntry {
   readonly entry: LoopEntry
   readonly state: string
   readonly reason?: string
+  /** What the hand-over's `details` gave for this project (registry.ts `detailsOf`); absent when it gives none. */
+  readonly details?: DetailsRead
 }
+
+/** One read of a hand-over's `details` for one entry: the lines, or why the page cannot show them (it threw, or broke the limits of service.ts). */
+export type DetailsRead =
+  | { readonly ok: true, readonly lines: readonly string[] }
+  | { readonly ok: false, readonly reason: string }
 
 /** The records 最近跑过的 lists (records.ts `loop-done`, `loop-duplicate`, `loop-task-delete`, the fields the view reads; `recentRecords` reads them in this shape). */
 export type ViewRecord =
@@ -456,6 +463,17 @@ const NO_RUNTIME: ViewRuntime = { last: {}, passing: {}, waiting: 0, records: []
 /** Whether an entry's state lets it run, so its next time is worth showing. */
 const runs = (state: string): boolean => state === 'active' || state === 'ok'
 
+/** The entry's own rules, when it has any. */
+const ownRulesOf = (entry: { readonly ownRules?: readonly string[] } | undefined): Pick<ViewEntry, 'ownRules'> =>
+  entry?.ownRules === undefined || entry.ownRules.length === 0 ? {} : { ownRules: entry.ownRules }
+
+/** A plugin's details as the page lists them: the lines, or the one sentence that they cannot be read (design §5.3; the reason goes to the row health, boards.ts). */
+function detailsLines(read: DetailsRead | undefined, label: string): Pick<ViewEntry, 'details'> {
+  if (read === undefined) return {}
+  if (!read.ok) return { details: [`${label}没给出明细，这一项的明细读不到`] }
+  return read.lines.length === 0 ? {} : { details: read.lines }
+}
+
 /**
  * The view of a project. `board` is undefined when the project's files could
  * not be read; `peak` is absent while the host has no pricing service;
@@ -469,8 +487,8 @@ export function buildView(input: {
   readonly events: ReadonlyMap<string, LoopEventDeclaration>
   readonly peak?: PeakView
   readonly runtime?: ViewRuntime
-  /** What a plugin entry's hand-over gives the page for this project (registry.ts `pageOf`): its detail lines and its checks with their timeouts. */
-  readonly page?: (entry: string) => { readonly details?: readonly string[], readonly checks?: readonly ViewCheck[] }
+  /** The checks a plugin entry's hand-over gives the page for this project, with their timeouts (registry.ts `checksOf`). */
+  readonly checks?: (entry: string) => readonly ViewCheck[] | undefined
   /** Whether a person's script file is the one agreed to, as the host reads it now (boards.ts); absent: taken as agreed. */
   readonly scriptStanding?: (entry: PersonEntry) => ScriptStanding | undefined
 }): LoopsView {
@@ -489,7 +507,7 @@ export function buildView(input: {
   }
   const plugin = input.plugin.map((item): ViewEntry => {
     const label = labels.get(item.entry.id) ?? item.entry.source.plugin
-    const page = input.page?.(item.entry.id) ?? {}
+    const checks = input.checks?.(item.entry.id) ?? []
     return {
       id: item.entry.id,
       title: item.entry.title,
@@ -502,9 +520,9 @@ export function buildView(input: {
       does: doesText(item.entry.action, label),
       from: pluginFrom(item.entry),
       ...(item.entry.why === undefined ? {} : { why: item.entry.why }),
-      ...(item.entry.ownRules === undefined || item.entry.ownRules.length === 0 ? {} : { ownRules: item.entry.ownRules }),
-      ...(page.details === undefined || page.details.length === 0 ? {} : { details: page.details }),
-      ...(page.checks === undefined || page.checks.length === 0 ? {} : { checks: page.checks }),
+      ...ownRulesOf(item.entry),
+      ...detailsLines(item.details, label),
+      ...(checks.length === 0 ? {} : { checks }),
     }
   })
   /** A person's script or check entry's lines, and a script's file for 讲细点; nothing for the others or a deleted one. */
@@ -529,6 +547,7 @@ export function buildView(input: {
       does: entry === undefined ? '读不出' : doesText(entry.action, '你'),
       from: personFrom(entry),
       ...(entry?.why === undefined ? {} : { why: entry.why }),
+      ...ownRulesOf(entry),
       ...workOf(entry, board.status.kind),
     }
   })

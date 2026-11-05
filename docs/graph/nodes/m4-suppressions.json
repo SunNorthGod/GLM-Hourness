@@ -37,6 +37,12 @@
           "ref": "e85daf0"
         }
       ]
+    },
+    {
+      "at": "2026-11-05T13:48:51.315Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m6-metrics-events 评审（不挡路 N1）核对：本节点验收第 1 条要的指标事件已由 3f59b61 交给指标流水，m6-metrics-events 没有重做；m6-metrics-events 已合入 main cf0ed57。"
     }
   ]
 }

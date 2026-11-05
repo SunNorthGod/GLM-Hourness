@@ -3,7 +3,7 @@
   "type": "task",
   "title": "从你的改动里学习",
   "why": "人亲手改过的地方被记成习惯，下次主 Agent 先照它做",
-  "status": "doing",
+  "status": "done",
   "parent": "m5",
   "kind": "implement",
   "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 m5-4。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S9、S12（S12 等 M3 的 talk.ts）。验证层：L2；L3 `glm-memory-habit`（第 4 至 8 条要 M3 的 `talk.ts`，§9.1 H1）。",
@@ -29,6 +29,29 @@
     {
       "type": "depends",
       "to": "m5-1"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "eef34f9",
+      "note": "S12 习惯先问再记；并入 main 80d4612"
+    },
+    {
+      "kind": "commit",
+      "ref": "02a2bec",
+      "note": "m5-rest B1 修复：/memory restore 不把 forgottenAt 写进流水；并入 main 67c3c5d"
+    },
+    {
+      "kind": "commit",
+      "ref": "e654b0a",
+      "note": "m5 合入 main，带 S9 学习信号"
+    },
+    {
+      "kind": "test",
+      "ref": "tests/memory-habit.spec.ts",
+      "exit": 0,
+      "note": "ask、confirm、decline 各例；另 memory-signals.spec.ts、memory-learning.spec.ts；L3 glm-memory-habit"
     }
   ],
   "history": [
@@ -72,6 +95,37 @@
           "to": "人亲手改过的地方被记成习惯，下次主 Agent 先照它做"
         }
       }
+    },
+    {
+      "at": "2026-11-05T10:32:37.930Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "人 2026-11-05 答 11-04 的第一问：人直接说出口的习惯不用再先问，照现在直接记；本节点代码与测试已齐（.agents/tasks/graph-reconcile-2026-11-05/report-a.md (d)）。第二问（记习惯前先问升成规则）另建 m5-habit-rule",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "eef34f9",
+          "note": "S12 习惯先问再记；并入 main 80d4612"
+        },
+        {
+          "kind": "commit",
+          "ref": "02a2bec",
+          "note": "m5-rest B1 修复：/memory restore 不把 forgottenAt 写进流水；并入 main 67c3c5d"
+        },
+        {
+          "kind": "commit",
+          "ref": "e654b0a",
+          "note": "m5 合入 main，带 S9 学习信号"
+        },
+        {
+          "kind": "test",
+          "ref": "tests/memory-habit.spec.ts",
+          "exit": 0,
+          "note": "ask、confirm、decline 各例；另 memory-signals.spec.ts、memory-learning.spec.ts；L3 glm-memory-habit"
+        }
+      ]
     }
   ]
 }

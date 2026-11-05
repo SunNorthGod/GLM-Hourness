@@ -37,6 +37,7 @@ import { mapTodoWriteToDsh } from './todowrite.ts'
 import { TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from './zcode-tool-text.ts'
 import { installTodoReminder, TODO_NATIVE, TODO_WRITE_NAME } from './todo-reminder.ts'
 import { installPeakReminder, readPeakMode, type PeakModeRead } from './peak-reminder.ts'
+import { glmMetricSink, type GlmMetricSink } from '../glm-llm/metrics.ts'
 import { installToolSearch } from '../toolsearch/index.ts'
 import { DIALECT_SERVICE, type DialectService } from '../shared/dialect.ts'
 import { peakModeService } from '../shared/peak-mode.ts'
@@ -218,7 +219,7 @@ export function buildAgentAliases(agent: AgentLike): BuiltAlias[] {
  * (src/glm-prompt/standing-depth.ts), which wins over the configured one; a
  * reading that could not be used is part of the row health of every GLM step.
  */
-export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now(), peakMode?: () => PeakModeRead, standingDepth?: () => StandingDepth): () => void {
+export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now(), peakMode?: () => PeakModeRead, standingDepth?: () => StandingDepth, metric?: GlmMetricSink): () => void {
   const env = sessionEnv(config.env, agent)
   const standing = standingDepth?.() ?? {}
   const depth = standing.level ?? readReportingDepth(config).depth
@@ -262,7 +263,7 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
   if (todoReminder !== undefined) disposers.push(todoReminder)
   // Registered last, so it runs innermost: its notice precedes the ZCode
   // notices, which keep their collection order after it.
-  const peakReminder = installPeakReminder(agent, () => glmStep, now, peakMode)
+  const peakReminder = installPeakReminder(agent, () => glmStep, now, peakMode, metric)
   if (peakReminder !== undefined) disposers.push(peakReminder)
   return () => { for (const dispose of disposers.splice(0)) dispose() }
 }
@@ -318,6 +319,8 @@ function peakModeReader(ctx: ServiceLookup, agent: AgentLike): () => PeakModeRea
 /** cordis plugin entry (cordis passes `ctx` and `config`; `now` is the wall clock, injectable for tests). */
 export function apply(ctx: PluginContext & Partial<ProvideHost> & ServiceLookup, config: GlmPromptConfig = {}, now: () => number = () => Date.now()): () => void {
   const installed = new WeakSet<AgentLike>()
+  // Each peak reminder sent is one glm.peak-reminder for the metrics journal (M6 design §14.2); nothing without the metrics row.
+  const metric = glmMetricSink(ctx)
   // The console hears each way the memory service can fail to give a depth once per row; every session's health says it.
   const warnedDepth = new Set<string>()
   const warnDepth = (reason: string, message: string): void => {
@@ -350,7 +353,7 @@ export function apply(ctx: PluginContext & Partial<ProvideHost> & ServiceLookup,
     if (installed.has(agent)) return
     installed.add(agent)
     try {
-      disposers.push(installDialect(agent, config, reporter, now, peakModeReader(ctx, agent), standingDepthReader(ctx, agent, warnDepth)))
+      disposers.push(installDialect(agent, config, reporter, now, peakModeReader(ctx, agent), standingDepthReader(ctx, agent, warnDepth), metric))
       active.add(agent)
     }
     catch (error) {

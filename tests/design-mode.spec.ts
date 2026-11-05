@@ -88,13 +88,21 @@ const listen = (agent: FakeAgent, listener: AssembleListener, prepend: boolean):
 
 // ---------------------------------------------------------------- the identity section
 
-test('the identity section: role and boundaries within 1,500, the talk guide and the plain-words list within 1,800, the whole within 3,000', () => {
+test('the identity section: role and boundaries within 1,500, the talk guide and the plain-words list within 2,000, the whole within 3,200', () => {
   assert.ok(MAIN_AGENT_ROLE.length <= 1500, `role ${MAIN_AGENT_ROLE.length}`)
   assert.equal(MAIN_AGENT_TALK, `${TALK_GUIDE}\n${PLAIN_WORDS_GUIDE}`)
-  assert.ok(MAIN_AGENT_TALK.length <= 1800, `talk ${MAIN_AGENT_TALK.length}`)
+  // 2,000 and 3,200 (were 1,800 and 3,000): the reliability sentence of the talk guide adds about 170 characters to both;
+  // the human agreed to the whole at 3,200 (decision d-habits-into-framework, Q3). The role keeps its 1,500.
+  assert.ok(MAIN_AGENT_TALK.length <= 2000, `talk ${MAIN_AGENT_TALK.length}`)
   assert.equal(MAIN_AGENT_IDENTITY, `${MAIN_AGENT_ROLE}\n\n${MAIN_AGENT_TALK}`)
-  assert.ok(MAIN_AGENT_IDENTITY.length <= 3000, `whole ${MAIN_AGENT_IDENTITY.length}`)
+  assert.ok(MAIN_AGENT_IDENTITY.length <= 3200, `whole ${MAIN_AGENT_IDENTITY.length}`)
   assert.equal(MAIN_AGENT_SECTION, 'hourness:main-agent')
+})
+
+test('the talk guide says how reliable each conclusion is and puts a wrong earlier conclusion or a failed check first', () => {
+  const sentence = 'Say of every conclusion whether you read it, ran it or inferred it; an earlier conclusion of yours that turned out wrong, or a check that failed, goes first in the report.'
+  assert.ok(TALK_GUIDE.includes(sentence))
+  assert.ok(MAIN_AGENT_IDENTITY.includes(sentence))
 })
 
 test('the tool description carries the shapes of a question and the worked examples; its limits come from the constants', () => {

@@ -65,6 +65,30 @@
           "to": "会话压缩之后模型还能翻回原文，不会因为摘要丢了细节而重做或做错"
         }
       }
+    },
+    {
+      "at": "2026-11-05T10:37:20.911Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "每周阅读 2026-11-05（.agents/tasks/reading-digest/2026-11-05.md 结论 2）给「是否默认启用」的两条：一、arXiv 2609.20804 的对照实验说「被省略的内容做成可恢复」模型很少用、准确率不涨；L4 与之后的运行里记 GLM 压缩后是否真的 Read 了导出文件、读了几次。二、导出文件是整份日志的纯文本，会带上会话里出现过的凭证字符串，是否在导出时遮盖由人定（推断，没有查过实际导出的内容）。"
+    },
+    {
+      "at": "2026-11-05T10:44:20.998Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05 同意编排方的建议（原话「那两件也按你说的来」）：导出文件遮掉凭证，建 compact-recall-redact。是否默认启用仍等批次 L4 的结论再交人。"
+    },
+    {
+      "at": "2026-11-05T11:57:26.265Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4（wf_be2ff3a8b7d83155）没有做这一项：transcript 行出厂停用，要改人的 profile 补丁打开它再跑一次压缩；main 上 11-05 刚开了 compact-recall-redact（导出要先遮掉凭证），在它合入之前不在人的 profile 上打开这一行。L4 顺延到 compact-recall-redact 之后。"
+    },
+    {
+      "at": "2026-11-05T12:41:09.724Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4 没做本节点的真机核对：transcript 行出厂停用，要改人的 profile 才能打开；compact-recall-redact（导出遮掉凭证）合入之前也不在人的 profile 上打开这一行。L4 顺延到 compact-recall-redact 合入之后，届时在隔离实例里做，不改人的 profile。"
     }
   ]
 }

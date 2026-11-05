@@ -189,6 +189,54 @@
           "to": "agent 改完文件马上跑对应的检查，问题在当步就提醒"
         }
       }
+    },
+    {
+      "at": "2026-11-05T11:57:22.038Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4（wf_be2ff3a8b7d83155，记录 .agents/tasks/l4-batch-2026-11-05/l4.md）：在人的桌面版（main 3a835b7 构建）临时工作区里，GLM 会话 Write 一个带 TODO 的 .txt 之后，下一步带 hourness-checks 提醒（lint 1 finding、notes.txt:2:1 [changed]、日志路径），日志第一行是 argv 与解析出的 node.EXE；timing.jsonl 有估计与一次运行；Bash 的 Set-Content 被 file-tools-only 拒，违规流水写在临时项目的 .llm/audit；env 行生效、插件页显示标题。不合（挡路 B1，第 5 条）：循环板页「改完文件就跑检查」的讲细点只有为什么、状态、id，没有本项目的检查行与五条规矩——src/loops/view.ts 写 view.json 时不带条目的 ownRules，也从不调交来者的 details(entry, project)，ui/src/loops/model.ts 只拼三行。M4 §13.4 第 1–4、10–13 项要人在场或专门夹具，没做。节点保持进行中。"
+    },
+    {
+      "at": "2026-11-05T12:41:08.705Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4 的挡路发现 B1（.agents/tasks/l4-batch-2026-11-05/l4.md）派 m4-checks-loop-details（wf_0977f7098cfafeae）修：循环板页「改完文件就跑检查」的讲细点要列出本项目每条已批准的检查行与检查器的五条规矩（验收第 5 条）。L4 记录写的原因：src/loops/view.ts 写 view.json 时只带 why，不带 ownRules，也从不调交来者的 details；同一处让图行「同一件活第三次返工之前」的规矩也显示不出来，一并修。修完后经 CDP 重启桌面版在临时工作区真机核对。同一条线顺手做 B2（上手页缺指标板入口，先查面板设计有没有写，要改人定的六块就不做）与 B3 的文档。"
+    },
+    {
+      "at": "2026-11-05T14:10:46.016Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks-loop-details（wf_0977f7098cfafeae）第 1 轮 code 步被上游 503「No available accounts」打断，没有留下改动；review 步因上游限流暂停，编排方恢复后评审判 CHANGES_REQUESTED（分支对 origin/main 没有提交，B1 没修，挡路 R1 即验收第 5 条），记录在工作树 .llm/review/review.md。第 2 轮 code 步已开始，循环预算 2 轮用到最后一轮；再空跑则停下，等上游稳定后重开。"
+    },
+    {
+      "at": "2026-11-05T16:00:56.547Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks-loop-details（wf_0977f7098cfafeae）第 2 轮 code 步有进展：工作树里 src/loops/view.ts、boards.ts、registry.ts、service.ts、src/env/runner.ts 与 ui/src/loops/ 两个文件已改，尚未提交。这是循环预算的最后一轮。"
+    },
+    {
+      "at": "2026-11-05T16:44:28.855Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks-loop-details（wf_0977f7098cfafeae）第 2 轮 code 步已把 B1 的修改推到分支：e667fe8「docs(loops): view.json ownRules and details, the page's 讲细点 (m4-checks 5)」，view.json 带上 ownRules 与 details，循环板讲细点照此显示。code 步仍在跑，评审未开始。"
+    },
+    {
+      "at": "2026-11-05T17:17:21.867Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks-loop-details（wf_0977f7098cfafeae）第 2 轮 code 步完成：B1 修好并推到 origin/m4-checks-loop-details（dd4bb84，已合入 origin/main 6d6035e）。循环板「改完文件就跑检查」的讲细点列出本项目每条已批准的检查行与检查器的五条规矩，图行的条目显示它那一条规矩（第三次返工之前）。门禁绿：build、preflight、check-lint（73/18/1）、npm test、探针 420/420。B2 不改：上手页加指标板入口会改动人定的六块。B3 不在这条线做，DEVELOPMENT.md 的关闭规程由 desktop-close-docs（wf_674d79b3e6a53992）整条重写。桌面真机核对留给合入步。下一步评审，这是循环预算的最后一轮。"
+    },
+    {
+      "at": "2026-11-05T18:08:58.476Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks-loop-details（wf_0977f7098cfafeae）第 2 轮评审 APPROVED，没有挡路项（工作树 .llm/review/review.md）。不挡路 5 条：一个进程里第一次改文件之前讲细点为空；提交说明偏短；B2 交编排方（已另开 guide-metrics-line，人选 B）；B3 不在本线（desktop-close-docs 重写关闭规程）；loops-run 第 12 项偶发失败（根因修法在 habits-prompts 4598fa7）。下一步合入 main；合入后的桌面核对要等桌面版启动失败查明之后再做。"
+    },
+    {
+      "at": "2026-11-05T19:17:00.683Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks-loop-details 合入步（wf_0977f7098cfafeae merge）：分支合入 origin/main 688b2d3（cfa1e5a，已推），四道门禁绿（探针 420/420，棘轮 73/18/1）。主检出 git merge --ff-only 被拒：主检出里有别的线没提交的已跟踪改动 knip.js、package.json、src/design/propose.ts、ui/src/loops/LoopsPage.tsx，另有未跟踪 src/memory/effect.ts。编排方核对散列：五份都和 ablation、m5-rule-expected-effect、status-hub-3 工作树里的同名文件不同，是写进了主检出的游离副本，各线自己的工作树完好。编排方定：由该步把这五个文件 git stash push -u 收进主检出的 stash（不弹回，留着备查，报告写 stash 编号），然后继续快进、推两个远端、主检出 build、桌面核对；并告知 ablation 与 m5-rule-expected-effect 的 code 步只在自己的工作树里改。"
     }
   ]
 }

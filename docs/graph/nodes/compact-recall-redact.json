@@ -1,0 +1,56 @@
+{
+  "id": "compact-recall-redact",
+  "type": "task",
+  "title": "压缩后导出的会话原文遮掉凭证",
+  "why": "导出文件留在项目里，遮掉之后不会因为模型回读原文而把密钥带出去",
+  "status": "doing",
+  "parent": "bottom",
+  "kind": "implement",
+  "body": "compact-recall 的 transcript 行导出的明文会话文件可能带有会话里出现过的凭证字符串。先核实：用沙盒导出一份含假凭证的会话，确认是否真的原样带出。若带出，导出时按本仓库已有的密钥识别（gitleaks 规则或 src/memory 的 secret_like 判定，以现有代码为准，不另造）把像凭证的片段换成占位，写明被遮了几处；遮掉失败时不导出这一段并在行健康写明。不改续接原句（ZCode 3.17.1 逐字）。",
+  "acceptance": [
+    "导出文件里像凭证的片段被换成占位，其余原文不变；先有一份核实记录写明改动前是否真的带出",
+    "遮掉失败时不写出未遮的内容，行健康写明；L2 钉住，L3 glm-compact-transcript 通过，改动在 main 上"
+  ],
+  "history": [
+    {
+      "at": "2026-11-05T10:44:20.741Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "每周阅读 2026-11-05（结论 2，依据 D5）：压缩后查原文的导出文件是整份会话日志的纯文本，会带上会话里出现过的凭证字符串（推断，未核实）。编排方建议导出时遮掉，人同意。",
+      "relay": "那两件也按你说的来",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-05T10:47:08.776Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 compact-recall-redact（wf_f32235c26051667e）开工：先核实导出文件里实际有哪些像凭证的内容，再复用现有识别办法遮掉",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-05T15:15:13.236Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "compact-recall-redact（wf_f32235c26051667e）第 1 轮 code 步完成：分支 compact-recall-redact 头 7a5553d，已推 origin；build、preflight、npm test 退出码 0，棘轮 eslint 73 / knip 18 / jscpd 1 不变，探针 421/421，新加的遮掉核对通过；两条验收的证据写在提交说明与 DESIGN.md §2.4。下一步评审。合入后 compact-recall 的 L4 在隔离实例里做，不改人的 profile。"
+    },
+    {
+      "at": "2026-11-05T16:00:55.824Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "评审 APPROVED，没有挡路发现（.agents/tasks/compact-recall-redact/review.json、review.md，不挡路 5 条）。改动前的探针核实了导出确实原样带出两个假凭证（420/421），改动后为 0 个、行计数 2（421/421）。合入步在跑（wf_f32235c26051667e merge）。"
+    },
+    {
+      "at": "2026-11-05T16:34:29.422Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入步（wf_f32235c26051667e merge）失败，main 没动：合入 origin/main 55e6cb2 得本地合并提交 9807003（没有推），build 与 preflight 绿，npm test 连跑三次都败在 tests/loops-run.spec.ts 第 12 项（state.json 的 last[...].outcome 读到 undefined，预期 ran），单独跑该 spec 25/25；探针与棘轮没跑。这一项不在本分支的改动里。原因已由 habits-prompts 的提交 4598fa7 查明并修在测试上：src/loops/run.ts 先写 loop-done 记录再 await inbox.save()，测试只等到记录出现就去读 state.json；修法是第 12 项像第 15 项一样经 savedState 等 last[entry] 写出（5 秒上限）。编排方定：不另开修测试的线，等 habits-prompts 合入 main 后重派本节点的合入步，合入最新 origin/main 再跑全量门禁。"
+    },
+    {
+      "at": "2026-11-05T18:26:39.886Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "habits-prompts 已合入 main（51af510），带进 tests/loops-run.spec.ts 第 12 项的根因修法。编排方重派合入 compact-recall-redact-land（wf_3dc7f998ae602870）：在原工作树合入最新 origin/main 后重跑全量门禁，绿了快进 main、推两个远端、在主检出重建 dist。transcript 行出厂停用，本次合入不做桌面核对；桌面版因 cookie 超限起不来（见 norm-verify-tiers），等人批准修复，这一步不启动桌面版。记录 .agents/tasks/compact-recall-redact/land.md。"
+    }
+  ]
+}

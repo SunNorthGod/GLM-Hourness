@@ -640,34 +640,32 @@ test('runOfAction hands the run of the row that listed an action, and the loop r
   assert.deepEqual(await own('loops.peak-end', record), { outcome: 'skipped', reason: 'the specs do not run it' }, 'the run is the one the hand-over brought')
 })
 
-test('pageOf hands the page what the hand-over that brought an entry gives for one project: details cut to 20 lines of 160 code points, checks to 10 of the page\'s shape; a member that throws or is not a list gives nothing and is told once', () => {
+test('checksOf hands the page the checks the hand-over that brought an entry gives for one project: at most 10 of the page\'s shape; a member that is absent, throws or is not a list gives none and is told once', () => {
   const { registry, reports } = registryWith()
   const weekly = (id: string): LoopEntryDefinition => ({ id, title: id, why: '每周一提醒一次', when: { kind: 'cron', expression: '0 9 * * 1' }, action: { kind: 'tell-main', text: 'Monday.', wake: true } })
   const check = (key: string): unknown => ({ key, title: `Lint：${key}`, timeout: { seconds: 60, source: { kind: 'ceiling' } } })
   const asked: Array<[string, string]> = []
   registry.contribute(ENV, {
     entries: [weekly('env.checks'), weekly('env.quiet')],
-    details: (entry, project) => { asked.push([entry, project]); return entry === 'env.checks' ? ['x'.repeat(200), ...Array.from({ length: 25 }, (_, index) => `第 ${index} 行`)] : [] },
-    checks: entry => (entry === 'env.checks' ? [...Array.from({ length: 11 }, (_, index) => check(`tool-1/c${index}`)), { key: 'odd' }] : []) as never,
+    checks: (entry, project) => { asked.push([entry, project]); return (entry === 'env.checks' ? [...Array.from({ length: 11 }, (_, index) => check(`tool-1/c${index}`)), { key: 'odd' }] : []) as never },
   })
-  const page = registry.pageOf('env.checks', 'C:/p')
+  const checks = registry.checksOf('env.checks', 'C:/p')
   assert.deepEqual(asked, [['env.checks', 'C:/p']], 'called for that entry and project')
-  assert.deepEqual([page.details?.length, page.details?.[0], page.details?.[1], page.details?.[19]], [20, 'x'.repeat(160), '第 0 行', '第 18 行'])
-  assert.deepEqual([page.checks?.length, page.checks?.[0]], [10, check('tool-1/c0')])
-  assert.deepEqual(registry.pageOf('env.quiet', 'C:/p'), { details: [], checks: [] })
-  assert.deepEqual(registry.pageOf('nobody.entry', 'C:/p'), {}, 'an entry nobody hands over has nothing')
+  assert.deepEqual([checks?.length, checks?.[0]], [10, check('tool-1/c0')])
+  assert.deepEqual(registry.checksOf('env.quiet', 'C:/p'), [])
+  assert.equal(registry.checksOf('nobody.entry', 'C:/p'), undefined, 'an entry nobody hands over has none')
   assert.deepEqual(reports, [], 'the eleventh check is past the limit, not unreadable')
-  registry.contribute(EXECUTE, {
-    entries: [weekly('execute.weekly')],
-    details: () => 'one line' as never,
-    checks: () => { throw new Error('boom') },
-  })
-  assert.deepEqual(registry.pageOf('execute.weekly', 'C:/p'), {})
-  registry.pageOf('execute.weekly', 'C:/p')
-  assert.deepEqual(reports, ['dsh-hourness 的 glm-hourness/execute 给「execute.weekly」的 checks 抛错：boom', 'dsh-hourness 的 glm-hourness/execute 给「execute.weekly」的 details 不是一列字，页面上不列'], 'told once each')
+  registry.contribute(EXECUTE, { entries: [weekly('execute.weekly')], checks: () => { throw new Error('boom') } })
+  assert.equal(registry.checksOf('execute.weekly', 'C:/p'), undefined)
+  registry.checksOf('execute.weekly', 'C:/p')
+  registry.contribute(OPERATE, { entries: [weekly('operate.weekly')], checks: () => 'one check' as never })
+  assert.equal(registry.checksOf('operate.weekly', 'C:/p'), undefined)
+  assert.deepEqual(reports, ['dsh-hourness 的 glm-hourness/execute 给「execute.weekly」的 checks 抛错：boom', 'dsh-hourness 的 glm-hourness/operate 给「operate.weekly」的 checks 不是一列，页面上不列'], 'told once each')
   registry.contribute(OPERATE, { entries: [weekly('operate.weekly')], checks: () => [check('tool-2/a'), { key: 'tool-2/b', title: 'B', timeout: { seconds: 0 } }] as never })
-  assert.deepEqual(registry.pageOf('operate.weekly', 'C:/p'), { checks: [check('tool-2/a')] })
+  assert.deepEqual(registry.checksOf('operate.weekly', 'C:/p'), [check('tool-2/a')])
   assert.equal(reports.at(-1), 'dsh-hourness 的 glm-hourness/operate 给「operate.weekly」的 checks 有读不懂的项，页面上不列那几项')
+  registry.contribute(OPERATE, { entries: [weekly('operate.weekly')] })
+  assert.equal(registry.checksOf('operate.weekly', 'C:/p'), undefined, 'a hand-over without checks gives none')
 })
 
 // ---------------------------------------------------------------- the row skeleton
