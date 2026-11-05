@@ -675,6 +675,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-board-page 第 1 轮评审 CHANGES_REQUESTED（评审文档 2026-11-05-112043-review.md）。F1（HIGH）：页面第 4 组读的是规则行自己的门禁流水，不是代码规则各行写的按项目流水，7 天计数恒为 0。F2（LOW）：每 15 秒重读整份流水。下一步：收敛循环的修复轮。"
+    },
+    {
+      "at": "2026-11-05T04:12:12.442Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page 收敛循环第 2 轮修复：提交 6ae1157 已推 origin/rules-board-page。F1：规则页的 7 天计数改为合计按项目流水与门禁流水，去掉重复行；ORCHESTRATION.md §16.14 同批改，加一条 L2 用例。F2：流水记录按文件大小与修改时间缓存。build 0、preflight 0、npm test 0（3055 个、0 失败）、探针 399/399、棘轮 73/18/1。下一步：第 2 轮评审。"
+    },
+    {
+      "at": "2026-11-05T04:17:23.546Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page 第 2 轮评审 APPROVED（.agents/tasks/rules-board-page/2026-11-05-121118-review.md）：6ae1157 修好上一轮的 HIGH（页面计入按项目流水），另有两条 LOW 不挡路。下一步：本运行的合入步骤（status-hub-2 随它一起合入）。"
     }
   ]
 }

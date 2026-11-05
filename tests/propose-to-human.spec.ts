@@ -13,7 +13,10 @@ import { proposeTool } from '../src/design/propose.ts'
 import { TALK_PROJECTION, TALK_SHAPES, type TalkState } from '../src/design/talk.ts'
 import { PLAIN_QUESTION_EXAMPLES, PLAIN_QUESTION_GUIDE, plainWordsIn } from '../src/graph/plain-question.ts'
 import { ASK_FORMS, PAGE_LIMITS, PROPOSAL_LIMITS, TALK_LIMITS, askOf, fenced, renderAsk } from '../src/graph/proposal.ts'
+import { openEngine } from '../src/graph/engine.ts'
+import { nodePlainIssues } from '../src/graph/plain.ts'
 import { PLAIN_LIMITS } from '../src/graph/schema.ts'
+import { loadGraph } from '../src/graph/store.ts'
 import { BASE_TOOLS, hostWithoutTalkProjection, type DesignHost, type FakeAgent } from './design-host.ts'
 import { FRAMEWORK_PAGE, NO_END_USER, SPLIT_NAMES, fakeBoard, fillRequirementCard, frameworkReleased, mainAgentWithGoal, modulePage, toolDeps, writeDesign } from './design-tools-helpers.ts'
 import { exampleArgs } from './proposal-examples.ts'
@@ -901,8 +904,24 @@ test('contract with the panel: a question the tool puts for each worked example,
   assert.ok(attached.body?.endsWith('提议：p-3f9a1c07'))
 })
 
-// The second phase of the panel design's writing check (src/graph/plain.ts, panel design 0.7 §5.3) is not on main yet. The commit of
-// the panel design that brings plain.ts removes this skip and adds the assertion that the engine returns no warning and no
-// refusal for the questions above under the constants of the second phase; whoever merges later adds it. No stand-in of plain.ts
-// is written here: it is the repository's own module.
-test('contract with the panel: the second phase of the writing check', { skip: 'waits for src/graph/plain.ts (panel design 0.7 §5.3, §11 6c)' }, () => undefined)
+// The panel design's writing check (src/graph/plain.ts, plain-ui 1.3 §5.3): the questions the tool puts for the worked examples
+// break no rule, and the same fields proposed by the llm pass the engine in the second phase with no warning (§5.3 precondition (c)
+// for propose_to_human).
+test('contract with the panel: the questions of the worked examples pass the writing check, in the second phase too', async () => {
+  const fixture = await mainAgentWithGoal()
+  const { host, agent, node, dir } = fixture
+  const strict = openEngine(dir, { plainPhase: 2 })
+  let index = 0
+  for (const form of ASK_FORMS) {
+    valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, exampleArgs(form)))
+    index += 1
+    const stored = await node(`question-${index}`)
+    const graph = await loadGraph(dir)
+    assert.deepEqual(nodePlainIssues(stored, new Set(graph.nodes.keys())), [], form)
+    const fields = Object.fromEntries((['title', 'ask', 'form', 'proposal', 'reason', 'cost', 'ways', 'notTaken'] as const).flatMap(field => stored[field] === undefined ? [] : [[field, stored[field]]]))
+    const again = await strict.apply('llm', { op: 'propose', reason: '契约', node: { type: 'question', parent: stored.parent, ...fields } })
+    assert.ok(again.ok, `${form}: ${JSON.stringify(again)}`)
+    assert.equal(again.ok && again.warnings, undefined, form)
+    await nextReply(host, agent)
+  }
+})

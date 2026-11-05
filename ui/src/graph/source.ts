@@ -48,6 +48,7 @@ export class GraphSource {
   private pending = new Set<string>()
   private timer: ReturnType<typeof setTimeout> | undefined
   private live = false
+  private nodesAbsolute: string | undefined
   private watching = false
   private generation = 0
   private readonly remote: RemoteRoot
@@ -78,10 +79,15 @@ export class GraphSource {
     if (!this.watching) void this.watch()
   }
 
-  /** The graph directory's absolute path, for the local record's key (seen.ts); null when the host cannot name it. */
-  async statAbsolute(): Promise<string | null> {
-    const result = await this.remote.workspaceFiles.stat(this.sessionId, this.dir, this.abort.signal)
-    return result.ok ? result.value.absolutePath : null
+  /**
+   * The absolute nodes directory, for the local record's key (seen.ts,
+   * plain-ui 1.3 §6.8): the directory of the first node file a read
+   * returned. Undefined before one did, and on a graph without node files.
+   * Not workspaceFiles.stat on the directory: stat names regular files
+   * only and refuses a directory (dsh-api-workspace-files README).
+   */
+  nodesDirAbsolute(): string | undefined {
+    return this.nodesAbsolute
   }
 
   dispose(): void {
@@ -102,7 +108,8 @@ export class GraphSource {
   private async readFile(name: string): Promise<FileRead> {
     const result = await this.remote.workspaceFiles.readBytes(this.sessionId, `${this.nodesPath}/${name}`, {}, this.abort.signal)
     if (!result.ok) return result.error.code === 'workspace-file/not-found' ? { kind: 'gone' } : { kind: 'failed', message: result.error.message }
-    const { data } = result.value
+    const { data, absolutePath } = result.value
+    this.nodesAbsolute ??= absolutePath.replace(/[\\/][^\\/]*$/, '')
     return { kind: 'file', file: { name, text: new TextDecoder('utf-8', { ignoreBOM: true }).decode(data), revision: await revisionOfBytes(data) } }
   }
 

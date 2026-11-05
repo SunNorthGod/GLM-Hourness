@@ -18,6 +18,55 @@ export function cwdKeyOf(path: string, windows: boolean): string {
   return windows ? slashed.toLowerCase() : slashed
 }
 
+/**
+ * The jump to a session through uiWorkspace.openSession, called on the
+ * service so the method keeps its `this` (dsh-client-ui-workspace's
+ * openSession reads `this.lifetime`; a detached reference throws "reading
+ * 'signal'" on the desktop, 2026-11-05 L4). Undefined when the client host
+ * did not inject the service.
+ */
+export function openerOf(workspace: { readonly openSession?: (target: string) => void } | undefined): ((sessionId: string) => void) | undefined {
+  if (typeof workspace?.openSession !== 'function') return undefined
+  return sessionId => { workspace.openSession?.(sessionId) }
+}
+
+/** How often the holder record is read again while the panel is visible (plain-ui 1.3 §4.9 step 2). */
+const POLL_MS = 30_000
+
+/** The repeating timer recordReads runs on; the hook passes setInterval, tests a fake. */
+export type EveryTimer = (ms: number, task: () => void) => () => void
+
+/**
+ * When the holder record is read (§4.9 step 2): once at the start whether
+ * the panel is visible or not, again when it turns visible, and every 30
+ * seconds while it stays visible; never after stop.
+ */
+export function recordReads(read: () => void, visible: boolean, every: EveryTimer): { readonly setVisible: (visible: boolean) => void, readonly stop: () => void } {
+  let polling: (() => void) | undefined
+  let stopped = false
+  const poll = (): void => { polling = every(POLL_MS, read) }
+  read()
+  if (visible) poll()
+  return {
+    setVisible: next => {
+      if (stopped) return
+      if (next && polling === undefined) {
+        read()
+        poll()
+      }
+      else if (!next && polling !== undefined) {
+        polling()
+        polling = undefined
+      }
+    },
+    stop: () => {
+      stopped = true
+      polling?.()
+      polling = undefined
+    },
+  }
+}
+
 /** What the read of the holder record came to, as far as the choice needs to know. */
 export type HolderReading =
   | { readonly kind: 'held', readonly sessionId: string }

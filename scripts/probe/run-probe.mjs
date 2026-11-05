@@ -1356,11 +1356,21 @@ const graphRun = runScenario('glm-graph', 'glm-5.3', [
   { tool: { name: 'Write', arguments: { file_path: graphNodeFile, content: '{}\n' } } },
   { tool: { name: 'Bash', arguments: { command: `Set-Content -Path '${graphNodeFile}' -Value x` } } },
   { tool: { name: 'Write', arguments: { file_path: graphNotes, content: 'notes\n' } } },
+  { tool: { name: 'graph_propose', arguments: { node: { type: 'task', title: 'M3 探针的小步', parent: focusTask?.id }, reason: 'probe: a title the writing check warns about' } } },
   { text: 'done', status: true },
 ], 'Work on the project graph, then reply done.', [...graphRow(graphCopy, join(graphRowDir, 'home')), ...workspaceChangesRow('glm-hourness-probe/workspace-changes')], graphWs)
 const graphSteps = graphRun.steps
 const graphResult = index => lastToolResult(graphSteps[index])
 const graphNotices = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === 'glm-graph-projection')
+const graphProposeTitle = (graphSteps[0]?.tools ?? []).find(tool => tool.name === 'graph_propose')?.parameters.properties?.node?.properties?.title?.description ?? ''
+const graphProposeWarnings = (() => {
+  try {
+    return JSON.parse(graphResult(11)?.text ?? '{}').warnings ?? []
+  }
+  catch {
+    return []
+  }
+})()
 const copyAfter = await loadGraph(graphCopy)
 const graphViolations = jsonl(join(graphRowDir, 'home', 'audit', 'violations.jsonl'))
 const graphStderr = existsSync(join(graphRowDir, 'stderr.txt')) ? readFileSync(join(graphRowDir, 'stderr.txt'), 'utf8') : ''
@@ -3157,6 +3167,8 @@ const checks = [
   ['graph row: activates without warnings; rc.3 takes all 13 graph tools, resident in the GLM face (not deferred)', graphSteps.length > 0 && !graphStderr.includes('dsh-glm-hourness/graph:') && graphFace(graphSteps[0]).length === GRAPH_TOOL_NAMES.length && graphFace(graphSteps[0]).every(tool => tool.deferLoading !== true), `${graphFace(graphSteps[0]).length} graph tool(s); stderr mentions the row: ${graphStderr.includes('dsh-glm-hourness/graph:')}`],
   ['graph row: on a non-GLM route the graph tools are in the face and graph_open answers', GRAPH_TOOL_NAMES.every(name => names(plainGraph.steps[0]).has(name)) && plainGraphOpen?.isError !== true && plainGraphOpen?.text.includes('"items"') === true, `exit ${plainGraph.status}; ${plainGraphOpen?.text.slice(0, 80) ?? 'no result'}`],
   ['graph row: graph_show returns the projection; graph_status done without evidence gets evidence_required', graphResult(1)?.isError !== true && graphResult(1)?.text.includes('"projection"') === true && graphResult(2)?.isError === true && graphResult(2)?.text.includes('evidence_required') === true, `${graphResult(1)?.text.slice(0, 60) ?? 'none'} | ${graphResult(2)?.text.slice(0, 120) ?? 'none'}`],
+  ['graph row: the graph_propose schema carries the writing rules and the plain words on title (plain-ui 1.3 §5.3)', graphProposeTitle.includes('title and why are read by the human') && graphProposeTitle.includes('验收 or acceptance -> 怎样算做完'), graphProposeTitle.slice(0, 160) || 'no description'],
+  ['graph row: a proposal titled with M3 is written in the first phase and comes back with a code warning', graphResult(11)?.isError !== true && graphProposeWarnings.some(line => line.startsWith('code in node.title')), `${graphResult(11)?.text.slice(0, 200) ?? 'none'}`],
   ['graph row: graph_comment leaves an llm history entry in the copy; the repository graph is unchanged', graphResult(3)?.isError !== true && copyAfter.nodes.get(doingTask?.id ?? '')?.history.at(-1)?.actor === 'llm' && copyAfter.nodes.get(doingTask?.id ?? '')?.history.at(-1)?.text === 'probe comment' && repoGraphBefore === repoGraphAfter, `repo graph ${repoGraphBefore} -> ${repoGraphAfter}`],
   ['graph row: after graph_focus the next request ends with the projection notice (focus); unchanged steps add none; a title edit adds one (changed)', graphNotices(graphSteps[4]).length === 1 && graphSteps[4]?.messages.at(-1)?.source === 'glm-graph-projection' && graphNotices(graphSteps[4])[0]?.projection === 'focus' && graphNotices(graphSteps[5]).length === 1 && graphNotices(graphSteps[6]).length === 1 && graphNotices(graphSteps[7]).length === 2 && graphSteps[7]?.messages.at(-1)?.projection === 'changed' && graphSteps[7]?.messages.at(-1)?.text.includes('probe title') === true, `notices per request: ${graphSteps.map(step => graphNotices(step).map(notice => notice.projection).join('+') || '0').join(', ')}`],
   ['graph row: after a compaction checkpoint the first request carries the projection again (compaction)', reanchored.some(reasons => reasons.includes('compaction')), `${compactGraph.compactions.length} compaction(s); after checkpoints: ${JSON.stringify(reanchored)}`],

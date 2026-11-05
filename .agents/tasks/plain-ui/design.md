@@ -740,7 +740,7 @@ M3 的开场卡片底部（它的完整卡片一种，M3 附录 §2.6 第 1 种�
 | `glm-hourness.panel.seen.v1:<图目录的绝对路径>` | 编排层客户端包 | 上次离开面板的时间；路径取 `readBytes` 返回的 `absolutePath` 所在的 `nodes` 目录 |
 | `glm-hourness.nograph.v1:<工作区路径>` | 编排层客户端包 | 没图的开场卡片出现过的时间；路径取会话的 `cwd`，规整为小写、正斜杠 |
 
-「上次看之后」的算法是 `ui/src/graph/seen.ts` 里的纯函数状态机 `nextSeen(state, event, now)`（与 0.4 §7.10 相同）：面板可见是面板正文的根元素与视口相交（`IntersectionObserver`）且 `document.visibilityState` 为 `visible`；挂载时、或离上一次变为不可见 10 分钟以上再变为可见时是一次到达，`since` 取本机记录；连续可见 5 秒以上之后变为不可见或卸载是一次离开，写下当前时间；到达之后 `since` 留在内存里。
+「上次看之后」的算法是 `ui/src/graph/seen.ts` 里的纯函数状态机 `nextSeen(state, event, now)`（与 0.4 §7.10 相同）：面板可见是面板挂载着、窗口有焦点（`document.hasFocus()`，跟着 `window` 的 `focus` 与 `blur` 变），且 `IntersectionObserver` 没有报面板正文的根元素离开视口（观察器从没回调时不否决）〔2026-11-05 人定，原为「与视口相交且 `document.visibilityState` 为 `visible`」：桌面宿主里 `visibilityState` 恒为 `hidden`，观察器在 hidden 的文档里连初始回调都不派发，`docs/FACTS.md` §3〕；挂载时、或离上一次变为不可见 10 分钟以上再变为可见时是一次到达，`since` 取本机记录；连续可见 5 秒以上之后变为不可见或卸载是一次离开，写下当前时间；到达之后 `since` 留在内存里。
 
 ## 7. 宿主契约与 rc.3 证据
 

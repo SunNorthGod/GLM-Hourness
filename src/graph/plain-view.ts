@@ -19,8 +19,9 @@ import { isDesignReview, isPostRelease } from './execute-stage.ts'
 import type { AwaitingEntry } from './live.ts'
 import type { LoadedGraph } from './parse.ts'
 import { ancestorsOf, blockersOf, childrenIndex, deciderOf, askFieldsOf, OPEN_STATUSES, subtreeOf, waitsForHuman } from './projection.ts'
+import type { AskForm } from './proposal.ts'
 import { directionsOf, frameworkOf, isSplit, moduleCandidatesOf, modulesOf, moduleOf } from './modules.ts'
-import { effectiveStage, goalOf, isClosed } from './stage.ts'
+import { CARD_LABELS, effectiveStage, goalOf, isClosed, labeledSections } from './stage.ts'
 import type { GraphNode, HistoryEntry } from './schema.ts'
 import { isUserNode } from './user-graph.ts'
 import { liveOf } from './user-live.ts'
@@ -33,6 +34,19 @@ const MERGE_MS = 5 * 60 * 1000
 /** 「text」 — every title a template puts inside a sentence travels through here. */
 export function quote(text: string): string {
   return `「${text}」`
+}
+
+/**
+ * 为什么 of a node page (plain-ui 1.3 §4.5, §12 item 26): the node's why;
+ * a goal without one reads the 问题： section of its body (the interview's
+ * requirement card, the same parser as the card gate). Undefined when there
+ * is neither.
+ */
+export function whyOf(node: GraphNode): string | undefined {
+  if (node.why !== undefined) return node.why
+  if (node.type !== 'goal') return undefined
+  const problem = labeledSections(node.body, CARD_LABELS).get('问题')
+  return problem === undefined || problem === '' ? undefined : problem
 }
 
 /** The title up to the first full-width colon, when that part is long enough to stand alone; only the live line shortens titles. */
@@ -728,6 +742,34 @@ export interface QuestionView {
   /** The question carries the legacy option card; the panel shows the title and lets the chat answer. */
   readonly legacy: boolean
   readonly decided: { readonly conclusion?: string, readonly label?: string, readonly words?: string, readonly at?: string } | null
+}
+
+/** One line a question's way of asking carries after its ask: a label and the words, or a numbered way without a label. */
+export interface AskLine {
+  readonly label?: string
+  readonly text: string
+}
+
+/** The label of the proposal line by way of asking: what is recommended (a `choose` recommends its last way), the guess to correct, the thing to look at. */
+const PROPOSAL_LINE_LABELS: Readonly<Record<AskForm, string>> = { recommend: '推荐', choose: '推荐', want: '猜测', look: '给你看的' }
+
+/**
+ * The lines a question carries after its ask, by its way of asking, in the
+ * order of done condition 6 (plain-ui 1.3 §4.3): the recommendation, the
+ * guess or the thing to look at; the reason; the cost; the ways, numbered,
+ * without a mark; the way not taken — as far as they are set. A legacy
+ * option card or a question without the ask fields has none.
+ */
+export function askLines(node: GraphNode): AskLine[] {
+  const { form, proposal, reason, cost, ways, notTaken } = askFieldsOf(node)
+  if (form === undefined || proposal === undefined) return []
+  return [
+    { label: PROPOSAL_LINE_LABELS[form], text: proposal },
+    ...(reason === undefined ? [] : [{ label: '理由', text: reason }]),
+    ...(cost === undefined ? [] : [{ label: '代价', text: cost }]),
+    ...(ways ?? []).map((way, index) => ({ text: `${index + 1}. ${way}` })),
+    ...(notTaken === undefined ? [] : [{ label: '不选的那种', text: notTaken }]),
+  ]
 }
 
 /** What a question shows (plain-ui 1.3 §5.4 questionView), on the landed ask forms: no option keys, no recommendation marks. */

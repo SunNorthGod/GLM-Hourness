@@ -10,10 +10,10 @@
  * computes it once; every view reads it from the context, never
  * re-deriving it.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactElement } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
 import { mainAgentActive } from '../../../src/graph/main-agent.ts'
 import { holderRecordOf, type HolderRecord } from '../../../src/shared/holder-record.ts'
-import { cwdKeyOf, mainChatOf, type HolderReading, type MainChat } from './main-chat.ts'
+import { cwdKeyOf, mainChatOf, recordReads, type HolderReading, type MainChat } from './main-chat.ts'
 import type { SessionsClient, WorkspaceFilesRemote } from '../dsh.ts'
 
 const isWindows = (): boolean => typeof navigator === 'object' && /windows/i.test(navigator.userAgent)
@@ -40,11 +40,10 @@ interface MainChatService {
   readonly open: () => void
 }
 
-const POLL_MS = 30_000
-
 /**
  * The result and the jump, read on mount, when the panel turns visible,
- * and every 30 seconds while it is visible (plain-ui 1.3 §4.9 step 2).
+ * and every 30 seconds while it is visible (plain-ui 1.3 §4.9 step 2,
+ * main-chat.ts recordReads).
  */
 export function useMainAgent(sessionId: string, deps: MainAgentDeps, visible: boolean): MainChatService {
   const subscribe = useCallback((listener: () => void) => deps.sessions.list.subscribe(listener), [deps.sessions])
@@ -53,10 +52,14 @@ export function useMainAgent(sessionId: string, deps: MainAgentDeps, visible: bo
   const project = snapshot.projectionsBySession[sessionId]?.values.hournessProject
   const holderFile = project?.holderFile ?? null
   const [reading, setReading] = useState<HolderReading | undefined>(undefined)
+  /** The reads of the current record path, told when the panel turns visible or hidden. */
+  const reads = useRef<ReturnType<typeof recordReads> | undefined>(undefined)
+  const visibleNow = useRef(visible)
+  visibleNow.current = visible
 
   // The record read; a not-found is a readable "there is none", anything else is unreadable.
   useEffect(() => {
-    if (!visible || holderFile === null) return undefined
+    if (holderFile === null) return undefined
     let live = true
     const read = (): void => {
       void deps.files.readBytes(sessionId, holderFile, {}).then(result => {
@@ -84,13 +87,18 @@ export function useMainAgent(sessionId: string, deps: MainAgentDeps, visible: bo
         setReading({ kind: 'unreadable', reason: error instanceof Error ? error.message : String(error) })
       })
     }
-    read()
-    const timer = setInterval(read, POLL_MS)
+    const every = (ms: number, task: () => void): (() => void) => {
+      const timer = setInterval(task, ms)
+      return () => { clearInterval(timer) }
+    }
+    reads.current = recordReads(read, visibleNow.current, every)
     return () => {
       live = false
-      clearInterval(timer)
+      reads.current?.stop()
+      reads.current = undefined
     }
-  }, [sessionId, holderFile, visible, deps.files])
+  }, [sessionId, holderFile, deps.files])
+  useEffect(() => { reads.current?.setVisible(visible) }, [visible])
 
   // The fallback candidates: sessions of this working directory in main-agent mode (§4.9 step 4).
   const candidates = useMemo(() => {

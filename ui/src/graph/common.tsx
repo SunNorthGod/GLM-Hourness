@@ -8,8 +8,9 @@
  */
 import { Button, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Component, createContext, useContext, useLayoutEffect, useRef, useState, type ErrorInfo, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
-import { TYPE_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
+import { askLines } from '../../../src/graph/plain-view.ts'
+import { splitBold } from '../../../src/graph/plan-text.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
 import type { GraphNode } from '../../../src/graph/schema.ts'
 import { absoluteTime, progressOf, progressText, statusText, timeAgo } from './model.ts'
@@ -102,10 +103,11 @@ export function asButton<T extends Element>(onActivate: () => void): { readonly 
 }
 
 /**
- * One node as a list row (正在做's lists, the detail's children): the
- * dot, the title, then on one meta line the type, optionally the status
- * and the path below the goal, and the progress of its work children. The
- * row opens the node.
+ * One node as a list row (the plan, the detail's children and builders,
+ * the framework): the dot, the title, then on one meta line optionally the
+ * status and the path below the goal, and the progress of its work
+ * children. No type name (done condition 2): a row without `status` has
+ * its status written by the caller. The row opens the node.
  */
 export function NodeRow({ graph, node, tone, path, status }: { readonly graph: LoadedGraph, readonly node: GraphNode, readonly tone: string, readonly path?: boolean, readonly status?: boolean }): ReactElement {
   const { open } = useServices()
@@ -119,7 +121,6 @@ export function NodeRow({ graph, node, tone, path, status }: { readonly graph: L
       <div className="glmg-row-main">
         <div className="glmg-row-title">{node.title}</div>
         <div className="glmg-meta">
-          <span>{TYPE_LABELS[node.type]}</span>
           {status === true ? <span>{statusText(node, graph)}</span> : null}
           {trail.length === 0 ? null : <span>{trail.join(' › ')}</span>}
           {text.work === undefined
@@ -142,10 +143,18 @@ export function Part({ title, children }: { readonly title: ReactNode, readonly 
   )
 }
 
+/** One line's words with its one `**…**` span in bold (M3's splitBold); a line without one as it is. */
+function Bold({ text }: { readonly text: string }): ReactElement {
+  const bold = splitBold(text)
+  return bold === undefined ? <>{text}</> : <>{bold.before}<strong>{bold.bold}</strong>{bold.after}</>
+}
+
 /**
- * A question as the panel shows it: the question as the human read it and
- * the ways when it has them. The panel only looks (plain-ui,
- * d-ui-look-not-operate): no option buttons, no letter keys, no
+ * A question as the panel shows it, whole: the question as the human read
+ * it, then the lines of its way of asking (the recommendation or guess,
+ * the reason, the cost, the ways, the way not taken; plain-view.ts askLines),
+ * each its own paragraph, the label not bold. The panel only looks
+ * (plain-ui, d-ui-look-not-operate): no option buttons, no letter keys, no
  * recommendation marks — the answer is said in the main agent's chat, and
  * the caller renders where that is (MainChatLine). A decided question
  * shows its conclusion; one with the legacy option card shows the options
@@ -155,8 +164,8 @@ export function Options({ node }: { readonly node: GraphNode }): ReactElement {
   const options = node.options ?? []
   return (
     <div className="glmg-options">
-      {node.ask === undefined ? null : <div className="glmg-text">{node.ask}</div>}
-      {(node.ways ?? []).map((way, index) => <div key={way} className="glmg-text">{index + 1}. {way}</div>)}
+      {node.ask === undefined ? null : <p className="glmg-text">{node.ask}</p>}
+      {askLines(node).map(line => <p key={`${line.label ?? ''}:${line.text}`} className="glmg-text">{line.label === undefined ? null : `${line.label}：`}<Bold text={line.text} /></p>)}
       {options.map(option => (
         <div key={option.key} className="glmg-text">
           {node.status === 'done' && node.decision === option.key ? `选了「${option.label}」` : option.label}

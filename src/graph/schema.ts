@@ -127,14 +127,14 @@ export const WALK_REF_PATTERN = /^(command|screenshot|transcript|person):\S.*$/u
 export const WALK_NOTE_PATTERN = /^@[0-9a-f]{7,40} .+$/u
 
 /**
- * Longest texts of what the person reads, in code points (panel design,
- * docs/ORCHESTRATION.md §2.6 proposal shape): the title of a question, and a
- * background line minus its `**` marks (plain-ui's ruling: one line, at most
- * 60 code points after removing the bold marks). The values belong to the
- * panel design; code and tests read this constant, and the panel design adds
- * its other limits when its writing check arrives.
+ * Longest texts of what the person reads, in code points (panel design
+ * plain-ui 1.3 §5.2, docs/ORCHESTRATION.md §2.6): a title, a why (one
+ * sentence: why the thing is done and what changes once it is), and a
+ * background line minus its `**` marks (one line, at most 60 code points
+ * after removing the bold marks). The values belong to the panel design;
+ * the writing check (plain.ts), the engine and the tests read this constant.
  */
-export const PLAIN_LIMITS = { title: 40, background: 60 } as const
+export const PLAIN_LIMITS = { title: 40, why: 80, background: 60 } as const
 
 /**
  * Mutation operations (§2.9; user graph: design 0.4.1 §3.5); every history
@@ -182,7 +182,7 @@ export interface Evidence {
 
 /** Fields an `edit` mutation may change, in write order; status, links, evidence and decisions have their own operations. */
 export const EDITABLE_FIELDS = [
-  'title', 'parent', 'slope', 'stage', 'kind', 'tier', 'worktree', 'outputSchema', 'body',
+  'title', 'why', 'parent', 'slope', 'stage', 'kind', 'tier', 'worktree', 'outputSchema', 'body',
   'acceptance', 'nonGoals', 'writeScope', 'options', 'dimension', 'recommend', 'crux', 'verdict', 'weight', 'decider',
   'ask', 'proposal', 'reason', 'cost', 'ways', 'notTaken',
 ] as const
@@ -230,6 +230,8 @@ export interface GraphNode {
   readonly id: string
   readonly type: NodeType
   readonly title: string
+  /** One sentence for the human (plain-ui 1.3 §5.2): why it is done and what changes once it is; at most PLAIN_LIMITS.why code points. A question carries none. */
+  readonly why?: string
   readonly status: Status
   readonly parent?: string
   readonly slope?: Slope
@@ -282,7 +284,7 @@ export interface GraphNode {
 
 /** Write order of node fields (§2.6 table order). */
 export const NODE_FIELDS = [
-  'id', 'type', 'title', 'ask', 'form', 'status', 'parent', 'slope', 'stage', 'verification',
+  'id', 'type', 'title', 'why', 'ask', 'form', 'status', 'parent', 'slope', 'stage', 'verification',
   'kind', 'tier', 'worktree', 'outputSchema', 'body', 'acceptance', 'nonGoals', 'writeScope',
   'options', 'dimension', 'recommend', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'crux', 'verdict', 'weight', 'decider', 'decision', 'conclusion',
   'edges', 'evidence', 'history',

@@ -1,6 +1,7 @@
 /**
- * One node, reading first: what it is, where it hangs, why it exists, what
- * done means, and what happened to it. The panel only looks (plain-ui,
+ * One node, reading first: what it is, where it hangs, why it exists (its
+ * why, or a goal's 问题 section), what done means, and what happened to it.
+ * The writing check's notices on the node sit with its id at the bottom. The panel only looks (plain-ui,
  * d-ui-look-not-operate): where the human used to act there is now a line
  * that says how — the answer or the order goes through the main agent's
  * chat, or a /graph-run line the human types. The id is at the bottom, for
@@ -10,6 +11,7 @@ import { Button, IconChevronLeftOutlineRegular, Tag } from '@deepseek-ai/dsh-cli
 import { useEffect, useRef, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import { EVIDENCE_LABELS, KIND_LABELS, STAGE_LABELS, STATUS_LABELS, TIER_LABELS, TYPE_LABELS, VERIFICATION_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
+import { whyOf } from '../../../src/graph/plain-view.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
 import { RUN_COMMAND } from '../../../src/graph/run.ts'
 import type { GraphNode, Verification } from '../../../src/graph/schema.ts'
@@ -22,6 +24,19 @@ import { byCreation, dotTone, historyText, needsHuman, presenceText, progressOf,
 import { hasUserPage, whoBuilds } from './user-view.ts'
 
 const HISTORY_SHOWN = 6
+
+/** The writing check's fields and rules in the panel's words (plain-ui 1.3 §5.3). */
+const WORDING_FIELDS: Readonly<Record<string, string>> = { title: '标题', why: '为什么', proposal: '推荐', notTaken: '不选的那种', conclusion: '结论' }
+const WORDING_RULES: Readonly<Record<string, string>> = {
+  code: '带路线或章节编号',
+  id: '带图里的编号',
+  identifier: '带代码名或文件名',
+  enum: '带英文状态词',
+  term: '带内部用词',
+  typeWord: '带类型名',
+  jargon: '带换词表上的词',
+  length: '太长或不止一行',
+}
 
 /** A verified decision reads as success, an overturned one as danger, a superseded one as plain history. */
 const VERIFICATION_TONES: Readonly<Record<Verification, 'warning' | 'success' | 'danger' | 'neutral'>> = {
@@ -111,6 +126,9 @@ export function NodeDetail({ graph, id, agents, onBack, onClose, onUserPage }: D
   const done = node.status === 'done'
   const userGoal = node.type === 'goal' || isUserNode(node) ? goalOf(graph, node.id) : undefined
   const userEntry = userGoal !== undefined && hasUserPage(graph, userGoal) ? userGoal : undefined
+  const why = whyOf(node)
+  // The writing check's notices on this node (plain-ui 1.3 §5.3): small print by the id, only to read.
+  const wording = graph.issues.filter(issue => issue.file === `nodes/${node.id}.json` && issue.rule !== undefined)
   return (
     <Frame onBack={onBack} onClose={onClose}>
         {ancestors.length === 0
@@ -132,6 +150,7 @@ export function NodeDetail({ graph, id, agents, onBack, onClose, onUserPage }: D
         </div>
         {userEntry === undefined ? null : <button type="button" className="glmg-more" onClick={() => { onUserPage(userEntry.id) }}>用户怎么用 ›</button>}
         {node.body === undefined ? null : <Folded lines={10} className="glmg-text"><Markdown text={node.body} /></Folded>}
+        {node.type === 'question' ? null : <Part title="为什么"><div className={why === undefined ? 'glmg-meta' : 'glmg-text'}>{why ?? '没写'}</div></Part>}
         {node.type === 'question' ? <Part title="选项"><Options node={node} /><MainChatLine /></Part> : null}
         {node.status === 'proposed' && node.type !== 'question' ? <><div className="glmg-notice">要批准或不要</div><MainChatLine /></> : null}
         <RunLine node={node} agents={agents} />
@@ -165,7 +184,10 @@ export function NodeDetail({ graph, id, agents, onBack, onClose, onUserPage }: D
             })}
           </div>
         </Part>
-        <div className="glmg-id">跟 agent 说起它时可以用 id：<code>{node.id}</code></div>
+        <div className="glmg-id">
+          跟 agent 说起它时可以用 id：<code>{node.id}</code>
+          {wording.length === 0 ? null : <div className="glmg-meta">写法提示：{wording.map(issue => `${WORDING_FIELDS[issue.field ?? ''] ?? issue.field ?? ''}${WORDING_RULES[issue.rule ?? ''] ?? issue.rule ?? ''}`).join('、')}</div>}
+        </div>
     </Frame>
   )
 }
