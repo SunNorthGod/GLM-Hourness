@@ -651,6 +651,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "rules-board-page FEAT-002 第 2 批 fa3cd4a 已推（页面模型与首页、上手页那一行，07:50 门禁全绿）；第 3 批代码与文档写完（build 0、preflight 0、三个页面 spec 全过，棘轮 73/18/1），被 main 上那条依赖日期的 metrics 测试挡在 npm test。编排方让它先本地提交、不在本分支改该测试，等 main 上的修复（fix-date-dependent-metrics-test）合入后合并再跑一次四道门禁。"
+    },
+    {
+      "at": "2026-11-05T01:08:48.040Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page FEAT-002 第 3 批本地提交 cfdb8f1（未推送，没动 tests/metrics-calc.spec.ts）。cfdb8f1 上 build 0、preflight 0、npm test 1（只有那条依赖日期的 metrics 测试），探针未跑。origin/rules-board-page 仍为 fa3cd4a（第 2 批，四道全绿，3003 个测试，探针 393/393）。它按约定等到 09:04 没等到 main 上的修复，回报。编排方查到修复已提交为 30cbd3b（fix-date-dependent-metrics-test 的本地分支 metrics-clock-pin，正在跑门禁），让它再等至多 40 分钟，main 一有该提交就合并、跑一次四道门禁、推送。"
     }
   ]
 }
