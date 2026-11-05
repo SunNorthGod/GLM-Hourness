@@ -269,6 +269,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m5-rest 评审 B1 已修并推：修复 02a2bec（/memory restore 的记录不再把 forgottenAt 写进流水），合并 56d4959（并入带时钟修复的 origin/main 2bd13f6），都在 origin/m5-rest。56d4959 上四道门禁为 0：npm test 3004 通过 / 0 失败 / 1 跳过，探针 388/388，棘轮 73/18/1。下一步：复审。"
+    },
+    {
+      "at": "2026-11-05T02:35:17.851Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-rest 第 2 轮评审 APPROVED，无阻塞：B1 已修，snapshot 去掉 forgottenAt，并有一条先失败后通过的 L2 断言钉住（.llm/m5r-review/review.json）。origin/m5-rest = 56d4959，四道门禁为 0（npm test 3004 通过 / 0 失败 / 1 跳过，探针 388/388），棘轮 73/18/1。下一步：本运行的报告步骤，然后合入 main。"
     }
   ]
 }
