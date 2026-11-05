@@ -145,6 +145,12 @@
           "to": "用自己的编排层开发自己，卡住和返工的地方就是要改的地方"
         }
       }
+    },
+    {
+      "at": "2026-11-05T09:49:41.663Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "对账 B 半（report-b.md (c)(f)）：正文的开始条件抄自 M7 设计 0.2 §10.3（「主 Agent GLM-5.3、worker GLM-5.3-Flash」「worker 用 simple 档，审查高一档」），0.6 §10.3 已改为 worker 与审查的模型由主 Agent 选（d-main-agent-models），并多了第 5 条（规则板最小一片已合入、两处读对着真实的 PeakModeService 类型验过），正文要按 0.6 重写。开始条件核对：规则板最小一片已合入（c7e7fa4、ed80a99）；norm-merge-gate 与 norm-review-floor 的两件已由人 10-30「没问题的」写进图；H1 的效果已在 main（6fea6d0 起探针在运行目录生成 DSH home，docs/DEVELOPMENT.md 写「主检出与 git worktree 都直接 npm run probe」）；还差 L3 骨架场景全过、真实模型跑一次、第一批 L4，都在 M7 运行的 real-model-run、land、l4 步里。另：子节点 d-dogfood-scope 10-31 批注写它的限制由 d-build-all-released 取代，状态仍是 approved，没有 supersedes 连线。"
     }
   ]
 }

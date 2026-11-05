@@ -28,6 +28,12 @@
       "reason": "运行 glm-context-window-config（wf_d964b9e854bc29a0）开工",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-05T09:49:42.320Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "对账 B 半（report-b.md (c)(f)）：正文写目录规则来自 ZCode 3.16.2/3.16.3，仓库基线是 3.17.1（AGENTS.md）；在 reference/zcode-3.17.1/zcode.cjs 里只做了字面搜索，没确认 3.17.1 给 glm-5.3 的窗口。编排方已转给 glm-context-window-config 的 code 步：偏离说明按 3.17.1 核一次再写进 DESIGN.md。"
     }
   ]
 }

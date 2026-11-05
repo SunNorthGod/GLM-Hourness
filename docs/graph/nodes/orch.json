@@ -493,6 +493,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-05 两条只读调查（graph-reconcile wf_fe96517713b134d8、reading-digest wf_f8a7db34778f087b）都因上游错误中断（一次回复被截断，一次额度用尽），运行状态却显示完成，报告文件不存在。编排方从此在每条运行完成时先核对它该交的文件在不在，不在就按失败处理、重派；重派的任务书要求边做边写进报告。"
+    },
+    {
+      "at": "2026-11-05T09:49:41.005Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "对账 B 半（investigate-graph-reconcile-1105-b，wf_32fe351dc919a679）完成，报告 .agents/tasks/graph-reconcile-2026-11-05/report-b.md。22 个节点（M7 与十个子任务、m8、m8-plain-language、onboarding、status-hub、user-graph、bootstrap、dogfood、field-trial、orch、ablation、reading-digest、glm-context-window）今天都关不了，也没有现在就能开的新线，几乎都卡在 M7 运行 wf_36d1d690c7e1de90 合入 main。M7 合入之后建议的开线先后：P2（m7-6、m7-8、m7-9 的主体）→ P1 加 P6（m7-2 的补位提醒与简报读经验服务）→ user-graph 延后项 → 面板第 17 条接 derivedStage → P3（m7-7、状态板块第 6 批、hourness_report）→ bootstrap B7、B9、B10。M7 合入后 m7-4 在 main 上探针 glm-exec-review 绿即可关，m7-1 再等第一批 L4。编排方处理：一、ablation 运行的 plan 步被上游错误（No available accounts）截断，plan.md 不存在，code 步照样在跑、分支没有新提交；已告诉该 code 步计划缺失。二、bootstrap-impl 没有合入 main 的步骤：照 m4-checks、panel-2、m5-rest 的做法，运行结束后另派 land-bootstrap。三、几处图上文字与现状不符，已分别批注到 m8-plain-language、status-hub、dogfood、m7、m7-5、glm-context-window。要人定的两件已交给人：宣传视频的去向；P2 在 Kiro 这边做还是留给自举做第一件活。今天第三次上游错误截断运行（对账、阅读之后是 ablation 的计划步）。"
     }
   ]
 }

@@ -354,6 +354,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B4 评审 F1 已修：562e17d（llm-ignore 不再缓存「不是 git 仓库」的结果，L2 补了没有 git、带 .llm/ 的文件夹一例，去掉修复时这一例失败），另合入 origin/main 9f7b5f3（478bc6c），都在 origin/bootstrap。四道门禁为 0：npm test 3133 / 0 失败，探针 413/413，棘轮 73/18/1。复审 APPROVED，无阻塞。人 11-05 对 Q2 的答复已记进实现计划，验收原文不改。剩 B5、B6；B7–B10 顺延。"
+    },
+    {
+      "at": "2026-11-05T09:49:42.791Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "对账 B 半（report-b.md (c)）：运行 bootstrap-impl（wf_f008ac0c87ec6943）只有 bs-setup、bs-plan、bs-build-loop、bs-report，没有合入 main 的一步，B0–B6 做完也停在 origin/bootstrap。编排方照 m4-checks、panel-2、m5-rest 的做法，运行结束后另派 land-bootstrap 合入 main。onboarding 第 14 条的过渡三步（人 11-05 选 A）要等接管行进 main 才有地方显示；写过渡字的 UI 活原计划归面板线，面板线已收，并入 land-bootstrap 或其后一条线。计划里的 Q3（扫描读不读 issue）没问过人、也没上图：B2 已按选项 A 做，不改验收原文，编排方定下照 A。"
     }
   ]
 }

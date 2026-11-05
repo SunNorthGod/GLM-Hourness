@@ -3,7 +3,7 @@
   "type": "feature",
   "title": "界面呈现",
   "why": "设置页、按钮与面板用同一套组件和样式，按截图改到人满意",
-  "status": "approved",
+  "status": "doing",
   "parent": "orch",
   "body": "按 ORCHESTRATION.md §13 实现 UI；核实 ui-primitives 可用性；替换现有设置页与 pill；按截图迭代，用户终审（ROADMAP.md M8）。项目图的 DSH 右侧栏面板已提前到 M2（m2-7），M8 沿用它的组件与样式。",
   "history": [
@@ -63,6 +63,14 @@
           "to": "设置页、按钮与面板用同一套组件和样式，按截图改到人满意"
         }
       }
+    },
+    {
+      "at": "2026-11-05T09:50:07.035Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "子节点 m8-plain-language 与 onboarding 都在进行中，父特性随之改为进行中（项目图对账 B 半 investigate-graph-reconcile-1105-b，report-b.md (f)）",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }
