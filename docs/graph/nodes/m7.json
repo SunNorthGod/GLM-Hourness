@@ -657,6 +657,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "E8 收敛第 1 轮修复完成（m7 分支本地，未推）：文档接缝修在 c06a23c，loops-run 读状态的竞态修在 6dc02ec（与 habits-prompts 4598fa7 修的是同一处原因，合入时取一处）。HEAD 6dc02ec（树 31a658b）全量门禁：build 0、preflight 0、test 0（3163 项，3162 过、0 败、1 跳过，棘轮 73/18/1）、探针 467/467，gate.json 已更新。下一步语义评审。"
+    },
+    {
+      "at": "2026-11-05T19:01:22.285Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E8 收敛第 1 轮（wf_36d1d690c7e1de90 e8-fix）：c06a23c 文档接缝、6dc02ec loops-run 读 state.json 的竞态（与 main 上 habits-prompts 的修法同因），树 31a658b 全量门禁绿（3163 测试、探针 467/467）。语义评审 CHANGES_REQUESTED，挡路 1 条：/wish off 之后少了 design §3.9.3 要的门外注释（drive.ts:1080），不挡路 5 条。收敛循环第 2 轮接着修。另记：inject-via-prestep（wf_d93b6a094e3f5503）正把 /wish off 一类不叫醒的提示改走步前提示，与这一处相邻，M7 合入时留意两边的改动。"
     }
   ]
 }
