@@ -201,6 +201,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面批次 L4 的挡路发现 B1（.agents/tasks/l4-batch-2026-11-05/l4.md）派 m4-checks-loop-details（wf_0977f7098cfafeae）修：循环板页「改完文件就跑检查」的讲细点要列出本项目每条已批准的检查行与检查器的五条规矩（验收第 5 条）。L4 记录写的原因：src/loops/view.ts 写 view.json 时只带 why，不带 ownRules，也从不调交来者的 details；同一处让图行「同一件活第三次返工之前」的规矩也显示不出来，一并修。修完后经 CDP 重启桌面版在临时工作区真机核对。同一条线顺手做 B2（上手页缺指标板入口，先查面板设计有没有写，要改人定的六块就不做）与 B3 的文档。"
+    },
+    {
+      "at": "2026-11-05T14:10:46.016Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks-loop-details（wf_0977f7098cfafeae）第 1 轮 code 步被上游 503「No available accounts」打断，没有留下改动；review 步因上游限流暂停，编排方恢复后评审判 CHANGES_REQUESTED（分支对 origin/main 没有提交，B1 没修，挡路 R1 即验收第 5 条），记录在工作树 .llm/review/review.md。第 2 轮 code 步已开始，循环预算 2 轮用到最后一轮；再空跑则停下，等上游稳定后重开。"
     }
   ]
 }
