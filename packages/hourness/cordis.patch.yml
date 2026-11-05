@@ -124,8 +124,9 @@
       # await_human, the idle and peak stops, the reconcile after a restart, the
       # dispatch status notice), the loop-board seam (contribute, emit, runAction,
       # M7's fallback executor and watchdog) and the glmHournessExecute service.
-      # Ships disabled until the E9 verification (L3 skeleton scenario, one real
-      # model run, the first L4 batch); AGENTS.md turns it on then.
+      # Ships disabled until the E9 verification is complete: the L3 skeleton
+      # scenario glm-exec-skeleton passes; one real model run and the first L4
+      # batch are still owed. AGENTS.md turns it on then.
       name: dsh-hourness/execute
       disabled: true
       inject: [tools]

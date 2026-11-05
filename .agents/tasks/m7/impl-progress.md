@@ -1,4 +1,14 @@
-# M7 实施进度（E7、E8 批）
+# M7 实施进度（E7、E8、E9 批）
+
+## E9 2026-11-06
+
+落地（细节见 `docs/ORCHESTRATION.md` §17.14）：L3 骨架场景 `glm-exec-skeleton` 与它的 11 条检查（`scripts/probe/run-probe.mjs`）：模拟人 `/wish`、访谈、同意需求、放行，主 Agent 在设计阶段提议决策、写任务与 `norm-merge-gate`，放行之后退路执行者建 goal，派发（选模型、要计划、全审）、批准计划、worker 写与交回、派审查（选模型）、压成带尾注的提交、`check_commit`、快进、证据、派目标整体的审查（选模型）、`update_goal complete` 过完成门禁、图上目标完成。`mergeSquash` 与 `mergeWorker` 多一个可选的工作树参数。`src/` 与 `tests/` 不变；执行行仍默认禁用。文档同批：`docs/ROADMAP.md` 借用组件核实清单第 4、4b、12 项，`docs/ORCHESTRATION.md` §17 标题与 §17.14，`docs/HANDOFF.md` M7 一行，`packages/hourness/cordis.patch.yml` 执行行的注释。
+
+偏离 D1–D8 见实施计划 `.llm/wf/m7-e9/plan.md` 与 `docs/ORCHESTRATION.md` §17.14 的一行一条。
+
+门禁数字见 `.llm/wf/m7-e9/gate.json`。
+
+下一步：真实模型跑一次（设计 §10.3 第 2 条），之后合入 main、启用执行行的提交、第一批 L4。
 
 ## E8 2026-11-05
 
