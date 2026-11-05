@@ -292,6 +292,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B2（bootstrap-scan）提交 d63416b，已推 origin/bootstrap；之前合入 origin/main 113b93f（合并提交 b3b9ae6），也已推。两个提交四道门禁为 0：B2 上 npm test 3001 通过 / 0 失败 / 1 跳过，探针 388/388；棘轮 73/18/1。剩 B3–B6；B7–B10 照计划顺延。"
+    },
+    {
+      "at": "2026-11-05T00:05:16.184Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 评审 CHANGES_REQUESTED，1 条 MEDIUM 阻塞 F1：git 仓库里有暂存的代码但还没有提交时被判成已有项目；按扫描规则第 1 条与设计 §3.4 应判为新项目并带说明（.worktrees/bootstrap/.llm/wf/review.json）。门禁与探针证据齐全。下一轮修 F1。"
     }
   ]
 }
