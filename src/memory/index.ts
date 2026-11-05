@@ -14,8 +14,9 @@
  * listener on the child's own scope removes the tools from its request (it does not
  * `prepend`, so the dialect's section decision, which runs outside it, sees
  * the tools that are left), and the tool bodies refuse a child that calls
- * one by name. The row blocks no tool call: it registers no
- * `tools/pre-execute` listener.
+ * one by name. The row has one code rule, `habit-ask-first`
+ * (src/memory/habit-rule.ts), installed through the guard framework's gate:
+ * its denials go to the violation journal of the session's project.
  *
  * Sinks never throw into the caller's stream; a failure to read or write
  * is reported to the session's row health (src/shared/health.ts) and, in a
@@ -29,7 +30,8 @@ import { projectDirOf, projectOf } from '../data/project-root.ts'
 import { ID_PATTERN } from '../graph/schema.ts'
 import { graphService } from '../graph/service.ts'
 import { loadGraph } from '../graph/store.ts'
-import { rowJournal, type AuditFs, type UsageRecord } from './audit.ts'
+import { projectJournal, rowJournal, type AuditFs, type UsageRecord } from './audit.ts'
+import { HABIT_ASK_FIRST, installHabitRule } from './habit-rule.ts'
 import { memoryCommand } from './commands.ts'
 import { answersOf } from './answers.ts'
 import { learningNotice } from './notices.ts'
@@ -39,7 +41,7 @@ import { readBoth, type Both, type GraphRead, type MemoryEnv, type NoteKey, type
 import { learningTools, memoryTools } from './tools.ts'
 import { dataHomes, dataService } from '../shared/data-home.ts'
 import { createUserNotice } from '../shared/dsh-min.ts'
-import type { AgentLike, DerivedMessage, InjectHost, LlmStreamHost, ProvideHost, ServiceLookup, SessionLike, SessionProjectionsService, ToolsLike } from '../shared/dsh-min.ts'
+import type { AgentLike, DerivedMessage, InjectHost, LlmStreamHost, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, SessionLike, SessionProjectionsService, ToolsLike } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import type { TokenUsage } from '../shared/lm-min.ts'
 import { MEMORY_SERVICE } from '../shared/memory-service.ts'
@@ -212,9 +214,10 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
   const waiting = { commands: WAITING_COMMANDS as string | undefined, projection: WAITING_PROJECTION as string | undefined }
   let registration: string | undefined
   let service: string | undefined
+  let rule: string | undefined
   const homeConfigured = config.home !== undefined && config.home.length > 0
   const activation = (): [HealthState, string] => {
-    const problems = [registration, service, waiting.commands, waiting.projection].filter((text): text is string => text !== undefined)
+    const problems = [registration, service, rule, waiting.commands, waiting.projection].filter((text): text is string => text !== undefined)
     const note = homeConfigured ? '；行配置 home 已不再使用（M5），项目目录跟会话的工作区' : ''
     if (registration !== undefined) return ['inactive', `${registration}${note}`]
     return [problems.length === 0 ? 'active' : 'degraded', `记忆工具已注册，项目目录跟会话的工作区${problems.length === 0 ? '' : `；${problems.join('；')}`}${note}`]
@@ -253,6 +256,30 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
     for (const dispose of registered.splice(0).reverse()) dispose()
     console.warn(`${name}: registering the memory tools failed, the memory tools stay off: ${messageOf(error)}`)
     registration = `记忆工具注册失败，已全部撤掉：${messageOf(error)}`
+  }
+
+  // The code rule habit-ask-first (src/memory/habit-rule.ts): installed through the gate with the tools, so it
+  // denies from the day the row is enabled; a denial goes to the violation journal of the session's project
+  // directory, the one the memory of the session lives in. A host without the tool seam judges nothing and
+  // the health says so.
+  if (registration === undefined) {
+    const preExecute = (ctx as unknown as Partial<PreExecuteHost>).on
+    if (typeof preExecute === 'function') {
+      try {
+        const violations = projectJournal(name, cwd => placesFor(cwd).project, config.fs)
+        disposers.push(installHabitRule({
+          ctx: ctx as unknown as PreExecuteHost & ServiceLookup & SessionEventHost,
+          journal: (record, cwd) => violations.violation(record, cwd),
+          flush: () => violations.flush(),
+          health,
+        }))
+      }
+      catch (error) {
+        console.warn(`${name}: the rule ${HABIT_ASK_FIRST} is not installed: ${messageOf(error)}`)
+        rule = `规则 ${HABIT_ASK_FIRST} 没装上，没经问话的习惯拦不住：${messageOf(error)}`
+      }
+    }
+    else rule = `规则 ${HABIT_ASK_FIRST} 没装上：宿主没有 tools/pre-execute 接缝`
   }
 
   const rowService = memoryRowService(env, text => { warnOnce('depth', text) })
