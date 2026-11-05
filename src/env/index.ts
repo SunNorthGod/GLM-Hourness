@@ -21,7 +21,7 @@
  * delivery of results is one run of the board's entry. It registers the tool
  * check_limit (limit-tool.ts, every route, the root agent's only): the main
  * agent raises or resets the ceiling of one check held at it, which the
- * root agent's environment notice says. Ships disabled.
+ * root agent's environment notice says. Ships enabled since m4-checks B6.
  */
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -29,6 +29,7 @@ import { installStepNotice } from '../shared/step-notice.ts'
 import { ensureLlmIgnored } from '../data/llm-ignore.ts'
 import { projectHomeFor } from '../data/project-home.ts'
 import { projectOf } from '../data/project-root.ts'
+import { dataService } from '../shared/data-home.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import type { AgentLike, ProvideHost, ServiceLookup, SessionLike, ToolExecutionContext, ToolsLike } from '../shared/dsh-min.ts'
 import { graphService } from '../graph/service.ts'
@@ -85,7 +86,11 @@ export function installEnvNotice(ctx: EnvContext, agent: AgentLike, health: RowH
  * The first-install work for one session's repository, in order: the
  * `.llm/` ignore (its outcome goes to the row health), then the daily
  * suppression count in the background. The count is fire-and-forget: a
- * failure reaches the row health, never a step.
+ * failure reaches the row health, never a step. The journal is in the data
+ * service's project directory of the session (`<root>/.llm`, or the
+ * override a probe, calibration or test sets, so a run from a work tree of
+ * this repository never writes the main checkout's `.llm/`), else
+ * `<root>/.llm`.
  */
 function installWork(ctx: EnvContext, session: SessionLike, health: RowHealth, sessionId: string | undefined): Promise<void> {
   return (async () => {
@@ -94,8 +99,9 @@ function installWork(ctx: EnvContext, session: SessionLike, health: RowHealth, s
     const outcome = root === undefined ? undefined : await ensureLlmIgnored(root)
     if (sessionId !== undefined) health.report(sessionId, ...envHealth(graphService(ctx)?.dirFor(cwd), outcome))
     if (root === undefined) return
-    void dailySuppressions(root, record => appendSuppression(root, record), {
-      lastRecord: () => lastSuppression(root),
+    const home = dataService(ctx)?.projectDirOf?.(cwd) ?? join(root, '.llm')
+    void dailySuppressions(root, record => appendSuppression(home, record), {
+      lastRecord: () => lastSuppression(home),
       problem: (message) => {
         if (sessionId !== undefined) health.report(sessionId, 'degraded', `压制注释计数失败：${message}`)
         console.warn(`${name}: suppression count failed: ${message}`)
@@ -104,10 +110,10 @@ function installWork(ctx: EnvContext, session: SessionLike, health: RowHealth, s
   })()
 }
 
-/** The last record of the repository's suppression journal, undefined when there is none. */
-async function lastSuppression(root: string): Promise<SuppressionRecord | undefined> {
+/** The last record of the suppression journal under the project directory `home`, undefined when there is none. */
+async function lastSuppression(home: string): Promise<SuppressionRecord | undefined> {
   try {
-    const lines = (await readFile(join(root, '.llm', 'audit', 'suppressions.jsonl'), 'utf8')).split('\n').filter(line => line.trim() !== '')
+    const lines = (await readFile(join(home, 'audit', 'suppressions.jsonl'), 'utf8')).split('\n').filter(line => line.trim() !== '')
     return lines.at(-1) === undefined ? undefined : JSON.parse(lines.at(-1)!) as SuppressionRecord
   }
   catch {
@@ -115,9 +121,9 @@ async function lastSuppression(root: string): Promise<SuppressionRecord | undefi
   }
 }
 
-/** Append one count record to the repository's `.llm/audit/suppressions.jsonl`. */
-async function appendSuppression(root: string, record: SuppressionRecord): Promise<void> {
-  const file = join(root, '.llm', 'audit', 'suppressions.jsonl')
+/** Append one count record to `<home>/audit/suppressions.jsonl` (home: the project directory). */
+async function appendSuppression(home: string, record: SuppressionRecord): Promise<void> {
+  const file = join(home, 'audit', 'suppressions.jsonl')
   await mkdir(dirname(file), { recursive: true })
   await appendFile(file, `${JSON.stringify(record)}\n`)
 }

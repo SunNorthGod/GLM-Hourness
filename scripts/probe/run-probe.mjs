@@ -665,7 +665,7 @@ const hournessOnlyStatus = hournessOnly.steps[1]?.command
 const hournessOnlyReport = hournessOnly.steps[3]?.command
 
 // Environment notice (M4 design §7.2, scenario env-notice): the env row
-// enabled by the overlay, a git workspace whose graph carries an approved
+// (shipped enabled since m4-checks B6; the overlay still pins it on), a git workspace whose graph carries an approved
 // tool node under env. The first request ends with the wrapped environment
 // notice — the tool line, the no-checks line, the scratch line — the next
 // request does not repeat it, and the project's .llm/ is git-ignored (the

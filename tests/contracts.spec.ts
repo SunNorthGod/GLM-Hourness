@@ -304,7 +304,7 @@ test('tool names: the learning tool is the main agent\'s read-only view and stay
   for (const name of MEMORY_TOOL_NAMES) assert.ok(ORCHESTRATION_RESIDENT_TOOLS.has(name) && RESIDENT_TOOLS.has(name), name)
 })
 
-test('tool names: the env row registers exactly the contract names, and check_limit stays deferred in the GLM face (m4-checks design §6.3.1)', () => {
+test('tool names: the env row registers exactly the contract names, check_limit stays deferred in the GLM face (m4-checks design §6.3.1), and the row ships enabled', () => {
   const rt = fakeRuntime({ natives: [] })
   const stop = envApply(rt.ctx)
   assert.deepEqual(rt.scoped.map(tool => tool.name), [...ENV_TOOL_NAMES])
@@ -315,6 +315,7 @@ test('tool names: the env row registers exactly the contract names, and check_li
   const patch = readFileSync(join(import.meta.dirname, '..', 'packages', 'hourness', 'cordis.patch.yml'), 'utf8')
   const envRow = patch.split('- id: glm-hourness/env')[1]?.split('- id: ')[0] ?? ''
   assert.match(envRow, /^\s+inject: \[tools\]\s*$/m, 'a row that does not declare the injected service fails to activate (G3)')
+  assert.doesNotMatch(envRow, /^\s+disabled:/m, 'enabled after the L3 probe passed with the row on (m4-checks B6)')
 })
 
 test('tool names: the lookup of the lessons board is resident for every agent in the GLM face, the merge tool is the main agent\'s and stays deferred', () => {

@@ -101,7 +101,7 @@ origin/main（`45ae4e8`）还不含 `8c9d74f`（`merge-base --is-ancestor` 退�
       依赖：B4。**推送依赖 origin/main 含 loops-runner 合并（随 B4）。**
       Verify：四道门禁退出码 0；探针全绿。
 
-- [ ] 6. **B6（m4-checks）env 行出厂启用**
+- [x] 6. **B6（m4-checks）env 行出厂启用**
       范围：`packages/hourness/cordis.patch.yml` 的 `glm-hourness/env` 去掉 `disabled: true`，注释改写为：L3 场景 `env-notice`、`env-check-command`、`env-checks`、`env-checks-timeout` 已过，第一次桌面版走查（`docs/DEVELOPMENT.md` §3、设计 §13.4）仍欠（照 loops 行注释的先例）。同步 `docs/DESIGN.md` §2.2 行表与 ORCHESTRATION §7.1 实现注里的出厂状态。
       文件：`packages/hourness/cordis.patch.yml`；受出厂状态影响的测试（行登记、契约、health 的禁用行清单，按 `npm test` 的失败处逐处改期望）；`scripts/probe/run-probe.mjs`（没钉 env 行的场景现在第一个请求多一条环境提醒：只改因这条提醒而变的计数或末尾位置的期望，不改被测语义）；`docs/DESIGN.md`、`docs/ORCHESTRATION.md`。
       验收：AGENTS.md 第 4 条与任务约束「探针过后才启用」。
@@ -159,6 +159,8 @@ origin/main（`45ae4e8`）还不含 `8c9d74f`（`merge-base --is-ancestor` 退�
 36. **晨报里「上限已调高」是那项检查下面的一行子项**（B5）：日期按晨报的时区写成 `YYYY-MM-DD`；明细里的那半句带理由（§6.3.1「看得见」有理由，§6.8 的表只写了秒数），整行仍截在 160 个码点。
 37. **超时那句的「已在上限」按现行上限判**（B5）：上限调高之后，下一次的值到了设置值时写 `It is at its ceiling of <设置> s; the main agent has been told.`。
 38. **宿主没有工具服务时不注册 `check_limit`**（B5）：行声明了 `inject: [tools]`，真宿主上不会出现；假宿主与降级表里写明被截住的那一行照样提醒。
+39. **压制注释计数的流水按数据目录服务的 `projectDirOf` 取目录**（B6）：§6.7 与 E4 写的是项目的 `.llm/audit/suppressions.jsonl`，实现直接拼 `<项目根>/.llm`。env 行出厂启用之后，探针里工作目录是本仓库工作树的会话（不带场景工作区的那些）都会装 env 行，`projectOf` 把工作树归到主检出，计数每天第一次会写进主检出的 `.llm/audit/`，违反「不往主检出写」。改为先取数据目录服务的 `projectDirOf(cwd)`（探针、标定、测试的 `projectOverride` 指向运行目录；生产上它就是 `<项目根>/.llm`，行为不变），没有数据服务时仍取 `<项目根>/.llm`。L2 一例钉住（`tests/env-suppressions.spec.ts`）。检查器的 `timing.jsonl`、`limits.jsonl` 与日志仍按差异 2 取 `projectHomeFor`：本仓库的图上没有 `env` 节点，那些会话没有检查行，不写东西（B6 探针后实读主检出 `.llm/` 无新文件）。
+40. **出厂启用后探针场景的期望没有变**（B6）：计划预计没钉 env 行的场景第一个请求多一条环境提醒、可能要改计数或末尾位置；实跑 366/366 全过，没有场景的期望因这条提醒而变，`run-probe.mjs` 只改了 `env-notice` 一段注释。
 
 ## Digest
 

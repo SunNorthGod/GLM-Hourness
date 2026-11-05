@@ -153,11 +153,12 @@
       # its next step; the board lists them as env.checks-after-edit. A
       # check held at its ceiling is a line in the main agent's environment
       # notice, and the tool check_limit (the reason it injects tools) raises
-      # or resets that ceiling. Ships disabled until the L3 probe (scenarios
-      # env-notice, env-check-command, env-checks, env-checks-timeout) and
-      # the first desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md).
+      # or resets that ceiling. Ships enabled since the m4-checks enablement
+      # (2026-11-05): the L3 probe scenarios (env-notice, env-check-command,
+      # env-checks, env-checks-timeout, env-checks-timeout-run,
+      # env-checks-ceiling) passed; the first desktop pass
+      # (docs/DEVELOPMENT.md §3, AGENTS.md, M4 design §13.4) is still owed.
       name: dsh-hourness/env
-      disabled: true
       inject: [tools]
       config: {}
     - id: glm-hourness/ui
