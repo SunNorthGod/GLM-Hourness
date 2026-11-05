@@ -81,6 +81,30 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-06 02:0x 人截图：桌面版启动失败的原生错误框「DeepSeek Harness is unavailable / desktop welcome: Web authentication failed」，按钮 Exit、Restart、Disable third-party plugins, back up profile patch, and restart。userData logs 下两份启动期崩溃：crash-2026-11-05T17-28-43-544Z-host.log（01:28:43）与 crash-2026-11-05T18-03-27-746Z-host.log（02:03:27），phase startup，错误在 app.asar lib/main.js:8886 的 connectDesktopWelcome；两次都在 habits-prompts 合入步（wf_7bd410e5bb88654f land）持桌面锁期间。原因未查。编排方已告知该步：查明原因前不再启动桌面版；只读查两份崩溃日志、各次启动的输出、旧实例与隔离实例的残留进程、lockfile、启动时的环境变量（尤其隔离实例 launch.ps1 可能留下的 DSH_HOME）、connectDesktopWelcome 的源码；不杀进程、不点错误框、不按「Disable third-party plugins」（会改人的 profile）；结论与拟用的启动命令交编排方转人之后再启动。"
+    },
+    {
+      "at": "2026-11-05T18:25:37.872Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面版启动失败的原因已查明（.agents/tasks/habits-prompts/desktop-start-failure.md，源码实读加本机实测）：宿主每次启动在 127.0.0.1 的随机端口上发一个 dsh-auth-<端口哈希> cookie，有效 30 天；cookie 不分端口，全存在桌面 userData 的 Network\\Cookies 里，从不提前删。欢迎页经 Electron 会话的 net.fetch 带上全部 127.0.0.1 cookie，到 71 个、约 16 KB 时超过 node:http 默认请求头上限 16384 字节，宿主回 431，启动失败。30 天内约 70 次启动就会复发，本项目的 L4 与合入重启频繁，是主要来源。排除了残留进程、DSH_HOME 等环境变量、代理与本次合入的代码。修法要改人的桌面 userData（不是 ~/.dsh）：先备份 Cookies 与 Cookies-journal，再删 host_key=127.0.0.1 且名为 dsh-auth-* 的行，然后不带 DSH_HOME 启动；编排方已转人，等人同意。后续：写进 FACTS.md，向 DSH 上游反馈；L4 规程要考虑重启次数。"
+    },
+    {
+      "at": "2026-11-05T18:29:31.324Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面版启动失败「desktop welcome: Web authentication failed」的原因（habits-prompts 合入步只读调查，.agents/tasks/habits-prompts/desktop-start-failure.md）：每次宿主启动按端口发一个 30 天的 dsh-auth-<sha256(127.0.0.1:端口)> cookie，cookie 不分端口，connectDesktopWelcome 用 net.fetch credentials:'include' 把 127.0.0.1 下的全部带上；累计 71 个约 16 KB，超过 node:http 默认 16384 字节的请求头上限，宿主回 431。人同意清除。另交 desktop-close-docs（wf_674d79b3e6a53992）同批写进 DEVELOPMENT.md §1.1 的重启规程（启动前数这类 cookie，超过 50 个就备份后删除）、FACTS.md §3 一行与 §7 事故一行；可作为反馈交 DSH 上游。"
+    },
+    {
+      "at": "2026-11-05T18:37:42.605Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面版启动失败（desktop welcome: Web authentication failed）已修：habits-prompts 合入步备份 %APPDATA%\\@deepseek-ai\\dsh-desktop\\Network\\Cookies 后删掉 host 127.0.0.1 的 71 个 dsh-auth-* cookie，桌面版随即正常启动，没有新的崩溃日志。原因见 .agents/tasks/habits-prompts/desktop-start-failure.md：每次启动宿主按随机端口发一个 30 天有效的 cookie，cookie 不分端口，约 70 次启动后 Cookie 请求头超过 node:http 的 16384 字节上限，宿主回 431。之后的任务书已写明遇到同一报错照此处理。FACTS.md 一行与上游反馈待记。"
+    },
+    {
+      "at": "2026-11-05T19:01:21.573Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "desktop-close-docs（wf_674d79b3e6a53992）合入 main 5b577d9，origin 与 github 经 ls-remote 一致。3068772：DEVELOPMENT.md §1.1 L4 一行的关闭与重启规程（关闭前不留没取走的注入消息；Browser.close 发一次不等回应；每 5 秒查主进程、lockfile 与顶层窗口，见 #32770 退出确认框就停下请人点；没有框而 2 分钟未退出也停下报告；托盘里也算在运行），合入步快进 main 后在主检出重建 dist 的规则，§7 两行事故，FACTS 六行。cb1d2f3：启动前清掉 127.0.0.1 的 dsh-auth-* cookie（先备份），人允许改桌面版 userData 与 ~/.dsh，§7 一行 2026-11-06 事故，FACTS 一行 cookie 上限。合入树门禁：build 0、preflight 0、npm test 0（3180/3180）、check-lint 0（73/18/1）。工作树与分支已删。记录 .agents/tasks/desktop-close-2026-11-05/docs-step.md。原定「每 30 秒看一次、至多等 15 分钟」作废。"
     }
   ]
 }
