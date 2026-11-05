@@ -101,8 +101,8 @@ test('the row registers one tool per llm operation with schemas inside the rc.3 
   for (const tool of runtime.scoped) {
     assert.deepEqual(schemaViolations(tool.parameters, `${tool.name}.parameters`), [])
     // graph_relink's description carries the whole two-call example the main agent follows (user-graph design 0.4.1 §3.5); the rest stay short.
-    // 700: graph_propose carries the question rules (M3) and the sentence on the timeouts of a tool node under env (m4 design §6.3.1 item 3).
-    const cap = tool.name === 'graph_relink' ? 1600 : 700
+    // 900 for graph_propose: the question rules (M3), the sentence on a norm's body (decision d-habits-into-framework) and the sentence on the timeouts of a tool node under env (m4 design §6.3.1 item 3).
+    const cap = tool.name === 'graph_relink' ? 1600 : tool.name === 'graph_propose' ? 900 : 700
     assert.ok(tool.description.length > 0 && tool.description.length < cap, tool.name)
   }
   // A supersession is a proposal with a supersedes edge (ORCHESTRATION.md §2.9); it has no tool of its own.
@@ -146,6 +146,13 @@ toolTest('graph_propose explains the table card next to recommend-last; a questi
   assert.match(error.hint, /取决于/)
   const asked = ok(await call('graph_propose', { node: { ...bare, crux: '缓存要跨重启留着吗？', verdict: '是 → A；否 → B', weight: 'two-way' }, reason: '问人' }))
   assert.deepEqual([asked.node.crux, asked.node.verdict, asked.node.weight], ['缓存要跨重启留着吗？', '是 → A；否 → B', 'two-way'])
+})
+
+test('graph_propose asks a norm for its intent and basis, not a list, and sends measurable checks to check or gate lines (decision d-habits-into-framework)', () => {
+  const propose = graphTools('docs/graph', new Map()).find(tool => tool.name === 'graph_propose')!
+  assert.ok(propose.description.includes('A norm\'s body states the intent and the basis for judging, not a list of what counts and what does not; a check that can be measured becomes a check line of a tool node or a line of norm-merge-gate.'))
+  // The sentence names norms only: the other write tools do not carry it.
+  for (const tool of graphTools('docs/graph', new Map()).filter(other => other.name !== 'graph_propose')) assert.ok(!tool.description.includes('A norm\'s body'), tool.name)
 })
 
 toolTest('graph_propose takes a proposal; graph_decide decides it with a conclusion, for the human only with their words', async ({ runtime, call, rev }) => {

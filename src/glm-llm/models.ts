@@ -60,6 +60,15 @@ const GLM_53_RULE: ZcodeModelRule = {
 }
 const GLM_53_MATCH = /^.*glm-5\.3.*$/iu
 
+/**
+ * The context window the channel declares to DSH, from the glm-llm row's
+ * config `contextWindow` (docs/DESIGN.md §4.6): default 512000 (the person,
+ * 2026-11-05), at least the catalog's output maximum of one step and at most
+ * the catalog's window. A step's output budget takes the smaller of this
+ * window and the catalog's.
+ */
+export const GLM_CONTEXT_WINDOW = { default: 512_000, min: GLM_53_RULE.maxOutputTokens, max: GLM_53_RULE.contextWindow } as const
+
 /** The catalog rule of one model id; undefined outside the GLM-5.3 family (the request then keeps the DSH values). */
 export function zcodeModelRule(model: string): ZcodeModelRule | undefined {
   return GLM_53_MATCH.test(model) ? GLM_53_RULE : undefined

@@ -20,6 +20,8 @@
  */
 import { createUserNotice, type AgentLike, type DerivedMessage } from '../shared/dsh-min.ts'
 import { PEAK_END_LABEL, PEAK_HOURS, peakWindowAt } from '../glm-llm/credits.ts'
+import { metricsWhere, type GlmMetricSink } from '../glm-llm/metrics.ts'
+import type { GlmBodies } from '../shared/metrics.ts'
 import { PEAK_MODE_SERVICE, type PeakLevel, type PeakModeService } from '../shared/peak-mode.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
@@ -131,17 +133,32 @@ export function peakWindowToAnnounce(history: readonly DerivedMessage[], now: nu
  * admitted messages. `now` reads the wall clock (injectable for tests).
  * `peakMode` reads the project's peak mode and is called once per notice
  * sent, on the step that announces; without it every notice is
- * PEAK_REMINDER_TEXT with the note `no-service`. Returns undefined,
+ * PEAK_REMINDER_TEXT with the note `no-service`. Each notice sent is one
+ * `glm.peak-reminder` to `metric` (M6 design §14.2) for the agent's session
+ * and working directory: the window, the level (`none` with the note when
+ * none was readable) and the cap the text wrote. Returns undefined,
  * installing nothing, when the agent has no session history to read the
  * state from.
  */
-export function installPeakReminder(agent: AgentLike, eligible: () => boolean, now: () => number, peakMode?: () => PeakModeRead): (() => void) | undefined {
+export function installPeakReminder(agent: AgentLike, eligible: () => boolean, now: () => number, peakMode?: () => PeakModeRead, metric?: GlmMetricSink): (() => void) | undefined {
+  const told = (body: GlmBodies['glm.peak-reminder']): void => {
+    try {
+      metric?.({ k: 'glm.peak-reminder', body }, metricsWhere(agent.session?.id ?? agent.id, agent.session?.header.cwd))
+    }
+    catch {
+      // The sink never throws; the notice goes out whatever the journal does.
+    }
+  }
   return installStepNotice(agent, 'peak reminder', eligible, (history) => {
     const window = peakWindowToAnnounce(history, now())
     if (window === undefined) return undefined
     const read: PeakModeRead = peakMode === undefined ? { note: 'no-service' } : peakMode()
-    if ('note' in read) return createUserNotice(PEAK_REMINDER_SOURCE, `peak hours ${window}`, wrapSystemReminder(PEAK_REMINDER_TEXT), { peakWindow: window, peakMode: 'none', peakModeNote: read.note })
+    if ('note' in read) {
+      told({ window, mode: 'none', note: read.note })
+      return createUserNotice(PEAK_REMINDER_SOURCE, `peak hours ${window}`, wrapSystemReminder(PEAK_REMINDER_TEXT), { peakWindow: window, peakMode: 'none', peakModeNote: read.note })
+    }
     const { mode } = read
+    told({ window, mode: mode.level, ...(mode.glmWorkerCap === undefined ? {} : { cap: mode.glmWorkerCap }) })
     return createUserNotice(PEAK_REMINDER_SOURCE, `peak hours ${window}`, wrapSystemReminder(peakReminderText(mode)), {
       peakWindow: window,
       peakMode: mode.level,

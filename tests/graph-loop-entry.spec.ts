@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { apply } from '../src/graph/index.ts'
 import { GRAPH_ROW_SOURCE, graphContribution, installLoopEntry, thirdReworkEntry, thirdReworkRule, THIRD_REOPEN_EVENT, type LoopEntryHost } from '../src/graph/loop-entry.ts'
-import { REOPEN_LIMIT } from '../src/graph/reopen.ts'
+import { REOPEN_LIMIT, SECOND_FIX_NOTICE } from '../src/graph/reopen.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import type { ServiceLookup, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
@@ -199,6 +199,27 @@ test('a third reopen files the question and reports one run; earlier reopens do 
   })
 })
 
+test('the second reopen carries the find-the-cause sentence; the first carries nothing, the third only the question notice (decision d-habits-into-framework)', async () => {
+  const board = fakeBoard()
+  await captured(async () => {
+    await withFixture(board, async fixture => {
+      // One done-and-reopen round per call, so round n is the n-th reopen of the window.
+      const notices: Array<string | undefined> = []
+      for (let round = 1; round <= REOPEN_LIMIT; round++) {
+        notices.push((await reopenThroughTool(fixture, 1)).value.notice)
+        // The second reopen is a prompt only: nothing is filed, nothing is reported to the board.
+        if (round === REOPEN_LIMIT - 1) assert.deepEqual([(await loadGraph(fixture.graph)).nodes.has('question-1'), board.handed.runs.length], [false, 0])
+      }
+      const [first, second, third = ''] = notices
+      assert.equal(first, undefined)
+      assert.equal(second, SECOND_FIX_NOTICE)
+      assert.match(SECOND_FIX_NOTICE, /second fix of this node: find the cause and write it into this node before you change code/)
+      assert.ok(third.startsWith('Filed question question-1 for the human'), third)
+      assert.ok(!third.includes(SECOND_FIX_NOTICE), 'the third reopen does not repeat the second-fix sentence')
+    })
+  })
+})
+
 test('a relayed reopen does not ask: it is the human\'s own decision', async () => {
   const board = fakeBoard()
   await captured(async () => {
@@ -222,9 +243,11 @@ test('after the human decides, the count starts over: three more reopens ask aga
       assert.ok(filed.length > 0)
       // The human agrees; the decide closes the question and the next window begins.
       await fixture.call('graph_decide', { id: filed, rev: await fixture.rev(filed), conclusion: '先停下查原因', reason: '好，先查', relay: '先查原因' })
+      // The second-fix sentence counts in the same window: the second reopen after the answer carries it again.
       for (let round = 0; round < REOPEN_LIMIT; round++) {
         const reopened = await reopenThroughTool(fixture, 1)
-        if (round < REOPEN_LIMIT - 1) assert.equal(reopened.value.notice, undefined)
+        if (round < REOPEN_LIMIT - 2) assert.equal(reopened.value.notice, undefined)
+        else if (round === REOPEN_LIMIT - 2) assert.equal(reopened.value.notice, SECOND_FIX_NOTICE)
         else assert.ok(reopened.value.notice?.includes('question-2'), 'the second question is filed')
       }
       assert.deepEqual(board.handed.runs.map(run => run.outcome), ['reported', 'reported'])

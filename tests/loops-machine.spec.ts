@@ -281,11 +281,11 @@ withHome('the quota is read once when GLM was used and the last reading is 15 mi
   machine.move(MINUTE)
   await machine.runner.beat()
   assert.equal(full().length, 0)
-  // GLM use and no reading yet: exactly one read, waiting three seconds.
+  // GLM use and no reading yet: exactly one read, waiting three seconds, asked by the board for the project its event goes to.
   await used(home, 'glm-5.3', machine.now())
   machine.move(MINUTE)
   await machine.runner.beat()
-  assert.deepEqual(full(), [{ waitMs: QUOTA_WAIT_MS }])
+  assert.deepEqual(full(), [{ waitMs: QUOTA_WAIT_MS, asker: { kind: 'service', dir: PROJECT_A } }])
   assert.equal(machine.emitted.length, 1)
   assert.deepEqual([machine.emitted[0]?.event, machine.emitted[0]?.key], [CHANNEL_QUOTA_LOW, quotaLowKey('five-hour', new Date(reset).toISOString())])
   assert.deepEqual(machine.emitted[0]?.payload, { window: 'five-hour', usedPercent: 85, resetAt: new Date(reset).toISOString(), line: quotaLowLine(fiveHour(85, reset), machine.now()) })

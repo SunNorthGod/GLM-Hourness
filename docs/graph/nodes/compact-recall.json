@@ -77,6 +77,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-05 同意编排方的建议（原话「那两件也按你说的来」）：导出文件遮掉凭证，建 compact-recall-redact。是否默认启用仍等批次 L4 的结论再交人。"
+    },
+    {
+      "at": "2026-11-05T11:57:26.265Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4（wf_be2ff3a8b7d83155）没有做这一项：transcript 行出厂停用，要改人的 profile 补丁打开它再跑一次压缩；main 上 11-05 刚开了 compact-recall-redact（导出要先遮掉凭证），在它合入之前不在人的 profile 上打开这一行。L4 顺延到 compact-recall-redact 之后。"
+    },
+    {
+      "at": "2026-11-05T12:41:09.724Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4 没做本节点的真机核对：transcript 行出厂停用，要改人的 profile 才能打开；compact-recall-redact（导出遮掉凭证）合入之前也不在人的 profile 上打开这一行。L4 顺延到 compact-recall-redact 合入之后，届时在隔离实例里做，不改人的 profile。"
     }
   ]
 }

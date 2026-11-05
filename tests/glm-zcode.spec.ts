@@ -615,11 +615,11 @@ test('a delegated child session (agents: origin subagent) is typed subagent with
 })
 
 /** The body of one coding-plan request on a fresh adapter. */
-async function bodyOf(options: Partial<GenerateOptionsLike> & { purpose?: 'session-title' | 'compaction' }, plan?: 'start-plan'): Promise<Record<string, unknown>> {
+async function bodyOf(options: Partial<GenerateOptionsLike> & { purpose?: 'session-title' | 'compaction' }, plan?: 'start-plan', contextWindow?: number): Promise<Record<string, unknown>> {
   const { fs } = memoryStore()
   await saveCredential(fs, 'C:/ws/.llm/credentials.json', { ...credential, jwt: 'fake.plan.jwt' })
   const captured: { body?: Record<string, unknown> } = {}
-  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', journal: memoryJournal(), fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv(), ...(plan === undefined ? {} : { plan }) })
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', journal: memoryJournal(), fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv(), ...(plan === undefined ? {} : { plan }), ...(contextWindow === undefined ? {} : { contextWindow }) })
   for await (const chunk of adapter.stream({ ...request(), sessionId: 'session-s1', ...options } as never)) void chunk
   return captured.body ?? {}
 }
@@ -687,14 +687,41 @@ test('start-plan keeps its earlier body: the DSH model id, no thinking, no outpu
   assert.equal(body.max_tokens, 4096)
 })
 
-test('coding-plan max_tokens follows 3.16.3, not the DSH value: steps 128000 or the window room, compaction 20000, the title 5000', async () => {
+/** A history whose last answer recorded `used` tokens of context, then one user message of one estimated token. */
+function historyUsing(used: number): never {
+  const heavy = { role: 'assistant', content: [{ type: 'text', text: 'ok' }], source: { kind: 'model', provider: 'glm-zcode', model: 'glm-5.3', replayState: { response: { kind: 'glm-zcode', version: 1, model: 'glm-5.3', usage: { input: used - 5_000, output: 5_000, total: used, cache: { read: 0, write: 0 } } }, blocks: [{ type: 'text' }] } } }
+  return [typed('m1', 'go'), heavy, typed('m2', 'abc')] as never
+}
+
+test('coding-plan max_tokens follows the 3.16.3 rules, not the DSH value: steps 128000 or the window room, compaction 20000, the title 5000', async () => {
   assert.equal((await bodyOf({ maxTokens: 32_000 })).max_tokens, 128_000)
   assert.equal((await bodyOf({ maxTokens: 32_000, purpose: 'compaction' })).max_tokens, 20_000)
   assert.equal((await bodyOf({ maxTokens: 32_000, purpose: 'session-title' })).max_tokens, 5_000)
-  // A history whose recorded usage nears the 1,000,000 window: 1,000,000 − estimate − 1000.
-  const heavy = { role: 'assistant', content: [{ type: 'text', text: 'ok' }], source: { kind: 'model', provider: 'glm-zcode', model: 'glm-5.3', replayState: { response: { kind: 'glm-zcode', version: 1, model: 'glm-5.3', usage: { input: 985_000, output: 5_000, total: 990_000, cache: { read: 0, write: 0 } } }, blocks: [{ type: 'text' }] } } }
-  const next = typed('m2', 'abc') // one estimated token after the baseline
-  assert.equal((await bodyOf({ messages: [typed('m1', 'go'), heavy, next] as never })).max_tokens, 1_000_000 - 990_001 - 1_000)
+  // The step's window is the declared 512000 by default (DESIGN.md §4.6): 512000 − estimate − 1000.
+  assert.equal((await bodyOf({ messages: historyUsing(505_000) })).max_tokens, 512_000 - 505_001 - 1_000)
+  // Past the declared window there is no room: the baseline, as 3.16.3 `aUo` does.
+  assert.equal((await bodyOf({ messages: historyUsing(990_000) })).max_tokens, 128_000)
+})
+
+test('the step window is min(configured window, catalog window); compaction and the title keep their caps', async () => {
+  // A configured 1,000,000 equals the catalog's: the value 3.16.3 and 3.17.1 compute.
+  assert.equal((await bodyOf({ messages: historyUsing(990_000) }, undefined, 1_000_000)).max_tokens, 1_000_000 - 990_001 - 1_000)
+  assert.equal((await bodyOf({ messages: historyUsing(590_000) }, undefined, 600_000)).max_tokens, 600_000 - 590_001 - 1_000)
+  // A window above the catalog's is capped at the catalog's 1,000,000.
+  assert.equal((await bodyOf({ messages: historyUsing(990_000) }, undefined, 2_000_000)).max_tokens, 1_000_000 - 990_001 - 1_000)
+  assert.equal((await bodyOf({ purpose: 'compaction', messages: historyUsing(590_000) }, undefined, 600_000)).max_tokens, 20_000)
+  assert.equal((await bodyOf({ purpose: 'session-title' }, undefined, 600_000)).max_tokens, 5_000)
+  // start-plan keeps the DSH max_tokens whatever the window.
+  assert.equal((await bodyOf({ maxTokens: 4096, messages: historyUsing(590_000) }, 'start-plan', 600_000)).max_tokens, 4096)
+})
+
+test('the context window declared to DSH: 512000 by default, else the configured value, for every model id', async () => {
+  const { fs } = memoryStore()
+  const declared = async (contextWindow?: number, model = 'glm-5.3'): Promise<number | undefined> => (await new ZcodeAdapter({ home: 'C:/ws/.llm', journal: memoryJournal(), fetchImpl: makeUpstream(), storeFs: fs, ...(contextWindow === undefined ? {} : { contextWindow }) }).resolveModel('glm-zcode', model)).context?.contextWindow
+  assert.equal(await declared(), 512_000)
+  assert.equal(await declared(undefined, 'glm-5.3-flash'), 512_000)
+  assert.equal(await declared(600_000), 600_000)
+  assert.equal(await declared(600_000, 'glm-next'), 600_000)
 })
 
 test('upstreamSessionId strips the DSH prefix, keeps other header-safe ids, and replaces unusable ones', () => {
