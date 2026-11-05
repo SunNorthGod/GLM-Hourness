@@ -651,6 +651,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 合入 main 时：habits-prompts（4598fa7）把 tests/design-mode.spec.ts 的身份段整段上限改为 3200、对话一段上限改为 2000，m7 分支上同两处断言仍是 3000 与 1800，合入时取 main 的数。"
+    },
+    {
+      "at": "2026-11-05T18:04:30.102Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E8 收敛第 1 轮修复完成（m7 分支本地，未推）：文档接缝修在 c06a23c，loops-run 读状态的竞态修在 6dc02ec（与 habits-prompts 4598fa7 修的是同一处原因，合入时取一处）。HEAD 6dc02ec（树 31a658b）全量门禁：build 0、preflight 0、test 0（3163 项，3162 过、0 败、1 跳过，棘轮 73/18/1）、探针 467/467，gate.json 已更新。下一步语义评审。"
     }
   ]
 }

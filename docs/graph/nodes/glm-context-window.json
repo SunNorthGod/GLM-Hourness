@@ -3,7 +3,7 @@
   "type": "task",
   "title": "GLM 通道的上下文窗口可以配置，缺省 512k",
   "why": "压缩时机和每步输出预算按同一个窗口算，人想改窗口时改一个数就行",
-  "status": "doing",
+  "status": "done",
   "parent": "bottom",
   "kind": "implement",
   "body": "现状：src/glm-llm/zcode.ts 向 DSH 声明 contextWindow 512000（DSH 用它做压缩与预算，DESIGN.md §4.8）；请求侧 maxOutputTokensFor 用 src/glm-llm/models.ts GLM_53_RULE 的 contextWindow 1000000（ZCode 3.16.2 内置目录规则）。做法：glm-llm 行的配置 schema 加上下文窗口一项，缺省 512000，只收正整数，上限不超过目录规则；声明取配置值；请求侧窗口取 min(配置值, 目录规则)，偏离 3.16.3 处在 DESIGN.md §4 写明原因。配置缺失或非法时激活期不抛错，降级用缺省值并在行健康写明。不新增插件行，不加开关。",
@@ -11,6 +11,36 @@
     "glm-llm 行的配置有上下文窗口一项，缺省 512000；不配置时向 DSH 声明的窗口与改动前相同",
     "配了合法的值，向 DSH 声明的窗口与请求侧单步输出预算都按这个值算（请求侧取它与目录规则的较小者）；非法值降级为缺省值，行健康写明",
     "L2 测试钉住以上三种情形，L3 探针通过，合入 main 后桌面版重启 GLM 包正常"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "a2019c3",
+      "note": "GLM 通道的上下文窗口可配置，缺省 512000，范围 128000 到 1000000"
+    },
+    {
+      "kind": "commit",
+      "ref": "c452b17",
+      "note": "合入 main 的合并提交，origin 与 github 一致"
+    },
+    {
+      "kind": "test",
+      "ref": "build、preflight、npm test、npm run -s probe on c452b17",
+      "exit": 0,
+      "note": "探针 420/420，棘轮 eslint 73 / knip 18 / jscpd 1"
+    },
+    {
+      "kind": "test",
+      "ref": ".agents/tasks/glm-context-window-2026-11-05/desktop-check.md 核对 A",
+      "exit": 0,
+      "note": "L4：人的桌面版缺省 512000 加载无新错误"
+    },
+    {
+      "kind": "test",
+      "ref": ".agents/tasks/glm-context-window-2026-11-05/check-b.md 核对 B",
+      "exit": 0,
+      "note": "headless 沙盒：合法值原样声明，非法值降级 512000 并写进行健康"
+    }
   ],
   "history": [
     {
@@ -94,6 +124,44 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面核对 glm-context-window-desktop-check（wf_f773f9cedc7b4708）结束，记录 .agents/tasks/glm-context-window-2026-11-05/desktop-check.md。核对 A 通过：人的桌面版（主进程 39012，主检出 dist b923210，代码等于 main HEAD，含 c452b17 与 cf0ed57），人的 profile 不改配置，两个包的启用行都在运行、没有失败的行，控制台没有本项目包的错误或异常，没有新的崩溃日志；/glm-status 的行健康写「上下文窗口 512000」（c452b17 新加的字句），输入框的上下文弹层显示 512K。核对 B 没做成：隔离实例（9339，独立 user-data-dir 与 DSH_HOME）两次自己退出，第二次是装好本项目包、contextWindow 设为 200000 后约 20 秒，本步没发关闭、没停进程，原因未查明。桌面锁 23:59:19 释放，人的桌面版留在 9333 运行，人的 profile 未改。编排方派 glm-context-window-check-b（wf_4f1c79fb27ec66d5）：先只读查隔离实例退出的原因，再用 DEVELOPMENT.md §3 的 headless 沙盒（两半都是宿主行行为）或修好的隔离实例做核对 B，记录 check-b.md。核对 B 之前本节点不关。"
+    },
+    {
+      "at": "2026-11-05T18:05:02.329Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "桌面核对两半都过了：核对 A 在人的桌面版（39012，主检出 dist b923210，代码等于 main HEAD）上不改 profile，两个包的启用行都在运行、没有本项目包的错误，glm-llm 行健康写上下文窗口 512000，输入框显示 512K（.agents/tasks/glm-context-window-2026-11-05/desktop-check.md）；核对 B 在 DEVELOPMENT.md §3 的 headless 沙盒里做，contextWindow 256000 原样声明、行生效，50000 告警并降级到 512000、行部分生效并写明原因（check-b.md，wf_4f1c79fb27ec66d5）。隔离实例两次自己退出的原因推断为欢迎窗口被关，未证实，不影响本节点。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "a2019c3",
+          "note": "GLM 通道的上下文窗口可配置，缺省 512000，范围 128000 到 1000000"
+        },
+        {
+          "kind": "commit",
+          "ref": "c452b17",
+          "note": "合入 main 的合并提交，origin 与 github 一致"
+        },
+        {
+          "kind": "test",
+          "ref": "build、preflight、npm test、npm run -s probe on c452b17",
+          "exit": 0,
+          "note": "探针 420/420，棘轮 eslint 73 / knip 18 / jscpd 1"
+        },
+        {
+          "kind": "test",
+          "ref": ".agents/tasks/glm-context-window-2026-11-05/desktop-check.md 核对 A",
+          "exit": 0,
+          "note": "L4：人的桌面版缺省 512000 加载无新错误"
+        },
+        {
+          "kind": "test",
+          "ref": ".agents/tasks/glm-context-window-2026-11-05/check-b.md 核对 B",
+          "exit": 0,
+          "note": "headless 沙盒：合法值原样声明，非法值降级 512000 并写进行健康"
+        }
+      ]
     }
   ]
 }

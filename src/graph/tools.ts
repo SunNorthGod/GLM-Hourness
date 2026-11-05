@@ -11,9 +11,10 @@
  * graph directory is resolved per call: an absolute dir from the row
  * config as is, a relative one (default docs/graph) under the calling
  * agent's session working directory. A missing directory is reported,
- * never created. A third reopen of a node files the third-rework question
- * for the human and returns a notice with the write (reopen.ts, design
- * §4.6), reported to the loop board through `report`. A propose or edit of a
+ * never created. A second reopen of a node returns the sentence to find the
+ * cause first; a third files the third-rework question for the human and
+ * returns a notice with the write (reopen.ts, design §4.6), reported to the
+ * loop board through `report`. A propose or edit of a
  * tool node under env returns the timeout of each readable check line for
  * the plan the human reads, and hands every estimate it wrote to `estimates`
  * (src/env/timeout.ts, m4 design §6.3.1 item 3).
@@ -28,7 +29,7 @@ import { ASK_FORMS } from './proposal.ts'
 import { failure, type Failure } from './mutation.ts'
 import { PLAIN_WRITING_GUIDE } from './plain.ts'
 import { listOpenItems, projectNode } from './projection.ts'
-import { REOPEN_LIMIT, reopenNotice, reopenNoticeFailed, reopenNoticeForSubagent, reopenQuestion, reopensAfter, thirdReworkState } from './reopen.ts'
+import { REOPEN_LIMIT, SECOND_FIX_NOTICE, reopenNotice, reopenNoticeFailed, reopenNoticeForSubagent, reopenQuestion, reopensAfter, thirdReworkState } from './reopen.ts'
 import { NODE_TYPES, SLOPES, STAGES, TASK_KINDS, TIERS, WEIGHTS, type Evidence, type GraphNode } from './schema.ts'
 import { isUserNode } from './user-graph.ts'
 import { liveOf } from './user-live.ts'
@@ -272,7 +273,7 @@ const WRITE_OUTPUT: JsonSchema = {
     node: { type: 'object', description: 'The node after the write, without its history.' },
     changed: { type: 'array', items: { type: 'string' } },
     warnings: { type: 'array', items: { type: 'string' }, description: 'Present when what the human reads breaks a writing rule, or when the body or acceptance changed and title and why did not: the write went through; rewrite what is named (graph_edit).' },
-    notice: { type: 'string', description: 'Present on a reopen of a node that is heading for its third fix: what the caller does with the question filed for the human.' },
+    notice: { type: 'string', description: 'Present on a reopen that starts the second fix of a node (find the cause first) or heads for its third fix (what the caller does with the question filed for the human).' },
     timeouts: {
       type: 'array',
       description: 'Present when the node is a tool under env: the time limit of each readable check line, the sentence the human reads next to that line.',
@@ -290,10 +291,13 @@ const WRITE_OUTPUT: JsonSchema = {
 /** What graph_propose and graph_edit tell the caller to do with the timeouts (m4 design §6.3.1 item 3). */
 const TIMEOUTS_NOTE = ' A tool node under env comes back with timeouts: put each text verbatim next to its check line in the plan you show the human.'
 
+/** How graph_propose asks for a norm's body (habits-prompts, decision d-habits-into-framework; CHARTER.md §6: prompts state intent, gates hold the measurable checks). */
+const NORM_INTENT_NOTE = ' A norm\'s body states the intent and the basis for judging, not a list of what counts and what does not; a check that can be measured becomes a check line of a tool node or a line of norm-merge-gate.'
+
 const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, readonly parameters: JsonSchema }> = [
   {
     op: 'propose',
-    description: `Add a node. Planned work starts approved: a task under an approved or in-progress feature or task; a risk, question or retro under an open node. Else (new branch, decision, norm, tool, goal, supersedes edge) it waits for the human unless relayed. A question for the human is a proposal: ask (the question), form (recommend, choose, want or look), proposal and, by form, reason, cost, ways; the main agent puts one with propose_to_human. A question you decide yourself (decider agent) is a table of options, the recommended option last.${TIMEOUTS_NOTE}`,
+    description: `Add a node. Planned work starts approved: a task under an approved or in-progress feature or task; a risk, question or retro under an open node. Else (new branch, decision, norm, tool, goal, supersedes edge) it waits for the human unless relayed. A question for the human is a proposal: ask (the question), form (recommend, choose, want or look), proposal and, by form, reason, cost, ways; the main agent puts one with propose_to_human. A question you decide yourself (decider agent) is a table of options, the recommended option last.${NORM_INTENT_NOTE}${TIMEOUTS_NOTE}`,
     parameters: object({ node: NODE, reason: REASON, relay: RELAY }, ['node', 'reason']),
   },
   {
@@ -407,7 +411,9 @@ function recordRun(loops: LoopsService | undefined, run: ListedRun, sessionId: s
 
 /**
  * After a successful done→doing reopen by the tool (m4 design §4.6): count
- * the reopens since the last closed question of this kind; at the third,
+ * the reopens since the last closed question of this kind; at the second,
+ * return the sentence that sends the caller to find the cause first
+ * (habits-prompts: a prompt, nobody asked, nothing blocked); at the third,
  * file the proposal-style question under the node as the harness and return
  * the notice for the caller. `dir` is the graph directory the call already
  * resolved against the caller's session. A relayed reopen is the human's
@@ -415,7 +421,7 @@ function recordRun(loops: LoopsService | undefined, run: ListedRun, sessionId: s
  * one; a failed filing leaves the reopen standing and is tried again on the
  * next reopen. Never throws: the notice says what went wrong instead.
  */
-async function thirdReworkAfter(dir: string, args: unknown, exec: unknown, result: Extract<ApplyResult, { ok: true }>, report: ThirdReworkReport): Promise<string | undefined> {
+async function reworkNoticeAfter(dir: string, args: unknown, exec: unknown, result: Extract<ApplyResult, { ok: true }>, report: ThirdReworkReport): Promise<string | undefined> {
   if (!isRecord(args) || args.to !== 'doing' || args.relay !== undefined) return undefined
   try {
     const graph = await loadGraph(dir)
@@ -425,6 +431,7 @@ async function thirdReworkAfter(dir: string, args: unknown, exec: unknown, resul
     const state = thirdReworkState(graph, node.id)
     if (state.open !== undefined) return undefined
     const reopens = reopensAfter(node, state.closedAt)
+    if (reopens.length === REOPEN_LIMIT - 1) return SECOND_FIX_NOTICE
     if (reopens.length < REOPEN_LIMIT) return undefined
     const question = reopenQuestion(node, reopens)
     const engine = openEngine(dir)
@@ -623,7 +630,7 @@ function writeTool(dir: string, op: LlmOp, description: string, parameters: Json
       const result = await engine.apply('llm', isRecord(args) ? { ...args, op } : args)
       if (!result.ok) refuse(result)
       const { history, ...node } = result.node
-      const notice = op === 'status' ? await thirdReworkAfter(resolved, args, exec, result, report) : undefined
+      const notice = op === 'status' ? await reworkNoticeAfter(resolved, args, exec, result, report) : undefined
       return { ok: true, id: result.id, rev: result.rev, revision: result.revision, node, changed: result.changed, ...(result.warnings === undefined ? {} : { warnings: result.warnings }), ...(notice === undefined ? {} : { notice }), ...envTimeoutsAfter(op, result.node, exec, estimates) }
     },
   }

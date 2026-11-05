@@ -535,6 +535,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-06 00:45 巡检：13 条线。上游限流把 bootstrap（wf_f008ac0c87ec6943）、m4-reanchor-violations（wf_b007fba3eafafeec）、status-hub-3（wf_992ec82f32e990c0）、m5-rule-expected-effect（wf_24a77ef57c68c12c）四条暂停，编排方已全部恢复。按人的「做完一点就落盘一点」，各线阶段提交照常推到自己的分支：bootstrap 56f578a（B5 第 2 部分 L2）、m4-checks-loop-details e667fe8、m3-metrics-wiring cb4c442。ablation 第 3 轮 code 步在跑（加的 3 轮里的第 1 轮）。"
+    },
+    {
+      "at": "2026-11-05T17:13:46.855Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 01:11 巡检：13 条运行全部因上游限流（Model service error 5xx）暂停在当前步，编排方逐条恢复（M7、bootstrap、ablation、status-hub-3、m3-metrics-wiring、m5-habit-rule、m5-rule-expected-effect、m4-reanchor-violations、m4-checks-loop-details、habits-prompts 合入步、glm-context-window-check-b、desktop-close-docs）；恢复后 habits-prompts 与 M7 已确认重新在跑。暂停期间各分支已推的阶段提交都在 origin，没有丢失。compact-recall-redact 仍等 habits-prompts 合入后重派合入步。"
+    },
+    {
+      "at": "2026-11-05T18:04:29.492Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 约 02:00 人重启了 Kiro，在跑的运行都被暂停（Interrupted by agent restart）。编排方逐条恢复：habits-prompts、M7、m4-checks-loop-details、glm-context-window-check-b、desktop-close-docs 及其余在跑的线，各步保留自己的会话从断点接着做；分支上已推的提交不受影响。"
     }
   ]
 }
