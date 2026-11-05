@@ -145,6 +145,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B5 已推：origin/m4-checks = f1b518f，mainMerged 为 true（4516ec6），评审归档为 review-B5.*。剩 B6。"
+    },
+    {
+      "at": "2026-11-05T01:34:49.168Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B6（env 行去掉 disabled 交付）提交 63388d5（未推送，待本批评审）。四道门禁退出码为 0：npm test 2818 个、0 失败，棘轮 eslint 76 / knip 19 / jscpd 1，探针 366/366；mainMerged 为 true。这是 m4-checks 的最后一批；合入 main 前要合最新 main（会带上 metrics 与日期相关测试的修复），因为改了行组合，合入时要按 CDP 规矩重启桌面版。"
     }
   ]
 }
