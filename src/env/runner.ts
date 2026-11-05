@@ -41,7 +41,7 @@ import type { GraphNode } from '../graph/schema.ts'
 import { graphService } from '../graph/service.ts'
 import { commandText, runCommand, type CommandRequest, type ScriptResult } from '../loops/script.ts'
 import type { ListedRun } from '../loops/service.ts'
-import { loopsService } from '../loops/service.ts'
+import { DETAILS_MAX_LINES, DETAILS_MAX_WIDTH, loopsService } from '../loops/service.ts'
 import { matchesFilter } from '../loops/trigger.ts'
 import type { DerivedMessage, ServiceLookup, UserNotice } from '../shared/dsh-min.ts'
 import { createUserNotice } from '../shared/dsh-min.ts'
@@ -75,10 +75,8 @@ const KILL_SETTLE_MS = 1_500
 const LOG_KEEP_MS = 7 * 24 * 3600 * 1000
 /** Sessions the checker remembers; the oldest leaves first. */
 const SESSION_LIMIT = 64
-/** At most this many checks and lines on the loop board's page (design §6.8). */
+/** At most this many checks on the loop board's page (design §6.8); the lines and their width are the board's limits (src/loops/service.ts). */
 const DETAIL_CHECKS = 10
-const DETAIL_LINES = 20
-const DETAIL_WIDTH = 160
 
 const fold = (path: string): string => process.platform === 'win32' ? path.toLowerCase() : path
 const slashes = (path: string): string => path.split(sep).join('/')
@@ -628,15 +626,15 @@ export function createChecker(options: CheckerOptions): Checker {
       const limits = snapshot.home === undefined ? undefined : readLimitsSync(snapshot.home)
       for (const check of snapshot.checks.slice(0, DETAIL_CHECKS)) {
         const title = check.title === '' ? check.key : check.title
-        lines.push(codePoints(`${title}：改了 ${check.paths.join('、')} 之后跑 · ${codePoints(commandText(check.argv), 40)}`, DETAIL_WIDTH))
+        lines.push(codePoints(`${title}：改了 ${check.paths.join('、')} 之后跑 · ${codePoints(commandText(check.argv), 40)}`, DETAILS_MAX_WIDTH))
         const value = snapshot.values.get(check.key)
         const setting = limits === undefined ? undefined : limitSetting(limits, check.key)
         const raised = setting === undefined ? '' : ` · 上限已调高到 ${setting.capS} 秒：${setting.reason}`
         lines.push(codePoints(value === undefined
           ? `超时 ${secondsText(checkTimeout({ estimateS: check.estimateS, recentMs: [], capMs: capMsOf(setting) }).limitMs)} 秒 · ${check.estimateS === undefined ? '没有估计，用上限' : `写检查的 agent 估 ${check.estimateS} 秒`} · 还没跑过${raised}`
-          : `超时 ${secondsText(value.limitMs)} 秒 · ${valueSourceText(value)}${value.previousMs === undefined ? '' : ` · 原 ${secondsText(value.previousMs)} 秒`}${raised}`, DETAIL_WIDTH))
+          : `超时 ${secondsText(value.limitMs)} 秒 · ${valueSourceText(value)}${value.previousMs === undefined ? '' : ` · 原 ${secondsText(value.previousMs)} 秒`}${raised}`, DETAILS_MAX_WIDTH))
       }
-      return lines.slice(0, DETAIL_LINES)
+      return lines.slice(0, DETAILS_MAX_LINES)
     },
   }
 }
