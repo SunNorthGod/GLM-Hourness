@@ -3,7 +3,7 @@
   "type": "task",
   "title": "第一批经验",
   "why": "先把已知的坑和解法存进去，子 agent 一开工就用得上",
-  "status": "doing",
+  "status": "done",
   "parent": "lessons",
   "kind": "implement",
   "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 lessons-4。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S11。验证层：L2（固定数据）；导入之后在真实存储上查一次。",
@@ -15,6 +15,24 @@
     {
       "type": "depends",
       "to": "lessons-1"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "a4b2f8e",
+      "note": "docs(lessons): the first 21 lessons are in this project's journal (lessons-4)；导入与查询记录在提交说明与 .agents/tasks/lessons-4/check.md 第 8 节"
+    },
+    {
+      "kind": "commit",
+      "ref": "b1485c8",
+      "note": "合入 main 的合并提交，两个远端一致"
+    },
+    {
+      "kind": "test",
+      "ref": "tests/lessons-seed.spec.ts",
+      "exit": 0,
+      "note": "21 条操作文件过检查；样例两条导入独立项目、第二次导入不新增；合并树 npm test 退出码 0"
     }
   ],
   "history": [
@@ -64,6 +82,32 @@
       "actor": "llm",
       "op": "comment",
       "text": "lessons-4 评审 APPROVED，无阻断（.agents/tasks/lessons-4/review.md、review.json）：两条验收按实读的经验存储、导入与查询日志、测试日志核过。下一步：本运行的合入步骤（合最新 origin/main、门禁、快进 main、推两个远端）。"
+    },
+    {
+      "at": "2026-11-05T08:11:40.395Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "workflow lessons-4-first-batch（wf_cc148081d07c2798）完成：第一批 21 条经验导入本项目的存储 .llm/lessons.jsonl（第一次新增 21，第二次新增 0、跳过 21），真实存储上的查询有记录；评审 APPROVED，无阻断；合入 main b1485c8，门禁全绿，origin 与 github 经 ls-remote 一致；只改数据与文档，没有重启桌面版。2026-11-04 那次导入进的是桌面批次的临时项目，文档已改正。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "a4b2f8e",
+          "note": "docs(lessons): the first 21 lessons are in this project's journal (lessons-4)；导入与查询记录在提交说明与 .agents/tasks/lessons-4/check.md 第 8 节"
+        },
+        {
+          "kind": "commit",
+          "ref": "b1485c8",
+          "note": "合入 main 的合并提交，两个远端一致"
+        },
+        {
+          "kind": "test",
+          "ref": "tests/lessons-seed.spec.ts",
+          "exit": 0,
+          "note": "21 条操作文件过检查；样例两条导入独立项目、第二次导入不新增；合并树 npm test 退出码 0"
+        }
+      ]
     }
   ]
 }

@@ -475,6 +475,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-05：「那就先停掉心跳吧，每次喊你起来的时候你顺手检查一遍就行」。编排方停掉 heartbeat-d（wf_db9c27fb76263cc3），不再留心跳。之后每次被通知或被人叫起时，顺手检查所有在跑的运行，把被限流暂停的恢复。在跑的九条：M7（wf_36d1d690c7e1de90）、rules-board-page 合入（wf_a34e9ff57206a017）、bootstrap（wf_f008ac0c87ec6943）、m6-metrics-events（wf_2bf0ad146e8238b2）、lessons-4-first-batch（wf_cc148081d07c2798）、ablation-calibration（wf_5f5345b05e5c4e89）、l4-batch-2026-11-05（wf_be2ff3a8b7d83155）、investigate-reading-digest-1105（wf_f8a7db34778f087b）、investigate-graph-reconcile-1105（wf_fe96517713b134d8）。代价：没有通知进来时，被限流暂停的运行要等到下一次有人叫醒编排方才恢复。"
+    },
+    {
+      "at": "2026-11-05T08:11:40.645Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05 问之前的偏好（修根因、不留冗余之类）有没有融进去，后又澄清：「具体的全文应该在zcode的全局配置里。我的意思也只是想把这些习惯融进框架，不是说kiro配置或者项目配置的事」。编排方此前只对照了本仓库的宪章与 AGENTS.md，理解偏了：人要的是 Hourness 编排框架本身（主 Agent 提示词、派活任务书、审查、规则板与循环板、经验与记忆）带上这些习惯，让任何项目里的模型都照做。派 investigate-habits-into-framework（wf_502bec1b9882532c，只读）：先从人的 ZCode 全局配置读出习惯全文（不摘凭证），逐条对照框架各层，分成已融进框架、只在本仓库文档、框架完全没有三类，给融入方案（规范阶梯哪一级、改哪个模块、怎样验证）与要人定的问题；与 d-failure-plans、d-code-rules-enforce、d-rules-human-only、d-freeze-until-dogfood 冲突处单列。报告 .agents/tasks/habits-framework/report.md。编排方此前提的「审查要不要挡只修了症状的提交」并入这份报告，随报告交人定。"
     }
   ]
 }
