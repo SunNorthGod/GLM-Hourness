@@ -69,6 +69,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "只读调查 desktop-close-2026-11-05（wf_6074e6f111fdb70b）完成，报告 .agents/tasks/desktop-close-2026-11-05/report.md。结论推翻编排方 21:1x 那条批注里「这次是请求没被处理，不是慢」：两次是同一个原因。Electron 44.7.0 把 Browser.close 当 app.quit()，不回应；DSH 桌面 0.2.1-rc.3 的 before-quit 先问宿主，宿主把空闲会话收件箱里没取走的消息也算作运行中的任务，壳弹没有父窗口的原生确认框「退出 DeepSeek Harness？」等人点，CDP 看不到也点不到。两次排着的都是本项目的包注入的不叫醒消息（/wish off 的提示、循环板提醒）；宿主关停记号 15:20:52、21:22:24 就是有人点了「退出」的时刻（推断：确认框本身没看到，依据是会话日志的关停记号与壳的标准错误）。所以「每 30 秒看一次、至多等 15 分钟」作废，改成：关之前本任务的临时会话不留没取走的注入；发一次 Browser.close，不等回应、不重发；每 5 秒只读查主进程、userData 的 lockfile 与主进程的顶层窗口，见到标题 DeepSeek Harness、类名 #32770 的确认框就停下请人点，不代点、不杀进程；没有确认框而 2 分钟仍未退出也停下报告。文档派 desktop-close-docs（wf_674d79b3e6a53992）写进 DEVELOPMENT.md §1.1、§7 与 FACTS.md §3，连同合入后在主检出重建 dist 一条；原定由 m4-checks-loop-details 同批写的 B3 文档改由这条线做。包里的根因另建 inject-via-prestep。上游一侧（rc.3 把排队的输入当作正在运行的任务）可作为反馈交 DSH，不挡本项目。"
+    },
+    {
+      "at": "2026-11-05T18:05:02.631Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "glm-context-window 的核对 B 改在 headless 沙盒里做并通过（wf_4f1c79fb27ec66d5）：只验宿主行行为的核对用沙盒即可，不必开隔离的桌面实例。隔离实例两次在启动后几分钟内自己退出，推断是欢迎窗口弹到人的屏幕上被关掉，未证实。人的桌面版 39012 于 01:15:25 由 habits-prompts 合入步在桌面锁下关闭，用于重启加载新构建。"
     }
   ]
 }
