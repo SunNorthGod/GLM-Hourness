@@ -127,6 +127,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B4 已推：origin/m4-checks = 010d85c，mainMerged 为 true（4516ec6）。剩 B5、B6（状态板块的超时条目等 B5）。"
+    },
+    {
+      "at": "2026-11-05T00:23:09.699Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B5 提交 f1b518f（未推送，待本批评审）：检查被压在上限时，根 agent 的环境提醒里多一行；新工具 check_limit 提高或重置上限（存 limits.jsonl）。四道门禁退出码为 0：npm test 2816 通过 / 0 失败 / 1 跳过，探针 366/366，棘轮 eslint 76 / knip 19 / jscpd 1；mainMerged 仍为 true（该分支的 main 合并点早于 metrics 合入，所以没撞上日期相关的测试失败，下次合 main 时会撞上，届时 main 应已修好）。"
     }
   ]
 }
