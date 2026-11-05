@@ -602,6 +602,12 @@
           "to": "人说一句愿望，主 Agent 访谈、出方案、交人放行，这一圈能走通"
         }
       }
+    },
+    {
+      "at": "2026-11-05T10:05:02.084Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "对账 A 半（.agents/tasks/graph-reconcile-2026-11-05/report-a.md）：子任务 m3-1 到 m3-5 已带证据关闭；唯一验收与 m3-2 第 3 条同证据。m3 还挡在子决定 d-interview-cards 上：它定的「harness 出卡」已被 d-chat-not-cards 与 d-ask-three-gates 取代，只剩「主 Agent 不带 ask_user_question」一半还在用。处理办法是提一个带 supersedes 连线的新决定写现在的做法，由人批。另记：M3 设计 §9.3 批次 L4 的 DeepSeek 一半没跑过，验收不要求，非 GLM 路由由 L3 non-glm-design-* 覆盖。"
     }
   ]
 }

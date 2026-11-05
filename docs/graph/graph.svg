@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1579" height="17781" viewBox="0 0 1579 17781" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="5de525856cdb">
-<title>项目图 · 修订 5de525856cdb · 251 个节点</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1579" height="17781" viewBox="0 0 1579 17781" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="9c15436ce47c">
+<title>项目图 · 修订 9c15436ce47c · 251 个节点</title>
 <defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6b7280"/></marker><marker id="graph-arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7c3aed"/></marker></defs>
 <rect width="1579" height="17781" fill="#ffffff"/>
 <g data-legend="true" transform="translate(20 20)">
 <rect width="596" height="134" rx="8" fill="#f9fafb" stroke="#e5e7eb"/>
-<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 5de525856cdb · 251 个节点</text>
+<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 9c15436ce47c · 251 个节点</text>
 <text x="10" y="48.2" font-size="12" fill="#6b7280">状态</text>
 <rect x="54" y="37" width="28" height="14" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="88" y="48.2" font-size="12" fill="#111827">完成</text>
@@ -975,24 +975,24 @@ m3 · 特性 · 进行中</title>
 <text x="716.5" y="5304.6" text-anchor="middle" font-size="13" fill="#111827">最小一圈</text>
 <text x="716.5" y="5320.4" text-anchor="middle" font-size="11" fill="#6b7280">m3</text>
 </g>
-<g data-id="m3-2" data-type="task" data-status="doing" data-tone="doing">
+<g data-id="m3-2" data-type="task" data-status="done" data-tone="done">
 <title>许愿访谈八步与需求卡
-m3-2 · 任务 · 进行中</title>
-<rect x="925" y="4685" width="285" height="49" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+m3-2 · 任务 · 完成</title>
+<rect x="925" y="4685" width="285" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1067.5" y="4706.6" text-anchor="middle" font-size="13" fill="#111827">许愿访谈八步与需求卡</text>
 <text x="1067.5" y="4722.4" text-anchor="middle" font-size="11" fill="#6b7280">m3-2</text>
 </g>
-<g data-id="m3-3" data-type="task" data-status="doing" data-tone="doing">
+<g data-id="m3-3" data-type="task" data-status="done" data-tone="done">
 <title>方案五栏与放行前的检查
-m3-3 · 任务 · 进行中</title>
-<rect x="925" y="4744" width="285" height="49" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+m3-3 · 任务 · 完成</title>
+<rect x="925" y="4744" width="285" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1067.5" y="4765.6" text-anchor="middle" font-size="13" fill="#111827">方案五栏与放行前的检查</text>
 <text x="1067.5" y="4781.4" text-anchor="middle" font-size="11" fill="#6b7280">m3-3</text>
 </g>
-<g data-id="m3-4" data-type="task" data-status="doing" data-tone="doing">
+<g data-id="m3-4" data-type="task" data-status="done" data-tone="done">
 <title>人在对话里对提议怎么说
-m3-4 · 任务 · 进行中</title>
-<rect x="925" y="4803" width="285" height="49" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+m3-4 · 任务 · 完成</title>
+<rect x="925" y="4803" width="285" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1067.5" y="4824.6" text-anchor="middle" font-size="13" fill="#111827">人在对话里对提议怎么说</text>
 <text x="1067.5" y="4840.4" text-anchor="middle" font-size="11" fill="#6b7280">m3-4</text>
 </g>
@@ -1021,10 +1021,10 @@ question-20 · 待决 · 完成
 <text x="1067.5" y="5037.6" text-anchor="middle" font-size="13" fill="#111827">目的卡片工具吗</text>
 <text x="1067.5" y="5053.4" text-anchor="middle" font-size="11" fill="#6b7280">question-20 · 选 B</text>
 </g>
-<g data-id="m3-1" data-type="task" data-status="doing" data-tone="doing">
+<g data-id="m3-1" data-type="task" data-status="done" data-tone="done">
 <title>主 Agent 的身份与不写代码
-m3-1 · 任务 · 进行中</title>
-<rect x="925" y="5075" width="285" height="67" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+m3-1 · 任务 · 完成</title>
+<rect x="925" y="5075" width="285" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1067.5" y="5096.6" text-anchor="middle" font-size="13" fill="#111827">主 Agent 的身份与不写代</text>
 <text x="1067.5" y="5114.6" text-anchor="middle" font-size="13" fill="#111827">码</text>
 <text x="1067.5" y="5130.4" text-anchor="middle" font-size="11" fill="#6b7280">m3-1</text>
@@ -1109,10 +1109,10 @@ question-39 · 待决 · 完成
 <text x="1067.5" y="5825.6" text-anchor="middle" font-size="13" fill="#111827">按访谈出卡的决定改写吗</text>
 <text x="1067.5" y="5841.4" text-anchor="middle" font-size="11" fill="#6b7280">question-39 · 选 B</text>
 </g>
-<g data-id="m3-5" data-type="task" data-status="doing" data-tone="doing">
+<g data-id="m3-5" data-type="task" data-status="done" data-tone="done">
 <title>要人定的事
-m3-5 · 任务 · 进行中</title>
-<rect x="925" y="5863" width="285" height="49" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+m3-5 · 任务 · 完成</title>
+<rect x="925" y="5863" width="285" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1067.5" y="5884.6" text-anchor="middle" font-size="13" fill="#111827">要人定的事</text>
 <text x="1067.5" y="5900.4" text-anchor="middle" font-size="11" fill="#6b7280">m3-5</text>
 </g>
@@ -1130,10 +1130,10 @@ m4-gate · 任务 · 已批准</title>
 <text x="1067.5" y="5955.6" text-anchor="middle" font-size="13" fill="#111827">拦截与撤下</text>
 <text x="1067.5" y="5971.4" text-anchor="middle" font-size="11" fill="#6b7280">m4-gate</text>
 </g>
-<g data-id="m4-rules" data-type="task" data-status="doing" data-tone="doing">
+<g data-id="m4-rules" data-type="task" data-status="done" data-tone="done">
 <title>三条规划规矩
-m4-rules · 任务 · 进行中</title>
-<rect x="925" y="5993" width="285" height="49" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+m4-rules · 任务 · 完成</title>
+<rect x="925" y="5993" width="285" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1067.5" y="6014.6" text-anchor="middle" font-size="13" fill="#111827">三条规划规矩</text>
 <text x="1067.5" y="6030.4" text-anchor="middle" font-size="11" fill="#6b7280">m4-rules</text>
 </g>
@@ -1217,10 +1217,10 @@ m5-3 · 任务 · 完成</title>
 <text x="1067.5" y="6682.6" text-anchor="middle" font-size="13" fill="#111827">的一段</text>
 <text x="1067.5" y="6698.4" text-anchor="middle" font-size="11" fill="#6b7280">m5-3</text>
 </g>
-<g data-id="m5-1" data-type="task" data-status="doing" data-tone="doing">
+<g data-id="m5-1" data-type="task" data-status="done" data-tone="done">
 <title>记忆的存取
-m5-1 · 任务 · 进行中</title>
-<rect x="925" y="6720" width="285" height="49" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+m5-1 · 任务 · 完成</title>
+<rect x="925" y="6720" width="285" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1067.5" y="6741.6" text-anchor="middle" font-size="13" fill="#111827">记忆的存取</text>
 <text x="1067.5" y="6757.4" text-anchor="middle" font-size="11" fill="#6b7280">m5-1</text>
 </g>
