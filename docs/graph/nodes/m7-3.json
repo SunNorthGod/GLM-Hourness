@@ -86,6 +86,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "E8 FEAT-001（与循环板的接缝）本地提交 6bca977（m7 分支，wip，未推送）：build、preflight 与棘轮（73/18/1）退出码为 0，FEAT-001 的各 spec 全过；npm test 全量与探针留到 FEAT 收尾的全量门禁。下一步：FEAT-002。"
+    },
+    {
+      "at": "2026-11-05T00:44:32.526Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E8 FEAT-002（自动推进 drive）本地提交 bbc400c（m7 分支，wip，未推送）：build 0、preflight 0、棘轮 eslint 73 / knip 18 / jscpd 1；各 spec 全过（execute-drive 14/14、execute-peak 6/6、tiers 9/9、modules 27/27、row 9/9、loop-link 13/13）；发现记在 FEAT-002.json。全量 npm test 与探针留到 FEAT 收尾。下一步：FEAT-003。"
     }
   ]
 }

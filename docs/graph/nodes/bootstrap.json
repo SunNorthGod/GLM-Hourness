@@ -292,6 +292,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "B2（bootstrap-scan）提交 d63416b，已推 origin/bootstrap；之前合入 origin/main 113b93f（合并提交 b3b9ae6），也已推。两个提交四道门禁为 0：B2 上 npm test 3001 通过 / 0 失败 / 1 跳过，探针 388/388；棘轮 73/18/1。剩 B3–B6；B7–B10 照计划顺延。"
+    },
+    {
+      "at": "2026-11-05T00:05:16.184Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 评审 CHANGES_REQUESTED，1 条 MEDIUM 阻塞 F1：git 仓库里有暂存的代码但还没有提交时被判成已有项目；按扫描规则第 1 条与设计 §3.4 应判为新项目并带说明（.worktrees/bootstrap/.llm/wf/review.json）。门禁与探针证据齐全。下一轮修 F1。"
+    },
+    {
+      "at": "2026-11-05T00:52:04.083Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 评审 F1（有暂存代码但没有提交的仓库判为新项目）已修并推 62096dd。之前合入 origin/main 9980946（b6d78a4），并在本分支上自行修了 main 上依赖日期的 metrics-calc 测试（f47aa95）。62096dd 上门禁：build 0、preflight 0、npm test 0（3021 通过 / 0 失败 / 1 跳过）、探针 388/388、棘轮 73/18/1。B3–B6 待做。编排方已告诉它：main 上的正式修复（fix-date-dependent-metrics-test）合入后，下次合 main 时该测试的冲突一律取 main 的版本，分支上不留重复的测试改动。"
     }
   ]
 }
