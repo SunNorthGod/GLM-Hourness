@@ -2,6 +2,7 @@
   "id": "onboarding",
   "type": "feature",
   "title": "新手引导：装上插件之后人怎样上手",
+  "why": "装上插件的人不用读文档，也知道先做什么、去哪看进度",
   "status": "doing",
   "parent": "m8",
   "body": "两个插件（dsh-glm-zcode、dsh-hourness）装上之后的第一次体验：GLM 通道怎样登录、项目图面板是什么、怎样用 /wish 让主 Agent 接手一个项目（m3-1 验收第 4 条要求入口醒目）、规则板块怎样开关、哪里看进度。按 d-ui-look-not-operate 用人话、少操作。先做设计并给出界面草图，待人定的事项提给人；实现在 split 合入之后。",
@@ -107,6 +108,25 @@
       "actor": "llm",
       "op": "comment",
       "text": "新手引导实现落地（panel 线 P6/P7，2026-11-04）：Guide 页六块（4/5 块随板块登记出现、peakApplies 门）、firstVisit 状态与 FirstVisitLine 进愿望卡、NoGraphCard 每工作区一次（order 41）、没有图时的一节措辞、页脚上手说明；GLM 上手三步对话框（开着的冻结、设置页可重开、未登录中文报错）。L4 桌面走查待做，随后合 main。"
+    },
+    {
+      "at": "2026-11-05T05:26:39.348Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "装上插件的人不用读文档，也知道先做什么、去哪看进度"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T05:38:29.202Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 14 条的过渡做法由人定（2026-11-05，原话「就按你上面说的来，心跳一个就行了」，编排方建议的选项 A）：接管的 /wish 接缝（bootstrap B8）做好之前，没有项目图的说明写过渡路三步（建空目录 docs/graph/、发不带话的 /wish、再发 /hourness-init），卡片的「建一张项目图」按钮只把内容填进输入框。B8 做好之后照本节点验收第 14 条原文指向 /wish。验收原文不改。"
     }
   ]
 }

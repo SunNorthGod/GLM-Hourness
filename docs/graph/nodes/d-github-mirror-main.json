@@ -1,7 +1,8 @@
 {
   "id": "d-github-mirror-main",
   "type": "decision",
-  "title": "GitHub 镜像只跟 main：每次推 Gitee 的 main 之后同一个 main 推到 GitHub，工作分支不推",
+  "title": "GitHub 镜像只跟主干，工作分支只在 Gitee",
+  "why": "GitHub 上看到的总是主干的最新样子，不会出现半成品分支",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -20,6 +21,23 @@
       "actor": "llm",
       "op": "comment",
       "text": "已补齐（2026-11-04）：github 的 main 从 4c315a9 快进到 7c25661，与 origin/main 相同。此后每次推 origin/main 后同步。"
+    },
+    {
+      "at": "2026-11-05T05:25:40.338Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "GitHub 镜像只跟 main：每次推 Gitee 的 main 之后同一个 main 推到 GitHub，工作分支不推",
+          "to": "GitHub 镜像只跟主干，工作分支只在 Gitee"
+        },
+        "why": {
+          "from": null,
+          "to": "GitHub 上看到的总是主干的最新样子，不会出现半成品分支"
+        }
+      }
     }
   ]
 }

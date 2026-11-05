@@ -2,6 +2,7 @@
   "id": "d-zcode-3171",
   "type": "decision",
   "title": "ZCode 基线从 3.16.3 换到 3.17.1，用户的工程环境声明照旧",
+  "why": "跟上本机 ZCode 自动更新后的版本，逐字文本以新副本为准",
   "status": "approved",
   "parent": "glm-house",
   "verification": "unverified",
@@ -32,6 +33,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "M3 附录 0.4 §2.7：3.17.1 没有 Output Style 一节（风格正文 n8o 是主回合的上下文条目 output_style_instructions，另有每回合提醒 r8o）。m3-main-persona 验收第 1 条要系统提示词，所以人设一节留在系统提示词、glm:context-management 之前、标题后单换行，开头句用 pBa。不跟 3.17.1 的三处（放法、不加每回合提醒、范围说明一句）在人设一步写进 docs/reference/zcode-verbatim.md，请编排方同意；同意之前那一步不合入 main。"
+    },
+    {
+      "at": "2026-11-05T05:26:08.210Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "跟上本机 ZCode 自动更新后的版本，逐字文本以新副本为准"
+        }
+      }
     }
   ]
 }

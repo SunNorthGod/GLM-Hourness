@@ -1,7 +1,8 @@
 {
   "id": "m3-1",
   "type": "task",
-  "title": "3.1 主 Agent 身份与不写代码",
+  "title": "主 Agent 的身份与不写代码",
+  "why": "主 Agent 只编排不动手，写代码交给子 agent，系统拦它写文件",
   "status": "doing",
   "parent": "m3",
   "kind": "implement",
@@ -127,6 +128,23 @@
             "主 Agent 的工具面等于同一组合下普通会话的工具面去掉写文件的工具（Write、Edit 及其别名、str_replace_editor 的写操作）与 ask_user_question，加上 propose_to_human、record_human_answer；由编排层插件在组装时去掉，不用 preset；shell 写入由 guard 兜底",
             "/wish 的入口放在醒目处：没有开启主 Agent 的会话里，桌面版界面上有显眼的提示说明可以用 /wish 开启主 Agent，人不用记命令；开启后看得到当前是主 Agent 以及怎样 /wish off 退出；位置与样式经设计评审，L4 截图核对"
           ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T05:26:15.901Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "3.1 主 Agent 身份与不写代码",
+          "to": "主 Agent 的身份与不写代码"
+        },
+        "why": {
+          "from": null,
+          "to": "主 Agent 只编排不动手，写代码交给子 agent，系统拦它写文件"
         }
       }
     }

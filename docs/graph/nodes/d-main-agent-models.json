@@ -2,6 +2,7 @@
   "id": "d-main-agent-models",
   "type": "decision",
   "title": "所有子 agent 用什么模型由主 Agent 选，包括审查",
+  "why": "模型由最了解这件活的主 Agent 挑并写理由，系统只记下，周报能对照效果",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "用户定：模型选择全部交给主 Agent",
       "relay": "还有所有的模型选择交给主Agent吧，包括审计什么的",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:46.779Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "模型由最了解这件活的主 Agent 挑并写理由，系统只记下，周报能对照效果"
+        }
+      }
     }
   ]
 }

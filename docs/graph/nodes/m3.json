@@ -1,7 +1,8 @@
 {
   "id": "m3",
   "type": "feature",
-  "title": "M3 设计循环最小闭环",
+  "title": "设计循环：从许愿到放行的最小一圈",
+  "why": "人说一句愿望，主 Agent 访谈、出方案、交人放行，这一圈能走通",
   "status": "doing",
   "parent": "orch",
   "body": "设计循环见 ORCHESTRATION.md §4（ROADMAP.md M3）。",
@@ -584,6 +585,23 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计行桌面冒烟（L4 批次，2026-11-04）：/wish 收下（inbox splice 通知 + 流程条「主 Agent · 还没有目标」+ 档位强提醒，全程无 ask 卡），/wish off 干净退出——m3 欠的桌面过补上。同批两条装机发现：出厂桌面 overlay 用旧键 persona（已改名 reportingDepth，降级告警）；data 行桌面形态缺 projectHome 配置，guard 违规不落盘（测试 overlay 补同形覆盖后转全生效）——装机批次需给用户 profile patch 补 data 行覆盖并更新键名。"
+    },
+    {
+      "at": "2026-11-05T05:26:18.753Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "M3 设计循环最小闭环",
+          "to": "设计循环：从许愿到放行的最小一圈"
+        },
+        "why": {
+          "from": null,
+          "to": "人说一句愿望，主 Agent 访谈、出方案、交人放行，这一圈能走通"
+        }
+      }
     }
   ]
 }

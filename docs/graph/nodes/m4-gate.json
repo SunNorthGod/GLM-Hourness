@@ -2,6 +2,7 @@
   "id": "m4-gate",
   "type": "task",
   "title": "拦截与撤下",
+  "why": "规则判为拒绝就拦下并留记录，人一句话能撤下，也能恢复",
   "status": "approved",
   "parent": "m4",
   "body": "M4 设计 0.6 的一件活。做完条件由人 2026-11-01 定下，见本节点验收（人话版 .agents/tasks/m4/onepage-done.md）。",
@@ -70,6 +71,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "剩余线收尾（e4ef64d，分支 m4-rest，2026-11-04）：R1 第三次修复先问人落地——reopenCount/thirdReworkState（认法=首条历史为 harness propose 且 reason 恰为「第三次修复：<id>」）、graph_status 的 done→doing 无 relay 重开之后数满 3 且无未关闭待决才提（harness 身份 propose、stale 重试一次、任何失败进 notice 不抛）、四行记录落在今日引擎形状（reason/proposal/cost/notTaken，§16 N22 裁定，M3 附录 0.6 已废 background/doubt 字段）、notice 带 showText 适配今日 propose_to_human 的 textCoversRecord 契约、graph.third-rework 上循环板（self 条目 + listedOnly 事件）。偏差三条记录在案（含重开时刻 UTC+8、超 3 取窗口内最近三次）。核实更正：E4 压制计数与 C1 清理在第一批（e85daf0/154ecaa）已交付合入，本线未重复实现。E3 检查器 BLOCKED 不变：只等循环板共用执行器 src/loops/script.ts（run.ts 现把 script/check 一律 refused）。门禁全绿（test 2673、probe 349/349、棘轮 76/19/1）。"
+    },
+    {
+      "at": "2026-11-05T05:26:19.924Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "规则判为拒绝就拦下并留记录，人一句话能撤下，也能恢复"
+        }
+      }
     }
   ]
 }

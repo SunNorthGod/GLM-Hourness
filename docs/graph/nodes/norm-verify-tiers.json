@@ -2,6 +2,7 @@
   "id": "norm-verify-tiers",
   "type": "norm",
   "title": "验证按风险分级：L4 攒批，只评审高风险代码",
+  "why": "按风险决定验到哪一层，真机核对攒成一批做，省人力又不漏",
   "status": "approved",
   "parent": "orch",
   "body": "DEVELOPMENT.md §1.1。L1、L2 每次改动都跑；碰到 DSH 运行时的改动跑 L3，合入 main 前一次。L4 桌面版攒到批次点（里程碑收尾任务，或一批互相依赖的改动都合入后）一起做；验收只能在真机上看的节点合入后保持进行中、批注「待 L4」。凭证与签名的真实网络验证随改动做。独立评审只给凭证、签名与认证、guard 规则、图引擎的权限与审计。worker 规格清楚的任务用高档推理，调研与设计用最高档。背景：用户嫌慢，问工程量是否很大；时间主要花在验证、查证与排队，不在写代码。",
@@ -19,6 +20,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-05 探针锁事故：land-m4-checks 删了自己的 .llm/probe-lock 后续写没有停，把随后建锁的 land-panel-2 的 owner.txt 改写成自己，panel-2 以为锁归别人、准备让出。DEVELOPMENT.md §1.1 改两处：L3 行写明探针按 .llm/probe-lock、.llm/probe-lock-2 两个目录轮流用，规则同桌面锁；L4 行的锁规则加「每次重写 owner.txt 前先核对文件里写的仍是自己，用完先停续写再删锁」。§7 加事故行。编排方已分别告诉两条 lane。"
+    },
+    {
+      "at": "2026-11-05T05:26:38.729Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "按风险决定验到哪一层，真机核对攒成一批做，省人力又不漏"
+        }
+      }
     }
   ]
 }

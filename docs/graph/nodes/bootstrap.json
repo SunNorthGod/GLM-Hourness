@@ -2,6 +2,7 @@
   "id": "bootstrap",
   "type": "feature",
   "title": "接管项目：初始化新项目与迁移已有项目",
+  "why": "一个命令把新项目或已有项目接进来，主 Agent 读过项目后提一批计划，人批量批准就能开工",
   "status": "doing",
   "parent": "orch",
   "body": "一个入口两条路。新项目：建空图、写入规范节点（决策分级、处处留痕、验证分级）与项目规则，然后走许愿访谈（m3-2）长出骨架。已有项目：agent 读 README、路线图、TODO 与 issue、设计记录、git 历史与测试，一次提一批节点（目标、里程碑、任务、做完的带提交证据、决定记为已采纳未验证、待决按分级），全部进「需要你」，人批量批准。确定性的部分（建目录、规范节点、规则、钩子）由 harness 直接做，读项目要 LLM。同时补上强提醒的缺口：开工即标进行中、收工即带证据关、派发与运行控制自动写节点状态（actor harness），不靠 agent 记得。放在解耦后的编排层包里。",
@@ -322,6 +323,31 @@
       "actor": "llm",
       "op": "comment",
       "text": "B3（fb876ce，bootstrap-run-start）评审 APPROVED，无阻塞（.llm/wf/review-B3.md）。门禁按日志：build、preflight 通过，npm test 3021 / 0 失败 / 1 跳过，探针 388/388，棘轮 73/18/1。剩 B4–B6。"
+    },
+    {
+      "at": "2026-11-05T05:25:24.564Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "一个命令把新项目或已有项目接进来，主 Agent 读过项目后提一批计划，人批量批准就能开工"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T05:38:28.719Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05 答 Q2（面板第 14 条在接管的 /wish 接缝 B8 做好之前怎样带人），原话「就按你上面说的来，心跳一个就行了」，即编排方建议的选项 A：过渡路三步（建空目录 docs/graph/、发不带话的 /wish、再在同一会话发 /hourness-init），按钮只把内容填进输入框，不直接执行；未选 B（照字面写「发 /wish」，空项目上走不通）。编排方已转给 bootstrap-impl 的当前步骤。"
+    },
+    {
+      "at": "2026-11-05T05:38:28.954Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B4（bootstrap-row）提交 403f080 已推 origin/bootstrap；之前两次合入 origin/main（7b06896、f7413b7，metrics-calc 与测试链的冲突照 main 取）。最终树四道门禁为 0：npm test 3105 通过 / 0 失败 / 1 跳过，探针 411/411，棘轮 73/18/1。评审 CHANGES_REQUESTED，1 条阻断 F1：没有 git、但已有 .llm/ 的文件夹接管开不了。env 行在会话创建时查过一次 .llm/ 是否被 git 忽略，当时不是仓库，结果被缓存到进程结束；/hourness-init 判成新项目、git init 成功之后再查忽略仍拿到旧缓存而拒绝，要重启宿主才行（设计 §4.1 与判路第 2 条要求这种文件夹能当新项目接管）。现有测试的假宿主没装 env 行，所以没测到。修复轮在跑；剩 B5、B6，B7–B10 顺延。"
     }
   ]
 }

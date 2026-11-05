@@ -2,7 +2,8 @@
   "id": "lessons-4",
   "type": "task",
   "title": "第一批经验",
-  "status": "approved",
+  "why": "先把已知的坑和解法存进去，子 agent 一开工就用得上",
+  "status": "doing",
   "parent": "lessons",
   "kind": "implement",
   "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 lessons-4。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S11。验证层：L2（固定数据）；导入之后在真实存储上查一次。",
@@ -24,6 +25,27 @@
       "reason": "按 M5 设计 0.7（.agents/tasks/m5/design.md）§13 第 2 条建任务节点，怎样算做完取自 §1.2。人 2026-10-31 放行时说「没问题，不过习惯最好问一嘴再记」，0.7 照办。",
       "relay": "没问题，不过习惯最好问一嘴再记",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:26:12.967Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "先把已知的坑和解法存进去，子 agent 一开工就用得上"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T05:49:32.297Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 lessons-4-first-batch（wf_cc148081d07c2798）开工：先逐条核对 main 上已有的，再补剩下的",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

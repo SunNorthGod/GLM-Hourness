@@ -1,7 +1,8 @@
 {
   "id": "d-driver",
   "type": "decision",
-  "title": "驱动循环：DSH goal 加 goal-round-driver，每拍注入投影",
+  "title": "驱动循环：目标开着时，系统每一步把项目现状交给模型",
+  "why": "模型每一步都看得到项目现状，不会跑偏，也不用人一步步催",
   "status": "approved",
   "parent": "orch",
   "verification": "sandbox",
@@ -47,6 +48,23 @@
           "note": "L3 探针 69/69，新增 12 项；glm-goal：插件建的 goal 由驱动器推进，next() 之后追加的 notice 不破坏预约，update_goal 的 complete 在 tools/pre-execute 拦下（运行 2026-10-27T23-38-41-366Z）"
         }
       ]
+    },
+    {
+      "at": "2026-11-05T05:25:37.349Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "驱动循环：DSH goal 加 goal-round-driver，每拍注入投影",
+          "to": "驱动循环：目标开着时，系统每一步把项目现状交给模型"
+        },
+        "why": {
+          "from": null,
+          "to": "模型每一步都看得到项目现状，不会跑偏，也不用人一步步催"
+        }
+      }
     }
   ]
 }

@@ -2,6 +2,7 @@
   "id": "d-auto-drive",
   "type": "decision",
   "title": "设计放行之后由主 Agent 自己推进到底，不用人发 /drive",
+  "why": "人放行设计之后不用再发命令，主 Agent 自己推进到底，只在必须问人时停下",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "用户纠正 M7 设计：设计放行之后应当全部由主 Agent 自己推进",
       "relay": "自动推进不应该是经过设计循环之后，就全部让主Agent自己推进了吗，怎么需要我/drive",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:28.030Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "人放行设计之后不用再发命令，主 Agent 自己推进到底，只在必须问人时停下"
+        }
+      }
     }
   ]
 }

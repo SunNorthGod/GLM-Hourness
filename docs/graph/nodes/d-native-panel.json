@@ -2,6 +2,7 @@
   "id": "d-native-panel",
   "type": "decision",
   "title": "人的界面放进 DSH 原生右侧栏面板，不做网页",
+  "why": "人在 DSH 里就能看项目图，不用另开网页",
   "status": "approved",
   "parent": "orch",
   "verification": "sandbox",
@@ -38,6 +39,19 @@
           "note": "76/76"
         }
       ]
+    },
+    {
+      "at": "2026-11-05T05:25:50.342Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "人在 DSH 里就能看项目图，不用另开网页"
+        }
+      }
     }
   ]
 }

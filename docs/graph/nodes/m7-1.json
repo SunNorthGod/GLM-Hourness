@@ -2,6 +2,7 @@
   "id": "m7-1",
   "type": "task",
   "title": "派活、只写自己那块、先批计划、和干活的子 agent 说话",
+  "why": "主 Agent 派活前先批计划，子 agent 在自己的目录里只改自己那块",
   "status": "approved",
   "parent": "m7",
   "kind": "implement",
@@ -52,6 +53,19 @@
             "不合格的计划（缺每一步怎样算做完、写到范围外、漏了某条要求）当场退回给子 agent，不打扰主 Agent；合格的写进这件活的说明，主 Agent 批了它才能动手，图上留一条批准记录",
             "子 agent 有问题可以问主 Agent，回答回到它手里；主 Agent 可以中途给它发话改方向或叫停；两个子 agent 之间不能直接说话"
           ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T05:26:26.402Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "主 Agent 派活前先批计划，子 agent 在自己的目录里只改自己那块"
         }
       }
     }

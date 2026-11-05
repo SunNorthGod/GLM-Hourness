@@ -1,7 +1,8 @@
 {
   "id": "m4",
   "type": "feature",
-  "title": "M4 guard 补齐与环境",
+  "title": "拦截补齐与环境",
+  "why": "七件活做完，拦截、检查与环境这一整块就完整了",
   "status": "doing",
   "parent": "orch",
   "body": "ORCHESTRATION.md §6.4 的规划规矩；影子模式机制；检查器运行与当轮回传；告警棘轮与压制规则；环境分支与草稿区；清理 .llm/docs/ 下的抓取脚本（ROADMAP.md M4）。",
@@ -389,6 +390,23 @@
       "actor": "llm",
       "op": "comment",
       "text": "首批评审 APPROVED 无阻断（review-first-batch.md，范围 1dd4c80..d012455）：三件 done 任务的验收逐条满足（m4-suppressions 第 1 条的指标事件按设计 §3.11 空操作、随 m6-metrics-events 补）；三个跳过理由在 main 上实读核实为真；m4-gate 地基未动今天的 evaluate 行为；棘轮 249→244、零人设零压制。追加两笔：3cba295（编排方复跑逮到 audit-paths spec 漏改，先败后绿）与评审后全量套件复跑全绿。解阻条件：G1 主体与 m4-rules 第 2 条等 M3 第 6 步，m4-checks 等循环板共用执行器，m4-request-card 等 M3 第 4 步。第二批（m4-gate G1 主体）已派。"
+    },
+    {
+      "at": "2026-11-05T05:26:21.745Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "M4 guard 补齐与环境",
+          "to": "拦截补齐与环境"
+        },
+        "why": {
+          "from": null,
+          "to": "七件活做完，拦截、检查与环境这一整块就完整了"
+        }
+      }
     }
   ]
 }

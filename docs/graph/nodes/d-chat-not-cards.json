@@ -2,6 +2,7 @@
   "id": "d-chat-not-cards",
   "type": "decision",
   "title": "问人改成聊天：agent 提几点和方案，人同意或补充，不给选项、不出问答卡",
+  "why": "人和 agent 像聊天一样商量，人只要同意、补充或否掉，不用读选项卡",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -74,6 +75,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-31 定 d-ask-three-gates（试行）取代本条的固定版式与「不列选项」；M3 附录 0.6 的落法。保留：不出问答卡，ask_user_question 从主 Agent 的工具面去掉，要人定的事是图上的提议式待决，人的原话由 harness 核对后才记，同意/补充/否掉三种固定说法，一条回复至多三件，收不回的事人回短话先复述再记。被取代：题目一段加背景/推荐/疑问/不做四行、每行一处加粗、问话在整条消息最后只问一次、不列选项。现在：问题与汇报分开、问题放最后；按四种问法写（确认建议、选方向、问人要什么、看样子），选方向时可以摆两三条路并标推荐；访谈第 1–6 步在聊天里问、先猜后让人改，不走工具；图上记录分字段（ask、form、proposal、reason、cost、ways、notTaken、conclusion），人读的话由主 Agent 自己写，harness 只查硬限制。设计放行仍是一问，方案放在前面的汇报与一页放行稿里。"
+    },
+    {
+      "at": "2026-11-05T05:25:30.979Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "人和 agent 像聊天一样商量，人只要同意、补充或否掉，不用读选项卡"
+        }
+      }
     }
   ]
 }

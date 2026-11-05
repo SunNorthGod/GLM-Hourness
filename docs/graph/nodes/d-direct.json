@@ -2,6 +2,7 @@
   "id": "d-direct",
   "type": "decision",
   "title": "原生通道在插件内直连，不经反向代理",
+  "why": "少一个常驻进程，DSH 能直接看到额度和错误",
   "status": "approved",
   "parent": "bottom",
   "verification": "sandbox",
@@ -37,6 +38,19 @@
           "note": "真网返回 pong（coding-plan，2026-10-27）"
         }
       ]
+    },
+    {
+      "at": "2026-11-05T05:25:35.080Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "少一个常驻进程，DSH 能直接看到额度和错误"
+        }
+      }
     }
   ]
 }

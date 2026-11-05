@@ -2,6 +2,7 @@
   "id": "d-toolsearch",
   "type": "decision",
   "title": "工具检索默认开启，按 ZCode 3.16.3 local 模式实现",
+  "why": "模型按需查找工具，不必每一步都带上全部工具的说明",
   "status": "approved",
   "parent": "bottom",
   "verification": "sandbox",
@@ -37,6 +38,19 @@
           "note": "L3 探针在真运行时上执行检索、公告与 DeferredToolCall（15/15，2026-10-27）"
         }
       ]
+    },
+    {
+      "at": "2026-11-05T05:26:04.694Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "模型按需查找工具，不必每一步都带上全部工具的说明"
+        }
+      }
     }
   ]
 }

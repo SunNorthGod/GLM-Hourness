@@ -2,6 +2,7 @@
   "id": "d-plain-questions",
   "type": "decision",
   "title": "问人的问题直接说人话，不靠教程解释术语",
+  "why": "人不用先学术语，就能回答问给自己的问题",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -56,6 +57,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-31 定 d-ask-three-gates（试行）取代本条的四行版式；M3 附录 0.6 的落法。保留：换词表（PLAIN_WORDS）与「用人话」，仍只定义一次，在 src/graph/plain-question.ts，身份节和 propose_to_human 的说明都引用。变化：例题由一道四行题改为每种问法一道（recommend/choose/want/look），共四道，虚构的图书管理系统，只放在 propose_to_human 的说明里（d-agent-examples：示范放在写它的工具的说明里），身份节只留换词表一句；harness 在 propose_to_human 里对 text 与记录字段查换词表（plainWordsIn）。被取代：每道题固定四行、重点加粗、背景一行至多 60 个码点（PLAIN_LIMITS.background 取消）。"
+    },
+    {
+      "at": "2026-11-05T05:25:53.944Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "人不用先学术语，就能回答问给自己的问题"
+        }
+      }
     }
   ]
 }

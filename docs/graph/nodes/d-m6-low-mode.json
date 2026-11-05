@@ -1,7 +1,8 @@
 {
   "id": "d-m6-low-mode",
   "type": "decision",
-  "title": "少做档：已派出的 GLM 子 agent 做完再停；改了连接 GLM 的代码后的真账号核对照跑，只在不做档停",
+  "title": "少做档：已派出的子 agent 做完再停，真账号核对照跑",
+  "why": "高峰少做时不打断已派出的活，改了连接 GLM 的代码也能照常核对、合入",
   "status": "approved",
   "parent": "m6",
   "verification": "unverified",
@@ -14,6 +15,23 @@
       "reason": "人按编排方的建议定了 M6 一页稿的两件事",
       "relay": "都按你说的来就行",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:46.203Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "少做档：已派出的 GLM 子 agent 做完再停；改了连接 GLM 的代码后的真账号核对照跑，只在不做档停",
+          "to": "少做档：已派出的子 agent 做完再停，真账号核对照跑"
+        },
+        "why": {
+          "from": null,
+          "to": "高峰少做时不打断已派出的活，改了连接 GLM 的代码也能照常核对、合入"
+        }
+      }
     }
   ]
 }

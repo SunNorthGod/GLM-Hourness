@@ -2,6 +2,7 @@
   "id": "d-freeze-until-dogfood",
   "type": "decision",
   "title": "自举开始前，新定的事先记上图、不塞进在跑的设计稿",
+  "why": "新想法当场记下，但不塞进在跑的稿子，稿子不会一轮轮被推翻",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -20,6 +21,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-10-30：「你把能开的线都开起来吧」。编排方据此把 d-alignment-rounds 的对齐轮提前到现在开，不等自举开始：派出 design-alignment-7-modules（wf_7c912a9ce7fb220e），七个不在自举关键路径上的设计各自并行对齐（M4、M5、M6、指标流水、接管项目、用户旅程、面板）。本条的核心照旧成立：已放行的骨架设计（M3 附录 0.5、M7 0.6、规则板 0.10、循环板 0.6）与在跑的实现不接新请求，对齐轮发现它们该改的地方，一律写成挂在那个节点上、自举之后再办的批注，任务说明已写死这一条。"
+    },
+    {
+      "at": "2026-11-05T05:25:39.803Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "新想法当场记下，但不塞进在跑的稿子，稿子不会一轮轮被推翻"
+        }
+      }
     }
   ]
 }

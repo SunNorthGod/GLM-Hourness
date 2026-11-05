@@ -1,7 +1,8 @@
 {
   "id": "d-license-polyform",
   "type": "decision",
-  "title": "仓库许可用 PolyForm Noncommercial 1.0.0，另配第三方声明与依赖许可清单",
+  "title": "仓库许可用 PolyForm 非商业许可，另附第三方声明",
+  "why": "非商业用途全放开，商业用途另行授权；作者保留商业权利，以后想放宽也容易",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,23 @@
       "reason": "人采纳编排方的许可建议",
       "relay": "行",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:45.044Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "仓库许可用 PolyForm Noncommercial 1.0.0，另配第三方声明与依赖许可清单",
+          "to": "仓库许可用 PolyForm 非商业许可，另附第三方声明"
+        },
+        "why": {
+          "from": null,
+          "to": "非商业用途全放开，商业用途另行授权；作者保留商业权利，以后想放宽也容易"
+        }
+      }
     }
   ]
 }

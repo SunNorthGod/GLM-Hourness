@@ -1,7 +1,8 @@
 {
   "id": "d-rules-peak-slice",
   "type": "decision",
-  "title": "规则板先做最小的一片（高峰档位与少做的并发上限），与 M3、M7 骨架一起搬进 DSH",
+  "title": "规则板先做最小一片：高峰档位与少做时的并发上限",
+  "why": "自举前只要高峰档位能用，规则板其余的部分自举之后再做",
   "status": "approved",
   "parent": "dogfood",
   "verification": "unverified",
@@ -20,6 +21,23 @@
       "actor": "llm",
       "op": "comment",
       "text": "已实现于分支 rules-slice 93964929，范围与设计 0.10 §16.1 一致：档位、默认少做、少做的并发上限 1、经 glmHournessPeakMode 交出（stateFor、stateForProject、peakHoldFor），存档位的流水与快照（只用到 peakMode 的那一支）、仓库里的 docs/rules/rules.json、/rules peak、行健康与行登记（默认禁用）。不在这一片里的，按 §16.1 一条没做；§16.1 在 builtin.ts 一项里列了 GLM_PEAK_PRICING 与按档位启用的附属条目，这一片没有写：它们只在判定门和规则页上有读者，两者都在范围之外，写了就是没有调用方的代码。待验证：独立评审，桌面版首轮验收；验证状态保持 unverified，直到评审通过且合入。"
+    },
+    {
+      "at": "2026-11-05T05:25:59.975Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "规则板先做最小的一片（高峰档位与少做的并发上限），与 M3、M7 骨架一起搬进 DSH",
+          "to": "规则板先做最小一片：高峰档位与少做时的并发上限"
+        },
+        "why": {
+          "from": null,
+          "to": "自举前只要高峰档位能用，规则板其余的部分自举之后再做"
+        }
+      }
     }
   ]
 }
