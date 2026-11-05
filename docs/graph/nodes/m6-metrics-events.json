@@ -128,6 +128,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面核对 A 顺带核了本节点：在 b923210 的构建上跑 /glm-status，临时项目的指标流水里有一条 by=glm、k=glm.quota-read 的事件（14:32:45Z，ok true、ms 555、by command），之前这份流水里没有 by=glm 的行。另外三类（上游限额、登录被拒、高峰提醒）要碰上限流、登录被拒或高峰开始才会出，这次没有触发。"
+    },
+    {
+      "at": "2026-11-05T16:08:34.279Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面核对 A（wf_f773f9cedc7b4708）顺带核到本节点的代码在人的桌面版上生效：执行 /glm-status 时临时项目的指标流水多出一条 by=glm、k=glm.quota-read 的事件（writer 是 39012 的宿主，build b923210），流水里此前没有 by=glm 的行；其余三类事件要限额、登录被拒或高峰开始才触发，没有核。"
     }
   ]
 }
