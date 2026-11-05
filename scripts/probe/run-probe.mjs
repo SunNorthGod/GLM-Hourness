@@ -24,7 +24,9 @@
  * ends goes to the agent that dispatched it; rules-peak (the main agent's
  * line about the peak) and rules-peak-stop and rules-peak-stop-exit (the stop
  * level: a GLM subagent's goal is paused and resumed, and what the row does to
- * it when the host exits). The loop board scenario (loops) runs in a scratch
+ * it when the host exits). glm-rules, non-glm-rules, rules-peak and rules-peak-hourness
+ * also record the rules page's data the row wrote (`rulesView`) and read it with
+ * the panel's parser (the rules-page checks). The loop board scenario (loops) runs in a scratch
  * git clone that already carries a person's entry file: the board takes the
  * entry in, loops:files-only refuses a file tool and a shell command that
  * write into the board's own files, and both of the row's gates are installed
@@ -60,7 +62,11 @@
  * reminder goes out. The graph panel scenarios run the
  * bundle's /graph-run handler mid-step for the session;
  * the GLM and non-GLM scenarios run /hourness and /hourness-status at their
- * last step, after /glm-status is recorded. Every scenario also mounts the
+ * last step, after /glm-status is recorded. The GLM scenario's /hourness step
+ * also records what the status hub's collector reads for the session: the
+ * checks hold the 面板 and 额度 sections to those entries word for word, the
+ * agent audience to no person entry, and the metrics row to the one
+ * metrics/load entry (status hub design 0.3 §11 L3). Every scenario also mounts the
  * probe net log (scripts/probe/probe-net.mjs), which records the origin and
  * path of each request the host process sends; the quota checks read it
  * (no request to /api/monitor anywhere) together with the quota output of the
@@ -122,6 +128,7 @@ import { openRulesBoard } from '../../packages/hourness/dist/rules/engine.js'
 import { clockText } from '../../packages/hourness/dist/rules/index.js'
 import { repoJson } from '../../packages/hourness/dist/rules/model.js'
 import { RULES_DECLARATION } from '../../packages/hourness/dist/rules/service.js'
+import { parseRulesView } from '../../packages/hourness/dist/rules/view.js'
 import { entryFileText } from '../../packages/hourness/dist/loops/model.js'
 import { LOOP_NOTICE_SOURCE } from '../../packages/hourness/dist/loops/deliver.js'
 import { LOOPS_DECLARATION } from '../../packages/hourness/dist/loops/service.js'
@@ -357,7 +364,8 @@ const glm = runScenario('glm', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: png } } },
   { tool: { name: 'Bash', arguments: { command: `Set-Content -Path '${blocked}' -Value probe` } } },
   // The health table is recorded before /hourness runs, so the hourness row is still idle in it.
-  { text: 'done', status: true, command: { name: 'hourness' } },
+  // `hub` records what the status hub's collector reads for the session after /hourness ran.
+  { text: 'done', status: true, command: { name: 'hourness' }, hub: true },
 ], 'Load TodoWrite, record one todo, read package.json, write, edit and re-read a scratch file, list, search, run a command, read an image, write a file through the shell, then reply done.', attachmentsIn(glmDir))
 const glmFirst = glm.steps[0]
 const glmTools = names(glmFirst)
@@ -568,13 +576,13 @@ const rulesPeak = runScenario('rules-peak', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, line: '/wish' },
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'peak' }, peakMode: true },
   { tool: { name: 'DeferredToolCall', arguments: { name: 'rules_show', input: {} } } },
-  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true, rulesView: true },
   { text: 'done', status: true, command: { name: 'rules', input: 'peak 无影响' }, peakMode: true },
 ], 'Become the main agent, read package.json twice, list the rules, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT), ...designRows({ record: slash(join(runDir, 'rules-peak', 'design.jsonl')) })], rulesGlm.ws)
 const rulesAlone = rulesProject('rules-peak-hourness')
 const rulesPeakAlone = runScenario('rules-peak-hourness', 'deepseek-probe', [
   { tool: { name: 'pwsh', arguments: { command: 'Write-Output probe-rules', description: 'Print a word' } }, command: { name: 'rules', input: 'peak 不做' }, peakMode: true },
-  { text: 'done', command: { name: 'hourness-status' }, peakMode: true },
+  { text: 'done', command: { name: 'hourness-status' }, peakMode: true, rulesView: true },
 ], 'Print a word, then reply done.', [...RULES_ROW, ...clockRow(PEAK_AT)], rulesAlone.ws, [], profiles['probe-hourness'])
 // Rules board, the tool-call gate (docs/ORCHESTRATION.md §16.11). The scenario
 // project is a scratch git repository whose rules file already holds a person's
@@ -610,7 +618,8 @@ const glmRules = runScenario('glm-rules', 'glm-5.3', [
   { tool: { name: 'Bash', arguments: { command: 'Write-Output rules-probe-blocked', timeout: 30000 } } },
   { tool: { name: 'Write', arguments: { file_path: glmRulesProject.rulesFile, content: '{}\n' } } },
   { tool: { name: 'Bash', arguments: { command: 'Write-Output rules-probe-allowed', timeout: 30000 } } },
-  { text: 'done', status: true },
+  // /rules show changes nothing; the row writes the rules page's data after it, which the step records.
+  { text: 'done', status: true, command: { name: 'rules', input: 'show' }, rulesView: true },
 ], 'Run a command a rule blocks, write into the rules directory, run a command no rule names, then reply done.', RULES_ROW, glmRulesProject.ws)
 const nonGlmRulesProject = rulesGateProject('non-glm-rules')
 const nonGlmRulesState = join(nonGlmRulesProject.ws, '.llm', 'rules', 'state.json')
@@ -619,7 +628,7 @@ const nonGlmRules = runScenario('non-glm-rules', 'deepseek-probe', [
   { tool: { name: 'write', arguments: { file_path: nonGlmRulesState, content: '{}\n' } } },
   { tool: { name: 'rules_show', arguments: {} } },
   { tool: { name: 'pwsh', arguments: { command: 'Write-Output rules-probe-allowed', description: 'Print an allowed word' } } },
-  { text: 'done', status: true },
+  { text: 'done', status: true, command: { name: 'rules', input: 'show' }, rulesView: true },
 ], 'Run a command a rule blocks, write into the rules directory, read the rules, run a command no rule names, then reply done.', RULES_ROW, nonGlmRulesProject.ws)
 
 // Loop board, the storage and the gate on its own files
@@ -2401,6 +2410,15 @@ const glmRulesRecords = gateRecords('glm-rules')
 const nonGlmRulesRecords = gateRecords('non-glm-rules')
 const glmRulesHealth = healthOf(glmRules)
 const nonGlmRulesHealth = healthOf(nonGlmRules)
+// The rules page's data (docs/ORCHESTRATION.md §16.14): the view.json a step recorded, read with the parser the panel uses.
+const pageOfStep = step => (typeof step?.rulesView === 'string' ? parseRulesView(step.rulesView) : undefined)
+const glmRulesPage = pageOfStep(glmRules.steps[3])
+const nonGlmRulesPage = pageOfStep(nonGlmRules.steps[4])
+const peakStopPage = pageOfStep(rulesPeak.steps[3])
+const hournessOnlyPage = pageOfStep(rulesPeakAlone.steps[1])
+const pageCode = (page, id) => page?.code.find(entry => entry.id === id)
+const pageItem = (page, id) => page?.items.find(item => item.id === id)
+const pageLook = page => (page === undefined ? 'no view.json, or not a view' : `items ${page.items.map(item => item.id).join(', ')}; peak ${JSON.stringify(page.peak).slice(0, 120)}`)
 // The board's reminders in one request (the session keeps them, so a request has every one sent so far), and the same for a scenario's requests in order.
 const boardTexts = step => (step?.messages ?? []).filter(message => message.source === 'hourness-rules').map(message => message.text)
 // The waiting-ticket scenarios: the tickets the board kept, what it journaled, and the wake messages the requests carried.
@@ -2509,6 +2527,21 @@ const sectionOf = (text, heading) => (text.split(`\n## ${heading}\n`)[1] ?? '').
 const [glmOnlyCredential = '', glmOnlyQuota = '', glmOnlyTable = ''] = (statusStep(glmOnly)?.status ?? '').split('\n\n')
 const hournessOnlyText = hournessOnlyReport?.text ?? ''
 const glmQuotaSection = sectionOf(glmHourness?.text ?? '', '额度')
+// The status hub in the real runtime (status hub design 0.3 §11 L3): what the
+// collector read for the glm session right after its /hourness ran, at the
+// agent and the all audience (the provider's `hub` step).
+const glmHub = statusStep(glm)?.hub
+const glmHubItem = id => glmHub?.agent?.items.find(item => item.id === id)
+const glmHubLines = item => item === undefined ? undefined : [item.text, ...(item.detail ?? [])]
+const glmHubPanel = sectionOf(glmHourness?.text ?? '', '面板')
+const glmHubUsage = glmHubLines(glmHubItem('glm/usage'))
+const glmHubQuota = glmHubLines(glmHubItem('glm/quota'))
+const glmHubPeak = glmHubItem('rules/peak')
+const glmHubMetrics = sectionOf(glmHourness?.text ?? '', '指标（流水，今天）')
+// The fact groups /hourness's metrics section prints, as FACT_GROUP_TITLES in
+// src/workflow/morning-report.ts lists them (§7.3 of the metrics design: no
+// scores, no burden numbers, no coverage group in the conversation).
+const HOURNESS_FACT_HEADINGS = ['### 任务', '### 拦截', '### 撤下', '### 超时', '### 额度停住', '### 汇报']
 const quotaTextBodies = scenarioNames.flatMap(name => jsonl(join(runDir, name, 'requests.jsonl')).map(request => ({ name, body: JSON.stringify({ system: request.system, tools: request.tools, messages: request.messages }) })))
 const quotaTextHits = quotaTextBodies.filter(({ body }) => QUOTA_TEXT_MARKERS.some(marker => body.includes(marker))).map(({ name }) => name)
 const hournessOnlyViolations = jsonl(join(hournessOnlyDir, 'home', 'audit', 'violations.jsonl'))
@@ -3279,6 +3312,10 @@ const checks = [
   ['health: /hourness-status prints the same table as /glm-status for the session, without the credential line', plainHourness?.kind === 'success' && plainHourness.text.startsWith(`## 行健康（会话 ${statusStep(plain)?.sessionId}）\n\n${TABLE_HEAD}`) && plainHourness.text === plainStatusText.slice(plainStatusText.indexOf('## 行健康')) && grouped(plainHealth), `${plainHourness?.kind ?? 'not run'}; ${(plainHourness?.text ?? '').split('\n').length} line(s); same as /glm-status: ${plainHourness?.text === plainStatusText.slice(plainStatusText.indexOf('\n\n') + 2)}`],
   ['health: on the GLM route glm-prompt, guard, memory, workflow, data and glm-login report in effect; glm-compact and hourness have not acted', glmHealth['glm-prompt']?.status === ACTED && glmHealth['glm-prompt'].reason.startsWith('GLM 路由 glm-probe/glm-5.3：') && ['guard', 'memory', 'workflow', 'data', 'glm-login'].every(row => glmHealth[row]?.status === ACTED) && ['glm-compact', 'hourness'].every(row => glmHealth[row]?.status === IDLE), HEALTH_ROWS.map(row => healthLine(glmHealth, row)).join('; ')],
   ['pricing: /hourness on the GLM route prices the usage journal through the pricing service glm-login provides', glmHourness?.kind === 'success' && glmPanel.startsWith('- 高峰：') && glmPanel.split('\n')[1]?.startsWith('- 全部用量记录；高峰为工作日 14:00–18:00（UTC+8）') === true && /^- glm-5\.3：\d+ 次 · 积分 \d+\.\d\d/m.test(glmPanel), `${glmHourness?.kind ?? 'not run'}; ${JSON.stringify(glmPanel.split('\n').slice(0, 3))}`],
+  ['status hub: the collector reads the real runtime\'s rows without a failure, and the agent audience carries no person entry', glmHub?.agent !== undefined && glmHub.agent.rows.length > 0 && glmHub.agent.rows.every(row => row.outcome !== 'error') && glmHub.agent.items.every(item => item.audience === 'agent') && isDeepStrictEqual(glmHub.agent.items.map(item => item.id), glmHub.all.items.filter(item => item.audience === 'agent').map(item => item.id)), glmHub === undefined ? 'no hub recorded' : glmHub.error ?? `read: ${glmHub.agent.rows.filter(row => row.outcome === 'ok').map(row => row.row).join(', ')}; failed: ${glmHub.agent.rows.filter(row => row.outcome === 'error').map(row => `${row.row} (${row.reason})`).join(', ') || 'none'}; agent: ${glmHub.agent.items.map(item => item.id).join(', ')}; all: ${glmHub.all.items.length}`],
+  ['status hub: /hourness 面板 is the entries (the peak line first, the usage entry\'s text and detail last) and 额度 is the quota entry', glmHourness?.kind === 'success' && glmHubPeak !== undefined && glmHubPanel[0] === glmHubPeak.text && glmHubUsage !== undefined && isDeepStrictEqual(glmHubPanel.slice(-glmHubUsage.length), glmHubUsage) && glmHubQuota !== undefined && isDeepStrictEqual(glmQuotaSection, glmHubQuota), `peak ${JSON.stringify(glmHubPeak?.text ?? null)}; usage ${JSON.stringify(glmHubUsage ?? null)}; quota ${JSON.stringify(glmHubQuota ?? null)}; 面板 ${JSON.stringify(glmHubPanel)}`],
+  ['status hub: one rules/peak entry for the session (the hourness row\'s half yields to the rules row)', glmHub?.all !== undefined && glmHub.all.items.filter(item => item.id === 'rules/peak').length === 1, glmHub?.all === undefined ? 'no hub recorded' : `${glmHub.all.items.filter(item => item.id === 'rules/peak').length} rules/peak entr(ies)`],
+  ['status hub: no metrics ratio on the agent path: the metrics row hands only metrics/load, and /hourness\'s metrics section heads only the fact groups', glmHub?.all !== undefined && glmHub.all.items.filter(item => item.owner === 'metrics').every(item => item.id === 'metrics/load') && glmHubMetrics.length > 0 && glmHubMetrics.filter(line => line.startsWith('### ')).every(line => HOURNESS_FACT_HEADINGS.includes(line)), `metrics entries: ${glmHub?.all?.items.filter(item => item.owner === 'metrics').map(item => item.id).join(', ') || 'none'}; headings: ${glmHubMetrics.filter(line => line.startsWith('### ')).join(', ') || (glmHubMetrics.length === 0 ? 'no section' : 'none')}`],
   ['health: on the non-GLM route glm-prompt reports why it is not in effect', plainHealth['glm-prompt']?.status === '未生效' && plainHealth['glm-prompt'].reason.startsWith('非 GLM 路由 glm-probe/deepseek-probe'), JSON.stringify(plainHealth['glm-prompt'] ?? null)],
   ['health: after a GLM compaction glm-compact reports the mirror in effect', compactHealth['glm-compact']?.status === ACTED && compactHealth['glm-compact'].reason.startsWith('GLM 压缩请求改用 ZCode 指令'), JSON.stringify(compactHealth['glm-compact'] ?? null)],
   ['health: the reports stay out of the model-visible conversation', conversationTexts.length > 0 && conversationTexts.every(text => !text.includes('行健康') && !text.includes('glmHournessHealth')), `${conversationTexts.length} text(s) checked`],
@@ -3300,6 +3337,7 @@ const checks = [
   ['rules-peak: the row, enabled by the overlay in a scratch git workspace, boots on the GLM route, runs the five scripted steps and exits clean with nothing from it on stderr', rulesGlm.ready && rulesPeak.status === 0 && rulesPeak.steps.length === 5 && !rulesStderr.includes('dsh-glm-hourness/rules'), `exit ${rulesPeak.status}, ${rulesPeak.steps.length} step(s), git ${rulesGlm.ready}; ${rulesStderr.split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['rules-peak: without a choice the project is at the factory level reduce: the command says so, and in the peak the service gives the cap of one GLM subagent and the hold until 18:00', rulesPeak.steps[1]?.command?.kind === 'success' && rulesPeak.steps[1].command.text.startsWith(`高峰模式：少做（出厂默认）。现在是高峰，到 ${clockText(PEAK_END, rulesPeak.steps[1].clock)}。`) && isDeepStrictEqual(rulesPeak.steps[1].peakMode, { state: { level: 'reduce', origin: 'default', peak: true, until: PEAK_END, glmWorkerCap: 1 }, hold: { level: 'reduce', until: PEAK_END } }), JSON.stringify(rulesPeak.steps[1]?.peakMode ?? null)],
   ['rules-peak: /rules peak 不做 as the person: the reply names the level, the service gives the person\'s choice with no cap and the hold of the stop level', rulesPeak.steps[3]?.command?.kind === 'success' && rulesPeak.steps[3].command.text.startsWith('高峰模式改成了「不做」') && rulesPeak.steps[3].peakMode?.state?.level === 'stop' && rulesPeak.steps[3].peakMode.state.origin === 'human' && rulesPeak.steps[3].peakMode.state.peak === true && rulesPeak.steps[3].peakMode.state.glmWorkerCap === undefined && isDeepStrictEqual(rulesPeak.steps[3].peakMode.hold, { level: 'stop', until: PEAK_END }), JSON.stringify(rulesPeak.steps[3]?.peakMode ?? null)],
+  ['rules-page: rules-peak: after /rules peak 不做 the page data says the stop level, chosen by the person, and that it is peak now (the probe clock\'s Wednesday 15:00)', peakStopPage?.peak.level === 'stop' && peakStopPage.peak.origin === 'human' && peakStopPage.peak.now === true && peakStopPage.peak.applies === true, pageLook(peakStopPage)],
   ['rules-peak: /rules peak 无影响 leaves no cap and no hold', rulesPeak.steps[4]?.command?.kind === 'success' && rulesPeak.steps[4].peakMode?.state?.level === 'inform' && rulesPeak.steps[4].peakMode.state.peak === true && rulesPeak.steps[4].peakMode.state.glmWorkerCap === undefined && rulesPeak.steps[4].peakMode.hold === null, JSON.stringify(rulesPeak.steps[4]?.peakMode ?? null)],
   ['rules-peak: the main agent is held on no level: its Read ran under the factory level and again under 不做 in the peak', [2, 4].every(index => { const result = lastToolResult(rulesPeak.steps[index]); return result !== undefined && result.isError !== true }), [2, 4].map(index => lastToolResult(rulesPeak.steps[index])?.text?.slice(0, 40) ?? 'no result').join(' | ')],
   ['rules-peak: the choice is in the repository file and in the project\'s journal (two person\'s writes), and nothing is written in the scenario\'s user-level directory', rulesFile?.peakMode?.level === 'inform' && isDeepStrictEqual(rulesRecords.map(record => [record.op, record.actor, record.from, record.to]), [['peak-mode-set', 'human', 'reduce', 'stop'], ['peak-mode-set', 'human', 'stop', 'inform']]) && !existsSync(join(runDir, 'rules-peak', 'dsh-home', 'glm-hourness', 'rules')), `${JSON.stringify(rulesFile ?? null)}; ${rulesRecords.length} record(s)`],
@@ -3316,6 +3354,7 @@ const checks = [
   ['rules-stop-notice: the stop text says the main agent is not held, and has none of the words that would tell it to stop, wait or hold its answers', STOP_NOTICE.includes('The main agent is not held on any level: it keeps answering the human and working.') && STOP_NOTICE.endsWith('Do not switch models or plans unless the user asks.\n</system-reminder>') && FORBIDDEN_REMINDER_WORDS.every(word => !STOP_NOTICE.includes(word) && !REDUCE_NOTICE.includes(word)), FORBIDDEN_REMINDER_WORDS.filter(word => STOP_NOTICE.includes(word) || REDUCE_NOTICE.includes(word)).join(', ') || 'none present'],
   ['rules-stop-notice: the main agent is held on no level: its Read ran under 不做 in the peak and the reply was produced', lastToolResult(rulesStopNotice.steps[1]) !== undefined && lastToolResult(rulesStopNotice.steps[1]).isError !== true && rulesStopNotice.status === 0, lastToolResult(rulesStopNotice.steps[1])?.text?.slice(0, 40) ?? 'no result'],
   ['rules-peak-hourness: with only the orchestration package there is no pricing service: the person\'s choice is kept, no peak is known, there is no cap and no hold, and the command says why', rulesPeakAlone.status === 0 && aloneState !== undefined && aloneState !== null && aloneState.level === 'stop' && aloneState.origin === 'human' && !('peak' in aloneState) && !('glmWorkerCap' in aloneState) && !('until' in aloneState) && rulesPeakAlone.steps[0].peakMode.hold === null && rulesPeakAlone.steps[0].command?.text.includes('读不到是不是高峰（没有计价服务（GLM 通道包未装，或它的 glm-login 行未启用））') === true, JSON.stringify(rulesPeakAlone.steps[0]?.peakMode ?? null)],
+  ['rules-page: rules-peak-hourness: without the GLM package the page data says the peak hours do not apply, has no rules/peak item, and keeps the level the person chose', hournessOnlyPage?.peak.applies === false && hournessOnlyPage.peak.now === undefined && pageItem(hournessOnlyPage, 'rules/peak') === undefined && hournessOnlyPage.peak.level === 'stop' && hournessOnlyPage.peak.origin === 'human', pageLook(hournessOnlyPage)],
   ['glm-rules: the row boots on the GLM route with the rules file of the clone, runs its four steps and exits clean with nothing from it on stderr', glmRulesProject.ready && glmRules.status === 0 && glmRules.steps.length === 4 && !stderrOf('glm-rules').includes('dsh-glm-hourness/rules'), `exit ${glmRules.status}, ${glmRules.steps.length} step(s), git ${glmRulesProject.ready}; ${stderrOf('glm-rules').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['glm-rules: the command the block rule names is refused with the rule\'s four-part text, so it never ran', lastToolResult(glmRules.steps[1])?.isError === true && /^Error: You tried to run "Write-Output rules-probe-blocked"\.\nBoundary: Rule r-probe-block "Probe word" \(set by the human at [^)]+, until lifted\) blocks it now\.\nRight path: .+\nException: /.test(lastToolResult(glmRules.steps[1])?.text ?? ''), lastToolResult(glmRules.steps[1])?.text?.slice(0, 160) ?? 'no result'],
   ['glm-rules: that refusal is in the violation journal as rules:r-probe-block, enforced, on the dialect route', rulesRecordOf(glmRulesRecords, 'rules:r-probe-block')?.mode === 'enforce' && rulesRecordOf(glmRulesRecords, 'rules:r-probe-block').effect === 'block' && rulesRecordOf(glmRulesRecords, 'rules:r-probe-block').scope === 'dialect' && rulesRecordOf(glmRulesRecords, 'rules:r-probe-block').tool === 'Bash', JSON.stringify(rulesRecordOf(glmRulesRecords, 'rules:r-probe-block') ?? null).slice(0, 200)],
@@ -3323,11 +3362,16 @@ const checks = [
   ['glm-rules: a command no rule names runs', lastToolResult(glmRules.steps[3])?.isError !== true && (lastToolResult(glmRules.steps[3])?.text ?? '').includes('rules-probe-allowed'), lastToolResult(glmRules.steps[3])?.text?.slice(0, 80) ?? 'no result'],
   ['glm-rules: the first request carries the board\'s reminder of the rule that only informs, no request carries another (nothing changed), and the system prompt declares the rules board in the guard section', glmRules.steps.every(step => boardTexts(step).length === 1) && boardTexts(glmRules.steps[0])[0]?.includes('[inform, not checked] r-probe-note: "Probe note" (set by the human)') === true && !boardTexts(glmRules.steps[0])[0].includes('r-probe-block') && glmRules.steps.every(step => step.system.includes(RULES_DECLARATION)), `${glmRules.steps.map(step => boardTexts(step).length).join(', ')} board message(s) per request; declared ${glmRules.steps.filter(step => step.system.includes(RULES_DECLARATION)).length}/${glmRules.steps.length}`],
   ['glm-rules: /glm-status lists the rules row in effect with the rules of the person counted, and nothing is written in the scenario\'s user-level directory', glmRulesHealth.rules?.status === ACTED && glmRulesHealth.rules.reason.includes('2 条你设的规则生效') && !existsSync(join(runDir, 'glm-rules', 'dsh-home', 'glm-hourness', 'rules')), healthLine(glmRulesHealth, 'rules') + ` (${glmRulesHealth.rules?.reason ?? ''})`],
+  ['rules-page: glm-rules: the workspace\'s .llm/rules/view.json is there and parses with the panel\'s reader', glmRulesPage !== undefined, typeof glmRules.steps[3]?.rulesView === 'string' ? glmRules.steps[3].rulesView.slice(0, 120) : String(glmRules.steps[3]?.rulesView ?? 'not recorded')],
+  ['rules-page: glm-rules: rules:files-only has a denial in the last 7 days, and the newest of its last five is that rule', (pageCode(glmRulesPage, 'rules:files-only')?.denials7d ?? 0) >= 1 && pageCode(glmRulesPage, 'rules:files-only')?.last[0]?.rule === 'rules:files-only', JSON.stringify(pageCode(glmRulesPage, 'rules:files-only') ?? null).slice(0, 200)],
+  ['rules-page: glm-rules: the person\'s rule r-probe-block has one blocked call in 7 days and none only noted', glmRulesPage?.rules.find(rule => rule.id === 'r-probe-block')?.enforce7d === 1 && glmRulesPage.rules.find(rule => rule.id === 'r-probe-block')?.record7d === 0, JSON.stringify(glmRulesPage?.rules.map(rule => [rule.id, rule.enforce7d, rule.record7d]) ?? null)],
+  ['rules-page: glm-rules: the items hold rules/denials and rules/lifts, and the text of rules/peak is the first line of the 面板 section of the same run\'s /hourness', pageItem(glmRulesPage, 'rules/denials') !== undefined && pageItem(glmRulesPage, 'rules/lifts') !== undefined && glmPanel !== '' && pageItem(glmRulesPage, 'rules/peak')?.text === glmPanel.split('\n')[0], `${pageLook(glmRulesPage)} | ${pageItem(glmRulesPage, 'rules/peak')?.text ?? 'no rules/peak'} | ${glmPanel.split('\n')[0]}`],
   ['non-glm-rules: the row boots on the non-GLM route with the rules file of the clone, runs its five steps and exits clean with nothing from it on stderr', nonGlmRulesProject.ready && nonGlmRules.status === 0 && nonGlmRules.steps.length === 5 && !stderrOf('non-glm-rules').includes('dsh-glm-hourness/rules'), `exit ${nonGlmRules.status}, ${nonGlmRules.steps.length} step(s), git ${nonGlmRulesProject.ready}; ${stderrOf('non-glm-rules').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['non-glm-rules: the blocked command is refused and journaled as rules:r-probe-block on a route the dialect did not claim', lastToolResult(nonGlmRules.steps[1])?.isError === true && (lastToolResult(nonGlmRules.steps[1])?.text ?? '').includes('Rule r-probe-block "Probe word"') && rulesRecordOf(nonGlmRulesRecords, 'rules:r-probe-block')?.scope === 'other' && rulesRecordOf(nonGlmRulesRecords, 'rules:r-probe-block').tool === 'pwsh', lastToolResult(nonGlmRules.steps[1])?.text?.slice(0, 160) ?? 'no result'],
   ['non-glm-rules: a file tool writing into the project\'s .llm/rules/ is refused by rules:files-only and nothing is written', lastToolResult(nonGlmRules.steps[2])?.isError === true && (lastToolResult(nonGlmRules.steps[2])?.text ?? '').includes('Rule rules:files-only') && !stateWritten && rulesRecordOf(nonGlmRulesRecords, 'rules:files-only')?.scope === 'other', lastToolResult(nonGlmRules.steps[2])?.text?.slice(0, 160) ?? 'no result'],
   ['non-glm-rules: rules_show, in the real runtime, lists the rules in force for the caller, the signals and the peak mode', lastToolResult(nonGlmRules.steps[3])?.isError !== true && /^Rules board of ws\./.test(lastToolResult(nonGlmRules.steps[3])?.text ?? '') && /\] r-probe-block: /.test(lastToolResult(nonGlmRules.steps[3])?.text ?? '') && /\] r-probe-note: /.test(lastToolResult(nonGlmRules.steps[3])?.text ?? '') && (lastToolResult(nonGlmRules.steps[3])?.text ?? '').includes('Peak mode:'), lastToolResult(nonGlmRules.steps[3])?.text?.slice(0, 200) ?? 'no result'],
   ['non-glm-rules: a command no rule names runs, every request carries the one reminder of the rule that only informs, and /glm-status lists the row in effect', lastToolResult(nonGlmRules.steps[4])?.isError !== true && (lastToolResult(nonGlmRules.steps[4])?.text ?? '').includes('rules-probe-allowed') && nonGlmRules.steps.every(step => boardTexts(step).length === 1) && boardTexts(nonGlmRules.steps[0])[0]?.includes('r-probe-note') === true && nonGlmRulesHealth.rules?.status === ACTED && !existsSync(join(runDir, 'non-glm-rules', 'dsh-home', 'glm-hourness', 'rules')), healthLine(nonGlmRulesHealth, 'rules') + ` (${nonGlmRulesHealth.rules?.reason ?? ''})`],
+  ['rules-page: non-glm-rules: on the non-GLM route the page data parses, counts the refusal of r-probe-block (scope other) as its one blocked call, and rules:files-only as a denial', nonGlmRulesPage?.rules.find(rule => rule.id === 'r-probe-block')?.enforce7d === 1 && (pageCode(nonGlmRulesPage, 'rules:files-only')?.denials7d ?? 0) >= 1, `${pageLook(nonGlmRulesPage)} | ${JSON.stringify(nonGlmRulesPage?.rules.map(rule => [rule.id, rule.enforce7d]) ?? null)}`],
   ['rules-queue: the row boots on the GLM route at the peak clock with a queue rule in the clone\'s rules file, runs its five steps and exits clean with nothing from it on stderr', queueProject.ready && rulesQueue.status === 0 && rulesQueue.steps.length === 5 && !stderrOf('rules-queue').includes('dsh-glm-hourness/rules'), `exit ${rulesQueue.status}, ${rulesQueue.steps.length} step(s), git ${queueProject.ready}; ${stderrOf('rules-queue').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['rules-queue: the call the rule names is refused with the ticket number and the four parts, so it never ran; the same call again gets the same text under the same ticket', QUEUE_REFUSAL.test(lastToolResult(rulesQueue.steps[1])?.text ?? '') && lastToolResult(rulesQueue.steps[2])?.text === lastToolResult(rulesQueue.steps[1])?.text && lastToolResult(rulesQueue.steps[1]).isError === true, lastToolResult(rulesQueue.steps[1])?.text?.slice(0, 200) ?? 'no result'],
   ['rules-queue: the board kept one ticket, journaled both refusals as queue lines naming it, and opened it as the harness', isDeepStrictEqual(Object.keys(queueState?.tickets ?? {}), ['q-1']) && queueState.tickets['q-1'].tool === 'pwsh' && queueState.tickets['q-1'].rules.join() === 'r-probe-queue' && queueRecords.filter(record => record.rule === 'rules:r-probe-queue' && record.effect === 'queue' && record.mode === 'enforce' && record.ticket === 'q-1').length === 2 && queueJournal.find(record => record.op === 'ticket-open')?.actor === 'harness', JSON.stringify(queueState?.tickets ?? null).slice(0, 200)],

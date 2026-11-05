@@ -10,11 +10,16 @@
  * version string; the surface table with package and line evidence is
  * docs/DESIGN.md §2.4a. Where the official .d.ts is installed
  * (@deepseek-ai/dsh-llm, @deepseek-ai/dsh-attachment) a type-level contract
- * check pins the structural type to it.
+ * check pins the structural type to it. The two cordis shapes the
+ * client-checked shared modules need, ServiceLookup and ProvideHost, are
+ * declared in ./cordis-min.ts (no Node import) and re-exported here.
  */
 import { randomUUID } from 'node:crypto'
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
+import type { ProvideHost, ServiceLookup } from './cordis-min.ts'
 import type { StreamChunk } from './lm-min.ts'
+
+export type { ProvideHost, ServiceLookup } from './cordis-min.ts'
 
 /**
  * The canonical request header (dsh-session `canonicalHeader`): `config` is
@@ -388,11 +393,6 @@ export interface AdapterRegistry<Adapter> {
   registerAdapter(providers: readonly string[], adapter: Adapter): () => void
 }
 
-/** cordis `ctx.get(name)`: an optional service without the inject requirement; undefined until its fiber is active. */
-export interface ServiceLookup {
-  get?(name: string): unknown
-}
-
 /**
  * cordis `ctx.inject(names, callback)` (cordis:1600): runs the callback in a
  * child fiber whose context carries the named services once they are all
@@ -708,11 +708,6 @@ export interface ScheduleService {
 export interface WorkspaceRegistryService {
   readonly archivedSessionIds: readonly string[]
   list(): ReadonlyArray<{ readonly path: string }>
-}
-
-/** cordis `ctx.provide(name, value)`: register a service owned by the calling fiber; the disposer unregisters it (also on unload). */
-export interface ProvideHost {
-  provide(name: string, value: unknown): () => void
 }
 
 /** The `fs` service member that maps a host path into the tool execution world (undefined when that world cannot read it). */

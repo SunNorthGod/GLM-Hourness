@@ -28,6 +28,16 @@ import type { AgentLike, DerivedMessage } from '../shared/dsh-min.ts'
 /** The path relative to the project root; the exact file appendLift appends to. */
 const LIFTS_FILE = join('docs', 'guard', 'lifts.jsonl')
 
+/**
+ * The record file's absolute path in one project root, forward slashes: the
+ * spelling the report reads it by and names in its source fields (status hub
+ * design 0.3 §3.2, batch 4). One definition for the report and the guard
+ * row's status view.
+ */
+export function liftRecordPath(root: string): string {
+  return `${root.replaceAll('\\', '/')}/docs/guard/lifts.jsonl`
+}
+
 interface LiftLine {
   readonly at: string
   readonly rule: string

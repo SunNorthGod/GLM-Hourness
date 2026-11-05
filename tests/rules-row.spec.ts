@@ -5,13 +5,18 @@
  * real GLM credit plan, as `glm-login` provides it; the clock is injected.
  */
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { appendFile, mkdir, mkdtemp, readdir, readFile, rename as renameFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
 import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
+import { projectKey } from '../src/graph/main-agent-holder.ts'
 import { peakStatusItems } from '../src/report/panel.ts'
+import { collectStatus } from '../src/report/status.ts'
+import { DATA_SERVICE } from '../src/shared/data-home.ts'
+import type { StatusItem } from '../src/shared/status.ts'
 import type { UserNotice } from '../src/shared/dsh-min.ts'
 import { collectHealth, healthServiceName } from '../src/shared/health.ts'
 import { PEAK_MODE_SERVICE, PEAK_REDUCE_GLM_WORKERS, peakModeService } from '../src/shared/peak-mode.ts'
@@ -22,7 +27,9 @@ import { RULES_SERVICE } from '../src/rules/service.ts'
 import type { HostHeartbeat } from '../src/rules/heartbeat.ts'
 import { openRulesBoard } from '../src/rules/engine.ts'
 import { repoJson, type JournalRecord, type RepoRules } from '../src/rules/model.ts'
-import { loadState } from '../src/rules/store.ts'
+import { RULES_KEY } from '../src/rules/projection.ts'
+import { loadState, rulesPaths } from '../src/rules/store.ts'
+import { parseRulesView, type RulesView } from '../src/rules/view.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
 import { FULL_RULES_FILE, OFFPEAK_CREDIT_RUNS, ruleOf } from './rules-fixtures.ts'
@@ -77,7 +84,7 @@ rowTest('without a choice the project is at the factory level reduce; in a peak 
   assert.deepEqual(service.peakHoldFor('agent-1'), { level: 'reduce', until: PEAK_END })
   assert.deepEqual((await readdir(root)).sort(), ['.git', '.llm'], 'a live session makes the host write its heartbeat')
   assert.deepEqual(await readdir(join(root, '.llm')), ['rules'])
-  assert.deepEqual(await readdir(join(root, '.llm', 'rules')), ['hosts'], 'looking wrote no state: nothing but the heartbeat of this host')
+  assert.deepEqual((await readdir(join(root, '.llm', 'rules'))).sort(), ['hosts', 'view.json'], 'looking wrote no state: nothing but the heartbeat of this host and the rules page\'s data')
 })
 
 rowTest('/rules peak 不做 stores the choice in the repository and the project, and the service hands it out; the choice is the person\'s with its time', async ({ root, runtime, service, run }) => {
@@ -92,7 +99,7 @@ rowTest('/rules peak 不做 stores the choice in the repository and the project,
   assert.deepEqual(service.peakHoldFor('agent-1'), { level: 'stop', until: PEAK_END })
   const file = await readFile(join(root, 'docs', 'rules', 'rules.json'), 'utf8')
   assert.equal(file, repoJson({ version: 2, peakMode: { level: 'stop', at: state!.at!, origin: { actor: 'human' } } }))
-  assert.deepEqual((await readdir(join(root, '.llm', 'rules'))).sort(), ['journal.jsonl', 'repo-written.json', 'state.json'])
+  assert.deepEqual((await readdir(join(root, '.llm', 'rules'))).sort(), ['journal.jsonl', 'repo-written.json', 'state.json', 'view.json'])
   assert.equal(health(runtime).status, 'active')
   assert.match(health(runtime).reason, /^本会话所在项目 rules-row-\w+：高峰模式 不做（你选的）；现在是高峰$/)
   assert.equal((await run('peak 不做')).text, '高峰模式已经是「不做」，没有改动。')
@@ -958,3 +965,132 @@ rowTest('the row has no peak entry while there is no pricing service', async (fi
   assert.deepEqual(view.items(fixture.runtime.agent.id), [])
   await fixture.dispose()
 }, { pricing: 'none' })
+
+// --- the rules page's data: view.json and the projection hournessRules (docs/ORCHESTRATION.md §16.14) ---
+
+const pageOf = async (root: string): Promise<RulesView | undefined> => parseRulesView(await readFile(rulesPaths(root).view, 'utf8').catch(() => ''))
+const rulesItems = (runtime: FakeRuntime, at: number): readonly StatusItem[] => collectStatus(runtime.ctx, runtime.agent.id, 'all', at).items.filter(item => item.owner === 'rules')
+const BLOCKING_FILE: RepoRules = { version: 2, rules: { [BLOCK_PROBE.id]: BLOCK_PROBE } }
+
+rowTest('the row registers the session projection hournessRules: the project key and the page data file for a session in a git project, nulls without a working directory or outside one, and no event changes it', ({ root, runtime, projections }) => {
+  assert.equal(RULES_KEY, 'hournessRules')
+  assert.deepEqual(projections.map(unit => unit.key), [RULES_KEY])
+  const [unit] = projections
+  assert.ok(unit !== undefined)
+  const state = unit.init({ id: 's', cwd: root })
+  assert.deepEqual(state, { projectKey: projectKey(root), viewFile: rulesPaths(root).view })
+  assert.equal(unit.apply(state as never), state, 'the same reference: the host does no work')
+  assert.deepEqual(unit.init({ id: 's' }), { projectKey: null, viewFile: null }, 'no working directory')
+  assert.deepEqual(unit.init({ id: 's', cwd: join(root, '..') }), { projectKey: null, viewFile: null }, 'not a git project')
+  assert.deepEqual(unit.init(42), { projectKey: null, viewFile: null })
+  assert.equal(health(runtime).status, 'idle', 'registered, the projection is not a fault')
+  return Promise.resolve()
+})
+
+rowTest('without the session projection registry the row works and its health says the projection is not registered', async ({ runtime, projections, exec }) => {
+  assert.deepEqual(projections, [])
+  const line = collectHealth(runtime.ctx, undefined).find(entry => entry.row === 'rules')
+  assert.equal(line?.status, 'degraded')
+  assert.ok(line?.reason.includes(`宿主没有 inject，没有注册会话投影 ${RULES_KEY}`), line?.reason)
+  assert.equal((await exec('pwsh', { command: 'echo rules-probe-blocked' })).isError, true, 'the gate judges all the same')
+}, { projections: false, rules: BLOCKING_FILE })
+
+rowTest('view.json is written when a session starts and after /rules peak 不做: the level, the peak, the rules, and the items are the collector\'s rules items at the same moment', async ({ root, runtime, run }) => {
+  await runtime.create()
+  const first = await pageOf(root)
+  assert.ok(first !== undefined, 'the page data is there once the session started')
+  assert.deepEqual([first.at, first.host.pid, first.peak.applies, first.peak.now, first.peak.until, first.peak.level, first.peak.origin], [new Date(NOW).toISOString(), process.pid, true, true, PEAK_END, 'reduce', 'default'])
+  assert.deepEqual(first.rules.map(rule => rule.id), [BLOCK_PROBE.id])
+  assert.equal(first.rows.rules, 'active')
+  assert.deepEqual(first.items, rulesItems(runtime, NOW))
+  assert.deepEqual(first.items.map(item => item.id), ['rules/peak'])
+  const changed = await run('peak 不做')
+  assert.equal(changed.kind, 'success')
+  const second = await pageOf(root)
+  assert.deepEqual([second?.peak.level, second?.peak.origin, second?.peak.via, second?.peak.now], ['stop', 'human', 'command', true])
+  assert.deepEqual(second?.builtins.filter(entry => entry.enabled).map(entry => entry.id), ['builtin:glm-peak-pricing', 'builtin:glm-peak-stop', 'builtin:glm-peak-stop-dispatch', 'builtin:glm-peak-stop-scripts'])
+  assert.deepEqual(second?.items, rulesItems(runtime, NOW))
+  assert.deepEqual(second?.items[0]?.fields, { peakMode: 'stop', peakModeOrigin: 'human' })
+}, { rules: BLOCKING_FILE })
+
+/** A denial as the guard framework's rows journal it in the project: the bare rule id, no mode. */
+const guardDenialLine = (minutesAgo: number, command: string): string => JSON.stringify({ at: new Date(NOW - minutesAgo * MINUTE).toISOString(), rule: 'workspace-containment', tool: 'pwsh', correction: 'no', call: { tool: 'pwsh', command } })
+const projectJournalOf = (root: string): string => join(root, '.llm', 'audit', 'violations.jsonl')
+const dataJournalOf = (root: string): string => join(root, 'data-home', 'audit', 'violations.jsonl')
+
+rowTest('without a home of its own the page counts the project journal the gate and the guard rows write, not the data service\'s journal, and follows an append', async ({ root, runtime, exec, beat, until }) => {
+  await runtime.create()
+  assert.equal((await exec('pwsh', { command: 'echo rules-probe-blocked' })).isError, true)
+  await until(() => readFileSync(projectJournalOf(root), 'utf8').includes(`rules:${BLOCK_PROBE.id}`))
+  await beat()
+  const first = await pageOf(root)
+  const containment = first?.code.find(entry => entry.id === 'guard:workspace-containment')
+  assert.deepEqual([containment?.denials7d, containment?.last.map(entry => entry.what)], [1, ['pwsh cat ../shared']], 'the data service\'s journal is not counted')
+  assert.equal(first?.rules[0]?.enforce7d, 1, 'the gate\'s own line in the project journal')
+  await appendFile(projectJournalOf(root), `${guardDenialLine(1, 'cat ../other')}\n`)
+  await beat()
+  assert.equal((await pageOf(root))?.code.find(entry => entry.id === 'guard:workspace-containment')?.denials7d, 2, 'the grown journal is read again')
+}, {
+  rules: BLOCKING_FILE,
+  setup: async ({ root, runtime }) => {
+    runtime.services.set(DATA_SERVICE, { userHome: join(root, 'user'), projectHome: join(root, 'data-home') })
+    for (const [file, command] of [[projectJournalOf(root), 'cat ../shared'], [dataJournalOf(root), 'cat ../elsewhere']] as const) {
+      await mkdir(join(file, '..'), { recursive: true })
+      await writeFile(file, `${guardDenialLine(5, command)}\n`)
+    }
+  },
+})
+
+test('view.json is not written again while its content is the same, only its moments; a change writes it', async () => {
+  const clock = fakeClock('2026-10-28T07:00:00.000Z')
+  await withRow(async ({ root, runtime, run, beat }) => {
+    await runtime.create()
+    const first = await pageOf(root)
+    assert.equal(first?.at, '2026-10-28T07:00:00.000Z')
+    clock.advance(1_000)
+    await beat()
+    assert.equal((await pageOf(root))?.at, '2026-10-28T07:00:00.000Z', 'the period found nothing new: the file stays')
+    await run('peak 无影响')
+    const changed = await pageOf(root)
+    assert.deepEqual([changed?.at, changed?.peak.level], ['2026-10-28T07:00:01.000Z', 'inform'])
+  }, { clock })
+})
+
+test('a journal line of the gate is on the page a quiet second later, and the write it still owes is done before the row is gone', async () => {
+  await withRow(async ({ root, runtime, exec, violations, until }) => {
+    await runtime.create()
+    assert.equal((await exec('pwsh', { command: 'echo rules-probe-blocked' })).isError, true)
+    await violations(1)
+    await until(() => readFileSync(rulesPaths(root).view, 'utf8').includes('"enforce7d": 1'))
+    const [rule] = (await pageOf(root))?.rules ?? []
+    assert.deepEqual([rule?.id, rule?.enforce7d, rule?.record7d], [BLOCK_PROBE.id, 1, 0])
+  }, { rules: BLOCKING_FILE })
+  await withRow(async ({ root, runtime, exec, violations, dispose }) => {
+    await runtime.create()
+    await exec('pwsh', { command: 'echo rules-probe-blocked' })
+    await violations(1)
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await dispose()
+    assert.equal((await pageOf(root))?.rules[0]?.enforce7d, 1, 'the unload wrote the page before it was done')
+  }, { rules: BLOCKING_FILE })
+})
+
+test('a page write that fails warns once for the run of failures and degrades the row\'s health; the gate judges all the same, and the next good write clears it', async () => {
+  let failing = true
+  const io = quickIo({ rename: (from, to) => failing && to.endsWith('view.json') ? Promise.reject(Object.assign(new Error('EACCES: refused'), { code: 'EACCES' })) : renameFile(from, to) })
+  const { warnings } = await captureWarnings(() => withRow(async ({ root, runtime, exec, beat }) => {
+    await runtime.create()
+    await beat()
+    const line = health(runtime)
+    assert.equal(line.status, 'degraded')
+    assert.ok(line.reason.includes('规则页的数据写不出：新文件换不上去'), line.reason)
+    assert.equal((await exec('pwsh', { command: 'echo rules-probe-blocked' })).isError, true, 'the gate still judges')
+    assert.equal(await pageOf(root), undefined)
+    assert.deepEqual((await readdir(rulesPaths(root).runtimeDir)).filter(entry => entry.endsWith('.tmp')), [], 'no temporary file is left')
+    failing = false
+    await beat()
+    assert.equal(health(runtime).reason.includes('规则页'), false, health(runtime).reason)
+    assert.ok((await pageOf(root)) !== undefined)
+  }, { config: { io }, rules: BLOCKING_FILE }))
+  assert.equal(warnings.filter(text => text.includes('view.json cannot be written')).length, 1, warnings.join('\n'))
+})

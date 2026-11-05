@@ -7,8 +7,10 @@
  * carry a path or a reason and never a number (c), the compute and write
  * failures behind an injected read and rename that leave the model flow
  * byte for byte the same (d), and the client board over a fake registry
- * host and a fake `readBytes` (e). The fixtures live in
- * tests/fixtures/metrics/.
+ * host and a fake `readBytes` (e). The last two tests pin the board's
+ * relayed `load` group as the status hub's one `metrics/load` entry, read
+ * from the same view the file holds (status hub design 0.3 §4.2). The
+ * fixtures live in tests/fixtures/metrics/.
  */
 import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -24,6 +26,10 @@ import type { MetricsEvent } from '../src/metrics/schema.ts'
 import { boardView, boardWindows, capView } from '../src/metrics/board-view.ts'
 import { parseMetricsBoardView, type MetricsBoardView } from '../src/shared/metrics-board.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
+import { metricsStatusItems } from '../src/metrics/status.ts'
+import { collectStatus } from '../src/report/status.ts'
+import { statusServiceName, type RowStatusView } from '../src/shared/status-host.ts'
+import { validateStatusItem } from '../src/shared/status.ts'
 import { renderHourness } from '../src/report/index.ts'
 import { fakeInjector, fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { GUIDE_LINE, homeLineOf, metricsBoard, stampOf } from '../ui/src/metrics/board.ts'
@@ -563,5 +569,59 @@ test('the view lands beside the journal and the user-level directory stays clean
   }
   finally {
     rmSync(join(root, '..'), { recursive: true, force: true })
+  }
+})
+
+test('metricsStatusItems: the relayed load group is the one metrics/load entry, words and moment from the view (status hub design 0.3 §4.2)', () => {
+  const at = '2026-11-04T09:00:00.000Z'
+  const view = compose(boardView(inputOf(loadFixture('events-design.json'))), at, at)
+  const load = view.groups.find(group => group.id === 'load')
+  assert.ok(load !== undefined && load.relayed && load.rows.length === 3)
+  const source = join('p', '.llm', 'metrics', 'view.json')
+  const items = metricsStatusItems(view, source)
+  assert.equal(items.length, 1)
+  const entry = items[0]
+  assert.deepEqual(
+    { id: entry.id, owner: entry.owner, audience: entry.audience, asOf: entry.asOf, source: entry.source },
+    { id: 'metrics/load', owner: 'metrics', audience: 'agent', asOf: at, source },
+  )
+  assert.equal(entry.text, `${view.windows[0]}：${load.rows.map(row => `${row.label} ${row.values[0]}`).join('；')}`)
+  const checked = validateStatusItem(entry)
+  assert.ok(checked.ok, 'the entry passes the hub check')
+  assert.deepEqual(checked.warnings, [])
+  assert.ok(!entry.text.includes('%'), 'no ratio in the entry')
+
+  assert.deepEqual(metricsStatusItems({ ...view, at: null }, source), [], 'no entry before the first compute')
+  assert.deepEqual(metricsStatusItems({ ...view, groups: view.groups.filter(group => group.id !== 'load') }, source), [], 'no load group, no entry')
+  assert.deepEqual(metricsStatusItems({ ...view, groups: view.groups.map(group => group.id === 'load' ? { ...group, relayed: false } : group) }, source), [], 'a group that is not relayed is not handed')
+  const failed = metricsStatusItems({ ...view, tried: '2026-11-04T10:00:00.000Z', problem: '盘没了' }, source)
+  assert.equal(failed.length, 1, 'a failed compute keeps the last good groups, so the entry stays')
+  assert.equal(failed[0].asOf, at, 'dated by the last good compute')
+  assert.equal(failed[0].text, entry.text)
+})
+
+test('the metrics row hands metrics/load through glmHournessStatus/metrics: the same view the file holds, none before the first compute or for an unknown session, withdrawn with the row', async () => {
+  const fx = boardFixture()
+  let disposed = false
+  try {
+    const view = (): RowStatusView | undefined => fx.rt.ctx.get(statusServiceName('metrics')) as RowStatusView | undefined
+    assert.equal(view()?.row, 'metrics')
+    await fx.rt.create()
+    assert.deepEqual(view()?.items(fx.rt.agent.id), [], 'no entry before the board computes')
+    fx.emit(AT)
+    await untilEvents(fx.root, 2)
+    fx.flush()
+    const written = await untilView(fx.root, settled => settled.at !== null)
+    const expected = metricsStatusItems(written, join(fx.root, '.llm', 'metrics', 'view.json'))
+    assert.equal(expected.length, 1)
+    assert.deepEqual(view()?.items(fx.rt.agent.id), expected, 'the entry is the file\'s view')
+    assert.deepEqual(collectStatus(fx.rt.ctx as never, fx.rt.agent.id, 'agent', AT).items.filter(item => item.owner === 'metrics'), expected, 'the collector reads the one entry')
+    assert.deepEqual(view()?.items('nobody'), [], 'a session with no project has no entry')
+    fx.dispose()
+    disposed = true
+    assert.equal(fx.rt.services.has(statusServiceName('metrics')), false, 'the view goes with the row')
+  }
+  finally {
+    if (!disposed) fx.dispose()
   }
 })

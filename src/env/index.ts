@@ -24,6 +24,7 @@
  * root agent's environment notice says. Ships enabled since m4-checks B6.
  */
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { ensureLlmIgnored } from '../data/llm-ignore.ts'
@@ -31,6 +32,7 @@ import { projectHomeFor } from '../data/project-home.ts'
 import { projectOf } from '../data/project-root.ts'
 import { dataService } from '../shared/data-home.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
+import { provideRowStatus } from '../shared/status-host.ts'
 import type { AgentLike, ProvideHost, ServiceLookup, SessionLike, ToolExecutionContext, ToolsLike } from '../shared/dsh-min.ts'
 import { graphService } from '../graph/service.ts'
 import { installContribution, loopsService } from '../loops/service.ts'
@@ -42,6 +44,7 @@ import { envNotice } from './notice.ts'
 import { createChecker, readOwnChecks } from './runner.ts'
 import { emitSuppressionCount } from './metrics.ts'
 import { dailySuppressions, type SuppressionRecord } from './suppressions.ts'
+import { envStatusItems } from './status.ts'
 
 /** The row's context: the agent lifecycle event, service lookup and provision, the tools service, and cordis inject when the host has it. */
 export interface EnvContext extends ServiceLookup, Partial<ProvideHost> {
@@ -51,6 +54,12 @@ export interface EnvContext extends ServiceLookup, Partial<ProvideHost> {
   inject?(names: readonly string[], callback: (sub: ServiceLookup) => (() => void) | void): unknown
   /** Awaited serially before agent creation resolves; the first step sees the effects. */
   on(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
+}
+
+/** Row settings: the status view's injected read (tests); nothing else reads it. */
+export interface EnvConfig {
+  /** Reads one file's text for the status entry's journal (the status view is synchronous); tests inject it, the host reads from disk. */
+  readonly readFile?: ((path: string) => string) | undefined
 }
 
 /** cordis plugin identity: the tools service, for check_limit's registration. */
@@ -111,10 +120,13 @@ function installWork(ctx: EnvContext, session: SessionLike, health: RowHealth, s
   })()
 }
 
+/** The suppression journal under the project directory `home`: the one file the daily count appends to and the status entry reads. */
+const suppressionsPath = (home: string): string => join(home, 'audit', 'suppressions.jsonl')
+
 /** The last record of the suppression journal under the project directory `home`, undefined when there is none. */
 async function lastSuppression(home: string): Promise<SuppressionRecord | undefined> {
   try {
-    const lines = (await readFile(join(home, 'audit', 'suppressions.jsonl'), 'utf8')).split('\n').filter(line => line.trim() !== '')
+    const lines = (await readFile(suppressionsPath(home), 'utf8')).split('\n').filter(line => line.trim() !== '')
     return lines.at(-1) === undefined ? undefined : JSON.parse(lines.at(-1)!) as SuppressionRecord
   }
   catch {
@@ -124,7 +136,7 @@ async function lastSuppression(home: string): Promise<SuppressionRecord | undefi
 
 /** Append one count record to `<home>/audit/suppressions.jsonl` (home: the project directory). */
 async function appendSuppression(home: string, record: SuppressionRecord): Promise<void> {
-  const file = join(home, 'audit', 'suppressions.jsonl')
+  const file = suppressionsPath(home)
   await mkdir(dirname(file), { recursive: true })
   await appendFile(file, `${JSON.stringify(record)}\n`)
 }
@@ -141,7 +153,7 @@ function provideEnvService(ctx: EnvContext): (() => void) | string {
 }
 
 /** cordis plugin entry. */
-export function apply(ctx: EnvContext): () => void {
+export function apply(ctx: EnvContext, config: EnvConfig = {}): () => void {
   const provided = provideEnvService(ctx)
   const notProvided = typeof provided === 'string' ? provided : undefined
   if (notProvided !== undefined) console.warn(`${name}: ${notProvided}`)
@@ -155,9 +167,47 @@ export function apply(ctx: EnvContext): () => void {
     recordRun: (run) => { loopsService(ctx)?.recordRun({ ...run, entry: CHECKS_ENTRY_ID }) },
   })
   const installed = new WeakSet<AgentLike>()
+  // The row's status view (status hub design 0.3 §3.2, §12 M4 row): the one `env/suppressions`
+  // entry, the latest daily count, computed when the collector asks. The session's repository is
+  // the working directory seen at agent creation; a session the row does not know, or one outside
+  // a project, has no entry. A journal that is not there yet is no entry, not an error; one that
+  // cannot be read is, and the collector takes the placeholder.
+  const readFile = config.readFile ?? ((path: string) => readFileSync(path, 'utf8'))
+  const sessions = new Map<string, string>()
+  const status = provideRowStatus(ctx, 'env', (sessionId) => {
+    const cwd = sessionId === undefined ? undefined : sessions.get(sessionId)
+    const root = typeof cwd === 'string' && cwd.length > 0 ? projectOf(cwd)?.root : undefined
+    if (root === undefined) return []
+    const file = suppressionsPath(dataService(ctx)?.projectDirOf?.(cwd) ?? join(root, '.llm'))
+    let raw: string
+    try {
+      raw = readFile(file)
+    }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+      throw error
+    }
+    const records = raw.split('\n').filter(line => line.trim().length > 0).flatMap(line => {
+      try {
+        const parsed: unknown = JSON.parse(line)
+        if (typeof parsed !== 'object' || parsed === null) return []
+        const record = parsed as Partial<SuppressionRecord>
+        return typeof record.at === 'string' && typeof record.total === 'number' ? [parsed as SuppressionRecord] : []
+      }
+      catch {
+        return []
+      }
+    })
+    return envStatusItems(records, file)
+  })
+  disposers.push(() => { status.dispose() })
   disposers.push(ctx.on('agent/created', ({ agent }) => {
     if (installed.has(agent)) return
     installed.add(agent)
+    // The status view resolves the session's repository through the directory seen here (the view is synchronous; the notice's install work cannot serve it).
+    const seenSession = sessionIdOf(agent)
+    const seenCwd = agent.session?.header.cwd
+    if (seenSession !== undefined && typeof seenCwd === 'string' && seenCwd.length > 0) sessions.set(seenSession, seenCwd)
     try {
       const notice = installEnvNotice(ctx, agent, health)
       if (notice !== undefined) disposers.push(notice)

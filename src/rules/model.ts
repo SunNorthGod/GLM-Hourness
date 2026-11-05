@@ -76,6 +76,17 @@ export interface SkippedRecord {
 
 export type RecoveryReason = 'snapshot-behind' | 'snapshot-corrupt' | 'snapshot-modified' | 'journal-shorter' | 'journal-tail' | 'journal-unreadable' | 'journal-not-engine'
 
+/** What a rebuild of the state says, by its reason (design §7.5): the row's health line (row-health.ts) and the rules page's recovery group. */
+export const RECOVERED_TEXT: Readonly<Record<RecoveryReason, string>> = {
+  'snapshot-behind': '存档没跟上变更记录，已补上',
+  'snapshot-corrupt': '规则板的存档坏了（被清零、截断或读不出），已按变更记录重建',
+  'snapshot-modified': '存档与变更记录对不上，已按变更记录重建，原存档已另存',
+  'journal-shorter': '变更记录比存档短（被截断或删改过），已按变更记录重建，原存档已另存',
+  'journal-tail': '变更记录的最后一条没写完，已丢掉',
+  'journal-unreadable': '变更记录里有读不出的行',
+  'journal-not-engine': '变更记录里有不是规则板自己写的记录',
+}
+
 /** One line of the difference between the repository file and the board's state. */
 export interface RepoDiffLine {
   readonly path: readonly [string] | readonly [string, string]

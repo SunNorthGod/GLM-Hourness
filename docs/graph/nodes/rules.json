@@ -701,6 +701,12 @@
           "to": "每条规则写明管什么、对谁生效、谁设的、怎么执行，人在板上看得到哪些在生效"
         }
       }
+    },
+    {
+      "at": "2026-11-05T06:30:13.006Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow rules-board-page-and-r4d（wf_a34e9ff57206a017）完成：规则板页面合入 main，main = 3b24f1e，origin 与 github 一致；status-hub-2（状态板块第 4、7、8 批）随它一起合入。合入后的代码上四道门禁为 0：npm test 3156 通过 / 0 失败，探针 420/420，棘轮与 main 相同。行组合没有变，没有重启桌面版。第二轮评审留下两条不挡路：给规则行单独配 home、或 guard 行的 home 与数据目录不一致时，规则页会漏掉 guard 与 metrics 的拒绝（出厂补丁与用户 profile 都不这样配）；guard 状态视图每 15 秒仍整读一次项目流水（status-hub-2 的代码，本分支按计划没动）。R4d（checkCall 执行已批准的门禁脚本）仍归本节点，排在 R3 的提议批准路径之后，m6-script-gate 照旧等它。规则板页面的真机核对交给批次 L4（wf_be2ff3a8b7d83155），它等的合入条件现已满足。节点保持进行中。"
     }
   ]
 }

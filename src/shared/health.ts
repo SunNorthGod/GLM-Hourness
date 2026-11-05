@@ -17,7 +17,7 @@
  * view with its fiber. Reports stay in the host process; nothing reaches the
  * model-visible conversation.
  */
-import type { ProvideHost, ServiceLookup } from './dsh-min.ts'
+import type { ProvideHost, ServiceLookup } from './cordis-min.ts'
 
 /** The GLM channel package's host rows (loader ids `glm-hourness/<row>`), in patch order. */
 export const GLM_ROWS = ['glm-llm', 'glm-login', 'glm-prompt', 'glm-compact'] as const
@@ -244,7 +244,8 @@ export function collectHealth(ctx: ServiceLookup, sessionId: string | undefined)
   })
 }
 
-const STATUS_LABELS: Readonly<Record<HealthEntry['status'], string>> = {
+/** The words of a row's status, for the health table and the rules page (rules design §9.1: the states of the rows a rule lives in). */
+export const STATUS_LABELS: Readonly<Record<HealthEntry['status'], string>> = {
   active: '生效',
   degraded: '部分生效',
   inactive: '未生效',

@@ -16,12 +16,12 @@ import { creditPricing } from '../src/glm-llm/credits.ts'
 import { apply, BEAT_MS, PASS_MS, type IntervalTimer, type RulesConfig, type RulesContext } from '../src/rules/index.ts'
 import { repoJson, type RepoRules, type Ticket } from '../src/rules/model.ts'
 import { loadState, rulesPaths } from '../src/rules/store.ts'
-import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, SessionProjectionsService, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { DATA_SERVICE } from '../src/shared/data-home.ts'
 import { collectHealth } from '../src/shared/health.ts'
 import { peakModeService, type PeakModeService } from '../src/shared/peak-mode.ts'
 import { PRICING_SERVICE } from '../src/shared/pricing.ts'
-import { execTool, fakeLive, fakeRuntime, readViolations, type ExecTool, type FakeLive, type FakeRuntime, type ReadViolations } from './fake-rc3.ts'
+import { execTool, fakeInjector, fakeLive, fakeRuntime, readViolations, type ExecTool, type FakeLive, type FakeRuntime, type ReadViolations } from './fake-rc3.ts'
 import { quickIo, type FakeClock } from './rules-helpers.ts'
 
 /** Wednesday 15:00 in UTC+8, inside GLM's peak hours (14:00-18:00). */
@@ -68,6 +68,8 @@ export interface Fixture {
   readonly run: (input: string) => Promise<CommandResultLike>
   readonly exec: ExecTool
   readonly violations: ReadViolations
+  /** The units the row registered with the session projection registry. */
+  readonly projections: ReadonlyArray<{ readonly key: string, readonly init: (header: unknown) => unknown, readonly apply: (state: never) => unknown }>
 }
 
 export interface Options {
@@ -91,6 +93,8 @@ export interface Options {
   readonly live?: boolean
   /** A clock the test moves: the row's and the board's moment. Replaces `now`. */
   readonly clock?: FakeClock
+  /** Give the row `ctx.inject` with the session projection registry, as the rc.3 host does. Default true; false leaves `inject` out. */
+  readonly projections?: boolean
   /** Run before the row is applied, with the project, the host and the live agents: the state a row meets when it starts (a ticket another run left, a live subagent). */
   readonly setup?: (parts: { readonly root: string, readonly runtime: FakeRuntime, readonly live: FakeLive, readonly now: () => number }) => Promise<void>
 }
@@ -110,8 +114,18 @@ export async function withRow(body: (fixture: Fixture) => Promise<void>, options
     if (options.data !== false) runtime.services.set(DATA_SERVICE, { userHome: join(root, 'user'), projectHome: join(root, '.llm') })
     for (const [name, value] of Object.entries(options.services ?? {})) runtime.services.set(name, value)
     const commands = new Map<string, CommandDefinitionLike<AgentCommandInvocationLike>>()
+    const projections: Array<Fixture['projections'][number]> = []
+    const registry: Pick<SessionProjectionsService, 'register'> = {
+      register: (definition) => {
+        const unit = definition as unknown as Fixture['projections'][number]
+        projections.push(unit)
+        return () => { projections.splice(projections.indexOf(unit), 1) }
+      },
+    }
+    const injector = fakeInjector({ sessionProjections: registry as SessionProjectionsService }, runtime.ctx)
     const ctx = {
       ...runtime.ctx,
+      ...(options.projections === false ? {} : { inject: injector.inject }),
       commands: {
         register: (definition: CommandDefinitionLike<AgentCommandInvocationLike>) => {
           if (options.breakCommands === true) throw new Error('taken')
@@ -151,6 +165,7 @@ export async function withRow(body: (fixture: Fixture) => Promise<void>, options
       run: input => commands.get('rules')!.handler({ commandId: 'test', agent: { id: runtime.agent.id, session: runtime.agent.session }, rawInput: input } as unknown as AgentCommandInvocationLike),
       exec: execTool(runtime),
       violations: readViolations(root),
+      projections,
     })
     await dispose()
   }
