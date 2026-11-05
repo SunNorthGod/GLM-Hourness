@@ -27,6 +27,12 @@
       "reason": "运行 compact-recall-redact（wf_f32235c26051667e）开工：先核实导出文件里实际有哪些像凭证的内容，再复用现有识别办法遮掉",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-05T15:15:13.236Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "compact-recall-redact（wf_f32235c26051667e）第 1 轮 code 步完成：分支 compact-recall-redact 头 7a5553d，已推 origin；build、preflight、npm test 退出码 0，棘轮 eslint 73 / knip 18 / jscpd 1 不变，探针 421/421，新加的遮掉核对通过；两条验收的证据写在提交说明与 DESIGN.md §2.4。下一步评审。合入后 compact-recall 的 L4 在隔离实例里做，不改人的 profile。"
     }
   ]
 }
