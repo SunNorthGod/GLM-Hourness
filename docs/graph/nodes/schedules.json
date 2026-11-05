@@ -517,6 +517,12 @@
           "to": "反复做的事集中在一块板上，到点或碰到事件就做，人也能自己加"
         }
       }
+    },
+    {
+      "at": "2026-11-05T11:57:23.431Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4（wf_be2ff3a8b7d83155，记录 .agents/tasks/l4-batch-2026-11-05/l4.md）：/wish 前后循环板页的主 Agent 一行对；/wish 之后主 Agent 第一回合收到「有事等你太久时」提醒，只提醒那一件、没新开待决；GLM 通道带来的四项条目已列出（来源「GLM 通道带来的 · 只能看」），指标自查在「到点做的」；最近跑过的有高峰开始、改完文件就跑检查（跑完了，已告诉主 Agent）、高峰结束三行；机器一级运行者的锁与 state.json 在，login ok、这段时间没有通道事件。不合：讲细点不带交来者的 ownRules 与 details（m4-checks 上的 B1，改在 src/loops/view.ts 与 ui/src/loops/model.ts）。"
     }
   ]
 }
