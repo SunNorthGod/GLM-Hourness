@@ -47,6 +47,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "合入步（wf_7bd410e5bb88654f land）报告：5b42f28 合入 main（51af510），origin 与 github 一致，门禁绿，工作树与分支已删。桌面版没有重启成功：01:28 与 02:03 两次启动都报 desktop welcome: Web authentication failed，与本节点代码无关（失败在桌面壳里，插件还没应答）。记录 .agents/tasks/habits-prompts/desktop-start-failure.md。桌面重启后的核对等 cookie 清理之后补做。"
+    },
+    {
+      "at": "2026-11-05T18:29:31.006Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人同意清 cookie（原话见 d-desktop-cdp-only 2026-11-06 的编辑）。编排方告知合入步（wf_7bd410e5bb88654f land）：桌面版不在运行时备份 %APPDATA%\\@deepseek-ai\\dsh-desktop\\Network\\Cookies 与 Cookies-journal 到 .agents/tasks/habits-prompts/，删掉 host_key='127.0.0.1' 且 name 以 dsh-auth- 开头的行，再按 9333 启动，核对没有新的崩溃报告、两个包的启用行都在运行、dist 等于 main HEAD。结果记在 desktop-start-failure.md。"
     }
   ]
 }
