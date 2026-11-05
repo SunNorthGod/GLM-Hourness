@@ -527,6 +527,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "panel-2 Q6（评审的四处必修 F1、F2、F4、F5）本地提交 8021ae7，未推送。门禁：build 0、preflight 0、探针 390/390、棘轮 73/18/1；npm test 退出码 1，唯一失败是 main 上那条依赖日期的 metrics-calc 测试，链上其后 46 个 spec 单跑 872 个测试 0 失败。编排方答 (a)：等 main 上的正式修复（test(metrics): pin the writer clock…，最后一轮探针 09:39 开始）合入后合并 main、跑一次四道门禁，再一起推送。"
+    },
+    {
+      "at": "2026-11-05T02:22:41.988Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "panel-2 的 F1、F2、F4、F5 修复已推：Q6 8021ae7 加合并 909c5ed（合入含时钟修复的 origin/main 2bd13f6）。909c5ed 上四道门禁为 0：npm test 3029/3029，探针 390/390，棘轮 73/18/1。origin/panel-2 = 909c5ed。下一步：复审；四处修复的桌面复核随合入时的 L4。"
+    },
+    {
+      "at": "2026-11-05T02:33:58.497Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow panel-2（wf_b1e731fe9f954391）完成：第 2 轮评审 APPROVED，0 条阻塞（.worktrees/panel-2/.llm/panel-2/review.md）；Q6 8021ae7 修好 F1、F2、F4、F5；合并 909c5ed 上四道门禁为 0（npm test 3029/3029，探针 390/390，棘轮 73/18/1）；docs/graph 未动，主检出没有留下东西。最终报告列了各批提交与门禁、做完条件的状态、等待项与等谁、第 1、6、9、17 条的改字、桌面与合入时的 L4。origin/panel-2 = 909c5ed，尚未合入 main；编排方派 land-panel-2 合入 main、跑门禁、推两个远端，客户端半有变，合入后按 CDP 规矩重启桌面版并在人的桌面版上看首页五段、F1、F4，记录写进 .agents/tasks/panel/l4-merge-<日期>.md。留给批次 L4 的：第 13 条已登录一支（要人的凭证）、第 11 条单装组合。Q3 的标题改写对照表仍等人定。"
+    },
+    {
+      "at": "2026-11-05T02:55:33.772Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "land-panel-2（wf_ea31cd006756ebfc）：合并提交 59e267e 上 build、preflight、npm test 为 0（3029/3029）；探针 388/390，两项失败都在 glm 执行的 Edit 别名（ReplaceFileW EIO，Win32 1175），据该 lane 报告发生时有三个探针同时在跑。同一时段 .llm/probe-lock 被 land-m4-checks 残留的续写改写了 owner.txt（DEVELOPMENT.md §7 2026-11-05 一行）。编排方已告诉 panel-2 该锁仍归它，用它重跑两项失败；两个探针同跑时还复现就作为发现报告，不再多试。合入 main、桌面重启复核与 L4 记录在其后。"
     }
   ]
 }

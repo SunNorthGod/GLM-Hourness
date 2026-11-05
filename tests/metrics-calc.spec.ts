@@ -217,12 +217,12 @@ test('rule and lift events roundtrip verbatim with any id-shaped via (acceptance
     const first = await appendEvents(root, [
       { k: 'rule', by: 'guard', at: at(1), body: { call: 'c-1', rule: 'metrics-files-only', effect: 'deny' } },
       { k: 'lift', by: 'guard', at: at(2), body: { rule: 'metrics-files-only', action: 'lift', via: 'board', units: 4 } },
-    ])
+    ], 'cli', { now: () => Date.parse(at(1)) })
     assert.deepEqual({ written: first.written, rejected: first.rejected, error: first.error ?? null }, { written: 4, rejected: 0, error: null })
     const second = await appendEvents(root, [
       { k: 'lift', by: 'guard', at: at(3), body: { rule: 'metrics-files-only', action: 'restore', via: 'chat', units: 6 } },
       { k: 'lift', by: 'guard', at: at(4), body: { rule: 'metrics-files-only', action: 'lift', via: 'phone', units: 6 } },
-    ])
+    ], 'cli', { now: () => Date.parse(at(3)) })
     assert.equal(second.error, undefined)
     const { events } = await readLog(root)
     const lifts = events.filter(event => event.k === 'lift')
@@ -302,7 +302,7 @@ test('verify flags graph history entries the journal misses; backfill-graph fill
   const root = tempProject()
   try {
     const { io } = cliIo(root)
-    const seed = await appendEvents(root, [{ k: 'count', by: 'guard', at: '2026-11-04T18:00:00.000Z', body: { what: 'seed', value: 1 } }])
+    const seed = await appendEvents(root, [{ k: 'count', by: 'guard', at: '2026-11-04T18:00:00.000Z', body: { what: 'seed', value: 1 } }], 'cli', { now: () => Date.parse('2026-11-04T18:00:00.000Z') })
     assert.equal(seed.error, undefined)
     const nodes = join(root, 'docs', 'graph', 'nodes')
     mkdirSync(nodes, { recursive: true })
@@ -383,11 +383,11 @@ test('prune writes the event first, deletes the old files, and verify stops repo
 test('the summary command prints the basis first and renders every group; --json answers with the same groups (acceptance 8 slice)', async () => {
   const root = tempProject()
   try {
-    const { io } = cliIo(root)
+    const { io } = cliIo(root, () => Date.parse('2026-11-04T20:02:00.000Z'))
     await appendEvents(root, [
       { k: 'count', by: 'guard', at: '2026-11-04T20:00:00.000Z', body: { what: 'a', value: 1 } },
       { k: 'count', by: 'guard', at: '2026-11-04T20:01:00.000Z', body: { what: 'b', value: 2 } },
-    ])
+    ], 'cli', { now: () => Date.parse('2026-11-04T20:00:00.000Z') })
     const args = ['summary', '--project', root, '--from', FROM, '--to', TO, '--tz', '+08:00']
     const text = await runCli(args, io)
     assert.equal(text.exitCode, 0)
@@ -422,19 +422,21 @@ test('the summary command prints the basis first and renders every group; --json
 test('an in-window append changes the output, and the basis rerun reproduces the first report verbatim (acceptance 8)', async () => {
   const root = tempProject()
   try {
-    const { io } = cliIo(root)
+    // Both writers and the command run on fixed instants inside the window.
+    // A writer files its start and stop lines under the UTC date of its own
+    // clock: on the real clock after 2026-11-04 they land outside the window,
+    // each writer reads as an unclean exit, and the first report (one writer)
+    // and the basis rerun (two) differ. The command's 今天 row counts against
+    // its clock too.
+    const { io } = cliIo(root, () => Date.parse('2026-11-04T20:03:00.000Z'))
     const args = ['summary', '--project', root, '--from', FROM, '--to', TO, '--tz', '+08:00']
-    // The writers' clocks are pinned inside the window: with the real clock their
-    // start/stop land in today's file, outside the window, and the window reads
-    // writers that never stopped, so the report depends on the date the test runs.
-    const at = (iso: string) => ({ now: () => Date.parse(iso) })
     await appendEvents(root, [
       { k: 'count', by: 'guard', at: '2026-11-04T20:00:00.000Z', body: { what: 'a', value: 1 } },
       { k: 'count', by: 'guard', at: '2026-11-04T20:01:00.000Z', body: { what: 'b', value: 2 } },
-    ], 'cli', at('2026-11-04T20:00:00.000Z'))
+    ], 'cli', { now: () => Date.parse('2026-11-04T20:00:00.000Z') })
     const first = await runCli(args, io)
     assert.equal(first.exitCode, 0)
-    const appended = await appendEvents(root, [{ k: 'count', by: 'guard', at: '2026-11-04T20:02:00.000Z', body: { what: 'c', value: 3 } }], 'cli', at('2026-11-04T20:02:00.000Z'))
+    const appended = await appendEvents(root, [{ k: 'count', by: 'guard', at: '2026-11-04T20:02:00.000Z', body: { what: 'c', value: 3 } }], 'cli', { now: () => Date.parse('2026-11-04T20:02:00.000Z') })
     assert.equal(appended.error, undefined)
     // The rerun reads by the FIRST report's basis line: the file it named, to the line it read.
     const read = (first.stdout.split('\n')[0] ?? '').match(/(events-[^ ]+\.jsonl) 1–(\d+) 行/)

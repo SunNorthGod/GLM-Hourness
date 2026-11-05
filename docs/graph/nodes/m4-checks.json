@@ -163,6 +163,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m4-checks 的 batches 循环在 B1–B6 全部完成后还在空转（第 8 轮仍在跑，每轮 code、review、push 都只核对一遍没有新批次）。原因：.llm/m4c/status.json 以 UTF-8 字节顺序标记开头，工作流的停止条件读不出 allDone=true。编排方已把该文件改写成不带字节顺序标记的 UTF-8（allDone 照旧为 true），下一次检查条件时循环应停下并进入 finalize。"
+    },
+    {
+      "at": "2026-11-05T02:08:31.428Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow m4-checks（wf_10dc22064b5c2c1b）收尾完成：B1–B6、文档与合并 main 的提交都在 origin/m4-checks（头 63388d5），各批四道门禁为 0，最终 npm test 2817 通过 / 0 失败，探针 366/366，棘轮 76/19/1 未上升。与当前 origin/main 试合并有 7 个文件冲突（分支上次合 main 在 4516ec6，之后 main 合入了 loops-runner、user-graph、metrics、compact-recall、loops-machine、m6 跟进与时钟修复）。编排方派 land-m4-checks（agent://wf-coder）合 main、按两边意图解冲突并在合并提交里逐个写明、跑四道门禁、快进 main 推两个远端；B6 让 env 行默认启用，行组合有变，合入后按 CDP 规矩重启桌面版。"
     }
   ]
 }

@@ -31,6 +31,7 @@ const HABIT = {
 
 const REPLY = '好，都写成英文吧'
 const OTHER_REPLY = '提交说明随意，不用改'
+const WITHDRAWAL = '提交说明不用再写英文了'
 const TASK = 'the first task of the session'
 
 /** The person's messages around the ask: the task a minute before it, then the replies a minute apart; `shown` matters were put to them since their last message. */
@@ -104,9 +105,14 @@ test('a habit that is already an active memory under the same name answers known
 
 test('an open ask with the same group key answers asked_recently even under another name and other words', () => withMemory(async (memory) => {
   await memory.call('memory_habit', { action: 'ask', ...HABIT, learnedFrom: ['edit:goal.stage'] }, MAIN)
-  const again = await refusalOf(memory.call('memory_habit', { action: 'ask', name: 'message-language', scope: 'all', description: 'Everything written into the repo stays in English', body: HABIT.body, question: '提交信息统一用英文写，行吗？', learnedFrom: ['edit:goal.stage'] }, MAIN))
+  const second = { action: 'ask', name: 'message-language', scope: 'all', description: 'Everything written into the repo stays in English', body: HABIT.body, question: '提交信息统一用英文写，行吗？', learnedFrom: ['edit:goal.stage'] }
+  const again = await refusalOf(memory.call('memory_habit', second, MAIN))
   assert.equal(again.code, 'asked_recently')
   assert.equal(records(memory.places.user!).length, 1)
+  memory.setNow(new Date(T0 + 27 * DAY))
+  assert.equal((await refusalOf(memory.call('memory_habit', second, MAIN))).code, 'asked_recently', 'an unanswered question still holds on day 27')
+  memory.setNow(new Date(T0 + 29 * DAY))
+  assert.equal((await memory.call('memory_habit', second, MAIN)).asked, true, 'and no longer on day 29')
 }, { talk: talkOf([]) }))
 
 test('a no blocks the same habit for 28 days by group key: still refused on day 27, askable on day 29', () => withMemory(async (memory) => {
@@ -122,6 +128,24 @@ test('a no blocks the same habit for 28 days by group key: still refused on day 
   assert.equal(state.declined.get('commit-in-english')?.until, new Date(T0 + 28 * DAY).toISOString())
   assert.ok(state.asks.has('message-language'), 'the second ask is the open question of its name')
 }, { talk: talkOf([OTHER_REPLY]) }))
+
+test('a confirmed habit the person withdrew is known for 28 days from the withdrawal, by group key: confirmed on day 0, withdrawn on day 20, refused on days 27, 30 and 47, askable on day 49', () => withMemory(async (memory) => {
+  await memory.call('memory_habit', { action: 'ask', ...HABIT, learnedFrom: ['edit:goal.stage'] }, MAIN)
+  assert.equal((await memory.call('memory_habit', { action: 'confirm', name: 'commit-in-english', words: [REPLY] }, MAIN)).confirmed, true)
+  memory.setNow(new Date(T0 + 20 * DAY))
+  const owner = await refusalOf(memory.call('memory_forget', { name: 'commit-in-english', reason: 'the agent takes it back' }, MAIN))
+  assert.equal(owner.code, 'preference_owner', 'the asking session cannot forget the confirmed habit without the person\'s words')
+  assert.equal((await memory.call('memory_forget', { name: 'commit-in-english', reason: 'the person withdrew the habit', relay: WITHDRAWAL }, MAIN)).forgotten, true)
+  const again = { action: 'ask', name: 'message-language', scope: 'all', description: 'Everything written into the repo stays in English', body: HABIT.body, question: '提交信息统一用英文写，行吗？', learnedFrom: ['edit:goal.stage'] }
+  for (const day of [27, 30, 47]) {
+    memory.setNow(new Date(T0 + day * DAY))
+    const answer = await memory.call('memory_habit', again, MAIN).then(() => 'asked', (error: Error) => (JSON.parse(error.message) as { code: string }).code)
+    assert.equal(answer, 'known', `day ${day}`)
+  }
+  memory.setNow(new Date(T0 + 49 * DAY))
+  assert.equal((await memory.call('memory_habit', again, MAIN)).asked, true, 'day 49: 29 days after the withdrawal')
+  assert.deepEqual(records(memory.places.user!).map(record => record.op), ['ask', 'store', 'forget', 'ask'])
+}, { talk: talkOf([REPLY, WITHDRAWAL]) }))
 
 test('the fourth question of a week is week_cap, and the next week has room again', () => withMemory(async (memory) => {
   for (const [index, question] of ['提交说明都写成英文，好吗？', '代码评审先给结论，好吗？', '每周只开一次会，好吗？'].entries()) {
@@ -155,10 +179,11 @@ test('the field rules of an ask: kebab-case name, one-line question of 10 to 90 
 
 test('a confirm stores what was asked as a preference that never fades, with the person\'s words and the question kept', () => withMemory(async (memory) => {
   await memory.call('memory_habit', { action: 'ask', ...HABIT, learnedFrom: ['edit:goal.stage'] }, MAIN)
-  const confirmed = await memory.call('memory_habit', { action: 'confirm', name: 'commit-in-english', words: [REPLY] }, MAIN)
+  const confirmed = await memory.call('memory_habit', { action: 'confirm', name: 'commit-in-english', words: [REPLY], description: 'Something else', body: 'Other content.\n**Why:** made up.' }, MAIN)
   assert.deepEqual([confirmed.confirmed, confirmed.name, confirmed.scope, confirmed.question, confirmed.updated], [true, 'commit-in-english', 'all', HABIT.question, false])
   const [ask, store] = records(memory.places.user!)
   assert.deepEqual([ask?.op, store?.op], ['ask', 'store'])
+  assert.deepEqual([store?.data.description, store?.data.body], [HABIT.description, HABIT.body], 'confirm stores the content the question carried; it has no field that changes it')
   assert.equal(store?.relay, REPLY)
   assert.equal(store?.data.ask, HABIT.question)
   assert.equal(store?.data.relayChecked, true)
@@ -243,6 +268,11 @@ test('updating a confirmed habit without the person\'s messages is unavailable a
   const entry = state.entries.get('commit-in-english')
   assert.equal(entry?.confirmed?.question, HABIT.question, 'the update keeps the confirmation')
   assert.equal(entry?.origin.actor, 'llm')
+  assert.equal(entry?.origin.session, 'main-session', 'the update keeps the origin')
+  const owner = await refusalOf(memory.call('memory_forget', { name: 'commit-in-english', reason: 'the agent takes it back' }, MAIN))
+  assert.equal(owner.code, 'preference_owner', 'the same agent in the same session cannot forget the confirmed habit without the person\'s words')
+  assert.equal(records(memory.places.user!).length, 3, 'nothing was written')
+  assert.equal((await stateOf(memory, 'all')).entries.get('commit-in-english')?.status, 'active')
 }, { talk: talkOf([REPLY]) }))
 
 // --- the fold ---------------------------------------------------------------
