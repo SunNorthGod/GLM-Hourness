@@ -28,7 +28,7 @@ import { BIGMODEL_API_ORIGIN } from './zcode-wire.ts'
 import { encodeRequest, decodeMessage, decodeSse, metadataUserId, splitSystemPrompt, type WireShape } from './anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
-import { GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities, zcodeModelRule, zcodeWireModelId } from './models.ts'
+import { GLM_CONTEXT_WINDOW, GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities, zcodeModelRule, zcodeWireModelId } from './models.ts'
 import { maxOutputTokensFor } from './token-budget.ts'
 import { messageText, type AttachmentsLike, type GenerateOptionsLike } from '../shared/lm-min.ts'
 import type { HealthState } from '../shared/health.ts'
@@ -102,6 +102,8 @@ export interface ZcodeAdapterOptions {
   readonly metric?: GlmMetricSink
   /** The clock of those records, epoch milliseconds; default `Date.now`. */
   readonly now?: () => number
+  /** The context window declared to DSH and capping each step's output budget (the glm-llm row's `contextWindow`); default 512000 (docs/DESIGN.md §4.6). */
+  readonly contextWindow?: number
 }
 
 const storeFsDefault: StoreFs = {
@@ -446,7 +448,7 @@ export class ZcodeAdapter {
       name: model,
       // A text-only declaration makes DSH project images to text before stream().
       inputModalities: [...glmInputModalities(model)],
-      context: { contextWindow: 512_000 },
+      context: { contextWindow: this.contextWindow() },
       defaultMaxTokens: GLM_DEFAULT_MAX_TOKENS,
       // No `systemPromptUpdate`: Anthropic has no mid-conversation system
       // role, so a changed prompt must rewrite the leading system message
@@ -457,6 +459,11 @@ export class ZcodeAdapter {
 
   private credentialPath(): string {
     return `${this.options.home.replace(/[\\/]+$/, '')}/credentials.json`
+  }
+
+  /** The context window this adapter declares to DSH; the row hands in a validated value. */
+  private contextWindow(): number {
+    return this.options.contextWindow ?? GLM_CONTEXT_WINDOW.default
   }
 
   /** The stored login, migrated to the version-2 record on first read (auth/store.ts `loadStoredCredential`). */
@@ -545,7 +552,7 @@ export class ZcodeAdapter {
     const attribution: Omit<TraceContext, 'requestId'> = plan === 'coding-plan'
       ? this.attribution.attribute({ sessionId: request.sessionId, purpose: request.purpose, reasoningEffort: options.reasoningEffort, tools: options.tools, messages: options.messages })
       : { sessionId: upstreamSessionId(request.sessionId), sessionType: request.purpose === undefined ? 'main' : 'other', traceId: randomUUID() }
-    const wire = plan === 'coding-plan' ? codingPlanWire(options, request.purpose, this.attribution.stepEffortOf(request.sessionId)) : undefined
+    const wire = plan === 'coding-plan' ? codingPlanWire(options, request.purpose, this.attribution.stepEffortOf(request.sessionId), this.contextWindow()) : undefined
     const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(device.value, attribution.sessionId), wire))
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
 
@@ -622,16 +629,20 @@ export class ZcodeAdapter {
  * compacts with the session's selection (`c3a` @13387356), and the
  * request's own effort before the session's first step.
  */
-function codingPlanWire(options: GenerateOptionsLike, purpose: GenerateOptions['purpose'], sessionEffort: string | undefined): WireShape {
+function codingPlanWire(options: GenerateOptionsLike, purpose: GenerateOptions['purpose'], sessionEffort: string | undefined, declaredWindow: number): WireShape {
   const rule = zcodeModelRule(options.model)
   const requested = purpose === 'compaction' ? sessionEffort ?? options.reasoningEffort : options.reasoningEffort
   const level = rule === undefined ? undefined : purpose === 'session-title' ? rule.reasoningLevels[0] : requested !== undefined && rule.reasoningLevels.includes(requested) ? requested : 'high'
   // max_tokens as 3.16.3 picks it (token-budget.ts); DSH's maxTokens is not
-  // used for catalog models. Outside the catalog the DSH value stays.
+  // used for catalog models. Outside the catalog the DSH value stays. The
+  // step's window is the smaller of the window declared to DSH and the
+  // catalog's (a deviation from 3.16.3/3.17.1, which take the catalog's;
+  // docs/DESIGN.md §4.6): the output budget and DSH's compaction then count
+  // against the same window.
   const kind = purpose === 'session-title' ? 'auxiliary' : purpose === 'compaction' ? 'compaction' : 'step'
   return {
     model: zcodeWireModelId(options.model),
-    maxTokens: rule === undefined ? options.maxTokens ?? GLM_DEFAULT_MAX_TOKENS : maxOutputTokensFor(kind, rule.maxOutputTokens, rule.contextWindow, options.messages),
+    maxTokens: rule === undefined ? options.maxTokens ?? GLM_DEFAULT_MAX_TOKENS : maxOutputTokensFor(kind, rule.maxOutputTokens, Math.min(declaredWindow, rule.contextWindow), options.messages),
     // 3.16.3 sends the session title through `generateText` (`v4a` @13066475), every other request through `streamText`.
     stream: purpose !== 'session-title',
     optionPatch: rule === undefined || level === undefined ? undefined : rule.optionPatch(level),

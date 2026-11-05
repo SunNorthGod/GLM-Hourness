@@ -262,12 +262,46 @@ async function withMissingDshHome<T>(run: (dshHome: string) => T | Promise<T>): 
 test('glm-llm: the registered route and the credential directory at activation; without a home the user-level directory', async () => {
   const store = serviceStore()
   llmApply({ registerAdapter: () => () => {}, ...store }, { home: 'C:/ws/.llm' })
-  assert.deepEqual(activation(store, 'glm-llm'), { state: 'active', reason: '已注册路由 glm-zcode（套餐 coding-plan，凭证目录 C:/ws/.llm）' })
+  assert.deepEqual(activation(store, 'glm-llm'), { state: 'active', reason: '已注册路由 glm-zcode（套餐 coding-plan，凭证目录 C:/ws/.llm，上下文窗口 512000）' })
   await withMissingDshHome(dshHome => {
     const bare = serviceStore()
     llmApply({ registerAdapter: () => () => {}, ...bare }, {})
-    assert.deepEqual(activation(bare, 'glm-llm'), { state: 'active', reason: `已注册路由 glm-zcode（套餐 coding-plan，凭证目录 ${join(dshHome, 'glm-hourness')}）` })
+    assert.deepEqual(activation(bare, 'glm-llm'), { state: 'active', reason: `已注册路由 glm-zcode（套餐 coding-plan，凭证目录 ${join(dshHome, 'glm-hourness')}，上下文窗口 512000）` })
   })
+})
+
+test('glm-llm: a configured context window is declared to DSH and named in the activation', async () => {
+  const store = serviceStore()
+  const adapters: Array<{ resolveModel(provider: string, model: string): Promise<{ context?: { contextWindow: number } }> }> = []
+  llmApply({ registerAdapter: (_providers, adapter) => { adapters.push(adapter); return () => {} }, ...store }, { home: 'C:/ws/.llm', contextWindow: 600_000 })
+  assert.deepEqual(activation(store, 'glm-llm'), { state: 'active', reason: '已注册路由 glm-zcode（套餐 coding-plan，凭证目录 C:/ws/.llm，上下文窗口 600000）' })
+  assert.equal((await adapters[0].resolveModel('glm-zcode', 'glm-5.3')).context?.contextWindow, 600_000)
+})
+
+test('glm-llm: a context window outside 128000..1000000 or not an integer falls back to 512000, degrades the row and warns once', async () => {
+  const refused = (shown: string): string => `上下文窗口配置 ${shown} 不是 128000 到 1000000 之间的整数，按缺省 512000`
+  for (const [value, shown] of [[127_999, '127999'], [1_000_001, '1000001'], [600_000.5, '600000.5'], ['512k', '"512k"'], [true, 'boolean']] as const) {
+    const store = serviceStore()
+    const adapters: Array<{ resolveModel(provider: string, model: string): Promise<{ context?: { contextWindow: number } }> }> = []
+    const warnings: string[] = []
+    const warn = console.warn
+    console.warn = (message: string) => { warnings.push(message) }
+    try {
+      llmApply({ registerAdapter: (_providers, adapter) => { adapters.push(adapter); return () => {} }, ...store }, { home: 'C:/ws/.llm', contextWindow: value })
+    }
+    finally {
+      console.warn = warn
+    }
+    assert.deepEqual(activation(store, 'glm-llm'), { state: 'degraded', reason: `已注册路由 glm-zcode（套餐 coding-plan，凭证目录 C:/ws/.llm，上下文窗口 512000）；${refused(shown)}` }, String(value))
+    assert.deepEqual(warnings, [`dsh-glm-hourness/glm-llm: ${refused(shown)}`])
+    assert.equal((await adapters[0].resolveModel('glm-zcode', 'glm-5.3')).context?.contextWindow, 512_000)
+  }
+  // A session's report carries the refusal: a failed request stays inactive with it.
+  const store = serviceStore()
+  const adapters: Array<{ stream(options: unknown): AsyncIterable<unknown> }> = []
+  quietly(() => llmApply({ registerAdapter: (_providers, adapter) => { adapters.push(adapter); return () => {} }, ...store }, { home: 'C:/definitely-missing-glm-hourness-health-home', contextWindow: 'x' }))
+  await assert.rejects(async () => { for await (const chunk of adapters[0].stream({ provider: 'glm-zcode', model: 'glm-5.3', sessionId: 's1', messages: [] })) void chunk }, /\/glm-login/)
+  assert.deepEqual(inSession(store, 'glm-llm', 's1'), { state: 'inactive', reason: `未登录：凭证为空，运行 /glm-login；${refused('"x"')}` })
 })
 
 test('glm-llm: a request without a credential reports the session inactive with the login instruction', async () => {
