@@ -3,7 +3,7 @@
   "type": "task",
   "title": "GLM 包的四类事件交给指标流水",
   "why": "额度读取、上游限额、登录被拒与高峰提醒都记进同一份流水，便于对账",
-  "status": "approved",
+  "status": "doing",
   "parent": "m6",
   "kind": "implement",
   "tier": "standard",
@@ -46,6 +46,14 @@
           "to": "额度读取、上游限额、登录被拒与高峰提醒都记进同一份流水，便于对账"
         }
       }
+    },
+    {
+      "at": "2026-11-05T05:49:31.831Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 m6-metrics-events（wf_2bf0ad146e8238b2）开工：指标流水已在 main（31c9e0f 起），原先的被挡条件已满足",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

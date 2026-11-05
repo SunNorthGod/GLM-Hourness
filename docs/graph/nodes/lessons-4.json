@@ -3,7 +3,7 @@
   "type": "task",
   "title": "第一批经验",
   "why": "先把已知的坑和解法存进去，子 agent 一开工就用得上",
-  "status": "approved",
+  "status": "doing",
   "parent": "lessons",
   "kind": "implement",
   "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 lessons-4。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S11。验证层：L2（固定数据）；导入之后在真实存储上查一次。",
@@ -38,6 +38,14 @@
           "to": "先把已知的坑和解法存进去，子 agent 一开工就用得上"
         }
       }
+    },
+    {
+      "at": "2026-11-05T05:49:32.297Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 lessons-4-first-batch（wf_cc148081d07c2798）开工：先逐条核对 main 上已有的，再补剩下的",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

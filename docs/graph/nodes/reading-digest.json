@@ -75,6 +75,12 @@
           "to": "外面的新做法及时进来，每次一页摘要，写清对本项目有什么用"
         }
       }
+    },
+    {
+      "at": "2026-11-05T05:48:40.013Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "本周（2026-11-05 周四）的阅读派 investigate-reading-digest-1105（wf_f8a7db34778f087b，只读）：读 2026-10-29 至 11-05 Anthropic 与 OpenAI 的 agent 工程文章与 harness engineering 新论文，先查 orch 2026-10-30T17:20 批注里六篇的后续，每篇写讲了什么、对本项目有什么用、建议。报告 .agents/tasks/reading-digest/2026-11-05.md。"
     }
   ]
 }

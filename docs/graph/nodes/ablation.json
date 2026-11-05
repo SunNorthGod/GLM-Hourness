@@ -3,7 +3,7 @@
   "type": "task",
   "title": "注入文字的消融对比",
   "why": "逐段去掉注入给模型的文字再比结果，知道哪段真有用、哪段可以删",
-  "status": "approved",
+  "status": "doing",
   "parent": "orch",
   "kind": "test",
   "body": "按 .agents/tasks/prompt-audit/report.md §8：先修 risk-calib-read（运行目录移到仓库外的临时目录，验收脚本放在被测模型够不着的地方），在 scripts/calibrate/ 加只在标定时加载的消融开关，每一臂先用 L3 探针核对请求里恰好少了或多了那一段；A0 现状重新测基线（旧基线 4cb8799 早于图工具）。臂 A1–A5 见报告 §8.2，两档模型，每格一开始 5 次（question-30 B），变化不明确的臂再加次数。积分不受限（norm-decision-tiers 的常设授权）；尽量补一道完成率会失败的较难任务，取自真实踩过的坑。结论回到 question-31 的整理与 Dynamic Behavior 的去留。改 scripts/calibrate 与 scripts/probe，split 第 5 步也改过它们，所以排在 split 合入之后。",
@@ -59,6 +59,14 @@
           "to": "逐段去掉注入给模型的文字再比结果，知道哪段真有用、哪段可以删"
         }
       }
+    },
+    {
+      "at": "2026-11-05T05:49:32.795Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 ablation-calibration（wf_5f5345b05e5c4e89）开工：先修 risk-calib-read，再跑 A0–A5 两档模型",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }
