@@ -219,6 +219,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "m4-checks-loop-details（wf_0977f7098cfafeae）第 2 轮 code 步已把 B1 的修改推到分支：e667fe8「docs(loops): view.json ownRules and details, the page's 讲细点 (m4-checks 5)」，view.json 带上 ownRules 与 details，循环板讲细点照此显示。code 步仍在跑，评审未开始。"
+    },
+    {
+      "at": "2026-11-05T17:17:21.867Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks-loop-details（wf_0977f7098cfafeae）第 2 轮 code 步完成：B1 修好并推到 origin/m4-checks-loop-details（dd4bb84，已合入 origin/main 6d6035e）。循环板「改完文件就跑检查」的讲细点列出本项目每条已批准的检查行与检查器的五条规矩，图行的条目显示它那一条规矩（第三次返工之前）。门禁绿：build、preflight、check-lint（73/18/1）、npm test、探针 420/420。B2 不改：上手页加指标板入口会改动人定的六块。B3 不在这条线做，DEVELOPMENT.md 的关闭规程由 desktop-close-docs（wf_674d79b3e6a53992）整条重写。桌面真机核对留给合入步。下一步评审，这是循环预算的最后一轮。"
+    },
+    {
+      "at": "2026-11-05T18:08:58.476Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks-loop-details（wf_0977f7098cfafeae）第 2 轮评审 APPROVED，没有挡路项（工作树 .llm/review/review.md）。不挡路 5 条：一个进程里第一次改文件之前讲细点为空；提交说明偏短；B2 交编排方（已另开 guide-metrics-line，人选 B）；B3 不在本线（desktop-close-docs 重写关闭规程）；loops-run 第 12 项偶发失败（根因修法在 habits-prompts 4598fa7）。下一步合入 main；合入后的桌面核对要等桌面版启动失败查明之后再做。"
     }
   ]
 }
