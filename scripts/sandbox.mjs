@@ -146,6 +146,23 @@ export const limitsRow = config => [
   `      config: ${JSON.stringify(config)}`,
 ]
 
+/** Overlay lines that insert the read fence of a calibration run (scripts/calibrate/fence.mjs) with `config` ({workspace, fenced, tmp, record}). */
+export const fenceRow = config => [
+  '- insert:',
+  '    - id: glm-hourness-calibrate/fence',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'calibrate', 'fence.mjs')))}`,
+  `      config: ${JSON.stringify(config)}`,
+]
+
+/** Overlay lines that insert the ablation switch of a calibration run (scripts/calibrate/ablation.mjs) with `config` ({arm, record}). */
+export const ablationRow = config => [
+  '- insert:',
+  '    - id: glm-hourness-calibrate/ablation',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'calibrate', 'ablation.mjs')))}`,
+  '      inject: [llm]',
+  `      config: ${JSON.stringify(config)}`,
+]
+
 /**
  * Overlay lines for a run that exercises the design row: the row ships
  * enabled since the m3 merge (step 12b), the overlay keeps naming it (the
