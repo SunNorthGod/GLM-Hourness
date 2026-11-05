@@ -61,7 +61,7 @@ function EntryItem({ row }: { readonly row: LoopItem }): ReactElement {
       {row.changeLine === null ? null : <div className="glmo-grey">{row.changeLine}</div>}
       <details>
         <summary>讲细点</summary>
-        {row.details.map(line => <div key={line}>{line}</div>)}
+        {row.details.map((line, index) => <div key={`${index}:${line}`}>{line}</div>)}
       </details>
     </div>
   )
