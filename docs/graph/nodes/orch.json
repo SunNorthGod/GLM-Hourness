@@ -487,6 +487,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "项目图对账 investigate-graph-reconcile-1105（wf_fe96517713b134d8）被上游错误截断（upstream truncated response without stop reason），没有写出报告。编排方拆成两半重派，都要求先建报告、每查完一个节点就追加一行，中途断了也留得下已查的部分：A 半 investigate-graph-reconcile-1105-a（wf_354a8b952020a5fa），查 M3、M4、M5、M6、lessons、metrics、rules、schedules、compact-recall 及名单外的未关节点，报告 .agents/tasks/graph-reconcile-2026-11-05/report-a.md；B 半 investigate-graph-reconcile-1105-b（wf_32fe351dc919a679），查 M7 十个子任务（写明各自在 m7 分支上做到哪一步）、M8、onboarding、status-hub、user-graph、bootstrap、dogfood、field-trial、ablation、reading-digest、glm-context-window，报告 report-b.md。两半都只读。"
+    },
+    {
+      "at": "2026-11-05T09:27:21.295Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-05 两条只读调查（graph-reconcile wf_fe96517713b134d8、reading-digest wf_f8a7db34778f087b）都因上游错误中断（一次回复被截断，一次额度用尽），运行状态却显示完成，报告文件不存在。编排方从此在每条运行完成时先核对它该交的文件在不在，不在就按失败处理、重派；重派的任务书要求边做边写进报告。"
     }
   ]
 }
