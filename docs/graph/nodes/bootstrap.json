@@ -378,6 +378,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "接管线（wf_f008ac0c87ec6943）B5 bootstrap-paths 做完，六个提交 3b629b0、56f578a、68de8cb、69da25b、d9df637、878c007 已推 origin/bootstrap；最后的树上 build、preflight、npm test（3195/0/0）、探针 427/427 绿，棘轮 73/18/1。按 d-habits-into-framework 补进默认表的死代码与重复检查已在，各工具输出能否被读的试跑有记录。下一步 B5 评审，然后 B6。"
+    },
+    {
+      "at": "2026-11-05T21:29:40.466Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B5 评审 CHANGES_REQUESTED：F1 候选名字没按设计 §8、§12 过滤；F2 提醒的长度上限从 2500 放到 3500 没有记录理由。循环接着修。"
     }
   ]
 }
