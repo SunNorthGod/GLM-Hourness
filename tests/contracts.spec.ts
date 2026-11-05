@@ -19,6 +19,7 @@ import { GUARD_RULES } from '../src/guard/catalog.ts'
 import { isGateListener } from '../src/guard/gate.ts'
 import { graphFilesOnly } from '../src/guard/graph-files.ts'
 import { activeRules, apply as guardApply } from '../src/guard/index.ts'
+import { installMetricsFileGuard, metricsFilesOnly } from '../src/metrics/rules.ts'
 import { installLoopsFileGuard, installLoopsScheduleGuard, loopsFilesOnly, loopsScheduleTools, LOOPS_FILES_ONLY } from '../src/loops/guard.ts'
 import { LOOPS_DECLARATION, LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
 import { MAIN_AGENT_RULES } from '../src/guard/main-agent-rules.ts'
@@ -38,6 +39,12 @@ import type { QuotaView } from '../src/shared/quota.ts'
 import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, ENV_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
+import { apply as compactApply } from '../src/glm-prompt/compact-row.ts'
+import { transcriptNote } from '../src/glm-prompt/zcode-compact-text.ts'
+import { renderTranscript } from '../src/data/transcript.ts'
+import { apply as transcriptApply } from '../src/data/transcript-row.ts'
+import type { LlmStreamOptions } from '../src/shared/dsh-min.ts'
+import type { StreamChunk } from '../src/shared/lm-min.ts'
 import { DISPATCH_TOOLS } from '../src/workflow/index.ts'
 import { PACKAGES } from '../scripts/packages.mjs'
 import { designHost } from './design-host.ts'
@@ -71,7 +78,9 @@ const ROW_IDS = [
   'glm-hourness/rules',
   'glm-hourness/design',
   'glm-hourness/loops',
+  'glm-hourness/metrics',
   'glm-hourness/env',
+  'glm-hourness/transcript',
   'glm-hourness/ui',
 ]
 
@@ -228,12 +237,14 @@ test('guard catalog: each listed rule is the id of a rule object its row install
     guard: activeRules({ workspaceRoots: ['C:/work/app'], base: 'C:/work/app' }).map(rule => rule.id),
     graph: [graphFilesOnly('C:/work/app/docs/graph', 'C:/work/app').id],
     loops: [loopsFilesOnly(['C:/work/app'], 'C:/work/app').id, loopsScheduleTools(true).id],
+    metrics: [metricsFilesOnly('C:/work/app', 'C:/work/app').id],
   }
   const listed = (row: string): string[] => GUARD_RULES.filter(rule => rule.row === row).map(rule => rule.id)
   assert.deepEqual(listed('guard').sort(), [...installed.guard].sort())
   assert.deepEqual(listed('graph'), installed.graph)
   assert.deepEqual(listed('loops'), installed.loops)
-  assert.deepEqual([...new Set(GUARD_RULES.map(rule => rule.row))].sort(), ['graph', 'guard', 'loops'], 'only rows that exist on main')
+  assert.deepEqual(listed('metrics'), installed.metrics)
+  assert.deepEqual([...new Set(GUARD_RULES.map(rule => rule.row))].sort(), ['graph', 'guard', 'loops', 'metrics'], 'only rows that exist on main')
   // No mode column: a rule of the catalog denies from the day its row is enabled (d-code-rules-enforce).
   for (const entry of GUARD_RULES) {
     assert.deepEqual(Object.keys(entry).sort(), ['blocks', 'id', 'liftVia', 'row', 'title'], JSON.stringify(entry))
@@ -255,6 +266,11 @@ test('guard catalog: the rows with rules install their pre-execute listeners thr
   const bare = { on: (event: string, listener: unknown) => { loops.push({ event, listener }); return () => {} }, get: () => undefined }
   installLoopsFileGuard({ ctx: bare, now: () => 0, journal: () => {} })
   installLoopsScheduleGuard({ ctx: bare, now: () => 0, journal: () => {}, bindings: () => new Set(), taskOf: () => Promise.resolve(undefined) })
+  const metricsListener: Array<{ event: string, listener: unknown }> = []
+  const metricsBare = { on: (event: string, listener: unknown) => { metricsListener.push({ event, listener }); return () => {} }, get: () => undefined }
+  installMetricsFileGuard({ ctx: metricsBare, journal: () => {} })
+  assert.equal(metricsListener.filter(entry => entry.event === 'tools/pre-execute').length, 1)
+  assert.ok(metricsListener.every(entry => isGateListener(entry.listener)), 'the metrics row\'s gate comes from the gate as well')
   assert.equal(loops.filter(entry => entry.event === 'tools/pre-execute').length, 2)
   assert.ok(loops.every(entry => isGateListener(entry.listener)), 'the loop board\'s two gates come from the gate as well')
 })
@@ -686,4 +702,56 @@ test('main agent rules: every rule of the table denies once on the fake host, an
   for (let attempt = 0; attempt < 200 && (!existsSync(file) || readFileSync(file, 'utf8').split('\n').filter(line => line !== '').length < MAIN_AGENT_RULES.length); attempt++) await new Promise(resolve => setTimeout(resolve, 10))
   const rules = readFileSync(file, 'utf8').split('\n').filter(line => line !== '').map(line => (JSON.parse(line) as { rule: string }).rule)
   assert.deepEqual([...new Set(rules)].sort(), MAIN_AGENT_RULES.map(rule => rule.id).sort())
+})
+
+test('glm-compact and the transcript row: a GLM compaction summary ends with the sentence naming the file the row wrote', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'contracts-transcript-'))
+  try {
+    const store = serviceStore()
+    const documents = [
+      { seq: 1, type: 'user/message', time: 1_000, surface: 'current' as const, text: 'Read package.json' },
+      { seq: 3, type: 'tool/result', time: 2_000, surface: 'current' as const, text: '1\t{\n2\t}' },
+    ]
+    store.provide('sessionQuery', { filterEvents: () => Promise.resolve(documents) })
+    const stopTranscript = transcriptApply(store, { home })
+    // The rc.3 llm/stream waterfall: prepend registers outermost; the adapter answers with one summary block.
+    type Listener = (options: LlmStreamOptions, next: () => AsyncIterable<StreamChunk>) => AsyncIterable<StreamChunk>
+    const listeners: Listener[] = []
+    const summary = '<analysis>a</analysis><summary>body</summary>'
+    const chunks: StreamChunk[] = [
+      { type: 'block-start', index: 0, blockType: 'text' },
+      { type: 'text-delta', index: 0, text: summary },
+      { type: 'block-end', index: 0, block: { type: 'text', text: summary } },
+      { type: 'finish', reason: { kind: 'stop' } },
+    ]
+    const reply = (): AsyncIterable<StreamChunk> => ({
+      [Symbol.asyncIterator]: () => {
+        let at = 0
+        return { next: (): Promise<IteratorResult<StreamChunk>> => Promise.resolve(at < chunks.length ? { done: false, value: chunks[at++] } : { done: true, value: undefined }) }
+      },
+    })
+    const llm = {
+      stream(options: LlmStreamOptions): AsyncIterable<StreamChunk> {
+        const chain = [...listeners]
+        const next = (): AsyncIterable<StreamChunk> => chain.shift()?.(options, next) ?? reply()
+        return next()
+      },
+    }
+    const stopCompact = compactApply({ ...store, llm, on: (_event, listener) => { listeners.unshift(listener); return () => {} } })
+    const instruction = { role: 'user', content: [{ type: 'text', text: 'You are now acting as a compaction engine for this AI coding assistant.' }] }
+    const texts: string[] = []
+    for await (const chunk of llm.stream({ ...GLM, purpose: 'compaction', sessionId: 'S1', messages: [instruction] })) {
+      if (chunk.type === 'block-end' && chunk.block.type === 'text') texts.push(chunk.block.text)
+    }
+    const path = join(home, 'transcripts', 'S1.txt')
+    assert.deepEqual(texts, [`Summary:\nbody${transcriptNote(path)}`])
+    const written = readFileSync(path, 'utf8').split('\n')
+    assert.ok(written[0]?.startsWith('Transcript of session S1, exported '), written[0])
+    assert.deepEqual(written.slice(1), renderTranscript('S1', documents, new Date(0)).split('\n').slice(1))
+    stopCompact()
+    stopTranscript()
+  }
+  finally {
+    rmSync(home, { recursive: true, force: true })
+  }
 })

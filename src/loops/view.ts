@@ -136,8 +136,8 @@ interface ViewPluginEntry {
   readonly reason?: string
 }
 
-/** The records 最近跑过的 lists (records.ts `loop-done`, `loop-duplicate`, `loop-task-delete`, the fields the view reads). */
-type ViewRecord =
+/** The records 最近跑过的 lists (records.ts `loop-done`, `loop-duplicate`, `loop-task-delete`, the fields the view reads; `recentRecords` reads them in this shape). */
+export type ViewRecord =
   | { readonly kind: 'loop-done', readonly at: string, readonly entry: string, readonly outcome: string, readonly reason?: string, readonly exits?: readonly number[] }
   | { readonly kind: 'loop-duplicate', readonly at: string, readonly event: string }
   | { readonly kind: 'loop-task-delete', readonly at: string, readonly entry?: string, readonly why: string, readonly deleted: boolean }

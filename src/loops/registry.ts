@@ -20,6 +20,7 @@ import { createHash } from 'node:crypto'
 import { plainWordsIn } from '../graph/plain-question.ts'
 import { canonicalJson } from '../rules/model.ts'
 import { pluginLabel } from '../shared/plugin-labels.ts'
+import { CHANNEL_SOURCE } from './channel.ts'
 import { LOOP_EVENT_TABLE } from './events.ts'
 import { validateEntry, type LoopEntry, type LoopEntryDefinition } from './model.ts'
 import type { ContributeResult, Contribution, ContributionSource } from './service.ts'
@@ -313,6 +314,13 @@ interface RegistryOptions {
    * namespace belongs to no hand-over (§3.2).
    */
   readonly channel?: () => readonly LoopEventDeclaration[]
+  /**
+   * The channel's default entries (channel.ts `channelEntries`), read from the
+   * same service and listed after the hand-overs. They are checked as any
+   * plugin's entry is; one that does not hold is dropped and told once. Two of
+   * them have the machine scope that no hand-over may have (design §3.4).
+   */
+  readonly channelEntries?: () => readonly LoopEntryDefinition[]
 }
 
 export interface LoopsRegistry {
@@ -393,6 +401,29 @@ export function createRegistry(options: RegistryOptions = {}): LoopsRegistry {
     }
   }
 
+  /**
+   * The channel's entries as they stand: each checked as a plugin's entry
+   * against the table of the moment, with the words a person has not learned
+   * told once. An id a hand-over already uses is the hand-over's.
+   */
+  const channelListed = (taken: ReadonlySet<string>): RegisteredEntry[] => {
+    const definitions = options.channelEntries?.() ?? []
+    if (definitions.length === 0) return []
+    const context = contextFor(undefined)
+    const who = `${CHANNEL_SOURCE.plugin} 的 ${CHANNEL_SOURCE.row}`
+    return definitions.flatMap((definition): RegisteredEntry[] => {
+      const found = validateEntry(definition, 'plugin', { table: context.table, now: context.now }).map(issue => `${issue.path}：${issue.message}`)
+      if (taken.has(definition.id)) found.push('id：已由另一份交来的条目用了')
+      if (found.length > 0) {
+        say(`${who} 交来的 ${definition.id} 读不懂：${found.join('；')}`)
+        return []
+      }
+      const words = plainWordsIn(`${definition.title}\n${definition.why ?? ''}`)
+      if (words.length > 0) say(`${definition.id} 的说法里有 ${words.join('、')}`)
+      return [{ entry: { ...definition, source: { kind: 'plugin', plugin: CHANNEL_SOURCE.plugin, row: CHANNEL_SOURCE.row }, rev: revOf(definition) }, state: 'active', waitingOn: [] }]
+    })
+  }
+
   return {
     contribute(source, contribution) {
       const key = keyOf(source)
@@ -418,12 +449,13 @@ export function createRegistry(options: RegistryOptions = {}): LoopsRegistry {
       }
     },
     entries() {
-      return [...holders.values()].flatMap(held => held.check.entries.map((item): RegisteredEntry => {
+      const handed = [...holders.values()].flatMap(held => held.check.entries.map((item): RegisteredEntry => {
         const entry: LoopEntry = { ...item.definition, source: { kind: 'plugin', plugin: held.source.plugin, row: held.source.row }, rev: revOf(item.definition) }
         return item.waitingOn.length === 0
           ? { entry, state: 'active', waitingOn: [] }
           : { entry, state: 'waiting', waitingOn: item.waitingOn, reason: waitingReason(item.waitingOn) }
       }))
+      return [...handed, ...channelListed(new Set(handed.map(item => item.entry.id)))]
     },
     events() {
       return contextFor(undefined).table

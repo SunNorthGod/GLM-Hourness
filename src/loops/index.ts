@@ -20,6 +20,10 @@
  *   through, and so does a check entry, whose command the environment row's
  *   service reads from the tool node (`checksSeam`; refused while that row
  *   is off);
+ * - runs the machine-level runner (machine.ts) at the start of every beat:
+ *   the account's two channel events, GLM quota running low and the GLM
+ *   login rejected, judged once for the whole machine and put into the inbox
+ *   of the project the main agent last walked in (design §6.1, §6.4);
  * - runs the end of a GLM peak itself (peak.ts): the harness action of the
  *   loop row's own hand-over takes the table of design §6.9 item 4 — the
  *   execute row's resume action when a hand-over lists it, otherwise the wake
@@ -58,26 +62,30 @@ import type { LockEnvironment } from '../data/lock.ts'
 import { projectKey } from '../graph/main-agent-holder.ts'
 import { projectJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
-import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventHost, SessionEventLike, SessionLike, WorkspaceRegistryService } from '../shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventHost, SessionEventOn, WorkspaceRegistryService } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import type { StoreIo } from '../rules/store.ts'
 import { realStoreIo } from '../rules/store.ts'
 import { statSync } from 'node:fs'
 import { realLockEnvironment } from '../data/lock.ts'
+import { emitMetric } from '../shared/metrics.ts'
 import { nextPeakChange, pricingService } from '../shared/pricing.ts'
 import { PEAK_LEVEL_WORDS, PEAK_REDUCE_GLM_WORKERS, peakModeService, type PeakModeState } from '../shared/peak-mode.ts'
 import { scheduleOf } from './bind.ts'
 import { createBoards, realDelay, type Delay } from './boards.ts'
-import { CHANNEL_EVENTS, CHANNEL_PEAK_CHANGED } from './channel.ts'
+import { CHANNEL_EVENTS, CHANNEL_PEAK_CHANGED, channelEntries } from './channel.ts'
 import { LOOPS_HINT, NOT_A_PROJECT, runLoopsCommand } from './commands.ts'
 import { LOOP_ACTIONS, LOOP_DEFAULTS } from './defaults.ts'
 import { installLoopsFileGuard, installLoopsScheduleGuard, LOOPS_FILES_ONLY, LOOPS_SCHEDULE_TOOLS } from './guard.ts'
 import { holderRecordFor } from './holder.ts'
+import { createMachineRunner, type MachineRunner } from './machine.ts'
+import { metricEventOf } from './metrics.ts'
 import { LOOPS_KEY, loopsProjection } from './projection.ts'
 import { createRegistry, LOOPS_SOURCE } from './registry.ts'
 import { installLoopStepNotice, machineStepFile } from './reminder.ts'
 import { BEAT_MS, createProjectRuntime, type LoopChecks, type ProjectRuntime } from './run.ts'
 import { envService, fillCheckArgv, formatCheckOutput, isCheckFormat } from '../env/env-service.ts'
+import { ensureRuntimeDir } from './store.ts'
 import { LOOPS_DECLARATION, LOOPS_SERVICE, type Contribution, type LoopEventInput, type LoopsService } from './service.ts'
 import type { PeakView } from './view.ts'
 
@@ -143,14 +151,12 @@ export interface LoopsContext extends Partial<ProvideHost>, Partial<InjectHost>,
   readonly on?: {
     (event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
     (event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
-    /** The gate's row journal flushes on a disposed session (m4-gate G1). */
-    (event: 'session/event', listener: (session: SessionLike, event: SessionEventLike) => void): () => void
-    (event: 'session/disposed', listener: (session: SessionLike) => void): () => void
     /** `schedule/changed` has no payload and is sent after a task write landed (schedule:2231–2237). */
     (event: 'schedule/changed', listener: () => Promise<void> | void): () => void
     /** `workspace/session-stop` is sent only when a session is archived with `stopActivity` (dsh-workspace:540, 623). */
     (event: 'workspace/session-stop', listener: (payload: { sessionId: string }) => Promise<void> | void): () => void
-  }
+    // The gate's row journal flushes on a disposed session (m4-gate G1) — the SessionEventOn pair.
+  } & SessionEventOn
 }
 
 function message(error: unknown): string {
@@ -247,7 +253,15 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
     health.reactivate(...activation())
   }
   const hasPricing = (): boolean => pricingService(ctx, text => { say(text, 'info') }) !== undefined
-  const registry = createRegistry({ report: (text) => { say(text, 'degraded') }, channel: () => hasPricing() ? CHANNEL_EVENTS : [] })
+  const registry = createRegistry({
+    report: (text) => { say(text, 'degraded') },
+    channel: () => hasPricing() ? CHANNEL_EVENTS : [],
+    // The channel's own entries come with the same service, as data (design §3.4): listed while it is there, gone with it.
+    channelEntries: () => {
+      const pricing = pricingService(ctx)
+      return pricing === undefined ? [] : channelEntries(pricing, (text) => { say(text, 'degraded') })
+    },
+  })
 
   /**
    * The projects this process runs, by project root. A project is met when a
@@ -456,6 +470,8 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
       own = registry.contribute(LOOPS_SOURCE, ownContribution(pricing, ownRun))
     }
     adoptWorkspaces()
+    // The account's two events first: one may go into a project's inbox, which that project's beat below reads at once.
+    await machine?.beat()
     for (const [root, held] of [...running]) {
       if (io.now() - held.touchedAt > 10 * BEAT_MS) {
         running.delete(root)
@@ -585,6 +601,8 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
   const stopRunning = (): void => {
     runs = false
     drop()
+    void machine?.stop()
+    machine = undefined
     stopBeat?.()
     stopBeat = undefined
     for (const [root, held] of [...running]) {
@@ -597,6 +615,46 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
   }
   let stopBeat: (() => void) | undefined
   let withdrawService: (() => void) | undefined
+  /** The machine-level runner of the account's two events (machine.ts), while this process runs the board and has a user directory. */
+  let machine: MachineRunner | undefined
+
+  /** Set up the machine-level runner (design §6.1); a process without a user directory says so and judges nothing of the account. */
+  function startMachine(): void {
+    const userHome = dataHomes(ctx, config.home).userHome
+    if (userHome === undefined) {
+      say('没有用户级目录，账号一级的两项（额度快用完、登录失效）这个进程不跑', 'info')
+      return
+    }
+    machine = createMachineRunner({
+      userHome,
+      io,
+      now: io.now,
+      pid: config.lock?.pid ?? process.pid,
+      boot: () => config.lock?.bootTime?.() ?? realLockEnvironment.bootTime?.() ?? Date.now(),
+      pricing: () => pricingService(ctx),
+      entries: () => registry.entries().filter(item => item.state === 'active' && item.entry.scope === 'machine').map(item => item.entry),
+      hasHolder: (project) => {
+        try {
+          return holderRecordFor(ctx, project).kind === 'held'
+        }
+        catch {
+          return false
+        }
+      },
+      emit: async (project, event) => {
+        const runtime = runtimeOf(project)
+        if (runtime === undefined) return { ok: false, code: 'no-project', message: 'this process does not run the board' }
+        // The project may never have had a session in this process: its runtime directory is made before the inbox is written.
+        await ensureRuntimeDir(boards.storeOf(project).paths)
+        return await runtime.emit({ ...event, from: LOOPS_SOURCE.row })
+      },
+      record: (line) => {
+        const event = metricEventOf(line)
+        if (event !== undefined) emitMetric(ctx, event, { dir: line.project })
+      },
+      report: say,
+    })
+  }
   notes.push(NO_CONTROLLER)
   if (typeof ctx.inject === 'function') {
     try {
@@ -635,6 +693,7 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
         runs = true
         notes.splice(0)
         notes.push(`服务 ${LOOPS_SERVICE} 已就绪`)
+        startMachine()
         try {
           stopBeat = (config.beat ?? realBeat)(() => { void beat() }, BEAT_MS)
         }

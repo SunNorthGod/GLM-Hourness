@@ -169,8 +169,32 @@ export const designRows = (config, rowConfig) => [
   `      config: ${JSON.stringify(config)}`,
 ]
 
-/** Make `dir` a git repository with one commit of its current files; whether every git step succeeded. */
+/** Make `dir` a git repository with one commit of its current files (an empty commit for an empty directory); whether every git step succeeded. */
 export function initRepo(dir) {
   const git = args => spawnSync('git', ['-c', 'user.name=glm-hourness', '-c', 'user.email=glm-hourness@localhost', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, encoding: 'utf8' })
-  return [['init', '-q'], ['add', '.'], ['commit', '-q', '-m', 'init']].every(args => git(args).status === 0)
+  return [['init', '-q'], ['add', '.'], ['commit', '-q', '--allow-empty', '-m', 'init']].every(args => git(args).status === 0)
+}
+
+/**
+ * The working directory of a probe scenario's sessions: a git repository of
+ * the scenario's own (loop board design 0.6 §9.1). The project root is the
+ * nearest repository above the working directory, and a work tree's is its
+ * main checkout's (docs/ORCHESTRATION.md §18.9), so a scenario that ran in
+ * this checkout, or in a plain directory under the run directory, had the
+ * rows that keep project state (`.llm/loops`, `.llm/rules`, `.llm/metrics`)
+ * write into the main checkout. A scenario that names no directory, or names
+ * this checkout, runs in its own scenario directory `dir`; a directory that is
+ * not a repository yet is made one with its files committed. A directory that
+ * already is one is used as it is. Throws when git cannot make the repository:
+ * the scenario would otherwise write outside its run directory.
+ * @param {string} dir the scenario directory under the run directory
+ * @param {string} cwd the directory the scenario names, or this checkout
+ * @returns {string} the directory the sessions run in
+ */
+export function scenarioWorkspace(dir, cwd) {
+  const workspace = resolve(cwd) === repo ? dir : cwd
+  if (existsSync(join(workspace, '.git'))) return workspace
+  mkdirSync(workspace, { recursive: true })
+  if (!initRepo(workspace)) throw new Error(`probe: git init failed in ${workspace}`)
+  return workspace
 }

@@ -40,7 +40,7 @@ export function openGoal(graph: LoadedGraph, id: string): GraphNode {
 
 /**
  * The gate of the confirmation (docs/ORCHESTRATION.md §4.8): the goal is in
- * wish or interview, the 8 items of its requirement card are filled and no
+ * wish or interview, the 9 items of its requirement card are filled and no
  * edge supersedes a node. The goal when it passes; `invalid` for a goal past
  * the interview, `gate_unmet` with what is missing and where to write it
  * otherwise.

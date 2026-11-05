@@ -18,12 +18,12 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { checkCall, RulesCheckError, showProject, type CheckOptions } from './check.ts'
-import type { MetricExit } from './metrics.ts'
+import { libraryExit, type MetricExit } from './metrics.ts'
 
 export interface CliIo {
   /** The directory the command line was started in: the project, unless `--project` says otherwise. */
   readonly cwd: string
-  /** Where the `rules.check` event goes; default nowhere. */
+  /** Where the `rules.check` event goes; default the metrics library entry (rules design §10.5, metrics design §5.2); a test injects its own. */
   readonly metrics?: MetricExit
   /** The moment in milliseconds; only a test sets it. */
   readonly now?: () => number
@@ -129,7 +129,7 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<CliRes
     const result = await checkCall({ tool: values.tool, args: call.args }, {
       ...common,
       caller: 'cli',
-      ...(io.metrics === undefined ? {} : { metrics: io.metrics }),
+      metrics: io.metrics ?? libraryExit,
       ...(values.session === undefined ? {} : { session: values.session }),
       ...(values.model === undefined ? {} : { model: values.model }),
       ...(values.role === undefined ? {} : { role: values.role as NonNullable<CheckOptions['role']> }),

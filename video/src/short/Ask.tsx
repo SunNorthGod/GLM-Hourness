@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
-import { GLASS, Pill, Reveal } from "../parts";
-import { CLAMP, COLORS } from "../theme";
+import { CARD, Pill, Reveal } from "../parts";
+import { CLAMP, COLORS, tint } from "../theme";
 import { Avatar, MAIN_AGENT, PERSON } from "./Avatar";
 import { BAR, BEAT } from "./timeline";
 
@@ -18,17 +18,16 @@ const ANSWERS: [string, number][] = [
   ["规划", 300],
 ];
 
-const Row: React.FC<{ at: number; tag: string; color: string; height: number; children: React.ReactNode }> = ({
+const Row: React.FC<{ at: number; tag: string; height: number; children: React.ReactNode }> = ({
   at,
   tag,
-  color,
   height,
   children,
 }) => (
   <Reveal
     at={at}
     style={{
-      ...GLASS,
+      ...CARD,
       height,
       boxSizing: "border-box",
       padding: "0 32px",
@@ -38,7 +37,7 @@ const Row: React.FC<{ at: number; tag: string; color: string; height: number; ch
       fontSize: 52,
     }}
   >
-    <Pill color={color} style={{ fontSize: 30 }}>
+    <Pill color={COLORS.text} style={{ fontSize: 30 }}>
       {tag}
     </Pill>
     {children}
@@ -58,9 +57,10 @@ export const Ask: React.FC = () => {
           <Avatar {...speaker} size={80} />
         </div>
       </Reveal>
-      <Reveal at={BAR * 3 + 8} style={{ position: "absolute", left: 45, top: 762 }}>
+      {/* Above the avatar: below it, the connector from the goal to 预约 turns at x 175, y 797. */}
+      <Reveal at={BAR * 3 + 8} style={{ position: "absolute", left: 45, top: 560 }}>
         <div style={{ opacity: interpolate(frame, [BAR * 3 + 40, BAR * 3 + 52], [1, 0], CLAMP) }}>
-          <Pill color={COLORS.mint} style={{ fontSize: 32 }}>
+          <Pill color={COLORS.green} style={{ fontSize: 32 }}>
             点头 ✓
           </Pill>
         </div>
@@ -78,7 +78,7 @@ export const Ask: React.FC = () => {
         }}
       >
         {QUESTIONS.map((q, i) => (
-          <Row key={q} at={BAR + 2 + i * BEAT} tag="问" color={COLORS.indigo} height={100}>
+          <Row key={q} at={BAR + 2 + i * BEAT} tag="问" height={100}>
             {q}
           </Row>
         ))}
@@ -96,9 +96,9 @@ export const Ask: React.FC = () => {
         }}
       >
         {ANSWERS.map(([label, width], i) => (
-          <Row key={label} at={BAR * 2 + 2 + i * BEAT} tag="答" color={COLORS.lilac} height={84}>
+          <Row key={label} at={BAR * 2 + 2 + i * BEAT} tag="答" height={84}>
             {label}
-            <div style={{ width, height: 14, borderRadius: 7, background: "rgba(255,255,255,0.16)" }} />
+            <div style={{ width, height: 14, borderRadius: 7, background: tint(COLORS.text, 0.16) }} />
           </Row>
         ))}
       </div>

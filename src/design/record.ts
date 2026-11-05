@@ -26,6 +26,7 @@ import { plainWordsIn } from '../graph/plain-question.ts'
 import { PROPOSAL_LIMITS, codePointCount, normalizeText } from '../graph/proposal.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import { bigLoopSet, goalOf, moduleSet, releaseSet } from '../graph/stage.ts'
+import { releaseUserPage, renderUserGraph, userGraphOf, type UserPage } from '../graph/user-graph.ts'
 import { ANSWER_MARKS, DELEGATED, DELEGATIONS_ID, DELEGATION_LIMIT, DELEGATION_REASON, DELEGATION_SUFFIX, answerCallMark, delegationKindOf, type AnswerKind } from '../shared/answer-marks.ts'
 import type { ToolDefinitionLike } from '../shared/dsh-min.ts'
 import { RECORD_HUMAN_ANSWER } from '../shared/tool-names.ts'
@@ -42,7 +43,7 @@ const DELEGATION_FIELDS = new Set(['kind', 'scope', 'undo', 'words'])
 const WORDS_LIMITS = { pieces: 3, piece: 500, whole: 2000 } as const
 const SCOPE_LIMIT = 60
 
-const DESCRIPTION = 'Record what the human said back to a matter you put to them with propose_to_human. Quote their own words exactly, from a message they sent after you showed it (words: 1 to 3 quotes, each a whole phrase); recordedAs is one line of what you take them to have said: the conclusion when they agree, your restatement when they add or reject. For a choose question they agree to, way is the number of the way they picked. The harness checks the quotes against their messages before it writes anything. Agree decides the question; add and reject note it and leave it open: revise the matter and show it again. kind confirm: the reply to the requirement you put to them with propose_to_human (kind confirm); pass goal instead of question. Agree approves the goal and moves it from the interview into the design (the harness checks the requirement card again first); add and reject note the goal and move nothing: change the goal and put the requirement to them again. kind release: the reply to the design you put to them with propose_to_human (kind release); pass goal, and module when it was a module. Agree approves what they were shown and moves the goal, or the module, to release (the harness checks the design again first; for a goal split into modules the framework release makes the candidates modules, each in design, and the goal is released); add and reject note the goal or the module and move nothing: change the design and put it to them again. kind delegation: when the human says a whole kind of matter is yours to decide, pass scope (the kind, in their words) and their words from the latest message they sent; undo: true takes a kind back.'
+const DESCRIPTION = 'Record what the human said back to a matter you put to them with propose_to_human. Quote their own words exactly, from a message they sent after you showed it (words: 1 to 3 quotes, each a whole phrase); recordedAs is one line of what you take them to have said: the conclusion when they agree, your restatement when they add or reject. For a choose question they agree to, way is the number of the way they picked. The harness checks the quotes against their messages before it writes anything. Agree decides the question; add and reject note it and leave it open: revise the matter and show it again. kind confirm: the reply to the requirement you put to them with propose_to_human (kind confirm); pass goal instead of question. Agree approves the goal and moves it from the interview into the design (the harness checks the requirement card again first, and that the user page shown with it is whole in your reply and has not changed since; when it has, put it to them again); add and reject note the goal and move nothing: change the goal and put the requirement to them again. kind release: the reply to the design you put to them with propose_to_human (kind release); pass goal, and module when it was a module. Agree approves what they were shown and moves the goal, or the module, to release (the harness checks the design again first, and the user page as for a confirm; for a goal split into modules the framework release makes the candidates modules, each in design, and the goal is released); add and reject note the goal or the module and move nothing: change the design and put it to them again. kind delegation: when the human says a whole kind of matter is yours to decide, pass scope (the kind, in their words) and their words from the latest message they sent; undo: true takes a kind back.'
 
 const PARAMETERS = {
   type: 'object',
@@ -80,6 +81,7 @@ const OUTPUT = {
 
 const NOT_SHOWN_HINT = 'The human has not seen the exact command text and cautions; show the text from propose_to_human again, verbatim, and ask again'
 const SAMPLE_NOT_SHOWN = 'The human has not seen the whole page or sample they must see before agreeing; show the text from propose_to_human again, verbatim, and ask again'
+const PAGE_CHANGED = 'nothing was recorded: put it to the human again with propose_to_human, show the new text verbatim and ask again'
 const WORDS_HINT = 'quote the human\'s own words exactly, from a message they sent after you showed the proposal; if they have not answered yet, end your turn and wait'
 const BOUNDARY_HINT = 'quote whole phrases, from one punctuation mark or line break to the next'
 const LATEST_HINT = 'the words must be in the latest message the human sent; if they said it earlier, ask them to say it again'
@@ -274,7 +276,10 @@ async function confirm(where: Where, graph: LoadedGraph, state: TalkState, args:
   const said = personSaid(state, args.words, shown.time)
   if (!said.ok) refusedWords(said, '')
   const relay = said.ok ? said.relay : ''
-  if (args.answer === 'agree') sampleSeen([shown])
+  if (args.answer === 'agree') {
+    sampleSeen([shown])
+    userPageSeen(shown, renderUserGraph(userGraphOf(graph, goal), 'confirm'))
+  }
   const mark = answerCallMark(call)
   if (args.answer === 'agree') await confirmWrites(where.dir, graph, goal.id, relay, `${ANSWER_MARKS.agree}${mark}`)
   else {
@@ -455,6 +460,7 @@ async function release(where: Where, graph: LoadedGraph, state: TalkState, args:
   let released: Released | undefined
   if (args.answer === 'agree') {
     sampleSeen([shown])
+    userPageSeen(shown, releaseUserPage(userGraphOf(graph, goal), module))
     released = await releaseWrites(where.dir, graph, goal, module, shown, relay, mark)
   }
   else {
@@ -593,6 +599,24 @@ function sampleSeen(shown: readonly Shown[]): void {
   const last = shown.filter(entry => entry.exact !== undefined).at(-1)
   if (last?.exact === undefined) return
   if (!normalizeTalk(last.after).includes(normalizeTalk(last.exact))) refuse('not_shown', 'The human has not seen the whole page or sample they must see before agreeing', SAMPLE_NOT_SHOWN)
+}
+
+/**
+ * The two checks of the user page a confirm or a release appended (user graph
+ * design 0.4.1 §5.2, last paragraph). Shown: its stable and its state part are
+ * each whole in what the main agent said after it, as the human reads it.
+ * Unchanged: the stable part rendered from the graph now is the one shown,
+ * both normalised; the state part is not rendered again, so that other
+ * modules moving on do not undo the agreement. A showing without a page
+ * compares as an empty one, so a page that appeared since is a change too.
+ */
+function userPageSeen(shown: Shown, now: UserPage): void {
+  const page = shown.userPage
+  const after = normalizeTalk(shown.after)
+  if (page !== undefined && [page.stable, page.state].some(part => part.length > 0 && !after.includes(normalizeTalk(part)))) {
+    refuse('not_shown', 'The human has not seen the whole user page they must see before agreeing', SAMPLE_NOT_SHOWN)
+  }
+  if (normalizeTalk(page?.stable ?? '') !== normalizeTalk(now.stable)) refuse('not_shown', '页在给你看之后变了: the user graph on the page changed after it was shown to the human', PAGE_CHANGED)
 }
 
 /** The writes of one reply: the decision with the human's words as relay, or a note on the question. One retry when the node moved under the write. */

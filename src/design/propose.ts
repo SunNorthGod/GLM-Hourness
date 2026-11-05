@@ -20,9 +20,10 @@ import { openEngine, type ApplyResult } from '../graph/engine.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { PLAIN_QUESTION_GUIDE, PLAIN_WORDS, plainWordsIn } from '../graph/plain-question.ts'
 import { OPEN_STATUSES } from '../graph/projection.ts'
-import { ASK_FORMS, PAGE_LIMITS, PROPOSAL_LIMITS, askOf, askTextRefusal, codePointCount, proposalRecordRefusal, renderAsk, textCoversRecord, type AskForm } from '../graph/proposal.ts'
-import type { GraphNode } from '../graph/schema.ts'
+import { ASK_FORMS, PAGE_LIMITS, PROPOSAL_LIMITS, askOf, askTextRefusal, codePointCount, fenced, proposalRecordRefusal, renderAsk, textCoversRecord, type AskForm } from '../graph/proposal.ts'
+import { USER_LIMITS, type GraphNode } from '../graph/schema.ts'
 import { goalOf } from '../graph/stage.ts'
+import { releaseUserPage, renderUserGraph, userGraphOf, type UserPage } from '../graph/user-graph.ts'
 import type { AgentLike, ServiceLookup, ToolDefinitionLike } from '../shared/dsh-min.ts'
 import type { HealthState } from '../shared/health.ts'
 import { PROPOSE_TO_HUMAN, type ShownProposal } from '../shared/tool-names.ts'
@@ -50,7 +51,7 @@ type Where = NonNullable<ReturnType<DesignToolDeps['graph']>>
 
 const DESCRIPTION = [
   'Put one matter to the human: one question they can answer in a few words. The harness checks it, keeps it on the graph when the human decides it, and returns the text to show.',
-  `kind question: a matter only the human can decide. kind confirm: the interview is over, put the requirements to the human; pass goal and text (one yes-or-no question, like a recommend) and sample if there is original text they must see; the requirement itself goes in your report before the question, and nothing is written to the graph until they agree and you record it with record_human_answer. It is refused until the 8 items of the requirement card are filled. kind release: the design is done, put it to the human to release; pass goal and text (one yes-or-no question, like a recommend: 「照这一页放行「借阅」，可以吗？」), and the design itself goes in your report before the question. It is refused until the design is complete: the five columns of every decision, acceptance on every task, no question left open. A goal split into modules is released twice over: first the framework, the module list and the directions (no module), then each module (module); both take page, a one-page release note in plain words (at most ${PAGE_LIMITS.max} characters) that the harness appends to text and checks, so the framework release names every module, framework decision and direction word for word, and a module release names the module. A goal that is not split takes no page. Nothing is written to the graph until the human agrees and you record it with record_human_answer.`,
+  `kind question: a matter only the human can decide. kind confirm: the interview is over, put the requirements to the human; pass goal and text (one yes-or-no question, like a recommend) and sample if there is original text they must see; the requirement itself goes in your report before the question, and nothing is written to the graph until they agree and you record it with record_human_answer. It is refused until the 9 items of the requirement card are filled. kind release: the design is done, put it to the human to release; pass goal and text (one yes-or-no question, like a recommend: 「照这一页放行「借阅」，可以吗？」), and the design itself goes in your report before the question. It is refused until the design is complete: the five columns of every decision, acceptance on every task, no question left open. A goal split into modules is released twice over: first the framework, the module list and the directions (no module), then each module (module); both take page, a one-page release note in plain words (at most ${PAGE_LIMITS.max} characters) that the harness appends to text and checks, so the framework release names every module, framework decision and direction word for word, and a module release names the module. A goal that is not split takes no page. Nothing is written to the graph until the human agrees and you record it with record_human_answer. When the goal has a user graph, or says it has no end user, the harness appends the user page to the text of a confirm and a release (userPage in the result): the human agrees to it, so show it whole.`,
   TALK_SHAPES,
   PLAIN_QUESTION_GUIDE,
 ].join('\n')
@@ -94,6 +95,7 @@ const OUTPUT = {
     number: { type: 'integer' },
     text: { type: 'string' },
     releaseSet: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, rev: { type: 'string' } }, required: ['id', 'rev'] } },
+    userPage: { type: 'object', properties: { stable: { type: 'string' }, state: { type: 'string' } }, required: ['stable', 'state'] },
     attach: { type: 'string' },
     message: { type: 'string' },
   },
@@ -102,6 +104,26 @@ const OUTPUT = {
 
 const showMessage = (kind: Kind): string => `Show text to the human exactly as given; it is Markdown. Put it after your report, together with the other questions of this reply, then end your turn. When they answer, restate a short answer about something that cannot be taken back in one line and wait; then call record_human_answer with kind ${kind} and their exact words.`
 const DETAIL_MESSAGE = 'The last paragraph is the exact text the human must see before agreeing: keep it verbatim in your reply.'
+const PAGE_MESSAGE = 'Everything after the question, down to the user page in the fenced block at the end, is the exact text the human must see before agreeing: keep it verbatim in your reply.'
+
+/** The sentence that says what of the text the human must see: none, the last paragraph (a sample or a page), or all after the question (the user page last). */
+function detailMessage(exact: boolean, page: UserPage): string {
+  if (page.stable.length > 0 || page.state.length > 0) return ` ${PAGE_MESSAGE}`
+  return exact ? ` ${DETAIL_MESSAGE}` : ''
+}
+
+/** The text with the user page a confirm or a release appends (user graph design 0.4.1 §5.1–§5.3), its two parts in one code fence so that its lines show as drawn; unchanged when the page is empty. */
+function withUserPage(text: string, page: UserPage): string {
+  const body = [page.stable, page.state].filter(part => part.length > 0).join('\n')
+  return body.length === 0 ? text : `${text}\n\n${fenced(body)}`
+}
+
+/** The result field of the user page: left out when there is none. */
+function userPageField(page: UserPage): { readonly userPage?: UserPage } {
+  return page.stable.length === 0 && page.state.length === 0 ? {} : { userPage: page }
+}
+
+const CONFIRM_PAGE_LABEL = `用户怎么用的样稿放得下一页（不超过 ${USER_LIMITS.appended.toLocaleString('en-US')} 字）`
 const CALL_FIELDS = new Set(['kind', 'text', 'form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'sample', 'goal', 'module', 'page', 'parent', 'question', 'sources', 'attach'])
 const RECORD_FIELDS = ['form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken'] as const
 
@@ -303,7 +325,12 @@ async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
   try {
     const { graph, number } = await beforeGoalCall(deps, agent, where, args)
     const goal = confirmGate(graph, openGoal(graph, args.goal))
-    const text = renderAsk(args.text, number, undefined, args.sample, false)
+    // The sample of the user graph is not cut: one too big for a page is refused, like the release page (user graph design 0.4.1 §5.1, flows:page).
+    const page = renderUserGraph(userGraphOf(graph, goal), 'confirm')
+    if (codePointCount(page.stable) > USER_LIMITS.appended) {
+      refuse('gate_unmet', `the requirement of "${goal.id}" is not complete; missing: ${CONFIRM_PAGE_LABEL}`, `${CONFIRM_PAGE_LABEL}: the user graph is too big for one page: split the goal, or shorten flow and step titles`)
+    }
+    const text = withUserPage(renderAsk(args.text, number, undefined, args.sample, false), page)
     emitMetric({ event: 'design.proposal-shown', kind: 'confirm', number, goal: goal.id, codePoints: codePointCount(args.text), points: codePointCount(text), sample: args.sample !== undefined })
     return {
       tool: PROPOSE_TO_HUMAN,
@@ -311,7 +338,8 @@ async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
       goal: goal.id,
       number,
       text,
-      message: `${showMessage('confirm')} The requirement itself goes in your report before the question; text is only the question.${args.sample === undefined ? '' : ` ${DETAIL_MESSAGE}`}`,
+      ...userPageField(page),
+      message: `${showMessage('confirm')} The requirement itself goes in your report before the question; text is only the question.${detailMessage(args.sample !== undefined, page)}`,
     }
   }
   catch (error) {
@@ -337,7 +365,9 @@ async function releaseCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
     const ready = releaseReady(graph, goal, module)
     releasePage(graph, goal, module, ready, args.page)
     const exact = args.page ?? args.sample
-    const text = renderAsk(args.text, number, undefined, exact, false)
+    // After the page the harness appends the user page (user graph design 0.4.1 §5.2, §5.3); its size is the release gate's flows:page.
+    const userPage = releaseUserPage(userGraphOf(graph, goal), module)
+    const text = withUserPage(renderAsk(args.text, number, undefined, exact, false), userPage)
     emitMetric({ event: 'design.proposal-shown', kind: 'release', number, goal: goal.id, module: module?.id, codePoints: codePointCount(args.text), points: codePointCount(text), sample: args.sample !== undefined, page: args.page !== undefined })
     return {
       tool: PROPOSE_TO_HUMAN,
@@ -347,7 +377,8 @@ async function releaseCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
       number,
       text,
       releaseSet: ready.set.map(node => ({ id: node.id, rev: graph.revisions.get(node.id)! })),
-      message: `${showMessage('release')} The design itself goes in your report before the question; text is only the question.${exact === undefined ? '' : ` ${DETAIL_MESSAGE}`}`,
+      ...userPageField(userPage),
+      message: `${showMessage('release')} The design itself goes in your report before the question; text is only the question.${detailMessage(exact !== undefined, userPage)}`,
     }
   }
   catch (error) {

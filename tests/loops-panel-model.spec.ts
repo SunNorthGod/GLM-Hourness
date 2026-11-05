@@ -133,7 +133,7 @@ test('the last run reads in the words of design §8.5, with a script\'s pass or 
     ['held', 'holder-archived', undefined, '先存着'],
     ['failed', 'timeout', undefined, '没成功'],
     ['expired', undefined, undefined, '放太久，作废了'],
-    ['unfinished', 'timeout 30s', undefined, '没跑完，这次的事件下次一起再跑'],
+    ['unfinished', 'timeout', undefined, '没跑完，这次的事件下次一起再跑'],
     ['refused', 'unadopted', undefined, '这台电脑上没有你同意的记录，先不跑'],
     ['refused', 'script-changed', undefined, '脚本和你同意的那一版不一样，先不跑'],
     ['refused', 'script-missing', undefined, '脚本不在这份检出里，先不跑'],

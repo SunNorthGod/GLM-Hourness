@@ -40,6 +40,7 @@ import { CHECK_LIMIT_DESCRIPTION, CHECK_LIMIT_PARAMETERS, checkLimit } from './l
 import { CHECKS_ENTRY_ID, envContribution, ENV_ROW_SOURCE } from './loop-entry.ts'
 import { envNotice } from './notice.ts'
 import { createChecker, readOwnChecks } from './runner.ts'
+import { emitSuppressionCount } from './metrics.ts'
 import { dailySuppressions, type SuppressionRecord } from './suppressions.ts'
 
 /** The row's context: the agent lifecycle event, service lookup and provision, the tools service, and cordis inject when the host has it. */
@@ -100,7 +101,7 @@ function installWork(ctx: EnvContext, session: SessionLike, health: RowHealth, s
     if (sessionId !== undefined) health.report(sessionId, ...envHealth(graphService(ctx)?.dirFor(cwd), outcome))
     if (root === undefined) return
     const home = dataService(ctx)?.projectDirOf?.(cwd) ?? join(root, '.llm')
-    void dailySuppressions(root, record => appendSuppression(home, record), {
+    void dailySuppressions(root, record => appendSuppression(home, record).then(() => emitSuppressionCount(ctx, record)), {
       lastRecord: () => lastSuppression(home),
       problem: (message) => {
         if (sessionId !== undefined) health.report(sessionId, 'degraded', `压制注释计数失败：${message}`)

@@ -534,6 +534,54 @@
       "actor": "llm",
       "op": "comment",
       "text": "E7 收敛第一轮：集成修正 838d595（行健康接缝：trunk-event 与 checked-after 的报告带上会话，不再被丢；文档与代码对齐；门禁 2829/2828/0/1、探针 412/412）。语义评审 CHANGES_REQUESTED，阻断 3 条、非阻断 4 条（.worktrees/m3/.llm/wf/m7-e7/feats/task-m7-e7/review.md）；记录的门禁成立（gate.json 的树等于 HEAD 的树，四道退出码 0，76/19/1）。进入第二轮修正。"
+    },
+    {
+      "at": "2026-11-04T13:38:22.883Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E7 收敛第二轮修正：30269ae（本地）修完第一轮评审的 F1–F7（3 阻断、4 非阻断）；树 432b55f6 上全量门禁：build 0、preflight 0、npm test 0（2834 个、2833 过、0 败、1 跳过）、探针 412/412、76/19/1。等第二轮评审。"
+    },
+    {
+      "at": "2026-11-04T14:40:02.365Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E7 收敛第二轮评审（第 3 次评审）CHANGES_REQUESTED：阻断 1 条——任务被重开后，返工的那次尝试把上一次尝试已完成的审查算成自己的，于是没经审查就能完成（违反「审查没过不完成」）；非阻断 2 条（.worktrees/m3/.llm/wf/m7-e7/feats/task-m7-e7/review.md）。收敛循环用满 2 轮暂停，待人定是否再给一轮。上一轮的 F1–F7 修正在 30269ae（本地，门禁 2834/2833/0/1、探针 412/412）。"
+    },
+    {
+      "at": "2026-11-04T15:03:37.629Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04 对 E7 收敛循环的去留答「行」（编排方建议再给一轮）。已给 e7-converge 加一轮，修「重开任务的返工把上一次尝试已完成的审查算成自己的」这条阻断。"
+    },
+    {
+      "at": "2026-11-04T16:04:58.953Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E7 收敛第 3 轮修复提交 e86b6bc（m7 分支，未推主干）：review.md 三条发现全部修复。F1（阻塞）：评审结算改为按尝试（attempt）分开，重开任务的返工不再计入上一次尝试的评审；F2：取数窗口归属；F3：门禁按计划顺序执行。gate.json：树 0b12c7aa…，build / preflight / test / 探针退出码均为 0，测试 2837 条（2836 通过 / 0 失败 / 1 跳过），棘轮 76/19/1，探针 412/412。下一步：本轮复审，通过后 e7-squash 与推送。"
+    },
+    {
+      "at": "2026-11-04T17:23:23.970Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E7 第 4 轮复审 APPROVED，0 条阻塞，3 条不阻塞（review.md、verdict.json）；记录的门禁成立：树等于 HEAD^{tree}，四道退出码均为 0，棘轮 76/19/1，探针 412/412，测试套按顺序跑。随后压成一个提交 77a0c87（m7 分支，在 223f8d3 之上一个提交，树 0b12c7aa 不变，未推送）；压缩后门禁 build/preflight/test/探针 0/0/0/0，测试 2837 条（2836 通过 / 0 失败 / 1 跳过），探针 412/412，棘轮 eslint 76 / knip 19 / jscpd 1。下一步：push-report 推 origin/m7。"
+    },
+    {
+      "at": "2026-11-04T17:25:14.430Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow m7-seam-and-e7（wf_8fb7162b2246ddc9）完成：E7 压缩提交 77a0c87 已推 origin/m7（223f8d3..77a0c87，快进，非强推），origin/m7 == 77a0c87。m7 分支尚未合入 main；剩余 E8、E9 与合入 main 后的 L4。"
+    },
+    {
+      "at": "2026-11-04T20:41:34.452Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "派 workflow m7-e8-e9-and-merge（wf_36d1d690c7e1de90）：在 .worktrees/m3 的 m7 分支上先合入最新 origin/main，再做 E8 与 E9（L3 glm-exec-skeleton、真实模型跑一次、合入 main 后单独一个提交把 execute 改为默认启用、批次 L4）。M7 合入 main 后能解开的等待项：状态板块第 6 批、面板第 17 条与第 8 条 (d)、用户图延后项、接管 B7。"
+    },
+    {
+      "at": "2026-11-04T22:12:51.945Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m7-e8-e9-and-merge 第 1 步：origin/main 7fc5da5 合入 m7，合并提交 bd9a625（未推送）。build、preflight、npm test 退出码 0（179 个测试文件，3089 通过 / 0 失败）；棘轮 eslint 73 / knip 18 / jscpd 1（一处 7 行克隆），两棵树相同。探针第一次退出码 1，445/447，rules-peak-stop 场景的时序竞态（同一时段 main 上 382/382 通过）；重跑退出码 0，447/447。rules-peak-stop 的时序偶发记为待查。下一步：E8 计划。"
     }
   ]
 }

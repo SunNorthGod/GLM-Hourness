@@ -365,6 +365,84 @@
       "actor": "llm",
       "op": "comment",
       "text": "11 条运行同时开工后，8 条在同一时段因模型服务限流（5xx/throttling）暂停（m7、user-graph、loops-machine、m4-checks、panel-2、status-hub、m6-followups、bootstrap、m5-rest 中除 metrics 与 merge-loops 外的各条）。编排方分两批恢复：先恢复 merge-loops（关键路径）、m7、user-graph、loops-machine、m4-checks、panel-2，同时在跑约 7 条；status-hub、m6-followups、bootstrap、m5-rest 等前一批有运行结束再恢复。并行上限以服务限流为准，不以机器为准。"
+    },
+    {
+      "at": "2026-11-04T11:51:24.241Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04：「开的线还是有点多了，再减一条」。编排方暂停 panel-2-next-batches（规划步刚开始；面板剩下的大项里条件 8 等状态板块、条件 14 等接管，现在做收益最小）。在跑的 5 条：merge-loops-runner-l4（循环板桌面 L4）、m7-seam-and-e7、user-graph-ug3-ug7、m4-checks-and-rules、metrics-s6-s7-land-review。排队的 6 条，按序补位：loops-machine（被限流暂停）、panel-2、status-hub（被限流暂停）、m6-followups、m5-rest、bootstrap。在跑的有一条结束才补下一条。"
+    },
+    {
+      "at": "2026-11-04T11:53:36.836Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04：「减到五条吧」。核对时在跑的正好 5 条：merge-loops-runner-l4（重启桌面版）、m7-seam-and-e7（E7 收敛第二轮）、user-graph-ug3-ug7（UG6）、m4-checks-and-rules（B1）、metrics-s6-s7-land-review（第 7 步最后一轮）；其余 6 条都已暂停（panel-2 由编排方暂停，loops-machine、status-hub 被限流暂停后未再恢复，m6-followups、m5-rest、bootstrap 排队）。定下：同时在跑的运行至多 5 条；有一条结束才按队列补一条，队列次序 loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。"
+    },
+    {
+      "at": "2026-11-04T11:58:51.430Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "队列调整（2026-11-04）：视频改风格排到队首，次序变为 视频改风格、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。merge-loops-runner-l4 在重启桌面版那一步再次被限流暂停，已恢复。"
+    },
+    {
+      "at": "2026-11-04T12:19:36.836Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04 问「dsh 有压缩后会话上下文查询功能吗」。编排方已知：DSH 的会话记录只追加、写下的事件不重写（DSH 架构笔记 2026-06-14 session-persistence，实读），压缩后原文仍在会话文件里；压缩后模型看到的是摘要。DSH 有没有给模型或人「查压缩前原文」的工具、插件从哪个接口能读原始记录，快速检索未找到，未核实。人答「继续」，按编排方提议排一条只读调查，次序在视频改风格之后。队列：视频改风格、压缩后查原文的调查、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。另：限流仍在，在跑的 5 条里 merge-loops 与 metrics 又各被暂停一次，已恢复。"
+    },
+    {
+      "at": "2026-11-04T12:36:39.251Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04：「加到八路试试？」。同时在跑的上限从 5 改为 8，按队列补 3 条：video-restyle-less-ai-look（视频改风格，先出三套样张给人挑）、investigate-compaction-recall（DSH 压缩后查原文的只读调查，报告写 .agents/tasks/compaction-recall/report.md）、loops-machine-runner-channel-events（恢复）。在跑 8 条：merge-loops-runner-l4、m7-seam-and-e7、user-graph-ug3-ug7、m4-checks-and-rules、metrics-s6-s7-land-review 与上述 3 条。排队：panel-2、status-hub、m6-followups、m5-rest、bootstrap。限流若仍频繁暂停，编排方按实际情况降回去并告诉人。"
+    },
+    {
+      "at": "2026-11-04T13:44:44.310Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "八路的结果（2026-11-04 人问「8路都在吗？」时核对）：8 条里 7 条因模型服务限流（5xx/throttling）处于暂停，只有 metrics-reason-codes-and-merge 在跑；此前 5 条时也反复被停。结论：并行上限卡在服务限流，开得越多停得越勤，总进度不升反降。编排方改为同时在跑 4 条：merge-loops-runner-l4（只剩循环板 L4）、user-graph-ug3-ug7（只剩 UG7 评审与收尾）、video-restyle-less-ai-look（出样张）、metrics-reason-codes-and-merge；其余暂停的按序补位：m7-seam-and-e7（E7 第二轮评审）、investigate-compaction-recall、m4-checks-and-rules（B2 起）、loops-machine，之后是 panel-2、status-hub、m6-followups、m5-rest、bootstrap。限流退了再往上加。"
+    },
+    {
+      "at": "2026-11-04T13:58:01.766Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "user-graph-ug3-ug7 完成，空出的位置给 m7-seam-and-e7（E7 收敛第二轮评审），已恢复。在跑 4 条：merge-loops-runner-l4（循环板 L4）、video-restyle-less-ai-look（样张）、metrics-reason-codes-and-merge（计划已确认：修正与评审循环、合入、桌面）、m7-seam-and-e7。队列：user-graph 合入 main 与桌面 L4、investigate-compaction-recall、m4-checks-and-rules（B2 起）、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。"
+    },
+    {
+      "at": "2026-11-04T14:14:14.868Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "限流核对（2026-11-04，人问「在跑还是又限流了？」）：4 条里 3 条又被限流暂停（merge-loops-runner-l4、metrics-reason-codes-and-merge、m7-seam-and-e7），只有 video-restyle-less-ai-look 在跑。限流下多开只会轮流被停、重试。编排方改为同时只跑 2 条：video-restyle-less-ai-look 与 merge-loops-runner-l4（已恢复，只剩循环板 L4）；其余按队列一条结束补一条：metrics-reason-codes-and-merge、m7-seam-and-e7、user-graph 合入、investigate-compaction-recall、m4-checks-and-rules、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。"
+    },
+    {
+      "at": "2026-11-04T14:17:53.663Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04：「能不能开五条线啊，然后你设置一个定时的，五分钟提醒你一次，你检查一下断没断断了就踹醒」。编排方：恢复到 5 条在跑——video-restyle-less-ai-look、merge-loops-runner-l4、metrics-reason-codes-and-merge、m7-seam-and-e7、investigate-compaction-recall。编排方自己没有定时器，只在收到消息时醒来；做法是另开一条只发心跳的运行 heartbeat-5min-wake-orchestrator（agent://wf-coder，每 5 分钟 Start-Sleep 300 后给编排方发一条 info，最多 96 次约 8 小时，编排方发 STOP 即停；不读写任何文件），编排方每次被唤醒就逐条检查，限流暂停的就恢复。已知局限：心跳运行自己也可能被限流停住，停住时就没有唤醒；它每次唤醒也占一点模型调用。队列：user-graph 合入、m4-checks-and-rules、loops-machine、panel-2、status-hub、m6-followups、m5-rest、bootstrap。"
+    },
+    {
+      "at": "2026-11-04T14:38:14.010Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "调查 investigate-compaction-recall 完成（报告 .agents/tasks/compaction-recall/report.md）。结论（实读到文件:行）：DSH 有给模型用的会话历史工具，但默认不开——实验包 @deepseek-ai/dsh-tool-session-query 的 session_event_search（surfaces 选 shadowed）与 session_event_read 能搜、能读当前会话被压缩遮蔽的原始事件，开关是官方实验 bundle dsh-experimental-session-search（桌面「插件 → Official → Session search」），它同时能读同 cwd 的其他会话；专为压缩后召回设计的 history_read/history_search 只在 DSH 的 proposed 笔记里，没有代码；给人用的已经有：聊天界面往上翻仍是原文、会话菜单 Copy Session as Markdown / Download session log、/export。压缩后模型只看到摘要 checkpoint，里面没有指向原文的指针；原始事件在只追加日志 ~/.dsh/sessions/<项目键>/session-<uuid>/session.v4.jsonl.zstd。ZCode 3.17.1 也没有历史检索工具，只有一句续接文本「read the full transcript at: <path>」，生产调用不传路径。编排方此前「没找到面向模型的工具」的说法不成立，已更正。三个做法待人定：A 人在插件页开官方实验 bundle（零代码，模型能读同工作区所有会话，工具在 ZCode 分布外）；B 本仓库加一个只读当前会话被遮蔽事件的窄工具（隐私最窄，分布外）；C 压缩时追加 ZCode 3.17.1 原句并把会话导出成明文文件让模型用 Read 分页读（最贴近 ZCode 分布，代价是磁盘上多一份明文副本，要放在 .llm/ 下并定清理）。"
+    },
+    {
+      "at": "2026-11-04T15:03:37.794Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04 对压缩后查原文的做法答「行」（编排方建议第 3 种）：压缩时在摘要末尾追加 ZCode 3.17.1 原句「If you need specific details from before compaction … read the full transcript at: <path>」，把会话导出成明文文件放在项目 .llm/ 下（不进 git、定清理），模型用 Read 分页读；新行默认 disabled: true。排进队首，有空位就派。"
+    },
+    {
+      "at": "2026-11-04T15:05:05.059Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04 再确认：「给一轮，压缩查询依旧参考zcode的实现」。与上一条一致：E7 收敛已加一轮；压缩后查原文照 ZCode 3.17.1 的做法（续接文本里 transcriptPath 那一句的原文、ZCode 给 hook 写 transcript.jsonl 的形状作参考，模型用 Read 读），派工时以 reference/zcode-3.17.1/zcode.cjs 与 reference/ZCode 为准，不另造工具。排在队首。"
+    },
+    {
+      "at": "2026-11-04T15:07:10.102Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04 23:06 问「还有子代理在控制我的鼠标吗？」。核对：唯一在操作桌面版的是 merge-loops-runner-l4 的 l4-accept 步（桌面版 23:05:58 以 --remote-debugging-port=9333 重启，持 .llm/desktop-lock）；编排方已暂停这条运行。其余运行此刻都不在桌面步骤：metrics-reason-codes-and-merge 在写代码、merge-user-graph-l4 在跑门禁、视频在改样式、m7 在修评审发现；它们的桌面步骤要先拿桌面锁，锁仍由暂停的 L4 持有，所以都会等。此刻没有找到驱动鼠标或键盘的脚本进程；在跑的 playwright-mcp 是编排方会话自带的浏览器工具服务，不是子代理。桌面操作方式待人定（人此前说「桌面版随便用」）。"
     }
   ]
 }

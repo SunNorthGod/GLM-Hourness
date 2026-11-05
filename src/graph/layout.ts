@@ -66,7 +66,23 @@ export interface NodeBox extends Rect {
   readonly focus: boolean
 }
 
-export type DrawnEdgeType = 'parent' | EdgeType
+/**
+ * The edge types the picture draws (design 0.4.1 §3.8): decomposition plus
+ * the three cross-edge types. The user graph's `serves` and `next` are never
+ * drawn — their ends are user nodes, which the layout excludes — so they
+ * stay out of the legend and the styles too.
+ */
+export type DrawnEdgeType = 'parent' | Exclude<EdgeType, 'serves' | 'next'>
+
+/** The cross-edge types: the drawn EdgeTypes without decomposition. */
+type RoutedEdgeType = Exclude<EdgeType, 'serves' | 'next'>
+
+/** The edge types the picture never draws. */
+const UNDRAWN_EDGE_TYPES: readonly EdgeType[] = ['serves', 'next']
+
+function isDrawnEdge(type: EdgeType): type is RoutedEdgeType {
+  return !UNDRAWN_EDGE_TYPES.includes(type)
+}
 
 /** Cubic Bézier: start, two control points, end. */
 export type CurvePath = readonly [number, number, number, number, number, number, number, number]
@@ -263,6 +279,15 @@ function childrenIndex(nodes: ReadonlyMap<string, GraphNode>, among: ReadonlySet
 
 /** The node ids a view draws (before collapsing). */
 function select(nodes: ReadonlyMap<string, GraphNode>, options: LayoutOptions): ReadonlySet<string> {
+  // The picture is the development graph (design 0.4.1 §3.8): the user graph's roles, flows and steps never draw. On a graph without user nodes this is a no-op, so committed graph.svg bytes stay.
+  const drawable = (set: ReadonlySet<string>): ReadonlySet<string> => {
+    const out = new Set(set)
+    for (const id of out) {
+      const type = nodes.get(id)?.type
+      if (type === 'role' || type === 'flow' || type === 'step') out.delete(id)
+    }
+    return out
+  }
   const all = new Set(nodes.keys())
   if (options.root !== undefined) {
     const index = childrenIndex(nodes, all)
@@ -273,7 +298,7 @@ function select(nodes: ReadonlyMap<string, GraphNode>, options: LayoutOptions): 
       out.add(id)
       stack.push(...index.get(id) ?? [])
     }
-    return out
+    return drawable(out)
   }
   if (options.focus !== undefined) {
     const focus = options.focus
@@ -290,9 +315,9 @@ function select(nodes: ReadonlyMap<string, GraphNode>, options: LayoutOptions): 
       if ((node.edges ?? []).some(edge => edge.to === focus)) withAncestors(node.id)
     }
     for (const edge of nodes.get(focus)!.edges ?? []) withAncestors(edge.to)
-    return out
+    return drawable(out)
   }
-  return all
+  return drawable(all)
 }
 
 interface Order {
@@ -369,7 +394,7 @@ function buildTree(nodes: ReadonlyMap<string, GraphNode>, selected: ReadonlySet<
 }
 
 interface CrossEdge {
-  readonly type: EdgeType
+  readonly type: RoutedEdgeType
   readonly node: string
   readonly to: string
 }
@@ -380,6 +405,7 @@ function crossEdgesOf(nodes: ReadonlyMap<string, GraphNode>, selected: ReadonlyS
   const out: CrossEdge[] = []
   for (const id of [...selected].sort(compareText)) {
     for (const edge of nodes.get(id)!.edges ?? []) {
+      if (!isDrawnEdge(edge.type)) continue
       if (!selected.has(edge.to)) continue
       const node = drawnAs.get(id)!
       const to = drawnAs.get(edge.to)!

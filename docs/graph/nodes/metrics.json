@@ -341,6 +341,60 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 7 步评审第三轮 CHANGES_REQUESTED：阻断 1 条 S7R3-1——cmd 在 /c、/k 之前带别的开关（cmd /s /c、cmd /d /s /c、cmd /q /c、cmd /v:on /c），或整段以 if exist / if not exist 开头时，删除仍放行；3f59b61 的整条子串判法都拦，相对它是回退。非阻断 3 条：isPruneCall 不跳过 cmd 的其他开关（与设计 §3.4 原文一致）、写入别名表外的写法（ac、Invoke-WebRequest -OutFile、curl -o、tar -C）、第 7 步 L3 场景仍欠。三轮的走向：按命令名判法每轮修一种 cmd 包装又露出下一种，第一轮的子串判法则误拦读命令参数里的删除词（S7-3）。评审循环用满 3 轮暂停，待人定。"
+    },
+    {
+      "at": "2026-11-04T11:49:52.249Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-04 对第 7 步评审的去留答「行」（编排方提议：再给最后一轮并换修法）。定下：第四轮是最后一轮；修法改为凡 cmd/cmd.exe 包着的命令（/c、/k 之前带任何开关），其后整段退回 3f59b61 的整条文字判法（点名 .llm/metrics、清单或密钥，且带写、删、移动词或重定向），一次兜住所有 cmd 包装；其余命令仍按命令名判，S7-3 的修正在 cmd 之外照旧成立；代价（cmd 包着的读命令文字里碰巧有删除词会被拒）写进 §10.6。isPruneCall 同样跳过 cmd 的开关并在 §10.6 记偏离；ac 进写入别名表；本轮补上第 7 步的 L3 场景。这一轮之后评审再找出的包装写法一律记进 §10.6 认不出的写法，不再开新一轮。已把这些写给第四轮修正步。"
+    },
+    {
+      "at": "2026-11-04T13:38:22.326Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 7 步评审第四轮 APPROVED（无阻断）：49449b4 已推 origin/metrics（合并 origin/main a9adca8 为 2dc368e）。修法照人同意的最后一轮：命令名是 cmd/cmd.exe 时其后整段按 3f59b61 的整条文字判，/c 前的开关、引号包整段、if exist 一次全覆盖；isPruneCall 跳过 cmd 开关；写入别名加 ac；第 7 步 L3 场景 metrics-rule 补上。门禁：build 0、preflight 0、npm test 0（2851、0 败、1 跳过）、探针 376/376、棘轮 eslint 73 / knip 18 / jscpd 1。非阻断 3 条：S7R4-1 交给 cmd 的读命令里开关与路径段被当动作词（findstr /ni 等误拦）、S7R4-2 cmd /c rm.exe 放行等写法、S7R4-3 2dc368e 的循环板读侧未评审。另一个真问题：loop-done 的 reason 带中文时被写入器按 §4.4 整条拒收，2dc368e 之后循环板页面「最近跑过的」读流水，这类运行会从页面上消失。编排方裁定（依据设计 §4.4、§1.6「记数与引用，不记文字」）：不放宽字段类型，reason 改为闭合的原因码表，人话原因留在循环板自己的状态与给主 Agent 的文字里、页面经映射显示。派 metrics-reason-codes-and-merge：原因码修正与 S7R4-1/2、评审 2dc368e 读侧、合入 main（指标行随之默认启用）、重启桌面版检查；第 9 步指标板 L4 之后再做。"
+    },
+    {
+      "at": "2026-11-04T15:53:42.997Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loop-done 原因码改造提交：metrics 分支先合入 origin/main 05ac19f（合并提交 442e6f3），再提交 c1be407。loop-done.reason 改为封闭的 id 形原因码表（页面侧映射回中文），并修复 S7R4-1、S7R4-2。origin/metrics = c1be407。门禁：build 0，preflight 0，npm test 0（2854 测试，2853 通过 / 0 失败 / 1 跳过），探针 376/376，棘轮 eslint 73 / knip 18 / jscpd 1。下一步：评审 2dc368e 起的改动，合入 main，桌面重启确认。"
+    },
+    {
+      "at": "2026-11-04T16:34:22.281Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "收尾评审第 1 轮 APPROVED，无阻塞（.worktrees/metrics/.agents/tasks/metrics/review-close.json，findings 为空）：2dc368e 的循环板读侧按 F33 改读指标流水；c1be407 后写 loop-done 的 11 处在类型上只能写闭表里的 51 个 id 形原因码或拦下运行的规则 id，L2 钉住每种结局配每个码都被流水收下；S7R4-1、S7R4-2 已解决。下一步：合入 main，桌面重启确认。"
+    },
+    {
+      "at": "2026-11-04T17:10:19.603Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "metrics 合入 main：合并提交 31c9e0f，最终 main ab3f26a，origin/main 与 github/main 均为 ab3f26a；合并树四道门禁退出码均为 0（npm test 2940 个、0 失败，探针 376/376，棘轮 eslint 73 / knip 18 / jscpd 1）；merge-metrics 工作树与分支已删除。下一步：桌面重启确认（按 §1.1 新锁规则排队用桌面版）；第 9 步循环板 L4 随后。"
+    },
+    {
+      "at": "2026-11-04T18:21:42.280Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow metrics-reason-codes-and-merge（wf_8900afc21ad56fa3）完成。桌面重启确认：主检出 f3f0efc（相对 ab3f26a 只多 docs/graph）build 退出码 0；重启后两个包都在运行（dsh-glm-zcode 5/5；dsh-hourness 14 个组件 12 个运行、2 个出厂停用），指标行在运行；行健康无失败行，无新 crash log，控制台错误仍是已知两类。不阻塞：指标行设置页说明仍写「默认关闭」（合入后已默认启用，文案需改）；行健康里「积分口径：未提供」是激活时的旧快照。节点保持进行中：剩设计第 9 步的指标板桌面核对（批次 L4）。桌面锁已交还，现由 user-graph L4 持有。"
+    },
+    {
+      "at": "2026-11-05T00:23:09.471Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "发现（m5-rest 的 worker 报）：自 2026-11-05T00:00Z 起，main 上 npm test 在 tests/metrics-calc.spec.ts 约第 422 行「an in-window append changes the output, and the basis rerun reproduces the first report verbatim」失败，单跑 3 次都失败，与负载无关。原因：该用例的 appendEvents 没有固定写入者时钟，start/stop 事件用真实时间，而日文件按事件 at 的 UTC 日期分；UTC 午夜之后这两条落进 events-2026-11-05.jsonl，在用例窗口 2026-11-04 之外，于是第一次报告「未正常退出」是 1，按依据重跑是 2。07:59:55 结束的门禁里它还是过的。所有基于含 metrics 的 main 的分支都会撞上。编排方派 fix-date-dependent-metrics-test（wf_d46fef4a0b30bf32）在 main 上修：按同文件第 217 行一带与 tests/hourness.spec.ts 的做法固定时钟，并排查其他依赖当天日期的测试。m5-rest 的 B1 修复先本地提交，等 main 修好后合并再跑全量门禁。"
+    },
+    {
+      "at": "2026-11-05T01:51:45.939Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "日期相关测试的正式修复：fix-date-dependent-metrics-test 的提交（变基后为 26df84c，subject「test(metrics): pin the writer clock in the specs that write fixed-date journals」）在本地分支 metrics-clock-pin 上，09:39 开始最后一轮探针，预计 10:00 前后进 main。被限流拖慢。等它的有 rules-board-page、m5-rest、panel-2；bootstrap 在自己分支上另修了一份（f47aa95），合 main 时冲突取 main 的版本。"
+    },
+    {
+      "at": "2026-11-05T02:06:17.461Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow fix-date-dependent-metrics-test（wf_d46fef4a0b30bf32）完成：2bd13f6「test(metrics): pin the writer clock in the specs that write fixed-date journals」已在 main，origin 与 github 经 ls-remote 核对均为 2bd13f6。最终代码上门禁：build 0、preflight 0、npm test 0（3003 个，3002 通过 / 0 失败 / 1 跳过）、探针 388/388。工作树与分支已删除。只改测试、不改产品代码。等它的 rules-board-page、m5-rest、panel-2 已通知合并 main 后跑一次四道门禁再推；bootstrap 合 main 时该测试的冲突取 main 的版本。从 UTC 午夜到修复合入，main 上 npm test 红了约 2 小时。"
     }
   ]
 }

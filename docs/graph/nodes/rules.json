@@ -621,6 +621,42 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面首趟（L4 批次，2026-11-04）：/rules show 高峰行（「少做（出厂默认）· 下一次 14:00」）与两条生效规则可见；rules/peak 条目经 hub 上面板面。/loops 列表面尚无（commands.ts 头注：列表随 runner 里程碑），四条缺省条目与灰显语义在行侧就绪——「灰显」验收延到 runner 交付列表面后关闭。"
+    },
+    {
+      "at": "2026-11-04T20:28:19.611Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "压缩后查原文那条合入腾出并行位，编排方派 workflow rules-board-page-and-r4d（wf_a34e9ff57206a017）：做面板里的规则板页面（按规则设计 §9.1 与 plain-ui 设计 §4.7、§11，只看不写，高峰模式只显示与改法），并在规则设计把 R4d（checkCall 执行已批准的门禁脚本）归给规则行且没人做时一并做。依据：panel-2（第 8 条与上手页第 4 块）、status-hub-remaining（规则板条目）、m6-followups S2（验收第 24 条的真实 checkCall 用例）三条运行都在等它，此前没有运行在做；编排方此前向人提出用空出的并行位补这一项，人未反对。"
+    },
+    {
+      "at": "2026-11-04T20:35:22.588Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page 的工作树 .worktrees/rules-board-page 已建，分支 rules-board-page，基点 97dd7ba（与 origin/main 同点），依赖已装。下一步：计划。"
+    },
+    {
+      "at": "2026-11-04T21:09:59.324Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page 计划草稿：.agents/tasks/rules-board-page/plan.md（按规则设计 0.10）。批次：B0 合入 origin/status-hub-2（随本分支一起合入 main）；B1 宿主写 .llm/rules/view.json 与投影 hournessRules {projectKey, viewFile}（同循环板、指标板的做法；客户端调不到 guardStatusItems，hits.json 不存在），探针 glm-rules、non-glm-rules、rules-peak 加检查；B2 客户端页面模型（L2）；B3 登记板块、页面与数据源。棘轮上限 eslint 73 / knip 18 / jscpd 1。两处设计不一致，编排方定：Q1「会挡住动作的门」一组在 M7 的门禁还不在 main 时选 B，从图上列出 norm-merge-gate 与 norm-review-floor 两张清单（标题、灰色来源行、每条验收原文），结尾写由派活与合入那一块执行、它还没装上，M7 合入前不写底线说明；依据是人定的做完条件第 8 条与 d-rules-visible 都要两张清单看得见，偏离规则 0.10 §9.1 的一句话写法，在计划里写明。Q2 首页「现在」一行选 A，按规则 0.10 §9.1 与 plain-ui 1.3 §4.7、§11 第 5 条（高峰时一行写到几点与档名，有工单等放行时写「N 件事在等规则放行」，否则不出现）；状态板块的 rules/peak 条目原文仍只用作报告里的一条。不做高峰档位单选（人在 d-panel-released ③ 接受过）。R4d 本运行不做：它要规则的批准路径（R3-proposal），后者要 M3 0.6 请求的 §9.3 改稿，还要 M7 E7 的 trunkAdvanceFor；现在做只有测试能走到。m6-followups S2 里真实 checkCall 的用例因此继续等。"
+    },
+    {
+      "at": "2026-11-04T23:16:00.168Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page FEAT-001 完成：5576815 合入 status-hub-2（随本分支一起合入 main），d1e1337 加 .llm/rules/view.json 与投影 hournessRules。两个提交上四道门禁退出码为 0（npm test 2992 个，2991 通过 / 1 跳过；探针 393/393），棘轮 73/18/1。origin/rules-board-page = d1e1337。下一步：FEAT-002 客户端页面。"
+    },
+    {
+      "at": "2026-11-05T00:32:33.788Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page FEAT-002 第 2 批 fa3cd4a 已推（页面模型与首页、上手页那一行，07:50 门禁全绿）；第 3 批代码与文档写完（build 0、preflight 0、三个页面 spec 全过，棘轮 73/18/1），被 main 上那条依赖日期的 metrics 测试挡在 npm test。编排方让它先本地提交、不在本分支改该测试，等 main 上的修复（fix-date-dependent-metrics-test）合入后合并再跑一次四道门禁。"
+    },
+    {
+      "at": "2026-11-05T01:08:48.040Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rules-board-page FEAT-002 第 3 批本地提交 cfdb8f1（未推送，没动 tests/metrics-calc.spec.ts）。cfdb8f1 上 build 0、preflight 0、npm test 1（只有那条依赖日期的 metrics 测试），探针未跑。origin/rules-board-page 仍为 fa3cd4a（第 2 批，四道全绿，3003 个测试，探针 393/393）。它按约定等到 09:04 没等到 main 上的修复，回报。编排方查到修复已提交为 30cbd3b（fix-date-dependent-metrics-test 的本地分支 metrics-clock-pin，正在跑门禁），让它再等至多 40 分钟，main 一有该提交就合并、跑一次四道门禁、推送。"
     }
   ]
 }

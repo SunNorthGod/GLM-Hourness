@@ -14,7 +14,8 @@ import test from 'node:test'
 import { unwrapDeferredCall } from '../src/shared/deferred-call.ts'
 import { followupOf, hookJournal, noteDenial, observe, type PendingDenial } from '../src/guard/followup.ts'
 import { installRuleGate, type RuleGateOptions } from '../src/guard/gate.ts'
-import { METRICS_SERVICE, type GuardMetricEvent } from '../src/guard/metrics.ts'
+import { METRICS_SERVICE, type MetricsService, type QueuedEvent } from '../src/shared/metrics.ts'
+import { metricEventOf } from '../src/guard/metrics.ts'
 import { keyOf, type FollowupRecord, type GuardRecord } from '../src/guard/records.ts'
 import { provideRowHealth, type RowHealth } from '../src/shared/health.ts'
 import { NATIVE_FACE, fileToolsOnly, type Correction, type GuardRule, type ToolCall } from '../src/guard/rules.ts'
@@ -44,18 +45,31 @@ let counter = 0
 function harness(rules: readonly GuardRule[], options: { prepend?: boolean, journalFails?: boolean, health?: RowHealth } = {}) {
   const rt = fakeRuntime()
   const { lines, journal } = memoryJournal()
-  const events: GuardMetricEvent[] = []
+  const events: Array<{ event: QueuedEvent, sessionId: string | undefined, dir: string | undefined }> = []
+  const metrics: MetricsService = {
+    emit: (event, where) => { events.push({ event, sessionId: where.sessionId, dir: where.dir }) },
+  }
   const id = `agent-${++counter}`
   const agent: AgentLike = { id, ctx: rt.ctx, session: { id, header: { id }, deriveMessages: () => [], requestHeader: () => ({ config: { provider: 'glm-zcode', model: 'glm-5.3' } }) } }
   const gateOptions: RuleGateOptions = {
     row: 'guard',
     prepend: options.prepend ?? false,
     rules: () => ({ rules, face: NATIVE_FACE, origin: { scope: 'dialect' } }),
-    journal: options.journalFails === true ? () => Promise.resolve('failed' as const) : journal,
+    // The row's journal choke point rides the metric on every write (§3.11); the same ride, over the memory journal.
+    journal: options.journalFails === true
+      ? () => Promise.resolve('failed' as const)
+      : (record: GuardRecord) => {
+        const event = metricEventOf(record)
+        if (event !== undefined) {
+          const sessionId = 'sessionId' in record && typeof record.sessionId === 'string' ? record.sessionId : undefined
+          metrics.emit(event, { ...(sessionId === undefined ? {} : { sessionId }) })
+        }
+        return journal(record)
+      },
     ...(options.health === undefined ? {} : { health: options.health }),
   }
   installRuleGate(rt.ctx as never, gateOptions)
-  rt.ctx.provide(METRICS_SERVICE, { emit: (event: GuardMetricEvent) => events.push(event) })
+  rt.ctx.provide(METRICS_SERVICE, metrics)
   // Each call is the model's next step, as the agent loop advances the turn's step counter (N16 compares
   // steps); the call ids are unique per harness, since the recorder's settled ring is module-wide.
   let callNo = 0
@@ -241,8 +255,13 @@ test('the metric follows the denial and the follow-up, with the outcome and the 
   const h = harness([denyRule('one')])
   await h.exec('write', WRITE)
   await h.exec('read', READ)
-  assert.deepEqual(h.events.map(event => [event.kind, event.rule, event.outcome]), [['denial', 'one', undefined], ['followup', 'one', 'other']])
-  assert.equal(h.events[0].sessionId, h.agent.id)
+  const denial = h.denials()[0]
+  assert.ok(denial !== undefined)
+  assert.deepEqual(h.events.map(entry => [entry.event.k, (entry.event.body as { rule?: string, outcome?: string }).rule, (entry.event.body as { outcome?: string }).outcome]), [['rule', 'one', undefined], ['followup', 'one', 'other']])
+  assert.equal((h.events[0]?.event.body as { effect?: string }).effect, 'deny')
+  assert.equal((h.events[0]?.event.body as { ref?: string }).ref, keyOf(denial), 'the rule event names the denial line it came from')
+  assert.equal((h.events[1]?.event.body as { denial?: string }).denial, keyOf(denial))
+  assert.equal(h.events[0]?.sessionId, h.agent.id)
 })
 
 test('a follow-up the journal could not write counts against the session like a lost record', async () => {

@@ -7,7 +7,10 @@
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { openEngine } from './engine.ts'
+import { projectOf } from '../data/project-root.ts'
+import { nodeMetricsFs, openWriter } from '../metrics/writer.ts'
+import { engineEventsOf } from './metrics-events.ts'
+import { openEngine, setEngineObserver } from './engine.ts'
 import { failure, type Failure } from './mutation.ts'
 import { OPS, type Op } from './schema.ts'
 
@@ -66,34 +69,50 @@ export async function runCli(args: readonly string[], io: CliIo): Promise<CliRes
   const { values, positionals } = parsed
   const [command, ...rest] = positionals
   if (command === undefined) return usage('missing command')
-  const engine = openEngine(values.dir === undefined ? io.dir : resolve(values.dir), io.now === undefined ? {} : { now: io.now })
-  if (command === 'show' || command === 'open') {
-    if (values.file !== undefined) return usage(`${command} takes no --file`, 'file')
-    if (command === 'open') {
-      if (rest.length > 0) return usage('open takes no arguments')
-      return done({ ok: true, items: await engine.openItems() })
-    }
-    if (rest.length !== 1) return usage('show takes one node id')
-    return done(await engine.projection(rest[0]))
-  }
-  if (!isOp(command)) return usage(`unknown command "${command}"`)
-  if (rest.length > 1) return usage(`${command} takes one JSON request`)
-  if (rest[0] !== undefined && rest[0] !== '-' && values.file !== undefined) return usage('give the request as an argument or with --file, not both', 'file')
-  const text = await requestText(rest[0], values.file, io)
-  if (typeof text !== 'string') return done(text, 2)
-  if (text.trim().length === 0) return usage(`no request: pass the ${command} fields as a JSON argument, with --file or on stdin`)
-  let request: unknown
+  // The one-shot process keeps its own metrics writer and hears its own
+  // writes through the engine's observers (metrics design §6.3): every note
+  // lands in the project the graph directory belongs to, and the writer
+  // closes inside the exit path.
+  const writer = openWriter({ host: 'cli', fs: nodeMetricsFs })
+  const observe = setEngineObserver(note => {
+    const root = projectOf(note.dir)?.root
+    if (root === undefined) return
+    for (const event of engineEventsOf(note)) writer.record(root, event)
+  })
   try {
-    // A byte order mark (some Windows editors and shells write one) is not JSON.
-    request = JSON.parse(text.replace(/^\uFEFF/, ''))
+    const engine = openEngine(values.dir === undefined ? io.dir : resolve(values.dir), io.now === undefined ? {} : { now: io.now })
+    if (command === 'show' || command === 'open') {
+      if (values.file !== undefined) return usage(`${command} takes no --file`, 'file')
+      if (command === 'open') {
+        if (rest.length > 0) return usage('open takes no arguments')
+        return done({ ok: true, items: await engine.openItems() })
+      }
+      if (rest.length !== 1) return usage('show takes one node id')
+      return done(await engine.projection(rest[0]))
+    }
+    if (!isOp(command)) return usage(`unknown command "${command}"`)
+    if (rest.length > 1) return usage(`${command} takes one JSON request`)
+    if (rest[0] !== undefined && rest[0] !== '-' && values.file !== undefined) return usage('give the request as an argument or with --file, not both', 'file')
+    const text = await requestText(rest[0], values.file, io)
+    if (typeof text !== 'string') return done(text, 2)
+    if (text.trim().length === 0) return usage(`no request: pass the ${command} fields as a JSON argument, with --file or on stdin`)
+    let request: unknown
+    try {
+      // A byte order mark (some Windows editors and shells write one) is not JSON.
+      request = JSON.parse(text.replace(/^\uFEFF/, ''))
+    }
+    catch (error) {
+      return usage(`the request is not valid JSON: ${(error as Error).message}`)
+    }
+    if (typeof request !== 'object' || request === null || Array.isArray(request)) return usage('the request must be a JSON object of the operation fields')
+    const fields = request as Record<string, unknown>
+    if (fields.op !== undefined && fields.op !== command) return usage(`the request names op ${JSON.stringify(fields.op)} but the command is ${command}`, 'op')
+    return done(await engine.apply('llm', { ...fields, op: command }))
   }
-  catch (error) {
-    return usage(`the request is not valid JSON: ${(error as Error).message}`)
+  finally {
+    observe()
+    await writer.close()
   }
-  if (typeof request !== 'object' || request === null || Array.isArray(request)) return usage('the request must be a JSON object of the operation fields')
-  const fields = request as Record<string, unknown>
-  if (fields.op !== undefined && fields.op !== command) return usage(`the request names op ${JSON.stringify(fields.op)} but the command is ${command}`, 'op')
-  return done(await engine.apply('llm', { ...fields, op: command }))
 }
 
 function parseCommandLine(args: readonly string[]) {

@@ -250,6 +250,78 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-02 对 §18 两问的答复（人原话「按你推荐的来吧」，对着编排方端上来的建议）：D1——接管的 41 条做完条件照草稿算数，哪条不合适做到那件活时再改；D3——不改默认：接管读出的待做清单经人批准后随时可派，待做活开工前不出一页放行稿（答「要」所需的 M3 支持本就排在自举之后）。设计稿 §18 与一页稿的对应两行由接管的实现运行照此收尾。"
+    },
+    {
+      "at": "2026-11-04T19:17:43.920Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "按人「把线全开」恢复 workflow bootstrap-impl（wf_f008ac0c87ec6943），停在 bs-plan 步骤；分支基点 7f6d743，编排方已让它先合入 origin/main、按需 pnpm install、重跑 build 再写计划，并在计划里写明空图一节与「建一张项目图」入口怎样接上 /hourness-init（panel-2 的第 14 条等它）。"
+    },
+    {
+      "at": "2026-11-04T20:08:16.247Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "bootstrap-impl 计划写好：.worktrees/bootstrap/.agents/tasks/bootstrap/impl-plan.md，B0–B10 共十一批，B7–B10 顺延（B7 等 M7 的 gate-norm.ts、floor.ts 与 M4 检查线的 check-entry.ts 合入 main）。两处待定：Q1 默认门禁表里测试命令的条件，编排方答选项 A，依据是人 11-01 定的 d-tests-required-gate（模块的测试命令必须在同意过的检查里，否则挡住合入）：每个认得出的生态都带测试命令，去掉「项目已有测试才带」，清单写明代价，没有测试时主 Agent 提「补上测试」任务，Shell 与认不出的生态不编命令，设计 0.6 同批改。Q2 面板第 14 条在接管的 /wish 接缝（B8）做好之前怎样带人，编排方交人定，建议过渡路三步；本线先做 B0–B6。"
+    },
+    {
+      "at": "2026-11-04T21:34:43.384Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "bootstrap-impl 第一轮：B0 计划 4bd7328；合入 origin/main 7fc5da5（合并提交 8ff0b62）；B1 设计 D1/D3 收尾 7c851db。都已推 origin/bootstrap，四道门禁退出码均为 0（B1：npm test 2955 通过 / 0 失败 / 1 跳过，探针 382/382，棘轮 73/18/1）。下一批 B2；面板第 14 条那一支仍等人答 Q2。"
+    },
+    {
+      "at": "2026-11-04T21:36:56.484Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B0–B1 评审 CHANGES_REQUESTED，1 条阻塞 F1：design.md 第 3 行的版本行仍写 D1、D3 等人定，与 B1 之后的 §0、§18 矛盾。门禁与合并核对无误。下一轮先修 F1（.worktrees/bootstrap/.llm/wf/review.json）。"
+    },
+    {
+      "at": "2026-11-04T22:43:31.728Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "bootstrap-impl 第二轮：合入 origin/main 5eaddd4（合并提交 b6411ef），修 B0–B1 评审的 F1（design.md 版本行，14e9f64），都已推 origin/bootstrap。四道门禁退出码 0：npm test 2955 通过 / 0 失败 / 1 跳过，探针 382/382，棘轮 73/18/1。下一步：复审，然后 B2。"
+    },
+    {
+      "at": "2026-11-04T22:46:02.623Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B0–B1 复审 APPROVED，无阻塞：合并 b6411ef 与 F1 修复 14e9f64 的四道门禁证据齐全，F1 关闭。B2–B6 待做。"
+    },
+    {
+      "at": "2026-11-04T23:58:09.716Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2（bootstrap-scan）提交 d63416b，已推 origin/bootstrap；之前合入 origin/main 113b93f（合并提交 b3b9ae6），也已推。两个提交四道门禁为 0：B2 上 npm test 3001 通过 / 0 失败 / 1 跳过，探针 388/388；棘轮 73/18/1。剩 B3–B6；B7–B10 照计划顺延。"
+    },
+    {
+      "at": "2026-11-05T00:05:16.184Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 评审 CHANGES_REQUESTED，1 条 MEDIUM 阻塞 F1：git 仓库里有暂存的代码但还没有提交时被判成已有项目；按扫描规则第 1 条与设计 §3.4 应判为新项目并带说明（.worktrees/bootstrap/.llm/wf/review.json）。门禁与探针证据齐全。下一轮修 F1。"
+    },
+    {
+      "at": "2026-11-05T00:52:04.083Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 评审 F1（有暂存代码但没有提交的仓库判为新项目）已修并推 62096dd。之前合入 origin/main 9980946（b6d78a4），并在本分支上自行修了 main 上依赖日期的 metrics-calc 测试（f47aa95）。62096dd 上门禁：build 0、preflight 0、npm test 0（3021 通过 / 0 失败 / 1 跳过）、探针 388/388、棘轮 73/18/1。B3–B6 待做。编排方已告诉它：main 上的正式修复（fix-date-dependent-metrics-test）合入后，下次合 main 时该测试的冲突一律取 main 的版本，分支上不留重复的测试改动。"
+    },
+    {
+      "at": "2026-11-05T00:58:26.559Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B2 复审 APPROVED，无阻塞：F1 已按设计 §3.4 修好；合并 9980946 与 metrics-calc 测试修复都核过；四道门禁为 0，探针 388/388。B3–B6 待做。"
+    },
+    {
+      "at": "2026-11-05T01:52:27.753Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B3（bootstrap-run-start）已推 fb876ce；合入 origin/main c8200f0（合并提交 fb3f3d6）。两者四道门禁为 0：npm test 3021 通过 / 0 失败 / 1 跳过，探针 388/388，棘轮 73/18/1。剩 B4、B5、B6；B7–B10 顺延。"
+    },
+    {
+      "at": "2026-11-05T01:55:42.865Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B3（fb876ce，bootstrap-run-start）评审 APPROVED，无阻塞（.llm/wf/review-B3.md）。门禁按日志：build、preflight 通过，npm test 3021 / 0 失败 / 1 跳过，探针 388/388，棘轮 73/18/1。剩 B4–B6。"
     }
   ]
 }

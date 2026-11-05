@@ -28,11 +28,12 @@ import type { ContributionSource, HarnessResult, LoopEventRecord } from '../src/
 import { ensureRuntimeDir, openLoopStore, type LoopStore } from '../src/loops/store.ts'
 import type { HolderState } from '../src/loops/holder.ts'
 import { DATA_SERVICE } from '../src/shared/data-home.ts'
+import { METRICS_SERVICE, type EmittedEvent } from '../src/shared/metrics.ts'
 import { PEAK_MODE_SERVICE, peakHoldOf, peakModeState, type PeakModeService } from '../src/shared/peak-mode.ts'
 import { PRICING_SERVICE } from '../src/shared/pricing.ts'
 import type { AgentLike, SessionLike } from '../src/shared/dsh-min.ts'
 import { fakeLive, fakeWorkspaceRegistry, type FakeLive } from './fake-rc3.ts'
-import { gitProjectTest, heldTimers, quickIo, NOW } from './loops-helpers.ts'
+import { gitProjectTest, heldTimers, journalTakes, quickIo, NOW } from './loops-helpers.ts'
 import { withLoopsRow } from './loops-host.ts'
 
 const EXECUTE: ContributionSource = { plugin: 'dsh-hourness', row: 'glm-hourness/execute' }
@@ -49,6 +50,8 @@ const PEAK_ENTRIES = LOOP_DEFAULTS.filter(entry => entry.id.startsWith('loops.pe
 
 const settle = (): Promise<void> => new Promise(resolve => setImmediate(resolve))
 const wait = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
+/** The real time one quiet turn of `quiesce` lasts. */
+const QUIET_MS = 10
 
 /** A session as the host's registry holds it, and an agent over it. */
 const agentOf = (id: string): AgentLike => ({ id, session: { id, header: {}, deriveMessages: () => [] } as unknown as SessionLike } as unknown as AgentLike)
@@ -114,6 +117,9 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
   const order: string[] = []
   const resumeCalls: World['resumeCalls'] = []
   const told: World['told'] = []
+  // The board hands its records to the metrics journal (metrics design §12 step 6); this fake is the journal,
+  // keeping what its field tables take (a refused event is lost, as in the real one).
+  const records: Array<Record<string, unknown>> = []
   const level = { level: options.level ?? 'reduce' }
   const resolve: World['resolve'] = {
     asked: [],
@@ -165,6 +171,7 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
       if (name === 'workspaceRegistry') return registryService.service
       if (name === 'sessions') return { flush: () => Promise.resolve(true) }
       if (name === DATA_SERVICE) return { userHome: home, projectHome: join(root, '.llm') }
+      if (name === METRICS_SERVICE) return { emit: (event: EmittedEvent): void => { if (journalTakes(event)) records.push({ ...event.body, kind: event.k }) } }
       if (name === PEAK_MODE_SERVICE && level.level !== 'absent') return peakMode
       return undefined
     },
@@ -222,24 +229,65 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
   }
 
   /**
+   * Whether state.json already holds what the latest `loop-done` of every entry
+   * set: the journal takes a record at once, and the row writes `last` (and the
+   * held list beside it) to disk only afterwards, so a quiet journal alone does
+   * not mean the state the cases read has landed.
+   */
+  const persisted = async (): Promise<boolean> => {
+    const latest = new Map<unknown, Record<string, unknown>>()
+    for (const line of records) if (line.kind === 'loop-done') latest.set(line.entry, line)
+    if (latest.size === 0) return true
+    const text = await readFile(store.paths.state, 'utf8').catch(() => '')
+    let last: Record<string, { readonly run?: unknown, readonly outcome?: unknown }>
+    try {
+      last = (JSON.parse(text) as { last?: typeof last }).last ?? {}
+    }
+    catch {
+      return false
+    }
+    return [...latest.values()].every(line => last[String(line.entry)]?.run === line.run && last[String(line.entry)]?.outcome === line.outcome)
+  }
+
+  /** Whether a run has its `loop-fired` and not yet a `loop-done`: it is still working on the real event loop. */
+  const running = (): boolean => {
+    const done = new Set(records.filter(line => line.kind === 'loop-done').map(line => line.run))
+    return records.some(line => line.kind === 'loop-fired' && !done.has(line.run))
+  }
+
+  /**
    * Wait for the row to be quiet: a run that a debounce timer started floats
    * on the real event loop (the stubbed delay only moves when drained), so the
-   * wait goes on until no timers are left and the run records have not grown
-   * for two turns.
+   * wait goes on until no timers are left, no run is between its two records,
+   * the records have not grown for two turns and the state they imply is on
+   * disk. A record whose run never sets `last` (an event expiring in the
+   * inbox) only makes the wait run to its bound.
    */
   const quiesce = async (): Promise<void> => {
-    const count = async (): Promise<number> => {
-      const text = await readFile(store.paths.runs, 'utf8').catch(() => '')
-      return text.split('\n').filter(line => line !== '').length
-    }
+    // Turns of the event loop pass in well under a millisecond while a file write is still on the thread
+    // pool, so the work that can be named is waited for in real time, up to a second (a run that hangs on
+    // purpose stays in flight until a later tick fires its timeout).
+    const until = Date.now() + 1_000
     let last = -1
     let stable = 0
-    for (let round = 0; round < 40 && stable < 2; round++) {
+    let turns = 0
+    while (stable < 2 && turns < 40) {
       await settle()
-      const now = await count()
-      if (now === last && timers.length === 0) stable += 1
+      const now = records.length
+      const pending = running() || !(await persisted())
+      if (pending && Date.now() < until) {
+        stable = 0
+        last = now
+        await wait(1)
+        continue
+      }
+      turns += 1
+      if (now === last && timers.length === 0 && !pending) stable += 1
       else stable = 0
       last = now
+      // A timer that drain ran starts an inbox beat that stats the inbox file on the thread pool before the
+      // run records its loop-fired, so nothing names that work: a quiet turn lasts a few milliseconds of real time.
+      if (timers.length === 0 && !pending) await wait(QUIET_MS)
     }
   }
 
@@ -276,10 +324,7 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
       await drain()
       await quiesce()
     },
-    runs: async () => {
-      const text = await readFile(store.paths.runs, 'utf8').catch(() => '')
-      return text.split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Record<string, unknown>)
-    },
+    runs: async () => await Promise.resolve([...records]),
     state: async () => {
       const text = await readFile(store.paths.state, 'utf8').catch(() => '{}')
       const read = JSON.parse(text) as { held?: Array<Record<string, unknown>>, last?: Record<string, { run: string, outcome: string, reason?: string }> }
@@ -325,7 +370,7 @@ gitProjectTest('row 1: no record means nobody to wake, and the listed resume is 
   const none = await worldOf(root, { level: 'reduce', resume: { kind: 'done' } })
   rmSync(join(none.home, 'main-agent'), { recursive: true, force: true })
   await none.fire('end')
-  assert.equal(((await oneDone(none)) as { reason?: string }).reason, '没有能叫醒的主 Agent')
+  assert.equal(((await oneDone(none)) as { reason?: string }).reason, 'peak-no-holder')
   assert.equal(none.resumeCalls.length, 0, 'the resume waits for a session to wake')
   assert.equal(none.woken.length, 0)
   await none.stop()
@@ -334,7 +379,7 @@ gitProjectTest('row 1: no record means nobody to wake, and the listed resume is 
 gitProjectTest('row 1: an archived holder session is nobody to wake', async ({ root }) => {
   const archived = await worldOf(root, { level: 'reduce', resume: { kind: 'done' }, archived: true })
   await archived.fire('end')
-  assert.equal(((await oneDone(archived)) as { reason?: string }).reason, '没有能叫醒的主 Agent')
+  assert.equal(((await oneDone(archived)) as { reason?: string }).reason, 'peak-no-holder')
   assert.equal(archived.resumeCalls.length, 0)
   await archived.stop()
 })
@@ -343,7 +388,7 @@ gitProjectTest('row 1: a record that cannot be read is nobody to wake', async ({
   const unreadable = await worldOf(root, { level: 'reduce' })
   writeFileSync(unreadable.recordFile, 'not a holder record\n')
   await unreadable.fire('end')
-  assert.equal(((await oneDone(unreadable)) as { reason?: string }).reason, '没有能叫醒的主 Agent')
+  assert.equal(((await oneDone(unreadable)) as { reason?: string }).reason, 'peak-no-holder')
   await unreadable.stop()
 })
 
@@ -351,7 +396,7 @@ gitProjectTest('row 1 through row 3: a cold session whose revival says it is gon
   const gone = await worldOf(root, { level: 'reduce', resume: { kind: 'done' }, mainStep: { session: HOLDER, at: PEAK_START } })
   await gone.fire('end')
   assert.deepEqual(gone.resolve.asked, [HOLDER], 'the cold session was revived for the action')
-  assert.equal(((await oneDone(gone)) as { reason?: string }).reason, '没有能叫醒的主 Agent')
+  assert.equal(((await oneDone(gone)) as { reason?: string }).reason, 'peak-no-holder')
   assert.equal(gone.resumeCalls.length, 0)
   await gone.stop()
 })
@@ -456,7 +501,7 @@ gitProjectTest('row 3: skipped after a revival whose drive is already running is
   assert.deepEqual(revived.resolve.asked, [HOLDER], 'the board revives the session before calling the action')
   assert.equal(revived.resumeCalls.length, 1)
   const done = (await oneDone(revived)) as { outcome: string, reason?: string }
-  assert.deepEqual([done.outcome, done.reason], ['delivered', '打开会话时 M7 接上了推进'])
+  assert.deepEqual([done.outcome, done.reason], ['delivered', 'peak-drive-caught-up'])
   assert.ok(revived.woken[0]?.text.includes('The drive is running again; continue with the work you moved.'))
   assert.equal(revived.woken.length, 1, 'one message, not a wake on top of the revived drive')
   await revived.stop()
@@ -467,7 +512,7 @@ gitProjectTest('row 3: a cold session that did not work in this peak is not revi
   await cold.fire('end')
   assert.equal(cold.resumeCalls.length, 0)
   assert.deepEqual(cold.resolve.asked, [])
-  assert.equal(((await oneDone(cold)) as { reason?: string }).reason, '高峰里主 Agent 没干活，没有挪开的活')
+  assert.equal(((await oneDone(cold)) as { reason?: string }).reason, 'peak-holder-idle')
   await cold.stop()
 })
 
@@ -476,7 +521,8 @@ gitProjectTest('row 3: a failed action fails the run, tells the main agent once 
   failed.live.add(agentOf(HOLDER))
   await failed.fire('end')
   const done = (await oneDone(failed)) as { outcome: string, reason?: string }
-  assert.deepEqual([done.outcome, done.reason], ['failed', '轮次用完了'])
+  // The execute row's words go to the main agent; the record keeps a code (records.ts).
+  assert.deepEqual([done.outcome, done.reason], ['failed', 'plugin-reason'])
   assert.equal(failed.woken.length, 1)
   assert.ok(failed.woken[0]?.text.includes('M7 could not resume it.'))
   assert.ok(failed.told.some(line => line.level === 'degraded' && line.text.includes('harness 动作失败')), 'the row\'s health degrades once')
@@ -520,7 +566,7 @@ gitProjectTest('row 4: no rules board service skips the wake, after the resume h
   absent.live.add(agentOf(HOLDER))
   await absent.fire('end')
   assert.equal(absent.resumeCalls.length, 1, 'row 3 runs before the level is read (review F34)')
-  assert.equal(((await oneDone(absent)) as { reason?: string }).reason, '读不到高峰模式')
+  assert.equal(((await oneDone(absent)) as { reason?: string }).reason, 'peak-level-unreadable')
   await absent.stop()
 })
 
@@ -528,7 +574,7 @@ gitProjectTest('row 4: a service that cannot read the project skips the wake', a
   const unreadable = await worldOf(root, { level: 'unreadable' })
   unreadable.live.add(agentOf(HOLDER))
   await unreadable.fire('end')
-  assert.equal(((await oneDone(unreadable)) as { reason?: string }).reason, '读不到高峰模式')
+  assert.equal(((await oneDone(unreadable)) as { reason?: string }).reason, 'peak-level-unreadable')
   await unreadable.stop()
 })
 
@@ -564,7 +610,7 @@ gitProjectTest('row 6: 无影响 has nothing moved', async ({ root }) => {
   const world = await worldOf(root, { level: 'inform' })
   world.live.add(agentOf(HOLDER))
   await world.fire('end')
-  assert.equal(((await oneDone(world)) as { reason?: string }).reason, '无影响档没有挪开的活')
+  assert.equal(((await oneDone(world)) as { reason?: string }).reason, 'peak-level-inform')
   assert.equal(world.woken.length, 0)
   await world.stop()
 })
@@ -578,7 +624,7 @@ gitProjectTest('row 7: a main agent that is running is not woken', async ({ root
   world.live.add(agentOf(HOLDER))
   world.live.setStatus(HOLDER, 'running')
   await world.fire('end')
-  assert.equal(((await oneDone(world)) as { reason?: string }).reason, '主 Agent 正在干活，它下一步的高峰一行已经变了')
+  assert.equal(((await oneDone(world)) as { reason?: string }).reason, 'peak-holder-running')
   assert.equal(world.woken.length, 0)
   await world.stop()
 })
@@ -589,7 +635,7 @@ gitProjectTest('row 7 with the action listed: a running main agent is still call
   withResume.live.setStatus(HOLDER, 'running')
   await withResume.fire('end')
   assert.equal(withResume.resumeCalls.length, 1)
-  assert.equal(((await oneDone(withResume)) as { reason?: string }).reason, '主 Agent 正在干活，它下一步的高峰一行已经变了')
+  assert.equal(((await oneDone(withResume)) as { reason?: string }).reason, 'peak-holder-running')
   await withResume.stop()
 })
 
@@ -597,7 +643,7 @@ gitProjectTest('row 8: a walk record from before the peak\'s first minute is not
   const early = await worldOf(root, { level: 'reduce', mainStep: { session: HOLDER, at: PEAK_START - 60_000 } })
   early.live.add(agentOf(HOLDER))
   await early.fire('end')
-  assert.equal(((await oneDone(early)) as { reason?: string }).reason, '高峰里主 Agent 没干活，没有挪开的活')
+  assert.equal(((await oneDone(early)) as { reason?: string }).reason, 'peak-holder-idle')
   await early.stop()
 })
 
@@ -613,7 +659,7 @@ gitProjectTest('row 8: a walk record that names another session is not walked', 
   const other = await worldOf(root, { level: 'reduce', mainStep: { session: 's-other', at: PEAK_START + 60_000 } })
   other.live.add(agentOf(HOLDER))
   await other.fire('end')
-  assert.equal(((await oneDone(other)) as { reason?: string }).reason, '高峰里主 Agent 没干活，没有挪开的活')
+  assert.equal(((await oneDone(other)) as { reason?: string }).reason, 'peak-holder-idle')
   await other.stop()
 })
 
@@ -630,7 +676,7 @@ gitProjectTest('row 9: a paused goal is named and left alone', async ({ root }) 
   paused.live.add(agentOf(HOLDER))
   paused.live.setGoal(HOLDER, 'paused')
   await paused.fire('end')
-  assert.equal(((await oneDone(paused)) as { reason?: string }).reason, '自动推进暂停着')
+  assert.equal(((await oneDone(paused)) as { reason?: string }).reason, 'peak-drive-paused')
   assert.equal(paused.woken.length, 0)
   await paused.stop()
 })
@@ -640,7 +686,7 @@ gitProjectTest('row 9: a goal waiting for the human is named', async ({ root }) 
   waiting.live.add(agentOf(HOLDER))
   waiting.live.setGoal(HOLDER, 'blocked', { code: 'hourness-waiting-human', message: 'the human has not answered' })
   await waiting.fire('end')
-  assert.equal(((await oneDone(waiting)) as { reason?: string }).reason, '主 Agent 在等你回话')
+  assert.equal(((await oneDone(waiting)) as { reason?: string }).reason, 'peak-waiting-human')
   await waiting.stop()
 })
 
@@ -650,7 +696,7 @@ gitProjectTest('row 9: an idle-rounds goal is named, the action itself judges, a
   idle.live.setGoal(HOLDER, 'blocked', { code: 'hourness-idle-rounds', message: 'three idle rounds' })
   await idle.fire('end')
   assert.equal(idle.resumeCalls.length, 1, 'the action itself judges; the board does not read the code')
-  assert.equal(((await oneDone(idle)) as { reason?: string }).reason, '主 Agent 没事可做，已经在问你')
+  assert.equal(((await oneDone(idle)) as { reason?: string }).reason, 'peak-idle-rounds')
   assert.equal(idle.live.goalOf(HOLDER)?.phase, 'blocked', 'the goal is not resumed by the board')
   assert.equal(idle.woken.length, 0)
   await idle.stop()
@@ -661,7 +707,7 @@ gitProjectTest('row 9: another blocked code is named with the code', async ({ ro
   otherCode.live.add(agentOf(HOLDER))
   otherCode.live.setGoal(HOLDER, 'blocked', { code: 'hourness-peak-wait', message: 'waiting out the peak' })
   await otherCode.fire('end')
-  assert.equal(((await oneDone(otherCode)) as { reason?: string }).reason, '自动推进被挡住了（hourness-peak-wait）')
+  assert.equal(((await oneDone(otherCode)) as { reason?: string }).reason, 'peak-drive-blocked')
   await otherCode.stop()
 })
 

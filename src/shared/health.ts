@@ -23,7 +23,7 @@ import type { ProvideHost, ServiceLookup } from './dsh-min.ts'
 export const GLM_ROWS = ['glm-llm', 'glm-login', 'glm-prompt', 'glm-compact'] as const
 
 /** The orchestration package's host rows, in patch order. */
-export const HOURNESS_ROWS = ['data', 'guard', 'memory', 'lessons', 'workflow', 'hourness', 'graph', 'graph-panel', 'rules', 'design', 'loops', 'env'] as const
+export const HOURNESS_ROWS = ['data', 'guard', 'memory', 'lessons', 'workflow', 'hourness', 'graph', 'graph-panel', 'rules', 'design', 'loops', 'metrics', 'env', 'transcript'] as const
 
 /**
  * Each package with its host rows: the runtime copy of the directory table

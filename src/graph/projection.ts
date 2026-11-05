@@ -8,8 +8,9 @@
 import { compareText } from './format.ts'
 import { failure, type Failure } from './mutation.ts'
 import type { AskForm } from './proposal.ts'
-import type { Actor, Decider, DecisionOption, GraphNode, HistoryEntry, NodeType, Stage, Status } from './schema.ts'
+import { USER_TYPES, type Actor, type Decider, type DecisionOption, type GraphNode, type HistoryEntry, type NodeType, type Stage, type Status } from './schema.ts'
 import type { LoadedGraph } from './parse.ts'
+import { liveOf } from './user-live.ts'
 
 /** Statuses of nodes that are still open: not done, dropped or superseded. */
 export const OPEN_STATUSES: ReadonlySet<Status> = new Set(['proposed', 'approved', 'doing'])
@@ -74,7 +75,13 @@ interface AncestorRef extends NodeRef {
 
 type NodeDetail = Omit<GraphNode, 'history'> & { readonly rev: string }
 
-type GateKind = 'dependencies' | 'approval' | 'questions' | 'decisions' | 'acceptance' | 'children' | 'verification'
+type GateKind = 'dependencies' | 'approval' | 'questions' | 'decisions' | 'acceptance' | 'children' | 'verification' | 'serving' | 'steps'
+
+/** A next edge of a step or a flow (a flow's is its entry), with the condition of a branch. */
+interface NextRef {
+  readonly to: NodeRef
+  readonly when?: string
+}
 
 interface Gate {
   readonly kind: GateKind
@@ -99,6 +106,14 @@ export interface Projection {
   readonly sourceOf: readonly NodeRef[]
   readonly supersedes: readonly NodeRef[]
   readonly supersededBy: readonly NodeRef[]
+  /** User graph (design 0.4.1 §3.7), on a feature or task: the steps its own serves edges point at. */
+  readonly serves?: readonly NodeRef[]
+  /** On a step: the live features and tasks that serve it, reviews left out. */
+  readonly servedBy?: readonly NodeRef[]
+  /** On a step: where it leads; on a flow: its entry. */
+  readonly next?: readonly NextRef[]
+  /** On a step: the live steps whose next edges lead to it. */
+  readonly previous?: readonly NodeRef[]
   /** Own stage, or the stage of the nearest ancestor that has one. */
   readonly stage: Stage | null
   readonly gates: readonly Gate[]
@@ -187,7 +202,7 @@ export function childrenIndex(graph: LoadedGraph): ReadonlyMap<string, readonly 
 }
 
 /** Targets of this node's edges of one type that exist in the graph. */
-function targets(graph: LoadedGraph, node: GraphNode, type: 'depends' | 'source' | 'supersedes'): GraphNode[] {
+function targets(graph: LoadedGraph, node: GraphNode, type: 'depends' | 'source' | 'supersedes' | 'serves'): GraphNode[] {
   return (node.edges ?? []).filter(edge => edge.type === type).flatMap(edge => {
     const target = graph.nodes.get(edge.to)
     return target === undefined ? [] : [target]
@@ -230,7 +245,43 @@ function ids(nodes: readonly GraphNode[]): string[] {
   return nodes.map(node => node.id)
 }
 
-function gatesOf(node: GraphNode, blockers: readonly GraphNode[], children: readonly GraphNode[], subtree: readonly GraphNode[]): Gate[] {
+/** Whether a node type is one of the user graph's (design 0.4.1 §2.2). */
+function isUserType(type: NodeType): boolean {
+  return (USER_TYPES as readonly string[]).includes(type)
+}
+
+/** The live work that serves a step (user graph design 0.4.1 §2.5): features and tasks with a serves edge to it, reviews left out. */
+function servedByOf(graph: LoadedGraph, step: GraphNode): GraphNode[] {
+  return [...graph.nodes.values()].filter(node => (node.type === 'feature' || (node.type === 'task' && node.kind !== 'review'))
+    && (node.edges ?? []).some(edge => edge.type === 'serves' && edge.to === step.id)
+    && liveOf(graph, node))
+}
+
+/**
+ * The user-graph fields of a projection (design 0.4.1 §3.7): what a feature
+ * or task serves, and a step's servers, next steps and previous steps; a
+ * flow's next edge is its entry. Edges keep their dropped targets, so the
+ * model sees the links a gap asks it to change.
+ */
+function userFieldsOf(graph: LoadedGraph, node: GraphNode): Pick<Projection, 'serves' | 'servedBy' | 'next' | 'previous'> {
+  const ref = (entry: GraphNode): NodeRef => nodeRef(graph, entry)
+  const next = (): NextRef[] => (node.edges ?? []).filter(edge => edge.type === 'next').flatMap((edge) => {
+    const target = graph.nodes.get(edge.to)
+    return target === undefined ? [] : [{ to: ref(target), ...(edge.when === undefined ? {} : { when: edge.when }) }]
+  })
+  if (node.type === 'feature' || node.type === 'task') return { serves: targets(graph, node, 'serves').map(ref) }
+  if (node.type === 'flow') return { next: next() }
+  if (node.type !== 'step') return {}
+  return {
+    servedBy: servedByOf(graph, node).map(ref),
+    next: next(),
+    previous: [...graph.nodes.values()]
+      .filter(entry => entry.type === 'step' && liveOf(graph, entry) && (entry.edges ?? []).some(edge => edge.type === 'next' && edge.to === node.id))
+      .map(ref),
+  }
+}
+
+function gatesOf(graph: LoadedGraph, node: GraphNode, blockers: readonly GraphNode[], children: readonly GraphNode[], subtree: readonly GraphNode[]): Gate[] {
   const gates: Gate[] = []
   if (blockers.length > 0) gates.push({ kind: 'dependencies', message: 'depends on nodes that are not done', ids: ids(blockers) })
   if (node.status === 'proposed') gates.push({ kind: 'approval', message: 'waits for a human to approve or reject it', ids: [node.id] })
@@ -239,9 +290,17 @@ function gatesOf(node: GraphNode, blockers: readonly GraphNode[], children: read
   const agentQuestions = subtree.filter(entry => entry.type === 'question' && OPEN_STATUSES.has(entry.status) && deciderOf(entry) === 'agent')
   if (agentQuestions.length > 0) gates.push({ kind: 'decisions', message: 'questions in this subtree are the agent\'s to decide', ids: ids(agentQuestions) })
   if (node.type === 'task' && (node.acceptance ?? []).length === 0) gates.push({ kind: 'acceptance', message: 'the task has no acceptance criteria', ids: [node.id] })
-  const openChildren = children.filter(child => OPEN_STATUSES.has(child.status))
+  // A user node is never done (its state is derived), so it never keeps a parent open.
+  const openChildren = children.filter(child => OPEN_STATUSES.has(child.status) && !isUserType(child.type))
   if (openChildren.length > 0) gates.push({ kind: 'children', message: 'children are not all closed', ids: ids(openChildren) })
   if (node.type === 'decision' && node.verification === 'unverified') gates.push({ kind: 'verification', message: 'the decision is not verified yet', ids: [node.id] })
+  if (node.type === 'step' && liveOf(graph, node) && servedByOf(graph, node).length === 0) {
+    gates.push({ kind: 'serving', message: 'no feature or task serves this step', ids: [node.id] })
+  }
+  if (node.type === 'goal') {
+    const unserved = subtree.filter(entry => entry.type === 'step' && liveOf(graph, entry) && servedByOf(graph, entry).length === 0)
+    if (unserved.length > 0) gates.push({ kind: 'steps', message: 'steps of the user graph nobody serves', ids: ids(unserved) })
+  }
   return gates
 }
 
@@ -274,8 +333,9 @@ export function projectNode(graph: LoadedGraph, id: string): { readonly ok: true
       sourceOf: referrers(graph, id, 'source').map(ref),
       supersedes: targets(graph, node, 'supersedes').map(ref),
       supersededBy: referrers(graph, id, 'supersedes').map(ref),
+      ...userFieldsOf(graph, node),
       stage,
-      gates: gatesOf(node, blockersOf(graph, node.id), children, subtreeOf(index, node)),
+      gates: gatesOf(graph, node, blockersOf(graph, node.id), children, subtreeOf(index, node)),
     },
   }
 }

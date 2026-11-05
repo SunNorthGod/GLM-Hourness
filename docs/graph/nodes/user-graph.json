@@ -117,6 +117,48 @@
       "actor": "llm",
       "op": "comment",
       "text": "UG5 评审 APPROVED（无阻断），已推：origin/user-graph 5a0b2cc..7dbd5d7（快进）。走一遍约定段照计划顺延。UG6（面板「用户怎么用」页）开始。"
+    },
+    {
+      "at": "2026-11-04T13:38:22.512Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "UG6（面板「用户怎么用」页）：dced5bd 评审 APPROVED，已推 origin/user-graph（7dbd5d7..dced5bd 快进）；门禁 2788 过、0 败、1 跳过，探针 347/347，76/19/1；验收 41–43 在 L2 满足，41 的 L4 按设计 §10.2 顺延到桌面批次。UG7（文档收尾）：e56373c 本地提交，门禁 2789 个、2788 过、0 败、1 跳过，探针 347/347；等评审。"
+    },
+    {
+      "at": "2026-11-04T13:58:01.606Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "user-graph 线批次图 UG3–UG7 做完：UG7（文档收尾，HANDOFF 用户图一行等）e56373c 评审 APPROVED，已推 origin/user-graph（dced5bd..e56373c 快进）。五个提交 563c10e、5a0b2cc、7dbd5d7、dced5bd、e56373c 各自四道门禁退出码 0、探针 347/347、棘轮在基线，评审全部 APPROVED，工作树干净。分支比 origin/main 落后约 24 个提交（多为 docs/graph）。还没做的：合入 main 与桌面批次 L4（验收 41 的面板部分等，设计 §10.2）；顺延表里等 M7 E6+ 合入的项（U5b 走一遍作业、glm-user-graph 探针链、简报的走一遍约定段等）照旧顺延。合入排进队列，在 m7 之后。"
+    },
+    {
+      "at": "2026-11-04T14:38:14.214Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入 main 与桌面批次 L4 开工：运行 merge-user-graph-l4（合并工作树 .worktrees/merge-ug、全量门禁、快进 main、推两个远端、重启桌面版、做设计 §10.2 列为桌面核对的验收，至少第 41 条面板部分）。桌面版改为按 .llm/desktop-lock 目录串行使用，编排方替正在做循环板 L4 的 merge-loops-runner-l4 持锁，它结束后释放。"
+    },
+    {
+      "at": "2026-11-04T14:51:26.500Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入进展：合并提交 ab00eaf（.worktrees/merge-ug，基于 origin/main d8761d5），唯一冲突 package.json 的测试链 test:1/test:2，按两边 spec 列表有序并集解决；接着跑门禁。"
+    },
+    {
+      "at": "2026-11-04T15:30:09.707Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合并树门禁（.worktrees/merge-ug，HEAD ab00eaf）：build、preflight、npm test、探针四道退出码 0；测试 2832 个、2831 过、0 败、1 跳过；探针 347/347；棘轮 76/19/1，与 main、分支两边相同。下一步快进 main、推两个远端，再按 d-desktop-cdp-only 重启桌面版做 L4。"
+    },
+    {
+      "at": "2026-11-04T15:43:25.995Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "user-graph 合入 main：91f1dbd（快进 41e31da..91f1dbd，非强推）。期间 main 前进到 5862391，merge-ug 再合一次 origin/main 后重跑四道门禁，退出码均为 0（2832 测试 / 0 失败 / 1 预设跳过，探针 347/347，棘轮 76/19/1）。origin/main 与 github/main 经 ls-remote 核对均为 91f1dbd，merge-ug 工作树与分支已删除。剩余：桌面重启确认与 L4 验证（只走调试端口）。"
+    },
+    {
+      "at": "2026-11-04T18:48:19.511Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "workflow merge-user-graph-l4（wf_a6c5725b04b81cb2）完成。合入后的桌面验收（L4）记录 9372a85，origin/main = github/main = 9372a85，.llm/desktop-lock 已删除。结果：验收第 41 条的面板部分在真机上全部通过（两次 build；桌面锁中途被 metrics 接管后重取锁并重跑）；§9 的访谈与全链路几行无法核对（没有跑模型，U5b 延后）。没有阻塞，3 条不阻塞发现在 9372a85 的记录里。节点保持进行中：访谈与全链路的核对、以及延后项等 M7 E6 之后合入 main 再做。"
     }
   ]
 }

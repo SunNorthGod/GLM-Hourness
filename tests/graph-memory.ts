@@ -5,7 +5,7 @@
  * engine and no files, so a test says exactly the state it reads.
  */
 import type { LoadedGraph } from '../src/graph/parse.ts'
-import type { Actor, GraphNode, HistoryEntry } from '../src/graph/schema.ts'
+import type { Actor, GraphNode, HistoryEntry, Status } from '../src/graph/schema.ts'
 import type { GateItem } from '../src/graph/stage.ts'
 import { at, graphOf, node } from './execute-helpers.ts'
 
@@ -21,7 +21,8 @@ export function question(id: string, parent: string, fields: Partial<GraphNode> 
   return node({ id, type: 'question', parent, options: OPTIONS, recommend: 'B', ...fields }, 1, 'llm', extra)
 }
 
-export const GOAL_BODY = '需求：我想要一个命令行小工具，每天记一下花了多少钱\n问题：月底不知道钱花在哪\n给谁：本人\n约束：无'
+/** The four labelled lines of the card, and the answer to 用户怎么用 for a goal that draws no user graph (user graph design 0.4.1 §5.1). */
+export const GOAL_BODY = '需求：我想要一个命令行小工具，每天记一下花了多少钱\n问题：月底不知道钱花在哪\n给谁：本人\n约束：无\n用户流程：无，练习用的目标，不画用户图'
 
 /** A goal in the interview whose requirement card is complete: body labels, acceptance, non-goals, a risk and a choice the human made. */
 export function interview(goal: Partial<GraphNode> = {}, others: readonly GraphNode[] = []): { readonly graph: LoadedGraph, readonly goal: GraphNode } {
@@ -77,6 +78,21 @@ export function splitDesign(others: readonly GraphNode[] = []): { readonly graph
     ...others,
   ])
   return { graph, goal: graph.nodes.get('goal-1')! }
+}
+
+/**
+ * A small user graph under goal-1 (user graph design 0.4.1 §2.2): one role,
+ * one flow walked by command (its entry edge unless `entry` is false), two
+ * steps, and the merge gate with the walk line, all at `status`.
+ */
+export function userNodes(status: Status = 'proposed', entry = true): GraphNode[] {
+  return [
+    node({ id: 'norm-merge-gate', type: 'norm', parent: 'goal-1', status, acceptance: ['`walk 命令 $ npm run e2e -- --flow {flow}`'] }, 3),
+    node({ id: 'role-1', type: 'role', parent: 'goal-1', status, title: '记账的人' }, 3),
+    node({ id: 'flow-1', type: 'flow', parent: 'role-1', status, title: '记一笔', body: '走法：命令 · 预计 30 秒', ...entry ? { edges: [{ type: 'next' as const, to: 'step-1' }] } : {} }, 4),
+    node({ id: 'step-1', type: 'step', parent: 'flow-1', status, title: '输入一笔花销', acceptance: ['看到记好了'], edges: [{ type: 'next', to: 'step-2' }] }, 5),
+    node({ id: 'step-2', type: 'step', parent: 'flow-1', status, title: '看到这一笔', acceptance: ['列表里多了一行'] }, 6),
+  ]
 }
 
 export function failing(items: readonly GateItem[]): string[] {

@@ -7,10 +7,10 @@
  * to the registrations: a tool added without its name here fails there.
  */
 
-/** The graph row's tools, in registration order. */
+/** The graph row's tools, in registration order. graph_relink and graph_walk arrive with the user graph (design 0.4.1 §3.5); a subagent's tool face keeps them out (the M7 list grows to match when that line lands). */
 export const GRAPH_TOOL_NAMES: readonly string[] = [
   'graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit', 'graph_link',
-  'graph_unlink', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',
+  'graph_unlink', 'graph_relink', 'graph_walk', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',
 ]
 
 /**
@@ -70,6 +70,8 @@ export interface ShownProposal {
   readonly number: 1 | 2 | 3
   readonly text: string
   readonly releaseSet?: ReadonlyArray<{ readonly id: string, readonly rev: string }>
+  /** kind confirm and release of a goal with a user graph (user graph design 0.4.1 §5.1–§5.3): the page the harness appended to text, what the human agrees to (stable) and the state as of the showing. */
+  readonly userPage?: { readonly stable: string, readonly state: string }
 }
 
 /**
@@ -94,6 +96,8 @@ export function shownProposalOf(isError: boolean, text: string): ShownProposal |
   if (result.kind !== 'question' && result.kind !== 'confirm' && result.kind !== 'release') return undefined
   if (result.number !== 1 && result.number !== 2 && result.number !== 3) return undefined
   if (result.form !== undefined && !(['recommend', 'choose', 'want', 'look'] as readonly unknown[]).includes(result.form)) return undefined
+  const page = result.userPage as Record<string, unknown> | null | undefined
+  if (page !== undefined && (typeof page !== 'object' || page === null || typeof page.stable !== 'string' || typeof page.state !== 'string')) return undefined
   return result as unknown as ShownProposal
 }
 
@@ -140,7 +144,42 @@ export const ORCHESTRATION_RESIDENT_TOOLS: ReadonlySet<string> = new Set([
   LESSONS_QUERY_TOOL,
   // project graph
   'graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit',
-  'graph_link', 'graph_unlink', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',
+  'graph_link', 'graph_unlink', 'graph_relink', 'graph_walk', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',
   // design row (main agent)
   ...DESIGN_TOOL_NAMES,
 ])
+
+/**
+ * The metrics journal's tool categories (metrics design §4.3), a closed
+ * enum: the `tool` event's `cat` field takes one of these. The table covers
+ * the rc.3 native names (docs/DESIGN.md §2.4a: dsh-tool-fs, dsh-tool-fs-search,
+ * dsh-tool-bash, dsh-tool-pwsh, dsh-tool-terminal, dsh-tool-todo, dsh-tool-web,
+ * dsh-tool-ask-user, dsh-tool-str-replace-editor, dsh-tool-subagent,
+ * dsh-tool-subagent-control, dsh-tool-workflow) and the ZCode aliases
+ * (src/glm-prompt/aliases.ts and src/shared/dialect.ts); the graph, dispatch
+ * and memory categories are the orchestration rows' own tools. `mcp__`
+ * prefixed names are the MCP tools' convention; everything else, including
+ * the tool-search controls and the goals/jobs/schedule/session tools, is
+ * `other`.
+ */
+export type ToolCategory = 'read' | 'write' | 'search' | 'shell' | 'graph' | 'dispatch' | 'memory' | 'web' | 'todo' | 'question' | 'mcp' | 'other'
+
+const WRITE_NAMES: readonly string[] = ['write', 'edit', 'str_replace_editor', 'Write', 'Edit']
+const SEARCH_NAMES: readonly string[] = ['glob', 'grep', 'Glob', 'Grep']
+const SHELL_NAMES: readonly string[] = ['pwsh', 'bash', 'Bash']
+
+/** The category of one tool call: `mcp__` prefixed names are MCP tools, the table decides the rest, unknown names are `other`. */
+export function toolCategory(name: string): ToolCategory {
+  if (name.startsWith('mcp__')) return 'mcp'
+  if (name === 'read' || name === 'read_image' || name === 'Read') return 'read'
+  if (WRITE_NAMES.includes(name)) return 'write'
+  if (SEARCH_NAMES.includes(name)) return 'search'
+  if (SHELL_NAMES.includes(name) || name.startsWith('terminal_')) return 'shell'
+  if (GRAPH_TOOL_NAMES.includes(name)) return 'graph'
+  if (DISPATCH_TOOL_NAMES.includes(name)) return 'dispatch'
+  if (MEMORY_TOOL_NAMES.includes(name) || LEARNING_TOOL_NAMES.includes(name)) return 'memory'
+  if (name === 'web_fetch' || name === 'web_search') return 'web'
+  if (name === 'todo_write' || name === 'TodoWrite') return 'todo'
+  if (name === 'ask_user_question') return 'question'
+  return 'other'
+}

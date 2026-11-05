@@ -18,6 +18,7 @@
  * the plan the human reads, and hands every estimate it wrote to `estimates`
  * (src/env/timeout.ts, m4 design §6.3.1 item 3).
  */
+import { spawnSync } from 'node:child_process'
 import { stat } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
 import type { ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
@@ -27,7 +28,9 @@ import { ASK_FORMS } from './proposal.ts'
 import { failure, type Failure } from './mutation.ts'
 import { listOpenItems, projectNode } from './projection.ts'
 import { REOPEN_LIMIT, reopenNotice, reopenNoticeFailed, reopenNoticeForSubagent, reopenQuestion, reopensAfter, thirdReworkState } from './reopen.ts'
-import { NODE_TYPES, SLOPES, STAGES, TASK_KINDS, TIERS, WEIGHTS, type GraphNode } from './schema.ts'
+import { NODE_TYPES, SLOPES, STAGES, TASK_KINDS, TIERS, WEIGHTS, type Evidence, type GraphNode } from './schema.ts'
+import { isUserNode } from './user-graph.ts'
+import { liveOf } from './user-live.ts'
 import type { LoadedGraph } from './parse.ts'
 import { loadGraph } from './store.ts'
 import type { ListedRun, LoopsService } from '../loops/service.ts'
@@ -39,8 +42,8 @@ const GRAPH_ROW_ID = 'glm-hourness/graph'
 /** Graph directory under the session working directory when the row config names none. */
 export const DEFAULT_GRAPH_DIR = 'docs/graph'
 
-/** Engine operations an llm can perform, one tool each; supersede goes through propose with a supersedes edge. */
-type LlmOp = 'propose' | 'status' | 'edit' | 'link' | 'unlink' | 'comment' | 'verify' | 'decide' | 'approve' | 'reject'
+/** Engine operations an llm can perform, one tool each; supersede goes through propose with a supersedes edge, graph_walk is its own tool below. */
+type LlmOp = 'propose' | 'status' | 'edit' | 'link' | 'unlink' | 'relink' | 'comment' | 'verify' | 'decide' | 'approve' | 'reject'
 
 type JsonSchema = Record<string, unknown>
 
@@ -212,7 +215,11 @@ const NODE: JsonSchema = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { type: { type: 'string', enum: ['depends', 'source', 'supersedes'] }, to: ID },
+        properties: {
+          type: { type: 'string', enum: ['depends', 'source', 'supersedes', 'serves', 'next'] },
+          to: ID,
+          when: { type: 'string', description: 'A branch condition, only on a step\'s next edge: one line, at most 40 characters, the user\'s words.' },
+        },
         required: ['type', 'to'],
         additionalProperties: false,
       },
@@ -304,13 +311,33 @@ const WRITES: ReadonlyArray<{ readonly op: LlmOp, readonly description: string, 
   },
   {
     op: 'link',
-    description: 'Add an edge from a node: depends (it needs `to` done first) or source (it exists because of `to`).',
-    parameters: object({ id: ID, rev: REV, type: { type: 'string', enum: ['depends', 'source'] }, to: ID, reason: REASON, relay: RELAY }, ['id', 'rev', 'type', 'to', 'reason']),
+    description: 'Add an edge from a node: depends (it needs `to` done first), source (it exists because of `to`), serves (this feature or task builds the step `to`; the work side\'s own bookkeeping, no relay needed) or next (the order of a user graph: from a step to the step that may follow it, from a flow to its first step). A step\'s next edge takes when, the condition of the branch.',
+    parameters: object({ id: ID, rev: REV, type: { type: 'string', enum: ['depends', 'source', 'serves', 'next'] }, to: ID, when: { type: 'string', description: 'Only for a step\'s next edge: the branch condition, one line, at most 40 characters.' }, reason: REASON, relay: RELAY }, ['id', 'rev', 'type', 'to', 'reason']),
   },
   {
     op: 'unlink',
-    description: 'Remove a depends or source edge from a node.',
-    parameters: object({ id: ID, rev: REV, type: { type: 'string', enum: ['depends', 'source'] }, to: ID, reason: REASON, relay: RELAY }, ['id', 'rev', 'type', 'to', 'reason']),
+    description: 'Remove a depends, source, serves or next edge from a node.',
+    parameters: object({ id: ID, rev: REV, type: { type: 'string', enum: ['depends', 'source', 'serves', 'next'] }, to: ID, reason: REASON, relay: RELAY }, ['id', 'rev', 'type', 'to', 'reason']),
+  },
+  {
+    op: 'relink',
+    description: `Replace the outgoing next edges of one step, or the entry of one flow, in a single write: the human's sentence covers the whole change, and one node is written once per sentence. The order of a user graph changes like this. Example, the person having said "借书前要先交押金": restate it ("那我记成：…"), they confirm, then two calls with that sentence as relay. 1. graph_propose {node: {type: "step", parent: "flow-3", title: "交押金", acceptance: ["页面提示押金已收"], edges: [{type: "next", to: "step-9"}]}, reason: "借书前要先交押金", relay: "借书前要先交押金"} — the result carries the new step's id; the new step has nobody building it yet, connect a task of the module that owns the flow with a serves edge. 2. graph_relink {id: "step-8", rev: <the rev you just read>, reason: "没交押金的先去交押金", next: [{to: "step-9", when: "已交押金"}, {to: "the id the first call returned", when: "没交押金"}], relay: "借书前要先交押金"}.`,
+    parameters: object({
+      id: ID,
+      rev: REV,
+      next: {
+        type: 'array',
+        description: 'The outgoing next edges after the write, each {to, when?}; at most 8 entries, a flow takes at most one (its entry).',
+        items: {
+          type: 'object',
+          properties: { to: ID, when: { type: 'string', description: 'The branch condition, one line, at most 40 characters.' } },
+          required: ['to'],
+          additionalProperties: false,
+        },
+      },
+      reason: REASON,
+      relay: RELAY,
+    }, ['id', 'rev', 'next', 'reason']),
   },
   {
     op: 'comment',
@@ -440,6 +467,143 @@ function envTimeoutsAfter(op: LlmOp, node: GraphNode, exec: unknown, estimates: 
   return { timeouts }
 }
 
+/** The project root's HEAD, short; undefined when git cannot read it (the caller refuses before writing anything). */
+function headOf(cwd: string | undefined): string | undefined {
+  if (cwd === undefined) return undefined
+  const run = spawnSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' })
+  const hash = run.status === 0 ? run.stdout.trim() : ''
+  return /^[0-9a-f]{40}$/.test(hash) ? hash.slice(0, 7) : undefined
+}
+
+/**
+ * graph_walk (design 0.4.1 §2.7): the person walked a flow themselves and
+ * the main agent records it. Their words are the relay and the only input
+ * of truth; the evidence and the commit are the tool's, never the model's:
+ * ref person:conversation, exit from ok, note `@<HEAD of the project root>`
+ * plus the first line of the relay, cut at 200 code points. One engine
+ * write per step, so a refusal part-way leaves the earlier steps recorded
+ * and the refusal names what is missing. The commit recorded is the
+ * project root's HEAD at this moment — the question to the person names
+ * the commit to walk (dispatch_task carries it), and they redeploy first
+ * when what they walked is not it.
+ */
+function walkTool(dir: string): ToolDefinitionLike {
+  const STEPS_OUTPUT: JsonSchema = {
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: { id: { type: 'string' }, code: { type: 'string' } },
+      required: ['id', 'code'],
+      additionalProperties: false,
+    },
+  }
+  const OUTPUT: JsonSchema = {
+    type: 'object',
+    properties: {
+      ok: OK,
+      id: { type: 'string' },
+      rev: { type: 'string' },
+      revision: { type: 'string' },
+      node: { type: 'object', description: 'The flow node, without its history.' },
+      changed: { type: 'array', items: { type: 'string' } },
+      commit: { type: 'string', description: 'The project root HEAD the walk was recorded at, short.' },
+      unwritten: STEPS_OUTPUT,
+      invalid: INVALID,
+    },
+    required: ['ok', 'id', 'rev', 'revision', 'node', 'changed', 'commit'],
+    additionalProperties: false,
+  }
+  return {
+    name: 'graph_walk',
+    description: 'Record that the person walked a flow themselves. Only their own words count: pass them as relay, verbatim. steps lists every live approved step of the flow, one {id, ok} each; graph_show of the flow lists them. Command, screenshot and transcript walks are recorded by the harness, not by you. The commit recorded is the project root\'s HEAD now; when you ask the person to walk a flow, tell them which commit to walk (dispatch_task carries it) and have them redeploy first when what they walked is not it.',
+    parameters: object({
+      id: ID,
+      rev: REV,
+      steps: {
+        type: 'array',
+        description: 'Every live approved step of the flow, one item each.',
+        items: {
+          type: 'object',
+          properties: { id: ID, ok: { type: 'boolean', description: 'Whether the person saw this step succeed.' } },
+          required: ['id', 'ok'],
+          additionalProperties: false,
+        },
+      },
+      reason: REASON,
+      relay: RELAY,
+    }, ['id', 'rev', 'steps', 'reason', 'relay']),
+    output: { schema: OUTPUT, render },
+    async execute(raw, exec) {
+      const args = readRequest('graph_walk', raw, ['id', 'rev', 'steps', 'reason', 'relay'])
+      if (typeof args.id !== 'string') refuse(failure('invalid', 'id must be a node id', 'pass the flow id', 'id'))
+      if (typeof args.rev !== 'string') refuse(failure('invalid', 'rev is required', 'pass the flow rev from your latest graph_show', 'rev'))
+      if (typeof args.reason !== 'string') refuse(failure('invalid', 'reason is required', 'one sentence for the history', 'reason'))
+      if (typeof args.relay !== 'string') refuse(failure('invalid', 'relay is required: the person\'s own words', 'quote what they said about the walk, verbatim', 'relay'))
+      const given = args.steps
+      if (!Array.isArray(given) || given.some(entry => !isRecord(entry) || typeof entry.id !== 'string' || typeof entry.ok !== 'boolean')) {
+        refuse(failure('invalid', 'steps must be an array of {id, ok}', 'one item per live approved step of the flow', 'steps'))
+      }
+      const resolved = await graphDir(dir, exec)
+      const graph = await loadGraph(resolved)
+      const flow = graph.nodes.get(args.id)
+      if (flow === undefined) refuse(failure('not_found', `no readable node "${args.id}"`, 'graph_open lists the open nodes', 'id'))
+      if (flow.type !== 'flow') refuse(failure('invalid', `"${flow.id}" is a ${flow.type}`, 'graph_walk records a walk of a flow', 'id'))
+      const children = [...graph.nodes.values()].filter(node => node.parent === flow.id && node.type === 'step')
+      const proposed = children.filter(step => step.status === 'proposed' && liveOf(graph, step))
+      if (proposed.length > 0) {
+        refuse(failure('bad_transition', `"${flow.id}" still has ${proposed.length} proposed step(s): ${proposed.map(step => step.id).join(', ')}`, 'a human approves or rejects them first; they are in graph_open and the panel\'s 需要你', 'id'))
+      }
+      const live = children.filter(step => step.status === 'approved' && liveOf(graph, step))
+      const rev = graph.revisions.get(flow.id)!
+      if (args.rev !== rev) {
+        refuse(failure('stale_revision', `"${flow.id}" is at revision ${rev}, not ${String(args.rev)}`, 'read the projection again and retry with the new rev', 'rev'))
+      }
+      const okOf = new Map<string, boolean>()
+      for (const entry of given as readonly { id: string, ok: boolean }[]) {
+        if (okOf.has(entry.id)) refuse(failure('invalid', `"${entry.id}" is listed twice`, 'one item per step', 'steps'))
+        okOf.set(entry.id, entry.ok)
+      }
+      const missing = live.map(step => step.id).filter(id => !okOf.has(id))
+      const extra = [...okOf.keys()].filter(id => !live.some(step => step.id === id))
+      if (missing.length > 0 || extra.length > 0) {
+        const parts = [...missing.length > 0 ? [`missing: ${missing.join(', ')}`] : [], ...extra.length > 0 ? [`not steps of this flow: ${extra.join(', ')}`] : []]
+        refuse(failure('invalid', `steps must list every live approved step of "${flow.id}" exactly once (${live.length} step(s)); ${parts.join('; ')}`, 'read the flow with graph_show and list its steps', 'steps'))
+      }
+      const head = headOf(cwdOf(exec as ToolExecutionContext | undefined))
+      if (head === undefined) {
+        refuse(failure('unavailable', 'the project root has no HEAD to record', 'deploy the build the person walked, then record the walk again; nothing was written', 'id'))
+      }
+      const firstLine = args.relay.split(/\r?\n/).map(line => line.trim()).find(line => line.length > 0) ?? ''
+      const cutLine = [...firstLine].slice(0, USER_LIMITS_NOTE).join('') + ([...firstLine].length > USER_LIMITS_NOTE ? '…' : '')
+      const note = `@${head} ${cutLine}`
+      const engine = openEngine(resolved)
+      const written: string[] = []
+      for (const step of live) {
+        const ok = okOf.get(step.id)!
+        const evidence: Evidence[] = [{ kind: 'walk', ref: 'person:conversation', exit: ok ? 0 : 1, note }]
+        const result = await engine.apply('llm', { op: 'walk', id: step.id, rev: graph.revisions.get(step.id)!, reason: args.reason, evidence, relay: args.relay })
+        if (!result.ok) {
+          const left = live.map(entry => entry.id).filter(id => !written.includes(id))
+          refuse(failure(result.error.code, `${step.id} was not recorded (${result.error.message})`, `recorded so far: ${written.length === 0 ? 'nothing' : written.join(', ')}; read the steps again and retry the ones not written: ${left.join(', ') || 'none'}`, 'steps'))
+        }
+        written.push(step.id)
+      }
+      const after = await loadGraph(resolved)
+      return { ok: true, id: flow.id, rev: after.revisions.get(flow.id)!, revision: after.revision, node: withoutHistory(after.nodes.get(flow.id)!), changed: written, commit: head }
+    },
+  }
+}
+
+/** Longest content of a walk note after the commit, in code points: the first line of the relay, cut with an ellipsis (design §2.7). */
+const USER_LIMITS_NOTE = 200
+
+/** The node as the write results carry it: everything but the history. */
+function withoutHistory(node: GraphNode): Omit<GraphNode, 'history'> {
+  const { history, ...rest } = node
+  void history
+  return rest
+}
+
 function writeTool(dir: string, op: LlmOp, description: string, parameters: JsonSchema, report: ThirdReworkReport, estimates: EstimateSink | undefined): ToolDefinitionLike {
   return {
     name: `graph_${op}`,
@@ -496,7 +660,13 @@ export function graphTools(dir: string, focuses: FocusMemory, report: ThirdRewor
       async execute(args, exec) {
         readRequest('graph_open', args, [])
         const graph = await openEngine(await graphDir(dir, exec)).load()
-        return { ok: true, items: listOpenItems(graph), ...invalidOf(graph) }
+        const items = listOpenItems(graph)
+        // reject does not cascade: a proposed user node under a rejected or dropped flow or role is no longer waiting for the person (user graph design 0.4.1 §3.7).
+        const proposals = items.proposals.filter((ref) => {
+          const node = graph.nodes.get(ref.id)
+          return node === undefined || !isUserNode(node) || liveOf(graph, node)
+        })
+        return { ok: true, items: { ...items, proposals }, ...invalidOf(graph) }
       },
     },
     {
@@ -516,6 +686,9 @@ export function graphTools(dir: string, focuses: FocusMemory, report: ThirdRewor
         return { ok: true, focus: { id, type: node.type, title: node.title, status: node.status }, ...invalidOf(graph) }
       },
     },
-    ...WRITES.map(write => writeTool(dir, write.op, write.description, write.parameters, report, estimates)),
+    ...WRITES.flatMap(write => {
+      const tool = writeTool(dir, write.op, write.description, write.parameters, report, estimates)
+      return write.op === 'relink' ? [tool, walkTool(dir)] : [tool]
+    }),
   ]
 }

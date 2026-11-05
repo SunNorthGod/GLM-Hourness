@@ -22,8 +22,15 @@ import { entryFileText } from '../src/loops/model.ts'
 import { openLoopStore } from '../src/loops/store.ts'
 import { nextOccurrence } from '../src/loops/trigger.ts'
 import { momentText, type LoopsView } from '../src/loops/view.ts'
+import { appendEvents } from '../src/metrics/library.ts'
+import type { EmittedEvent } from '../src/shared/metrics.ts'
 import { entryFileOf, NOW, quickIo, recordsOf, scriptEntry, SCRIPT_TEXT, seedAgreed, tellEntry, writeFiles } from './loops-helpers.ts'
 import { withLoopsRow, type LoopsFixture } from './loops-host.ts'
+import { GLM_LOOP_DEFAULTS } from '../src/glm-llm/loop-defaults.ts'
+import { CHANNEL_LOGIN_REJECTED, loginRejectedKey } from '../src/loops/channel.ts'
+import { machinePaths } from '../src/loops/machine.ts'
+import { PRICING_SERVICE } from '../src/shared/pricing.ts'
+import type { QuotaRequest, QuotaView } from '../src/shared/quota.ts'
 
 const A = 'u-0a1b2c3d'
 const B = 'u-4e5f6a7b'
@@ -205,9 +212,9 @@ rowTest('view.json is written when its content changes and at most every 2 secon
   assert.equal(await readFile(join(fixture.root, '.llm', 'loops', 'view.json'), 'utf8'), written)
 })
 
-/** A `loop-done` line of the run records. */
-const doneLine = (entry: string, run: string, at: string, outcome: string, more: Record<string, unknown> = {}): string =>
-  JSON.stringify({ kind: 'loop-done', at, project: 'p', entry, run, outcome, ...more })
+/** A `loop-done` event of the project's metrics journal, where the run records are. */
+const doneEvent = (entry: string, run: string, at: string, outcome: string, more: { readonly reason?: string, readonly exits?: readonly number[] } = {}): EmittedEvent =>
+  ({ k: 'loop-done', by: 'loops', at, body: { entry, run, outcome, ...more } })
 
 rowTest('view.json carries what the runtime kept: each entry\'s last run in the page\'s words, the main agent\'s line, how many things wait, and the last runs newest first', async (fixture) => {
   await agreed(fixture, tellEntry(A), scriptEntry(B))
@@ -221,15 +228,14 @@ rowTest('view.json carries what the runtime kept: each entry\'s last run in the 
     holder: { state: 'archived', reason: 'holder-archived', session: 'sess-main', at: '2026-11-01T08:00:00.000Z' },
     held: [{ at: '2026-11-01T09:00:00.000Z', entry: A, run: 'run-0000000000a1', title: '每周五看一眼没合入的分支', text: 'Weekly.', wake: true, reason: 'holder-archived' }],
   }))
-  await writeFile(join(runtimeDir, 'runs.jsonl'), [
-    doneLine(A, 'run-0000000000a1', '2026-11-01T09:00:00.000Z', 'held', { reason: 'holder-archived' }),
-    JSON.stringify({ kind: 'loop-holder', at: '2026-11-01T09:00:00.000Z', project: 'p', state: 'archived' }),
-    JSON.stringify({ kind: 'loop-duplicate', at: '2026-11-01T09:30:00.000Z', project: 'p', event: 'loops.host-restarted', key: 'host-restarted:p:1', from: 'loops', firstSeen: '2026-11-01T09:29:00.000Z' }),
-    doneLine(B, 'run-0000000000b1', '2026-11-01T10:00:00.000Z', 'reported', { exits: [1] }),
-    JSON.stringify({ kind: 'loop-task-delete', at: '2026-11-01T10:30:00.000Z', project: 'p', entry: A, scheduleId: 'task-1', why: 'holder-archived', deleted: true }),
-    'not a record',
-    '{"kind":"loop-done","at":"2026-11-01T11:00:00.000Z","entry":"',
-  ].join('\n'))
+  const written = await appendEvents(fixture.root, [
+    doneEvent(A, 'run-0000000000a1', '2026-11-01T09:00:00.000Z', 'held', { reason: 'holder-archived' }),
+    { k: 'loop-holder', by: 'loops', at: '2026-11-01T09:00:00.000Z', body: { state: 'archived' } },
+    { k: 'loop-duplicate', by: 'loops', at: '2026-11-01T09:30:00.000Z', body: { event: 'loops.host-restarted', key: 'host-restarted:p:1', from: 'loops', firstSeen: '2026-11-01T09:29:00.000Z' } },
+    doneEvent(B, 'run-0000000000b1', '2026-11-01T10:00:00.000Z', 'reported', { exits: [1] }),
+    { k: 'loop-task-delete', by: 'loops', at: '2026-11-01T10:30:00.000Z', body: { entry: A, scheduleId: 'task-1', why: 'holder-archived', deleted: true } },
+  ], 'cli', { now: () => NOW })
+  assert.equal(written.rejected, 0, 'the journal takes every fixture event')
   await fixture.runtime.create()
   const view = await viewOf(fixture.root)
   const entry = (id: string) => view.entries.find(item => item.id === id)
@@ -252,7 +258,7 @@ rowTest('after every beat of a project it runs the row writes view.json again, s
   await agreed(fixture, tellEntry(A))
   await fixture.runtime.create()
   assert.deepEqual((await viewOf(fixture.root)).recent, [])
-  await appendFile(join(fixture.root, '.llm', 'loops', 'runs.jsonl'), `${doneLine(A, 'run-0000000000a2', '2026-11-02T00:30:00.000Z', 'delivered')}\n`)
+  await appendEvents(fixture.root, [doneEvent(A, 'run-0000000000a2', '2026-11-02T00:30:00.000Z', 'delivered')], 'cli', { now: () => NOW })
   fixture.beats[0]?.run()
   // The beat's write comes less than 2 seconds after the last one on this fixed clock: it waits for its timer.
   for (let tries = 0; tries < 100 && !fixture.delayed.some(entry => entry.ms === 2_000); tries++) await new Promise(resolve => setTimeout(resolve, 20))
@@ -364,4 +370,51 @@ rowTest('the main agent walking a step leaves the two notes of the walk, and a s
   const plain = await runtime.preStep(step)
   assert.equal(plain.messages.length, step.messages.length)
   assert.equal(JSON.stringify(plain.messages).includes(LOOP_STEP_SOURCE), false)
+})
+
+rowTest('with the GLM channel\'s pricing service the row lists its four entries and runs the machine-level runner first in a beat: a rejected login lands in the inbox of the project the main agent walked in', async ({ root, runtime, beats, run }) => {
+  const since = NOW - 60_000
+  const calls: QuotaRequest[] = []
+  runtime.services.set(PRICING_SERVICE, {
+    basis: 'probe',
+    plan: 'GLM Coding Plan',
+    charged: () => undefined,
+    peak: () => false,
+    loopDefaults: GLM_LOOP_DEFAULTS,
+    quota: (request?: QuotaRequest): Promise<QuotaView> => {
+      calls.push(request ?? {})
+      return Promise.resolve({ login: { state: 'rejected', since }, pending: false })
+    },
+  })
+  // This project has a main agent, and it was the last to walk (the step note of design §6.1).
+  const holder = holderFileOf(join(root, 'user'), join(root, 'docs', 'graph'))
+  await mkdir(dirname(holder), { recursive: true })
+  await writeFile(holder, `${JSON.stringify({ version: 1, sessionId: runtime.agent.id, graphDir: join(root, 'docs', 'graph'), since: new Date(NOW - 3_600_000).toISOString(), commandId: 'command-1' })}\n`)
+  const paths = machinePaths(join(root, 'user'))
+  await mkdir(dirname(paths.lastStep), { recursive: true })
+  await writeFile(paths.lastStep, `${JSON.stringify({ session: runtime.agent.id, at: new Date(NOW).toISOString(), projectKey: projectKey(root), project: root })}\n`)
+  beats[0]?.run()
+  const events = join(root, '.llm', 'loops', 'events.jsonl')
+  const started = Date.now()
+  let text = ''
+  while (!text.includes(CHANNEL_LOGIN_REJECTED) && Date.now() - started < 5_000) {
+    await new Promise(resolve => setTimeout(resolve, 25))
+    text = await readFile(events, 'utf8').catch(() => '')
+  }
+  const line = text.split('\n').filter(item => item !== '').map(item => JSON.parse(item) as { event: string, key: string }).find(item => item.event === CHANNEL_LOGIN_REJECTED)
+  assert.equal(line?.key, loginRejectedKey('', new Date(since).toISOString()))
+  // The inbox is written first and told.json at the end of the beat: wait for it.
+  let told: { login?: { key: string } } = {}
+  while (told.login === undefined && Date.now() - started < 5_000) {
+    told = JSON.parse(await readFile(paths.told, 'utf8').catch(() => '{}')) as { login?: { key: string } }
+    if (told.login === undefined) await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  assert.equal(told.login?.key, line?.key)
+  assert.ok(calls.length > 0 && calls.every(call => call.read === false), 'the login is looked at without a request')
+  // /loops lists what the board lists: the loop row's own four and the channel's four (design §3.4 M6-L1).
+  const listed = await run('')
+  assert.equal(listed.kind, 'success')
+  const words = listed.text
+  assert.match(words, /插件带来的（8 项，只能看）/)
+  for (const entry of GLM_LOOP_DEFAULTS) assert.ok(words.includes(entry.title), `${entry.id} is listed`)
 })
