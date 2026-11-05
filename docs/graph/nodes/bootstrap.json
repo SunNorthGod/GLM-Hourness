@@ -310,6 +310,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B2 复审 APPROVED，无阻塞：F1 已按设计 §3.4 修好；合并 9980946 与 metrics-calc 测试修复都核过；四道门禁为 0，探针 388/388。B3–B6 待做。"
+    },
+    {
+      "at": "2026-11-05T01:52:27.753Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B3（bootstrap-run-start）已推 fb876ce；合入 origin/main c8200f0（合并提交 fb3f3d6）。两者四道门禁为 0：npm test 3021 通过 / 0 失败 / 1 跳过，探针 388/388，棘轮 73/18/1。剩 B4、B5、B6；B7–B10 顺延。"
     }
   ]
 }
