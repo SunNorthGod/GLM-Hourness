@@ -62,6 +62,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 4 轮 code 步终于有了实现提交：origin/m4-reanchor-violations 9d40df5（wip：压缩后重锚带上本会话被拦的规则与目标的非目标），正在跑探针。预算 6 轮用到第 4 轮。"
+    },
+    {
+      "at": "2026-11-05T18:04:29.802Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 4 轮 code 步完成：实现 9d40df5 与合入 origin/main 的 42c8823 已推到 origin/m4-reanchor-violations。build、preflight、npm test 退出 0，棘轮 eslint 73 / knip 18 / jscpd 1，探针 422/422（在 9d40df5 上）。前三轮评审的三条挡路发现都已处理。下一步评审，预算 6 轮已用到第 4 轮。"
+    },
+    {
+      "at": "2026-11-05T18:09:23.838Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 4 轮评审（wf_b007fba3eafafeec review）APPROVED，没有挡路发现：重锚只在压缩后那一步带上本会话被拦规则的计数与焦点目标的非目标，摘要本身不变；违规流水读不到时降级并写进行健康；ORCHESTRATION.md 同批改，L2、L3 与门禁记录齐全（9d40df5，合入 origin/main 得 42c8823，探针 422/422，棘轮 73/18/1）。下一步合入 main；合入后开 m4-reanchor-norms。"
     }
   ]
 }

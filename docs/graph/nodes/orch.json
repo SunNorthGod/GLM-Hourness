@@ -541,6 +541,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-06 01:11 巡检：13 条运行全部因上游限流（Model service error 5xx）暂停在当前步，编排方逐条恢复（M7、bootstrap、ablation、status-hub-3、m3-metrics-wiring、m5-habit-rule、m5-rule-expected-effect、m4-reanchor-violations、m4-checks-loop-details、habits-prompts 合入步、glm-context-window-check-b、desktop-close-docs）；恢复后 habits-prompts 与 M7 已确认重新在跑。暂停期间各分支已推的阶段提交都在 origin，没有丢失。compact-recall-redact 仍等 habits-prompts 合入后重派合入步。"
+    },
+    {
+      "at": "2026-11-05T18:04:29.492Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 约 02:00 人重启了 Kiro，在跑的运行都被暂停（Interrupted by agent restart）。编排方逐条恢复：habits-prompts、M7、m4-checks-loop-details、glm-context-window-check-b、desktop-close-docs 及其余在跑的线，各步保留自己的会话从断点接着做；分支上已推的提交不受影响。"
     }
   ]
 }
