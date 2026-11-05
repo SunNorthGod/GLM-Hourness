@@ -392,8 +392,8 @@ export interface Writer {
   readonly by?: NonNullable<NewRecord['by']>
 }
 
-/** The JSON form of an entry, the same in a snapshot and in a base. */
-const snapshot = (entry: MemoryEntry): JsonValue => JSON.parse(JSON.stringify(entry)) as JsonValue
+/** The JSON form of an entry, the same in a snapshot and in a base; `forgottenAt` stays in the fold (a `restore` snapshots a forgotten entry). */
+const snapshot = ({ forgottenAt: _forgottenAt, ...entry }: MemoryEntry): JsonValue => JSON.parse(JSON.stringify(entry)) as JsonValue
 
 /** A `store` record. `relayChecked` is false when the words were not checked against the person's messages, true when they were, absent when nothing was to be checked. `ask` names the open habit question the record settles (§3.8.2). */
 export function storeRecord(request: StoreRequest, writer: Writer & { readonly relayChecked?: boolean, readonly ask?: string }): NewRecord<'store'> {

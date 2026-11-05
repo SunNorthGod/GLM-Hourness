@@ -255,3 +255,8 @@ Worktree `.worktrees/m5`, branch `m5-memory-lessons`. Not tracked by git (`.agen
 - The person's desktop profile does not enable the lessons row (it ships disabled); the orchestrator chose an isolated instance: own `--user-data-dir` and `DSH_HOME` under `.llm/m5r-l4/`, CDP 9341, a profile linked to this worktree's packages (`b9a066e` build) with `glm-hourness/lessons` enabled in that profile only. Desktop lock held 06:47:18 to 06:55:27.
 - lessons-3 #1, #2, #3 pass on the desktop (#3: the appended lesson showed 0.254 s after the command returned); #4 stays pinned at L2 (seeing it needs both rows off). Record: `.agents/tasks/m5/l4-2026-11-05.md`. L4 on the person's real profile waits until the lessons row ships enabled.
 - Gates: see the commit message of this batch.
+## m5-rest review fix B1: forgottenAt stays out of the journal
+- Review B1 (`.llm/m5r-review/review.md`): `/memory restore` snapshots the forgotten entry into the `restore` record, and the snapshot carried the fold's `forgottenAt`. `snapshot` in `src/memory/model.ts` now drops `forgottenAt`, so no record carries it (`forget`, `restore`, `base`). The fold and the 28-day rule are unchanged.
+- Pinned: the `/memory restore` case in `tests/memory-row.spec.ts` reads the journal after the restore and asserts that no record's `data` has `forgottenAt`. Failing first: that case failed before the fix.
+- Merge `c98651c` of `origin/main` `c7bff3e` before it: build 0, preflight 0, npm test 0 (3004 pass, 0 fail, 1 skipped), probe 0 (388/388). Ratchet eslint 73, knip 18, jscpd 1.
+- Gates: see the commit message of this fix.

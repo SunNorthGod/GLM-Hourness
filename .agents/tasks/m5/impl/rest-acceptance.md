@@ -33,7 +33,7 @@
 | 7 | `relay_not_said`（`hint` 说引最近一条）；`relayChecked: true`；读不到时 `relayChecked: false` 与「原话未核对」；更新确认习惯读不到为 `unavailable` | 已钉 | `memory-habit.spec.ts`：「a preference whose words are in the person's latest message is stored checked; words only in an earlier message are relay_not_said」「updating a confirmed habit without the person's messages is unavailable…」；`memory-model.spec.ts`：「the relay check is carried on the record…」；`memory-row.spec.ts`：「/memory show lists the counts and the latest entries, and marks the words that were not checked」；`lessons-panel-model.spec.ts`：「the memory half: relay with the 原话未核对 tag…」 | `memory habit`：「a relay that only an earlier message had is refused as relay_not_said and nothing more was written」；`memory (GLM)`：「…checked against the person's latest message…」 |
 | 8 | 摘要把 28 天内没结果的问话与确认习惯算已落点；过期的「不用」不算 | 已钉 | `memory-signals.spec.ts`：「an open habit question, a no whose block holds and a confirmed habit land a group; an expired one lands nothing; asked says how it went (m5-4 #8)」 | — |
 
-**D1 的修法（本批）**：折叠里的条目多一个 `forgottenAt`，由 `forget` 记录的时刻写入，`restore` 去掉，不写进流水（`src/memory/model.ts` 的 `applyRevoke`）；`src/memory/habit.ts` 判一条撤掉的确认习惯是否仍「已知」时从 `forgottenAt` 起算 28 天（没有时退回 `lastReviewed`）。改前新例在第 30 天的断言失败（得 `asked`），改后通过。工具输出与索引只列 `active` 条目，人看到的文字不变。
+**D1 的修法（本批）**：折叠里的条目多一个 `forgottenAt`，由 `forget` 记录的时刻写入，`restore` 去掉（`src/memory/model.ts` 的 `applyRevoke`）；不写进流水：`/memory restore` 拿撤下的条目做 `restore` 记录的快照，`snapshot` 先去掉 `forgottenAt`（评审 B1 的修复，`memory-row.spec.ts` 的 `/memory restore` 用例断言流水里每条记录的 `data` 都没有它）；`src/memory/habit.ts` 判一条撤掉的确认习惯是否仍「已知」时从 `forgottenAt` 起算 28 天（没有时退回 `lastReviewed`）。改前新例在第 30 天的断言失败（得 `asked`），改后通过。工具输出与索引只列 `active` 条目，人看到的文字不变。
 
 ## `lessons-3` 经验页（验证层 L2 视图模型与静态检查；L4）
 
