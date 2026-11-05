@@ -53,6 +53,13 @@
  * comment of the next, the second tier's refused write and stale handback,
  * the re-dispatch's new pins, the goal's hourness-design-wait and its
  * resume, the design review's two records, and the throwing module reader.
+ * The skeleton scenario (glm-exec-skeleton) runs the chain of M7 design
+ * §10.1 on a goal the main agent interviews and designs: the person acts only
+ * at /wish, the interview answers, the agreement to the requirement and the
+ * release; then the drive starts, the task is dispatched with a plan,
+ * reviewed, squashed, checked and fast-forwarded, the goal's acceptance
+ * review passes and update_goal complete closes the goal on the graph. The
+ * path where the loop board runs the release's entry is L4 batch 2.
  * The rules board scenarios run in scratch
  * git repositories with the row enabled by the overlay: rules-peak and
  * rules-peak-hourness drive /rules peak, glm-rules and non-glm-rules run
@@ -2257,15 +2264,15 @@ function plantCommit(ws, parent, files, message) {
 const mergeWt = join(runDir, EXEC_MERGE, 'ws', '.worktrees', 'hz-task-1')
 const mergeBash = (command, description) => ({ tool: { name: 'Bash', arguments: { command, description } } })
 const mergeSleep = (seconds, why) => mergeBash(`Start-Sleep -Seconds ${seconds}`, `probe: ${why}`)
-const mergeSquash = (branch, subject) => mergeBash([
-  `git -C '${mergeWt}' checkout -q -b ${branch}`,
-  `git -C '${mergeWt}' reset -q --soft main`,
-  `git -C '${mergeWt}' -c user.name=probe -c user.email=probe@example.invalid -c commit.gpgsign=false commit -q -m '${subject}' -m 'Hourness-Task: task-1'`,
-  `git -C '${mergeWt}' log --oneline -1`,
+const mergeSquash = (branch, subject, wt = mergeWt) => mergeBash([
+  `git -C '${wt}' checkout -q -b ${branch}`,
+  `git -C '${wt}' reset -q --soft main`,
+  `git -C '${wt}' -c user.name=probe -c user.email=probe@example.invalid -c commit.gpgsign=false commit -q -m '${subject}' -m 'Hourness-Task: task-1'`,
+  `git -C '${wt}' log --oneline -1`,
 ].join('; '), 'probe: squash the task branch into one commit for the main branch')
 const mergeDispatch = { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: MERGE_WHY, quick: true, review: { depth: 'skip', why: 'probe: one data file' } } } }
-const mergeWorker = (file, message) => [
-  { tool: { name: 'Write', arguments: { file_path: join(mergeWt, 'src', file), content: `${JSON.stringify({ message })}\n` } } },
+const mergeWorker = (file, message, wt = mergeWt) => [
+  { tool: { name: 'Write', arguments: { file_path: join(wt, 'src', file), content: `${JSON.stringify({ message })}\n` } } },
   { tool: { name: 'Bash', arguments: { command: `git add -A; git -c user.name=t -c user.email=t@example.invalid commit -m ${message}; git log --oneline -1`, description: 'probe: commit the work' } } },
   { tool: { name: 'structured_output', arguments: { status: 'done', summary: `wrote src/${file} and committed it`, commits: ['{git-head}'], files: [`src/${file}`], checks: [], questions: [], assumptions: [], lessons: [] } } },
   { text: 'worker done' },
@@ -2537,6 +2544,77 @@ const execModules2 = designScenario(EXEC_MODULES_2, 'glm-5.3-flash', () => [
   { text: 'done' },
 ], { wish: true, git: true, extra: [...EXEC_ON, ...dispatchRow(join(runDir, EXEC_MODULES_2, 'dispatch.jsonl'), { breakReaders: true })], others: [[modulesHandBack('probe: the unsplit goal is spared'), { text: 'worker done' }]] })
 const execModulesGraph = await loadGraph(join(stageWs(EXEC_MODULES), 'docs', 'graph'))
+
+// E9 (M7 design §9.1 glm-exec-skeleton, §10.1): the skeleton end to end on
+// the real runtime. The simulated person types /wish, answers the interview,
+// agrees to the requirement and releases the design; nothing else. The main
+// agent is the headless root (D2): its scripted turn never ends after the
+// release, so the goal only has to exist, block nothing and complete, as in
+// glm-exec-modules. The interview is glm-design-interview's step list without
+// its refusals (D4); the design is the main agent's proposals: a decision
+// with the five columns, one write task with its dispatch attributes and the
+// norm-merge-gate, all approved by the release. The release's event runs in
+// M7's fallback (the loop board is off; the board-run path is L4 batch 2,
+// §9.2 item 9) and the run uses the real clock with the rules row off (D3).
+// Then: get_goal (the drive started with no command), the dispatch with a
+// chosen model and a required plan (review declared full, D5), the approval,
+// the worker writing, committing and handing back, the review on a chosen
+// model, the squash with the trailer in the task worktree, check_commit, the
+// fast-forward, the acceptance review of the goal on a chosen model, and
+// update_goal complete through the completion gate.
+const EXEC_SKELETON = 'glm-exec-skeleton'
+const SKELETON_WHY = 'probe: the skeleton needs a running model'
+const skeletonWt = join(stageWs(EXEC_SKELETON), '.worktrees', 'hz-task-1')
+const SKELETON_GATE = ['`$ node -e "process.exit(0)"`']
+const SKELETON_ACCEPTED = INTERVIEW_ANSWERS.acceptance
+await stageGraph(EXEC_SKELETON, [['llm', { type: 'goal', title: '记账小工具', stage: 'interview' }]])
+const skeletonHuman = { ...Object.fromEntries(Object.entries(INTERVIEW_TASK).filter(([key]) => key !== 'stop')), replies: { ...INTERVIEW_TASK.replies, release: [RELEASE_GO] }, maxReplies: 10 }
+const skeletonPropose = (node, reason) => ({ tool: { name: 'graph_propose', arguments: { node, reason } } })
+/** The main agent's script by step name; `skeletonAt` finds a step, whose result the next request of the session carries. */
+const skeletonSteps = [
+  ...interviewSteps.filter(([step]) => !['confirm-early', 'edit-stage', 'wake-other', 'wait-other', 'done'].includes(step)),
+  ['design-decision', skeletonPropose({ type: 'decision', id: 'decision-1', title: '用本地文件存账', parent: 'goal-1', body: `${RELEASE_BODY}\n如果失败：文件被改坏`, acceptance: ['月底出一张分类表'], nonGoals: ['不做同步'] }, 'probe: the design')],
+  ['design-task', skeletonPropose({ type: 'task', id: 'task-1', title: '记一笔', parent: 'goal-1', kind: 'implement', writeScope: ['src/ledger.json'], acceptance: ['记一笔能读回'], worktree: true, edges: [{ type: 'source', to: 'decision-1' }] }, 'probe: the plan of the design')],
+  ['design-gate', skeletonPropose({ type: 'norm', id: 'norm-merge-gate', title: '合入前的检查', parent: 'goal-1', acceptance: SKELETON_GATE }, 'probe: the check the stage reminder asks for before release')],
+  ['put-release', releaseCall({})],
+  ['show-release', { text: releaseShown }],
+  ['record-release', recordRelease({ answer: 'agree', words: [RELEASE_GO], recordedAs: '照这个方案放行' })],
+  ['wait-start', mergeSleep(3, 'let the drive start')],
+  ['goal-started', driveGetGoal],
+  ['dispatch', { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: SKELETON_WHY, review: { depth: 'full' } } } }],
+  ['wait-plan', mergeSleep(8, 'let the worker submit its plan')],
+  ['approve', { tool: { name: 'answer_worker', arguments: { request: '{plan-request:task-1}', verdict: 'approve' } } }],
+  ['wait-handback', mergeSleep(8, 'let the worker write, commit and hand back')],
+  ['review', { tool: { name: 'dispatch_task', arguments: { id: '{review:task-1}', model: 'glm-5.3', why: SKELETON_WHY, depth: 'full' } } }],
+  ['wait-review', mergeSleep(8, 'let the review hand back')],
+  ['squash', mergeSquash('merge/task-1', 'Record one expense', skeletonWt)],
+  ['check', { tool: { name: 'check_commit', arguments: { commit: 'merge/task-1' } } }],
+  ['wait-check', mergeSleep(5, 'let the merge check run')],
+  ['ff', mergeBash('git merge --ff-only merge/task-1', 'probe: fast-forward the main branch')],
+  ['wait-trunk', mergeSleep(3, 'let the evidence and the trunk check land')],
+  ['accept', { tool: { name: 'dispatch_task', arguments: { id: 'goal-1', model: 'glm-5.3', why: SKELETON_WHY } } }],
+  ['wait-accept', mergeSleep(8, 'let the acceptance review hand back')],
+  ['complete', driveUpdate('complete')],
+  ['wait-done', mergeSleep(2, 'let the graph goal close')],
+  ['done', { text: 'done', status: true }],
+]
+const skeletonAt = name => skeletonSteps.findIndex(([step]) => step === name)
+const skeletonWorker = [
+  { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the ledger', paths: ['src/ledger.json'], acceptance: ['one entry reads back'], covers: [0], verify: 'L2', commands: ['node --test'] }], notes: 'probe: one file' } } },
+  ...mergeWorker('ledger.json', 'probe:ledger', skeletonWt),
+]
+const skeletonAcceptor = [
+  { tool: { name: 'structured_output', arguments: { verdict: 'APPROVED', commit: '{git-head}', findings: [], checked: ['acceptance:0: src/ledger.json on main at {git-head}'], lessons: [] } } },
+  { text: 'acceptance done' },
+]
+const execSkeleton = designScenario(EXEC_SKELETON, 'glm-5.3-flash', () => skeletonSteps.map(([, step]) => step), {
+  wish: true,
+  git: true,
+  human: skeletonHuman,
+  extra: [...DRIVE_ON, ...dispatchRow(join(runDir, EXEC_SKELETON, 'dispatch.jsonl'))],
+  others: [skeletonWorker, execReviewVerdict('APPROVED', ['acceptance:0'], []), skeletonAcceptor],
+})
+mergeRecords[EXEC_SKELETON] = await mergeChecksOf(EXEC_SKELETON)
 
 // The request seam over a dispatched worker (m4 design 0.6 §5.9; M7 design
 // 0.6 §3.2.1's 申报接缝; m4 §14.1's `guard-request-worker`): the worker's
@@ -3424,6 +3502,53 @@ function execModulesChecks() {
   ]
 }
 /**
+ * E9 (M7 design §9.1, §10.1; scenario glm-exec-skeleton): the chain from
+ * the person's /wish to the goal done on the graph. `skeletonAt` names the
+ * main agent's scripted steps; a step's result is in the next request.
+ */
+function skeletonChecks() {
+  const { ws, main, text, refused, records, advances } = mergeRun(execSkeleton, EXEC_SKELETON)
+  const at = skeletonAt
+  const json = name => jsonOrUndefined(text(at(name)))
+  const failed = name => refused(at(name)) || text(at(name)).startsWith('{"ok":false')
+  const goal = wsNode(ws, 'goal-1')
+  const task = wsNode(ws, 'task-1')
+  const reviewNode = [...readdirSync(join(ws, 'docs', 'graph', 'nodes'))].map(file => wsNode(ws, file.replace(/\.json$/, ''))).find(node => node?.parent === 'task-1' && node.kind === 'review')
+  const goalComments = harnessComments(goal)
+  const taskComments = harnessComments(task)
+  const replies = execSkeleton.human.filter(entry => entry.kind === 'reply')
+  const third = replies.filter(entry => entry.rule === 3)
+  const releaseReply = execSkeleton.human.findIndex(entry => entry.kind === 'reply' && entry.rule === 3 && entry.shown.some(item => item.kind === 'release'))
+  const approvedBy = (node, relay) => node !== undefined && node.status !== 'proposed' && (node.history ?? []).some(entry => entry.op === 'approve' && entry.relay === relay)
+  const stageBy = (to, relay) => (goal?.history ?? []).some(entry => entry.changes?.stage?.to === to && entry.relay === relay)
+  const started = json('goal-started')?.goal
+  const dispatched = json('dispatch')
+  const reviewed = json('review')
+  const accepted = json('accept')
+  const sessionModels = summary => summary?.childId === undefined ? [] : [...new Set(bySession(execSkeleton, summary.childId).map(step => step.model))]
+  const worker = dispatched?.childId === undefined ? [] : bySession(execSkeleton, dispatched.childId)
+  const squash = gitOut(ws, 'rev-parse', '--verify', '--quiet', 'refs/heads/merge/task-1')
+  const trunk = gitOut(ws, 'rev-parse', 'main')
+  const taskDone = (task?.history ?? []).filter(entry => entry.op === 'status' && entry.to === 'done').at(-1)
+  const taskEvidence = taskDone?.actor === 'harness' && (taskDone.evidence ?? []).some(item => item.kind === 'commit' && item.ref === squash) && (taskDone.evidence ?? []).some(item => item.kind === 'test' && item.exit === 0)
+  const goalDone = (goal?.history ?? []).filter(entry => entry.op === 'status' && entry.to === 'done').at(-1)
+  const acceptance = goalComments.find(comment => comment.startsWith('验收审查第 1 轮：'))
+  return [
+    [`exec skeleton: the person types /wish, answers the card by rule 4, then answers what is put by rule 3 three times (the question, the requirement, the release) and is silent after; no step of the main agent types a line, a command, another session or a fork`, execSkeleton.human[0]?.kind === 'wish' && execSkeleton.human[0].result === 'success' && replies.every(entry => entry.rule === 4 || entry.rule === 3) && isDeepStrictEqual(third.map(entry => entry.shown[0]?.kind), ['question', 'confirm', 'release']) && replies.at(-1) === third.at(-1) && releaseReply >= 0 && execSkeleton.human.slice(releaseReply + 1).every(entry => entry.kind === 'silent') && execSkeleton.human.every(entry => entry.kind !== 'unexpected-question') && main.every(step => step.line === undefined && step.command === undefined && step.other === undefined && step.fork === undefined), `${replies.filter(entry => entry.rule === 4).length} rule-4 answer(s); rule 3: ${third.map(entry => `${entry.shown[0]?.kind}:${entry.text}`).join(' | ')}`],
+    [`exec skeleton: the requirement is agreed with the person's words: goal-1 went to design with 对，就这样 and to release with 可以，放行 as the relay`, !failed('record-requirement') && stageBy('design', INTERVIEW_AGREE) && stageBy('release', RELEASE_GO), `${text(at('record-requirement')).slice(0, 80)} | stage ${goal?.stage ?? 'none'}`],
+    [`exec skeleton: the release is put and recorded as released, and approves the main agent's decision, task and norm-merge-gate with the person's words`, !failed('put-release') && json('record-release')?.outcome === 'released' && ['decision-1', 'task-1', 'norm-merge-gate'].every(id => approvedBy(wsNode(ws, id), RELEASE_GO)), `${text(at('record-release')).slice(0, 120)}`],
+    [`exec skeleton: the drive starts without a command: the goal is active, its objective names goal-1 and holds the acceptance, and goal-1 has one 自动推进已开始 comment`, started?.phase === 'active' && String(started.objective ?? '').includes('Project graph goal goal-1') && String(started.objective ?? '').includes(SKELETON_ACCEPTED) && goalComments.filter(comment => comment.startsWith('自动推进已开始 · 放行 ')).length === 1, `goal ${started?.phase ?? 'none'}; ${goalComments.find(comment => comment.startsWith('自动推进已开始'))?.slice(0, 100) ?? 'no start comment'}`],
+    [`exec skeleton: the dispatch runs on the model the main agent chose, with the plan required and the review full, and the dispatch comment names the model and why`, /^hz-task-1-/.test(dispatched?.childId ?? '') && dispatched.plan === 'required' && dispatched.review === 'full' && isDeepStrictEqual(sessionModels(dispatched), ['glm-5.3-flash']) && taskComments.some(comment => comment.startsWith('第 1 次派发') && comment.includes('glm-5.3-flash') && comment.includes(SKELETON_WHY)), `${dispatched?.childId ?? text(at('dispatch')).slice(0, 100)}; models ${sessionModels(dispatched).join(',') || 'none'}`],
+    [`exec skeleton: the plan is submitted and approved, the plan section is in the task body, and the worker's write lands in the commit`, !failed('approve') && (lastToolResult(worker[1])?.text ?? '').includes('"status":"approved"') && String(task?.body ?? '').includes('## 计划') && lastToolResult(worker[2])?.isError !== true && gitOut(ws, 'show', 'merge/task-1:src/ledger.json') !== '', `approve ${text(at('approve')).slice(0, 60)}; submit ${(lastToolResult(worker[1])?.text ?? 'none').slice(0, 60)}`],
+    [`exec skeleton: the done handback has effective depth 全审 and a review task, and the review runs on the chosen model and passes`, taskComments.some(comment => comment.startsWith('第 1 次交回 · done') && comment.includes('有效深浅 全审')) && reviewed?.role === 'review' && isDeepStrictEqual(sessionModels(reviewed), ['glm-5.3']) && reviewNode?.status === 'done', `review ${reviewNode?.id ?? 'none'}:${reviewNode?.status ?? 'none'}; models ${sessionModels(reviewed).join(',') || 'none'}`],
+    [`exec skeleton: check_commit passes the squash with the Hourness-Task trailer, the fast-forward runs and is recorded, the task is done with the harness's commit and test evidence, and its worktree is gone`, text(at('check')).includes('"status":"started"') && squash !== '' && records.some(record => record.kind === 'commands' && record.commit === squash && record.passed) && !refused(at('ff')) && trunk === squash && gitOut(ws, 'log', '-1', '--format=%(trailers:key=Hourness-Task,valueonly)', squash) === 'task-1' && advances.some(entry => entry.ref === 'local' && entry.to === squash && entry.ok === true) && task?.status === 'done' && taskEvidence && !existsSync(skeletonWt), `${squash.slice(0, 12) || 'no squash'}; main ${trunk.slice(0, 12)}; task ${task?.status ?? 'none'}; worktree ${existsSync(skeletonWt)}`],
+    [`exec skeleton: the acceptance review of the goal runs on the chosen model and passes at the trunk commit`, accepted?.role === 'acceptance-review' && isDeepStrictEqual(sessionModels(accepted), ['glm-5.3']) && acceptance !== undefined && acceptance.startsWith('验收审查第 1 轮：APPROVED · 挡路 0') && acceptance.includes(`@${trunk.slice(0, 12)}`), acceptance ?? text(at('accept')).slice(0, 120)],
+    [`exec skeleton: update_goal complete passes the completion gate, and goal-1 is done on the graph with the gate's evidence`, !failed('complete') && text(at('complete')).includes('"phase":"complete"') && goal?.status === 'done' && goalDone?.actor === 'harness' && (goalDone.evidence ?? []).some(item => item.ref === 'hourness completion gate') && !goalComments.includes('goal 在完成门禁之外完成'), `${text(at('complete')).slice(0, 100)}; goal-1 ${goal?.status ?? 'none'}`],
+    [`exec skeleton: the run exits clean with nothing from the execute row on stderr`, execSkeleton.status === 0 && !stderrOf(EXEC_SKELETON).includes('dsh-glm-hourness/execute'), `exit ${execSkeleton.status}; main ${main.length} request(s) of ${skeletonSteps.length} step(s)`],
+  ]
+}
+
+/**
  * Memory (docs/ORCHESTRATION.md §8; scenarios glm-memory, non-glm-memory,
  * glm-memory-compact, glm-worker-memory, glm-memory-depth): what the real
  * runtime did with the memory tools, the index notice, the child's tool face,
@@ -3944,6 +4069,7 @@ const checks = [
   ...mergeUpstreamChecks(),
   ...driveChecks(),
   ...execModulesChecks(),
+  ...skeletonChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],
