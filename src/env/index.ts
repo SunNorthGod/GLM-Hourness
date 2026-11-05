@@ -18,34 +18,42 @@
  * changed (edited.ts) when an entry of the board hears it. With the board on,
  * the same step runs M4's own checks (runner.ts: the check lines with `when`
  * of the approved tool nodes) and hands the agent the checks notice; each
- * delivery of results is one run of the board's entry. Ships disabled.
+ * delivery of results is one run of the board's entry. It registers the tool
+ * check_limit (limit-tool.ts, every route, the root agent's only): the main
+ * agent raises or resets the ceiling of one check held at it, which the
+ * root agent's environment notice says. Ships disabled.
  */
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { ensureLlmIgnored } from '../data/llm-ignore.ts'
+import { projectHomeFor } from '../data/project-home.ts'
 import { projectOf } from '../data/project-root.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
-import type { AgentLike, ProvideHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
+import type { AgentLike, ProvideHost, ServiceLookup, SessionLike, ToolExecutionContext, ToolsLike } from '../shared/dsh-min.ts'
 import { graphService } from '../graph/service.ts'
 import { installContribution, loopsService } from '../loops/service.ts'
 import { installFilesEdited } from './edited.ts'
 import { createEnvService, ENV_SERVICE } from './env-service.ts'
+import { CHECK_LIMIT_DESCRIPTION, CHECK_LIMIT_PARAMETERS, checkLimit } from './limit-tool.ts'
 import { CHECKS_ENTRY_ID, envContribution, ENV_ROW_SOURCE } from './loop-entry.ts'
 import { envNotice } from './notice.ts'
-import { createChecker } from './runner.ts'
+import { createChecker, readOwnChecks } from './runner.ts'
 import { dailySuppressions, type SuppressionRecord } from './suppressions.ts'
 
-/** The row's context: the agent lifecycle event, service lookup and provision, and cordis inject when the host has it. */
+/** The row's context: the agent lifecycle event, service lookup and provision, the tools service, and cordis inject when the host has it. */
 export interface EnvContext extends ServiceLookup, Partial<ProvideHost> {
+  /** The tools service, for check_limit's registration (the row injects it; a host without it registers nothing). */
+  readonly tools?: ToolsLike
   /** cordis inject: the loop board's service is package-provided, so the row reaches it by name (design §6.8). */
   inject?(names: readonly string[], callback: (sub: ServiceLookup) => (() => void) | void): unknown
   /** Awaited serially before agent creation resolves; the first step sees the effects. */
   on(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
 }
 
-/** cordis plugin identity. */
+/** cordis plugin identity: the tools service, for check_limit's registration. */
 export const name = 'dsh-glm-hourness/env'
+export const inject = ['tools']
 
 /** Row health for one session: where the notice read its branch, and the state of the `.llm/` ignore. */
 export function envHealth(graph: string | undefined, ignore: { readonly kind: 'ignored', readonly appended: boolean } | { readonly kind: 'no-git' } | { readonly kind: 'unwritable' | 'visible', readonly reason: string } | undefined): [HealthState, string] {
@@ -154,6 +162,25 @@ export function apply(ctx: EnvContext): () => void {
       console.warn(`${name}: environment notice not installed for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }))
+  // The main agent's ceiling of one check (design §6.3.1): every route; the body refuses a subagent.
+  if (ctx.tools !== undefined) {
+    disposers.push(ctx.tools.register({
+      name: 'check_limit',
+      description: CHECK_LIMIT_DESCRIPTION,
+      parameters: CHECK_LIMIT_PARAMETERS,
+      output: { schema: { type: 'object', properties: { outcome: { type: 'string' }, check: { type: 'string' }, capS: { type: 'number' }, previousCapS: { type: 'number' }, message: { type: 'string' } } }, render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] },
+      execute: (args, exec) => {
+        const { agent } = (exec ?? {}) as ToolExecutionContext
+        const cwd = typeof agent?.session?.header.cwd === 'string' && agent.session.header.cwd.length > 0 ? agent.session.header.cwd : undefined
+        return checkLimit(args, {
+          agent,
+          home: projectHomeFor(ctx, undefined, cwd),
+          checks: async () => cwd === undefined ? undefined : (await readOwnChecks(ctx, cwd))?.checks.map(check => check.key),
+          now: () => new Date(),
+        })
+      },
+    }))
+  }
   // The event of changed files and the checker's entry on the loop board (design §6.8): warned once and kept on the activation line when refused.
   disposers.push(installContribution(ctx, ENV_ROW_SOURCE, () => envContribution(project => checker.details(project)), CHECKS_ENTRY_ID, (message) => {
     console.warn(`${name}: ${message}`)

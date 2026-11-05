@@ -5,7 +5,10 @@
  * moves), after a compaction the same way the graph projection re-anchors
  * (src/graph/reminder.ts). The checks line names M4's own checks (the
  * check lines with `when` of the approved tool nodes) and where they apply;
- * a changed check line or tool node revision counts as a change too. A
+ * a changed check line or tool node revision counts as a change too. The
+ * root agent's notice adds one line per check held at its ceiling
+ * (limit-tool.ts, design §6.3.1 item 6): raising the ceiling is its own
+ * decision; the line goes when the state does, which is a change too. A
  * session whose graph is unreadable (or has no `env` node) gets the scratch
  * line alone.
  */
@@ -17,7 +20,10 @@ import { graphService } from '../graph/service.ts'
 import { readGraph } from '../graph/row-health.ts'
 import { CHECKPOINT_SOURCE } from '../graph/reminder.ts'
 import { loopsService } from '../loops/service.ts'
+import { projectHomeFor } from '../data/project-home.ts'
 import { envBranch, type EnvBranch } from './branch.ts'
+import { heldAtCeiling, heldSentence, readLimits } from './limit-tool.ts'
+import { argvDigest, checkKey, readTiming } from './timeout.ts'
 import type { ServiceLookup } from '../shared/dsh-min.ts'
 
 /** Source kind of the persisted environment notice; later steps re-derive from it. */
@@ -50,8 +56,12 @@ function checksLine(branch: EnvBranch, board: boolean): string {
   return line.length <= CHECKS_LINE_LIMIT ? line : `${line.slice(0, CHECKS_LINE_LIMIT - 1)}…`
 }
 
-/** The reminder body for one branch, or for no branch at all (the scratch line alone); `board` says whether the loop board is on. */
-export function envNoticeBody(branch: EnvBranch | undefined, board = true): string {
+/**
+ * The reminder body for one branch, or for no branch at all (the scratch
+ * line alone); `board` says whether the loop board is on; `held` are the
+ * lines of the checks held at their ceiling, for the root agent alone.
+ */
+export function envNoticeBody(branch: EnvBranch | undefined, board = true, held: readonly string[] = []): string {
   const lines: string[] = []
   if (branch !== undefined && (branch.tools.length > 0 || branch.proposals > 0)) {
     lines.push('Project tools (graph node env). Use these before writing your own.')
@@ -59,6 +69,7 @@ export function envNoticeBody(branch: EnvBranch | undefined, board = true): stri
     if (branch.tools.length > TOOL_LIMIT) lines.push(`${branch.tools.length - TOOL_LIMIT} more: graph_show env`)
     if (branch.proposals > 0) lines.push(`${branch.proposals} more tool node${branch.proposals === 1 ? ' waits' : 's wait'} for the human's approval.`)
     lines.push(checksLine(branch, board))
+    if (board) lines.push(...held)
   }
   lines.push(SCRATCH_LINE)
   let body = lines.join('\n')
@@ -131,9 +142,32 @@ function envNoticeReason(state: EnvHistory, digest: string): EnvNoticeReason | u
 }
 
 /**
+ * The lines of the checks held at their ceiling (design §6.3.1 item 6), from
+ * the project's timing journal and limits.jsonl: M4's own checks of the
+ * branch, in branch order. A journal or a setting that cannot be read gives
+ * no line from it.
+ */
+async function heldLines(home: string | undefined, branch: EnvBranch): Promise<readonly string[]> {
+  if (home === undefined) return []
+  const timing = await readTiming(home)
+  const limits = await readLimits(home)
+  if ('error' in timing) return []
+  const book = 'error' in limits ? { lines: [], bad: 0 } : limits
+  const nowMs = Date.now()
+  return branch.tools.flatMap(tool => tool.checks.flatMap((check) => {
+    if (check.paths === undefined) return []
+    const held = heldAtCeiling(timing.lines, book, { key: checkKey(tool.id, check.name), name: check.name, argv: argvDigest(check.argv), estimateS: check.estimateSeconds }, nowMs)
+    return held === undefined ? [] : [heldSentence(held)]
+  }))
+}
+
+/**
  * The notice body for one session: the branch of its project graph, or the
  * scratch line alone; with the revisions of the tool nodes that carry checks,
- * which the digest takes in so a changed check command shows again.
+ * which the digest takes in so a changed check command shows again. A root
+ * agent's body (no `origin: 'subagent'` on the session header) also has the
+ * lines of the checks held at their ceiling: only the main agent can raise
+ * a ceiling.
  */
 async function bodyForSession(ctx: ServiceLookup, session: SessionLike): Promise<{ readonly body: string, readonly revisions: string }> {
   const cwd = session.header.cwd
@@ -143,7 +177,9 @@ async function bodyForSession(ctx: ServiceLookup, session: SessionLike): Promise
   if ('failure' in read) return { body: envNoticeBody(undefined), revisions: '' }
   const branch = envBranch(read.graph)
   const revisions = branch.tools.filter(tool => tool.checks.length > 0).map(tool => `${tool.id}@${tool.rev}`).join(',')
-  return { body: envNoticeBody(branch, loopsService(ctx) !== undefined), revisions }
+  const board = loopsService(ctx) !== undefined
+  const held = board && session.header.origin !== 'subagent' ? await heldLines(projectHomeFor(ctx, undefined, cwd), branch) : []
+  return { body: envNoticeBody(branch, board, held), revisions }
 }
 
 /**

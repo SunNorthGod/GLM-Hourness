@@ -42,6 +42,14 @@ export const DISPATCH_TOOL_NAMES: readonly string[] = ['subagent', 'subagent_for
 export const GUARD_TOOL_NAMES: readonly string[] = ['guard_lift', 'request_exception']
 
 /**
+ * The env row's tools (m4-checks design §6.3.1): check_limit, the main
+ * agent's ceiling of one check. Not resident, deferred on the GLM route like
+ * the guard row's; the environment notice line that asks for it names it.
+ * tests/contracts.spec.ts pins the registration to this list.
+ */
+export const ENV_TOOL_NAMES: readonly string[] = ['check_limit']
+
+/**
  * The design row's tools (src/design/propose.ts, src/design/record.ts), only
  * for the main agent: they put a matter to the human and record the human's
  * reply. Exported one by one because the graph panel's live projection

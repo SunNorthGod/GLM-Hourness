@@ -86,7 +86,7 @@ origin/main（`45ae4e8`）还不含 `8c9d74f`（`merge-base --is-ancestor` 退�
       依赖：B2、B3。代码依赖 loops-runner 的 `runCommand`。**推送依赖 origin/main 含 loops-runner 合并。**
       Verify：四道门禁退出码 0；探针含 `env-checks`、`env-checks-timeout` 全绿。
 
-- [ ] 5. **B5（m4-checks）上限被截住时只告诉主 Agent，`check_limit` 调高与撤回**
+- [x] 5. **B5（m4-checks）上限被截住时只告诉主 Agent，`check_limit` 调高与撤回**
       范围：
       - `src/env/limit-tool.ts`（新）：工具 `check_limit`（§6.3.1 参数表、五步检查顺序与错误码、`noop`、成功返回 `{outcome, check, capS, previousCapS, message}`、描述逐字、`CHECK_LIMIT_EXAMPLE` 常量生成描述里的例子）；`limits.jsonl` 读（每项最后一行为准，坏行跳过并计数，读不出按没有设置）与追加。
       - `src/env/timeout.ts`：`checkTimeout` 的 `capMs` 取设置；`ValueLine.cap` 记 `{by: 'setting', …}`；`not_held` 的判定按 §6.3.1 第 4 条（只数晚于这一项 `limits.jsonl` 最后一行的记录）。
@@ -150,6 +150,15 @@ origin/main（`45ae4e8`）还不含 `8c9d74f`（`merge-base --is-ancestor` 退�
 27. **环境提醒的摘要算进带检查行的工具节点的版本**（B4，§7.2「节点的 `rev` 变也算环境变化」）：命令改了而提醒正文读起来一样时也重新注入一次。
 28. **交接被拒时的标签改为 `env.checks-after-edit`**：B2 用的是事件 id；条目来了之后，条目是板上列出的那一项。
 29. **`env-checks-timeout` 第二段是同一工作区里的另一个场景 `env-checks-timeout-run`**：第一段的会话用 `graph_propose` 建节点（LLM 提议，状态 `proposed`），探针以人的身份批准之后，第二个会话改文件跑检查；这样第一条 `value` 的来源带的是第一段会话的 `session`，与图工具记下的 `estimate` 对得上。计划原写「预置一个已批准的工具节点」，那样没有 `estimate` 行，`session` 对不上。
+30. **`env-checks-timeout` 第三段是单独的场景 `env-checks-ceiling`**（B5）：工作区里预置一个人批准的工具节点（检查行预计 `25s`），根 agent 改文件之后环境提醒出现被截住的一行，再用 `check_limit` 调高到 120 秒（`limits.jsonl` 一行，下一条提醒那一行没了），然后经 `probe-dispatch.mjs` 派一个子 agent，它的环境提醒有检查一行、没有被截住的一行。比计划多核对了调高与撤回的效果。
+31. **「被截住」按记录判，不另存状态**（B5，`heldAtCeiling`）：这一项上限设置最后一次改动（`limits.jsonl` 最后一行）之后，最近一条 `value` 带 `capped`，或 7 天内有一次在现行上限处超时且不早于那条 `value`，就算被截住；之后来了一条不带 `capped` 的 `value`，或主 Agent 调高、撤回，这一行就消失。「只在状态变化时注入」由环境提醒的正文摘要实现（这一行在正文里）。提醒里的数优先取账面上下一次的取值（仍被截住时），否则取那条 `value` 的来源。
+32. **调高的秒数下界是现行上限加 1**（B5）：缺省上限时是 61（设计原文的「61 to 600」）；已调到 120 秒、又被截住时，提醒与 `invalid` 的 `hint` 写「121 to 600」。设计只写了缺省情形。
+33. **`check_limit` 只认 M4 自带的检查（带 `when` 的检查行）**（B5）：设计写「现在读得懂的已批准检查行」；不带 `when` 的行由循环板的执行器跑，超时归循环板，M4 的上限设置管不到它，所以对它返回 `unknown_check`，`hint` 列出能调的键。
+34. **`reset` 带了 `reason` 也照查**（B5）：给了就过同一道换词检查，记进 `limits.jsonl`；不给时 `reason` 为空串。
+35. **没有项目目录时 `check_limit` 返回 `unavailable`**（B5）：设置无处可写；与写失败同一个码，`hint` 写明原因。
+36. **晨报里「上限已调高」是那项检查下面的一行子项**（B5）：日期按晨报的时区写成 `YYYY-MM-DD`；明细里的那半句带理由（§6.3.1「看得见」有理由，§6.8 的表只写了秒数），整行仍截在 160 个码点。
+37. **超时那句的「已在上限」按现行上限判**（B5）：上限调高之后，下一次的值到了设置值时写 `It is at its ceiling of <设置> s; the main agent has been told.`。
+38. **宿主没有工具服务时不注册 `check_limit`**（B5）：行声明了 `inject: [tools]`，真宿主上不会出现；假宿主与降级表里写明被截住的那一行照样提醒。
 
 ## Digest
 

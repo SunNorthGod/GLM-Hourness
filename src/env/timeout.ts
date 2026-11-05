@@ -16,9 +16,11 @@
  * `<tool node id>/<name>` and its command by `argvDigest`: runs under another
  * command do not count. `nextValue` reads the journal into the limit of the
  * next run and the `value` line to write when that limit changed;
- * `tidyTiming` rewrites the journal once per project and process. This file
- * is the one place the numbers are written; everything else reads them from
- * here.
+ * `tidyTiming` rewrites the journal once per project and process. The main
+ * agent may raise the ceiling of one check (check_limit, limit-tool.ts, up
+ * to CHECK_TIMEOUT_RAISED_MAX_MS); `nextValue` then takes that setting as
+ * the check's ceiling. This file is the one place the numbers are written;
+ * everything else reads them from here.
  */
 import { createHash } from 'node:crypto'
 import { appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
@@ -38,6 +40,8 @@ export const CHECK_TIMEOUT_CAP_MS = 60_000
 export const CHECK_STEP_DEADLINE_MS = 20_000
 /** A check that waited this long for a process slot is dropped without running; the next edit queues it again. */
 export const CHECK_QUEUE_WAIT_MS = 3 * CHECK_STEP_DEADLINE_MS
+/** The highest ceiling the main agent may set for one check (check_limit, limit-tool.ts). */
+export const CHECK_TIMEOUT_RAISED_MAX_MS = 600_000
 
 /** One check's limit and where its run time came from. */
 export interface CheckTimeout {
@@ -179,7 +183,18 @@ type ValueSource =
   | { readonly by: 'harness', readonly runs: readonly number[], readonly factor: number, readonly floorMs: number }
   | { readonly by: 'ceiling' }
 
-/** A timeout value took effect. `cap` is the maximum that applied when it was computed (provenance only). */
+/** The main agent's raised ceiling of one check: the check's last line in limits.jsonl when that line is a raise (limit-tool.ts). */
+export interface CapSetting {
+  readonly capS: number
+  readonly at: string
+  readonly reason: string
+}
+
+/**
+ * A timeout value took effect. `cap` is the maximum that applied when it was
+ * computed: provenance only; whether the ceiling is raised now is the
+ * check's last line in limits.jsonl.
+ */
 export interface ValueLine {
   readonly kind: 'value'
   readonly at: string
@@ -187,7 +202,7 @@ export interface ValueLine {
   readonly argv: string
   readonly limitMs: number
   readonly previousMs?: number
-  readonly cap: { readonly by: 'default' }
+  readonly cap: { readonly by: 'default' } | ({ readonly by: 'setting' } & CapSetting)
   /** Set when three times the run time was above the maximum and the value was held there. */
   readonly capped?: { readonly wantedMs: number }
   readonly source: ValueSource
@@ -317,7 +332,7 @@ export async function tidyTiming(home: string): Promise<string | undefined> {
 }
 
 /** The run times of one check under one command, oldest first, the last CHECK_RECENT_RUNS of them. */
-function recentRuns(book: TimingBook, check: string, argv: string): readonly number[] {
+export function recentRuns(book: TimingBook, check: string, argv: string): readonly number[] {
   return book.lines.flatMap(line => line.kind === 'run' && line.check === check && line.argv === argv && typeof line.ms === 'number' ? [line.ms] : []).slice(-CHECK_RECENT_RUNS)
 }
 
@@ -357,18 +372,26 @@ export interface ValueInput {
   readonly argv: string
   readonly estimateS?: number
   readonly origin?: EstimateOrigin
+  /** The ceiling the main agent set for the check, absent for the default one. */
+  readonly setting?: CapSetting
+}
+
+/** The ceiling in force for a check: its setting, else CHECK_TIMEOUT_CAP_MS. */
+export function capMsOf(setting: CapSetting | undefined): number {
+  return setting === undefined ? CHECK_TIMEOUT_CAP_MS : setting.capS * 1000
 }
 
 /**
  * The limit of the next run of a check from the journal, and the value line
  * to append when the limit or the command changed since the check's last
- * value line (design §6.3.1 「可追溯」). An estimate's session is the one the
- * graph tools recorded for the same node and history entry; without one
- * there is no session. Pure but for `at`.
+ * value line (design §6.3.1 「可追溯」). The ceiling is the check's setting
+ * when the main agent raised it; a changed ceiling alone writes no line. An
+ * estimate's session is the one the graph tools recorded for the same node
+ * and history entry; without one there is no session. Pure but for `at`.
  */
 export function nextValue(book: TimingBook, input: ValueInput, at: Date): { readonly timeout: CheckTimeout, readonly recent: readonly number[], readonly line?: ValueLine } {
   const recent = recentRuns(book, input.check, input.argv)
-  const timeout = checkTimeout({ estimateS: input.estimateS, recentMs: recent })
+  const timeout = checkTimeout({ estimateS: input.estimateS, recentMs: recent, capMs: capMsOf(input.setting) })
   const last = lastValues(book).get(input.check)
   if (last !== undefined && last.limitMs === timeout.limitMs && last.argv === input.argv) return { timeout, recent }
   let source: ValueSource
@@ -394,7 +417,7 @@ export function nextValue(book: TimingBook, input: ValueInput, at: Date): { read
     argv: input.argv,
     limitMs: timeout.limitMs,
     ...(last === undefined ? {} : { previousMs: last.limitMs }),
-    cap: { by: 'default' },
+    cap: input.setting === undefined ? { by: 'default' } : { by: 'setting', capS: input.setting.capS, at: input.setting.at, reason: input.setting.reason },
     ...(timeout.capped === undefined ? {} : { capped: timeout.capped }),
     source,
   }

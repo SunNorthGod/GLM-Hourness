@@ -17,7 +17,7 @@
 import { extname } from 'node:path'
 import { CHECK_LINE_EXAMPLE, parseCheckLine } from './check-entry.ts'
 import type { Finding } from './parsers.ts'
-import { CHECK_TIMEOUT_CAP_MS, CHECK_TIMEOUT_FACTOR, secondsText, type CheckTimeout } from './timeout.ts'
+import { CHECK_TIMEOUT_FACTOR, secondsText, type CheckTimeout } from './timeout.ts'
 
 /** Source kind of the checks notice; its `source.checks` holds `lastCall` (the last tool call it covered) and `counts` (findings by check key). */
 export const CHECKS_NOTICE_SOURCE = 'hourness-checks'
@@ -38,12 +38,13 @@ export interface MarkedFinding extends Finding {
 export type CheckResult =
   | { readonly kind: 'findings', readonly name: string, readonly key: string, readonly findings: readonly MarkedFinding[], readonly log?: string }
   | { readonly kind: 'failed', readonly name: string, readonly key: string, readonly reason: string, readonly log?: string }
-  | { readonly kind: 'timeout', readonly name: string, readonly key: string, readonly elapsedMs: number, readonly limitMs: number, readonly basis: string, readonly nextLimitMs: number, readonly log?: string }
+  | { readonly kind: 'timeout', readonly name: string, readonly key: string, readonly elapsedMs: number, readonly limitMs: number, readonly basis: string, readonly nextLimitMs: number, readonly capMs: number, readonly log?: string }
   | { readonly kind: 'dropped', readonly name: string, readonly key: string, readonly waitedMs: number, readonly running: number }
   | { readonly kind: 'skipped', readonly name: string, readonly key: string, readonly failures: number, readonly log?: string }
 
 const NUMBER_WORDS: Readonly<Record<number, string>> = { 2: 'two', 3: 'three', 4: 'four', 5: 'five' }
-const times = (factor: number): string => `${NUMBER_WORDS[factor] ?? String(factor)} times`
+/** `three times` for a factor of 3: the words the model reads for the limit's factor. */
+export const times = (factor: number): string => `${NUMBER_WORDS[factor] ?? String(factor)} times`
 
 const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`
 
@@ -65,10 +66,10 @@ export function limitBasis(timeout: CheckTimeout, estimateS: number | undefined,
   return `${times(CHECK_TIMEOUT_FACTOR)} ${from}`
 }
 
-/** The sentence of a check stopped at its limit (design §6.3.1): name, limit, time taken, log, and what happens next. */
+/** The sentence of a check stopped at its limit (design §6.3.1): name, limit, time taken, log, and what happens next; at its ceiling (the default or the main agent's setting) the main agent has been told. */
 export function timeoutSentence(result: Extract<CheckResult, { kind: 'timeout' }>): string {
-  const next = result.nextLimitMs >= CHECK_TIMEOUT_CAP_MS
-    ? `It is at its ceiling of ${secondsText(CHECK_TIMEOUT_CAP_MS)} s; the main agent has been told.`
+  const next = result.nextLimitMs >= result.capMs
+    ? `It is at its ceiling of ${secondsText(result.capMs)} s; the main agent has been told.`
     : `It runs again after your next edit, with a limit of ${secondsText(result.nextLimitMs)} s.`
   return `${result.name} did not finish: stopped after ${(result.elapsedMs / 1000).toFixed(1)} s (limit ${secondsText(result.limitMs)} s, ${result.basis}; ${logText(result.log)}). ${next}`
 }

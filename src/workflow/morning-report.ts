@@ -19,6 +19,7 @@ import { liftStatesOf } from '../guard/lift.ts'
 import { ruleStats } from '../guard/measure.ts'
 import { runGit } from '../data/git-process.ts'
 import type { SuppressionRecord } from '../env/suppressions.ts'
+import { limitSetting, parseLimits, type LimitLine } from '../env/limit-tool.ts'
 import { lastValues, parseTiming, secondsText, valueSourceText, type TimingLine } from '../env/timeout.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { listOpenItems } from '../graph/projection.ts'
@@ -66,6 +67,8 @@ export interface ReportInput {
   readonly lifts?: LiftsInput | undefined
   /** The whole timing journal of the project's checks (m4-checks, design §6.3.1); its section counts the seven days before `now`. */
   readonly timing?: readonly TimingLine[] | undefined
+  /** The readable lines of the project's limits.jsonl: a check's last line says whether the main agent raised its ceiling (design §6.3.1, P13-01). */
+  readonly limits?: readonly LimitLine[] | undefined
   /** The moment the report is made, epoch milliseconds: the seven days of the checks section end here. */
   readonly now?: number | undefined
 }
@@ -216,9 +219,11 @@ const TIMING_WINDOW_MS = 7 * 24 * 3600 * 1000
  * estimate, in which session, or that the session was not recorded; then
  * what was wanted when the value is held at the ceiling), the
  * timeouts of the last seven days and the latest one, and the runs dropped
- * from the queue. Empty when the journal has no value line.
+ * from the queue; under it, when the check's last line in limits.jsonl is a
+ * raise, the raised ceiling with its day and reason (never a value line's
+ * `cap`: a reset shows at once). Empty when the journal has no value line.
  */
-function timingSection(timing: readonly TimingLine[], now: number, offsetMinutes: number): string[] {
+function timingSection(timing: readonly TimingLine[], limits: readonly LimitLine[], now: number, offsetMinutes: number): string[] {
   const since = now - TIMING_WINDOW_MS
   const recent = (line: TimingLine): boolean => !Number.isNaN(Date.parse(line.at)) && Date.parse(line.at) >= since && Date.parse(line.at) <= now
   const lines: string[] = []
@@ -228,8 +233,16 @@ function timingSection(timing: readonly TimingLine[], now: number, offsetMinutes
     const last = timeouts.at(-1)
     const late = last?.kind !== 'timeout' ? '近 7 天没有超时' : `近 7 天超时 ${timeouts.length} 次（最近一次：上限 ${secondsText(last.limitMs)} 秒，跑了 ${(last.elapsedMs / 1000).toFixed(1)} 秒，${renderStamp(Date.parse(last.at), offsetMinutes)}）`
     lines.push(`- ${check}：超时 ${secondsText(value.limitMs)} 秒（${valueSourceText(value, true)}）· ${late}${queued === 0 ? '' : ` · 排队太久没跑 ${queued} 次`}`)
+    const setting = limitSetting({ lines: limits, bad: 0 }, check)
+    if (setting !== undefined) lines.push(`  - 上限已由主 Agent 调高到 ${setting.capS} 秒 · ${renderDay(setting.at, offsetMinutes)}：${setting.reason}；要改回，跟主 Agent 说`)
   }
   return lines.length === 0 ? [] : ['', '## 检查的超时', ...lines]
+}
+
+/** The day of a moment at the report's offset, YYYY-MM-DD; a moment that does not read is written as recorded. */
+function renderDay(at: string, offsetMinutes: number): string {
+  const ms = Date.parse(at)
+  return Number.isNaN(ms) ? at : new Date(ms + offsetMinutes * 60_000).toISOString().slice(0, 10)
 }
 
 /** The section of the asks: what waits for the person, who settled the rest, and how many dispatch calls were made. */
@@ -410,7 +423,7 @@ export function morningReport(input: ReportInput): string {
   // rises and falls counted apart, so a net-zero period with churn still shows.
   const suppressionLine = suppressionLineOf(input.suppressions ?? [])
   if (suppressionLine !== undefined) lines.push(suppressionLine)
-  lines.push(...timingSection(input.timing ?? [], input.now ?? Date.now(), offsetMinutes))
+  lines.push(...timingSection(input.timing ?? [], input.limits ?? [], input.now ?? Date.now(), offsetMinutes))
 
   lines.push('')
   lines.push('## 等你定的事')
@@ -540,6 +553,8 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
     suppressions: inPeriod(await readJsonl<SuppressionRecord>(paths.suppressions)),
     // The checks' journal is read whole: its section counts its own seven days (design §6.3.1).
     timing: parseTiming(await readText(paths.timing)).lines,
+    // A limits.jsonl that cannot be read is no setting (design §6.3.1).
+    limits: parseLimits(await readText(paths.limits)).lines,
     now: options.now,
     period,
     pricing: options.pricing,

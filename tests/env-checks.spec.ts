@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { changedLines, diffLines, insertedLines } from '../src/env/changed-lines.ts'
 import { CHECKS_NOTICE_SOURCE, checkNoticeBody, missingCheckLine, NO_BOARD_CHECKS_LINE, timeoutSentence } from '../src/env/check-notice.ts'
+import { envNotice } from '../src/env/notice.ts'
 import { CHECK_LINE_EXAMPLE, checkLineRefusal } from '../src/env/check-entry.ts'
 import type { EditedStep } from '../src/env/edited.ts'
 import { apply as envApply } from '../src/env/index.ts'
@@ -255,6 +256,43 @@ test('a limit held at the ceiling says so, and the value records what was wanted
     const [value] = await journalOf(fixture.root)
     assert.ok(value?.kind === 'value')
     assert.deepEqual([value.limitMs, value.capped], [60_000, { wantedMs: 75_000 }])
+    // The environment notice: the held line for the root agent alone, and it goes once the main agent raised the ceiling (design §6.3.1 item 6, §7.2, ⑤).
+    const sessionOf = (subagent: boolean): SessionLike => ({ id: subagent ? 's2' : 's1', header: { id: 's1', cwd: fixture.root, ...(subagent ? { origin: 'subagent' } : {}) } }) as unknown as SessionLike
+    // The run stopped at 60 s counts as 60 s: the line speaks of the runs now, no longer of the estimate.
+    const HELD = 'Check full is held at its ceiling of 60 s: three times its slowest recent run (60 s) would be 180 s. Raising this check\'s ceiling is your decision and needs no approval from the human: call check_limit with check "tool-1/full", seconds (61 to 600) and a reason. Making the check cheaper or narrower means changing its check line, which is a tool-node change and needs the human\'s approval as usual.'
+    const root = await envNotice(fixture.ctx, [], sessionOf(false))
+    assert.ok(bodyOf(root).split('\n').includes(HELD), bodyOf(root))
+    const child = await envNotice(fixture.ctx, [], sessionOf(true))
+    assert.ok(bodyOf(child).includes('Checks run after each edit') && !bodyOf(child).includes('held at its ceiling'), 'a subagent cannot raise a ceiling and does not hear about it')
+    assert.equal(await envNotice(fixture.ctx, root === undefined ? [] : [root], sessionOf(false)), undefined, 'the same state injects nothing again')
+    await writeFile(join(fixture.root, '.llm', 'env-checks', 'limits.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), check: 'tool-1/full', action: 'raise', capS: 120, previousCapS: 60, reason: '整个项目要跑一分多钟' })}\n`)
+    const raised = await envNotice(fixture.ctx, root === undefined ? [] : [root], sessionOf(false))
+    assert.ok(raised !== undefined && !bodyOf(raised).includes('held at its ceiling'), 'the state changed: the notice comes again without the line')
+  })
+})
+
+test('a raised ceiling: the next limit is three times the run under it, its value line says by setting, the check takes the raised slot, and the page says so from limits.jsonl (P13-01)', async () => {
+  await withProject(['check full lines 25s $ node slow.mjs {files} when *.txt'], async (fixture) => {
+    const limits = join(fixture.root, '.llm', 'env-checks', 'limits.jsonl')
+    const reason = '整个项目要跑一分多钟'
+    await mkdir(join(fixture.root, '.llm', 'env-checks'), { recursive: true })
+    await writeFile(limits, `${JSON.stringify({ at: '2026-11-05T01:00:00.000Z', check: 'tool-1/full', action: 'raise', capS: 120, previousCapS: 60, reason })}\n`)
+    const real = createCheckSlots()
+    const raisedFlags: boolean[] = []
+    const slots = { running: () => real.running(), enter: (run: () => Promise<ScriptResult>, waitMs: number, raised?: boolean) => { raisedFlags.push(raised === true); return real.enter(run, waitMs, raised) } }
+    const limitsSeen: number[] = []
+    const { checker, step } = fakeChecker(fixture, (request) => {
+      limitsSeen.push(request.timeoutMs ?? 0)
+      return Promise.resolve(exited('', 100))
+    }, { slots })
+    await step(['a.txt'])
+    assert.deepEqual([limitsSeen, raisedFlags], [[75_000], [true]], 'three times the estimate fits under the raised ceiling; a ceiling over the default takes the raised slot')
+    const [value] = await journalOf(fixture.root)
+    assert.ok(value?.kind === 'value')
+    assert.deepEqual([value.limitMs, value.capped, value.cap], [75_000, undefined, { by: 'setting', capS: 120, at: '2026-11-05T01:00:00.000Z', reason }])
+    assert.deepEqual(checker.details(fixture.root)[1], `超时 75 秒 · 你估 25 秒 · 上限已调高到 120 秒：${reason}`)
+    await writeFile(limits, `${JSON.stringify({ at: '2026-11-05T02:00:00.000Z', check: 'tool-1/full', action: 'reset', capS: 60, previousCapS: 120, reason: '' })}\n`, { flag: 'a' })
+    assert.deepEqual(checker.details(fixture.root)[1], '超时 75 秒 · 你估 25 秒', 'a reset shows before the check runs again, though the latest value line was computed under the setting')
   })
 })
 
@@ -453,8 +491,11 @@ test('the notice keeps five findings, changed lines first, within its length', (
   assert.ok(shown.every(line => line.length <= 200))
   assert.ok(shown[0]?.endsWith('[changed]'))
   assert.ok(body.length <= 1200, String(body.length))
-  assert.equal(timeoutSentence({ kind: 'timeout', name: 'eslint', key: 'tool-3/eslint', elapsedMs: 12_100, limitMs: 12_000, basis: 'three times its slowest recent run of 4 s', nextLimitMs: 36_000, log: '.llm/x.log' }),
+  assert.equal(timeoutSentence({ kind: 'timeout', name: 'eslint', key: 'tool-3/eslint', elapsedMs: 12_100, limitMs: 12_000, basis: 'three times its slowest recent run of 4 s', nextLimitMs: 36_000, capMs: 60_000, log: '.llm/x.log' }),
     'eslint did not finish: stopped after 12.1 s (limit 12 s, three times its slowest recent run of 4 s; log .llm/x.log). It runs again after your next edit, with a limit of 36 s.')
+  assert.equal(timeoutSentence({ kind: 'timeout', name: 'eslint', key: 'tool-3/eslint', elapsedMs: 120_000, limitMs: 120_000, basis: 'its ceiling: three times its slowest recent run of 50 s would be 150 s', nextLimitMs: 120_000, capMs: 120_000, log: '.llm/x.log' }),
+    'eslint did not finish: stopped after 120.0 s (limit 120 s, its ceiling: three times its slowest recent run of 50 s would be 150 s; log .llm/x.log). It is at its ceiling of 120 s; the main agent has been told.',
+    'a raised ceiling is the ceiling the sentence names')
 })
 
 test('logs: one directory per session, swept after seven days when the name is eight hex digits', async () => {

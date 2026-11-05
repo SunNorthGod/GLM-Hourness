@@ -150,12 +150,15 @@
       # (m4-checks). With the loop board on, the same step runs M4's own
       # checks (the check lines with `when` of the approved tool nodes)
       # through the shared executor and hands the agent the results before
-      # its next step; the board lists them as env.checks-after-edit. Ships
-      # disabled until the L3 probe (scenarios env-notice, env-check-command,
-      # env-checks, env-checks-timeout) and the first desktop pass
-      # (docs/DEVELOPMENT.md §3, AGENTS.md).
+      # its next step; the board lists them as env.checks-after-edit. A
+      # check held at its ceiling is a line in the main agent's environment
+      # notice, and the tool check_limit (the reason it injects tools) raises
+      # or resets that ceiling. Ships disabled until the L3 probe (scenarios
+      # env-notice, env-check-command, env-checks, env-checks-timeout) and
+      # the first desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md).
       name: dsh-hourness/env
       disabled: true
+      inject: [tools]
       config: {}
     - id: glm-hourness/ui
       # The package's client face (dsh.client in package.json, host half

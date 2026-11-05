@@ -44,6 +44,8 @@ export interface AuditPaths {
   readonly suppressions?: string
   /** The timing journal of M4's own checks (m4-checks, design §6.3.1), under the project directory's env-checks/. */
   readonly timing?: string
+  /** The main agent's ceilings of the checks (check_limit, design §6.3.1), beside the timing journal. */
+  readonly limits?: string
   /** The deletions of usage records, beside the usage journal (docs/DESIGN.md §2.4): written by hand when records are removed, read by the report. */
   readonly gaps?: string
 }
@@ -52,7 +54,7 @@ export interface AuditPaths {
 export function auditPaths(homes: DataHomes): AuditPaths {
   const under = (home: string, file: string) => `${home.replace(/[\\/]+$/, '')}/audit/${file}`
   return {
-    ...(homes.projectHome === undefined ? {} : { violations: under(homes.projectHome, 'violations.jsonl'), decisions: under(homes.projectHome, 'decisions.jsonl'), suppressions: under(homes.projectHome, 'suppressions.jsonl'), timing: `${homes.projectHome.replace(/[\\/]+$/, '')}/env-checks/timing.jsonl` }),
+    ...(homes.projectHome === undefined ? {} : { violations: under(homes.projectHome, 'violations.jsonl'), decisions: under(homes.projectHome, 'decisions.jsonl'), suppressions: under(homes.projectHome, 'suppressions.jsonl'), timing: `${homes.projectHome.replace(/[\\/]+$/, '')}/env-checks/timing.jsonl`, limits: `${homes.projectHome.replace(/[\\/]+$/, '')}/env-checks/limits.jsonl` }),
     ...(homes.userHome === undefined ? {} : { usage: under(homes.userHome, 'usage.jsonl'), gaps: under(homes.userHome, 'usage-gaps.jsonl') }),
   }
 }

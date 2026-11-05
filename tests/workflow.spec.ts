@@ -520,7 +520,7 @@ test('the installer form journals decisions into the row home, else the data ser
   assert.deepEqual([...files.keys()].sort(), ['C:/row/.llm/audit/decisions.jsonl', 'C:/svc/.llm/audit/decisions.jsonl'])
 })
 
-test('the checks\' timeouts: one line per check with its value and source, the timeouts of seven days, the queue drops (m4-checks, design §6.3.1)', async () => {
+test('the checks\' timeouts: one line per check with its value and source, the timeouts of seven days, the queue drops, a ceiling the main agent raised (m4-checks, design §6.3.1, P13-01)', async () => {
   const now = Date.parse('2026-11-05T06:00:00Z')
   const key = { argv: 'abcd1234' }
   const lines = [
@@ -532,17 +532,27 @@ test('the checks\' timeouts: one line per check with its value and source, the t
     { kind: 'value', at: '2026-11-05T01:01:00Z', check: 'tool-1/slow', ...key, limitMs: 15000, previousMs: 5000, cap: { by: 'default' }, source: { by: 'harness', runs: [5000], factor: 3, floorMs: 5000 } },
     { kind: 'value', at: '2026-11-05T01:00:00Z', check: 'tool-2/eslint', ...key, limitMs: 60000, cap: { by: 'default' }, capped: { wantedMs: 75000 }, source: { by: 'estimate', node: 'tool-2', rev: 'r', estimateS: 25 } },
     { kind: 'queue', at: '2026-11-05T02:00:00Z', check: 'tool-2/eslint', ...key, waitedMs: 60000, running: 2, outcome: 'not-run' },
-    { kind: 'value', at: '2026-11-05T01:00:00Z', check: 'tool-3/tsc', ...key, limitMs: 6000, cap: { by: 'default' }, source: { by: 'estimate', node: 'tool-3', rev: 'r', actor: 'human', estimateS: 2 } },
+    // Computed under a setting that was reset since: the report reads limits.jsonl, not this cap (P13-01).
+    { kind: 'value', at: '2026-11-05T01:00:00Z', check: 'tool-3/tsc', ...key, limitMs: 6000, cap: { by: 'setting', capS: 120, at: '2026-11-04T00:00:00Z', reason: '旧的理由' }, source: { by: 'estimate', node: 'tool-3', rev: 'r', actor: 'human', estimateS: 2 } },
     // Held at the ceiling, from a human's estimate written in an rc.3 session: the report keeps who and where before the ceiling clause.
     { kind: 'value', at: '2026-11-05T01:00:00Z', check: 'tool-4/vitest', ...key, limitMs: 60000, cap: { by: 'default' }, capped: { wantedMs: 90000 }, source: { by: 'estimate', node: 'tool-4', rev: 'r', actor: 'human', at: '2026-11-05T00:59:00Z', session: 'session-0f3c9a7e-1111-2222-3333-444455556666', estimateS: 30 } },
   ]
-  const files = new Map([['C:/ws/.llm/env-checks/timing.jsonl', [...lines.map(line => JSON.stringify(line)), 'bad'].join('\n')]])
+  // The main agent's ceilings: eslint raised (a bad last line leaves that raise), tsc raised and reset since.
+  const limit = (at: string, check: string, action: 'raise' | 'reset', capS: number, reason: string): string => JSON.stringify({ at, check, action, capS, previousCapS: 60, reason })
+  const limits = [
+    limit('2026-11-04T20:00:00Z', 'tool-2/eslint', 'raise', 120, '整个项目跑带类型信息的规则，要 40 秒左右'),
+    limit('2026-11-04T00:00:00Z', 'tool-3/tsc', 'raise', 120, '旧的理由'),
+    limit('2026-11-04T01:00:00Z', 'tool-3/tsc', 'reset', 60, ''),
+    '{"check": "tool-2/eslint",',
+  ].join('\n')
+  const files = new Map([['C:/ws/.llm/env-checks/timing.jsonl', [...lines.map(line => JSON.stringify(line)), 'bad'].join('\n')], ['C:/ws/.llm/env-checks/limits.jsonl', limits]])
   const report = await reportFromFiles(filesOf(files), { projectHome: 'C:/ws/.llm' }, 'p', emptyGraph, undefined, { now, offsetMinutes: 480 })
   const section = report.slice(report.indexOf('## 检查的超时')).split('\n\n')[0]?.split('\n')
   assert.deepEqual(section, [
     '## 检查的超时',
     '- tool-1/slow：超时 15 秒（系统按最近 1 次，最慢 5 秒）· 近 7 天超时 1 次（最近一次：上限 5 秒，跑了 5.2 秒，11-05 09:00）',
     '- tool-2/eslint：超时 60 秒（写检查的 agent 估 25 秒，会话未记；想要 75 秒，被上限截在 60 秒）· 近 7 天没有超时 · 排队太久没跑 1 次',
+    '  - 上限已由主 Agent 调高到 120 秒 · 2026-11-05：整个项目跑带类型信息的规则，要 40 秒左右；要改回，跟主 Agent 说',
     '- tool-3/tsc：超时 6 秒（你估 2 秒，会话未记）· 近 7 天没有超时',
     '- tool-4/vitest：超时 60 秒（你估 30 秒，会话 0f3c9a7e；想要 90 秒，被上限截在 60 秒）· 近 7 天没有超时',
   ])

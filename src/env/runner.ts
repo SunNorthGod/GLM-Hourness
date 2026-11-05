@@ -10,7 +10,10 @@
  * resolved outside the project, the whitelist environment, the tree ended at
  * the limit). This row owns the concurrency: at most CHECK_SLOTS checks run
  * in the whole process, the rest wait in arrival order, and one that waited
- * CHECK_QUEUE_WAIT_MS is dropped without starting. A step waits for its
+ * CHECK_QUEUE_WAIT_MS is dropped without starting; the checks whose ceiling
+ * the main agent raised (check_limit, limit-tool.ts) take at most
+ * CHECK_RAISED_SLOTS of them, so a stuck one leaves the other slot to the
+ * checks with the default ceiling. A step waits for its
  * checks up to the longest of their limits, at most CHECK_STEP_DEADLINE_MS;
  * a slower one goes on in the background and its result arrives with a
  * later step of the same session. A check still running is not started a
@@ -22,7 +25,8 @@
  * session. A timeout does not count and does not degrade: it is on the row
  * health as a remark until the check next finishes (design §6.3.1).
  *
- * Every limit comes from the timing journal (timeout.ts): the value line
+ * Every limit comes from the timing journal (timeout.ts) under the ceiling
+ * of limits.jsonl (limit-tool.ts): the value line
  * when it changes, a run line for every run that ended, a timeout line and a
  * censored run for a run stopped at its limit, a queue line for a dropped
  * one. With no loop board the checks do not run (design §6.1.2: the rules
@@ -47,14 +51,17 @@ import { changedLines, type ChangedLines, type EditMarks } from './changed-lines
 import { fillCheckArgv, type CheckEntry, type CheckFormat } from './check-entry.ts'
 import { CHECKS_NOTICE_SOURCE, checkNoticeBody, languageOf, limitBasis, missingCheckLine, NO_BOARD_CHECKS_LINE, queuedSentence, type CheckResult, type MarkedFinding } from './check-notice.ts'
 import type { EditedStep } from './edited.ts'
+import { limitSetting, readLimits, readLimitsSync, type LimitBook } from './limit-tool.ts'
 import { parseCheckOutput } from './parsers.ts'
 import {
-  appendTiming, argvDigest, checkKey, checkTimeout, CHECK_QUEUE_WAIT_MS, CHECK_STEP_DEADLINE_MS, estimateOrigin, lastValues,
+  appendTiming, argvDigest, capMsOf, checkKey, checkTimeout, CHECK_QUEUE_WAIT_MS, CHECK_STEP_DEADLINE_MS, CHECK_TIMEOUT_CAP_MS, estimateOrigin, lastValues,
   nextValue, readTiming, secondsText, tidyTiming, valueSourceText, type CheckTimeout, type TimingBook, type TimingLine, type ValueLine,
 } from './timeout.ts'
 
 /** At most this many checks run at once in the whole process. */
 export const CHECK_SLOTS = 2
+/** Of them, the checks whose ceiling the main agent raised over CHECK_TIMEOUT_CAP_MS take at most this many (design §6.3, N17). */
+export const CHECK_RAISED_SLOTS = 1
 /** A check that could not start, or whose output could not be read, this many times in a row is not run again in the session. */
 export const CHECK_FAILURE_LIMIT = 3
 /** Each session hears once per language that no check covers its edits. */
@@ -83,20 +90,34 @@ type SlotOutcome = { readonly kind: 'ran', readonly result: ScriptResult } | { r
 
 /** The process-wide process slots of M4's checks. */
 export interface CheckSlots {
-  /** Start `run` once a slot is free, in order of arrival; still waiting after `waitMs`, it is dropped without starting. */
-  enter(run: () => Promise<ScriptResult>, waitMs: number): { readonly done: Promise<SlotOutcome>, readonly started: () => boolean }
+  /**
+   * Start `run` once a slot is free, in order of arrival; still waiting
+   * after `waitMs`, it is dropped without starting. A `raised` run (its
+   * ceiling raised over the default) waits while the raised slots are taken
+   * and keeps its place, without holding back the runs behind it.
+   */
+  enter(run: () => Promise<ScriptResult>, waitMs: number, raised?: boolean): { readonly done: Promise<SlotOutcome>, readonly started: () => boolean }
   running(): number
 }
 
-export function createCheckSlots(slots: number = CHECK_SLOTS, clock: () => number = Date.now): CheckSlots {
+export function createCheckSlots(slots: number = CHECK_SLOTS, clock: () => number = Date.now, raisedSlots: number = CHECK_RAISED_SLOTS): CheckSlots {
   let busy = 0
-  const queue: Array<() => void> = []
+  let raisedBusy = 0
+  const queue: Array<{ readonly start: () => void, readonly raised: boolean }> = []
   const pump = (): void => {
-    while (busy < slots && queue.length > 0) queue.shift()?.()
+    for (let index = 0; index < queue.length && busy < slots;) {
+      const waiting = queue[index]
+      if (waiting === undefined || (waiting.raised && raisedBusy >= raisedSlots)) {
+        index++
+        continue
+      }
+      queue.splice(index, 1)
+      waiting.start()
+    }
   }
   return {
     running: () => busy,
-    enter(run, waitMs) {
+    enter(run, waitMs, raised = false) {
       let started = false
       const done = new Promise<SlotOutcome>(resolveDone => {
         const entered = clock()
@@ -104,22 +125,25 @@ export function createCheckSlots(slots: number = CHECK_SLOTS, clock: () => numbe
           started = true
           clearTimeout(timer)
           busy++
+          if (raised) raisedBusy++
           run().then(
             result => { resolveDone({ kind: 'ran', result }) },
             (error: unknown) => { resolveDone({ kind: 'ran', result: { kind: 'crashed', reason: 'io', message: message(error), durationMs: clock() - entered } }) },
           ).finally(() => {
             busy--
+            if (raised) raisedBusy--
             pump()
           })
         }
+        const ticket = { start, raised }
         const timer = setTimeout(() => {
-          const at = queue.indexOf(start)
+          const at = queue.indexOf(ticket)
           if (at < 0) return
           queue.splice(at, 1)
           resolveDone({ kind: 'dropped', waitedMs: clock() - entered, running: busy })
         }, waitMs)
         timer.unref()
-        queue.push(start)
+        queue.push(ticket)
         pump()
       })
       return { done, started: () => started }
@@ -169,6 +193,29 @@ interface OwnCheck {
   readonly key: string
 }
 
+/**
+ * The check lines with `when` of the approved tool nodes of the project a
+ * working directory is in, and the unreadable lines; undefined without a
+ * readable graph. The checker runs these, and check_limit takes their keys.
+ */
+export async function readOwnChecks(ctx: ServiceLookup, cwd: string): Promise<{ readonly checks: readonly OwnCheck[], readonly issues: readonly string[] } | undefined> {
+  const dir = graphService(ctx)?.dirFor(cwd)
+  if (dir === undefined) return undefined
+  const read = await readGraph(dir, cwd)
+  if ('failure' in read) return undefined
+  const branch = envBranch(read.graph)
+  const checks: OwnCheck[] = []
+  for (const tool of branch.tools) {
+    const node = read.graph.nodes.get(tool.id)
+    if (node === undefined) continue
+    for (const { line, entry } of nodeChecks(node)) {
+      if (entry.paths === undefined) continue
+      checks.push({ tool, node, line, entry: { ...entry, paths: entry.paths }, key: checkKey(tool.id, entry.name) })
+    }
+  }
+  return { checks, issues: branch.issues }
+}
+
 /** One run in flight. */
 interface Job {
   readonly session: string
@@ -180,6 +227,8 @@ interface Job {
   readonly digest: string
   readonly timeout: CheckTimeout
   readonly recent: readonly number[]
+  /** The ceiling in force for the check: the main agent's setting, else the default. */
+  readonly capMs: number
   readonly home: string | undefined
   readonly logFile: string | undefined
   readonly marks: ReadonlyMap<string, EditMarks>
@@ -212,6 +261,8 @@ interface SessionChecks {
 interface ProjectSnapshot {
   readonly checks: ReadonlyArray<{ readonly title: string, readonly key: string, readonly paths: readonly string[], readonly argv: readonly string[], readonly estimateS?: number }>
   readonly values: Map<string, ValueLine>
+  /** The project directory: the page reads limits.jsonl there every time, so a raise or a reset shows before the check runs again. */
+  readonly home?: string
 }
 
 export interface CheckerOptions {
@@ -412,13 +463,13 @@ export function createChecker(options: CheckerOptions): Checker {
       else if (result.kind === 'timeout') {
         await write(job, { kind: 'timeout', at, ...base, limitMs: job.timeout.limitMs, elapsedMs: result.durationMs, session: job.session, outcome: 'not-finished' })
         await write(job, { kind: 'run', at, ...base, ms: job.timeout.limitMs, censored: true })
-        const next = checkTimeout({ estimateS: job.check.entry.estimateSeconds, recentMs: [...job.recent, job.timeout.limitMs] })
+        const next = checkTimeout({ estimateS: job.check.entry.estimateSeconds, recentMs: [...job.recent, job.timeout.limitMs], capMs: job.capMs })
         state.timedOut.set(job.check.key, `${job.check.key} 没跑完：上限 ${secondsText(job.timeout.limitMs)} 秒，跑了 ${(result.durationMs / 1000).toFixed(1)} 秒`)
         health(job.session, state)
         delivery = {
           cwd: job.cwd,
           durationMs: result.durationMs,
-          result: { kind: 'timeout', name, key: job.check.key, elapsedMs: result.durationMs, limitMs: job.timeout.limitMs, basis: limitBasis(job.timeout, job.check.entry.estimateSeconds, job.recent), nextLimitMs: next.limitMs, ...logOf(job) },
+          result: { kind: 'timeout', name, key: job.check.key, elapsedMs: result.durationMs, limitMs: job.timeout.limitMs, basis: limitBasis(job.timeout, job.check.entry.estimateSeconds, job.recent), nextLimitMs: next.limitMs, capMs: job.capMs, ...logOf(job) },
         }
       }
       else delivery = { cwd: job.cwd, ...('durationMs' in result ? { durationMs: result.durationMs } : {}), result: failed(job, state, result.message) }
@@ -428,45 +479,31 @@ export function createChecker(options: CheckerOptions): Checker {
     state.results.push(delivery)
   }
 
-  /** The approved tool nodes' check lines with `when` of the session's project, and the unreadable lines; undefined without a readable graph. */
-  const ownChecks = async (cwd: string): Promise<{ readonly checks: readonly OwnCheck[], readonly issues: readonly string[] } | undefined> => {
-    const dir = graphService(ctx)?.dirFor(cwd)
-    if (dir === undefined) return undefined
-    const read = await readGraph(dir, cwd)
-    if ('failure' in read) return undefined
-    const branch = envBranch(read.graph)
-    const checks: OwnCheck[] = []
-    for (const tool of branch.tools) {
-      const node = read.graph.nodes.get(tool.id)
-      if (node === undefined) continue
-      for (const { line, entry } of nodeChecks(node)) {
-        if (entry.paths === undefined) continue
-        checks.push({ tool, node, line, entry: { ...entry, paths: entry.paths }, key: checkKey(tool.id, entry.name) })
-      }
-    }
-    return { checks, issues: branch.issues }
-  }
-
   /** Start the checks this step's edits match; what the agent reads about left-out files and uncovered languages goes to `notes` and `tail`. */
   const launch = async (step: EditedStep, cwd: string, state: SessionChecks): Promise<{ readonly started: ReadonlyArray<{ readonly name: string, readonly started: () => boolean, readonly settled: Promise<void>, readonly limitMs: number }>, readonly notes: readonly string[], readonly uncovered: readonly string[] }> => {
     const session = step.session.id
     const project = projectRootOf(cwd)
-    const found = await ownChecks(cwd)
+    const found = await readOwnChecks(ctx, cwd)
     note(session, 'check-lines', found === undefined || found.issues.length === 0 ? undefined : found.issues.join('；'))
     const checks = found?.checks ?? []
     const home = projectHomeFor(ctx, undefined, cwd)
     if (home !== undefined) await prepare(home, session)
     let book: TimingBook = { lines: [], bad: 0 }
+    let limits: LimitBook = { lines: [], bad: 0 }
     if (home !== undefined) {
       const read = await readTiming(home)
       if ('error' in read) note(session, 'checks', `检查的超时账读不出（${read.error}）：按没有实测算`)
       else book = read
+      const set = await readLimits(home)
+      if ('error' in set) note(session, 'checks', `检查上限的设置读不出（${set.error}）：按没有调高算`)
+      else limits = set
     }
     const lines = [...book.lines]
     if (project !== undefined) {
       snapshots.set(fold(project), {
         checks: checks.map(check => ({ title: check.tool.title, key: check.key, paths: check.entry.paths, argv: check.entry.argv, ...(check.entry.estimateSeconds === undefined ? {} : { estimateS: check.entry.estimateSeconds }) })),
         values: new Map(lastValues(book)),
+        ...(home === undefined ? {} : { home }),
       })
     }
     const started: Array<{ readonly name: string, readonly started: () => boolean, readonly settled: Promise<void>, readonly limitMs: number }> = []
@@ -500,18 +537,21 @@ export function createChecker(options: CheckerOptions): Checker {
         const filled = fillCheckArgv(check.entry.argv, files)
         if (filled.dropped > 0) notes.push(`${check.entry.name}: ${filled.dropped} more file${filled.dropped === 1 ? ' was' : 's were'} not checked: the command line is full.`)
         const digest = argvDigest(check.entry.argv)
-        const value = nextValue({ lines, bad: 0 }, { check: check.key, argv: digest, ...(check.entry.estimateSeconds === undefined ? {} : { estimateS: check.entry.estimateSeconds }), origin: estimateOrigin(check.node, check.line, check.tool.rev) }, now())
+        const setting = limitSetting(limits, check.key)
+        const value = nextValue({ lines, bad: 0 }, { check: check.key, argv: digest, ...(check.entry.estimateSeconds === undefined ? {} : { estimateS: check.entry.estimateSeconds }), origin: estimateOrigin(check.node, check.line, check.tool.rev), ...(setting === undefined ? {} : { setting }) }, now())
+        const capMs = capMsOf(setting)
         const at = now()
         let logFile = home === undefined ? undefined : checkLogFile(home, session, at, check.tool.id, check.entry.name)
         for (let n = 2; logFile !== undefined && usedLogs.has(fold(logFile)); n++) logFile = logFile.replace(/(-\d+)?\.log$/, `-${n}.log`)
         if (logFile !== undefined) usedLogs.add(fold(logFile))
-        const job: Job = { session, cwd, check, format: check.entry.format, root: group.root, files, digest, timeout: value.timeout, recent: value.recent, home, logFile, marks: new Map([...step.marks].map(([path, mark]) => [fold(path), mark])) }
+        const job: Job = { session, cwd, check, format: check.entry.format, root: group.root, files, digest, timeout: value.timeout, recent: value.recent, capMs, home, logFile, marks: new Map([...step.marks].map(([path, mark]) => [fold(path), mark])) }
         if (value.line !== undefined) {
           lines.push(value.line)
           await write(job, value.line)
         }
         const request: CommandRequest = { queue: 'direct', project, cwd: group.root, argv: filled.argv, timeoutMs: value.timeout.limitMs, maxOutputBytes: CHECK_OUTPUT_BYTES, ...(logFile === undefined ? {} : { logFile }) }
-        const ticket = slots.enter(() => run(request), queueWaitMs)
+        // A raised ceiling can hold a slot up to CHECK_TIMEOUT_RAISED_MAX_MS: such checks share CHECK_RAISED_SLOTS (design §6.3 rule 1).
+        const ticket = slots.enter(() => run(request), queueWaitMs, capMs > CHECK_TIMEOUT_CAP_MS)
         const settled = ticket.done.then(outcome => settle(job, state, jobKey, outcome)).catch((error: unknown) => {
           state.running.delete(jobKey)
           note(session, 'checks', `检查没跑成：${message(error)}`)
@@ -584,13 +624,17 @@ export function createChecker(options: CheckerOptions): Checker {
       const snapshot = snapshots.get(fold(project))
       if (snapshot === undefined) return []
       const lines: string[] = []
+      // A raised ceiling is the check's last line in limits.jsonl now (P13-01), never a value line's cap.
+      const limits = snapshot.home === undefined ? undefined : readLimitsSync(snapshot.home)
       for (const check of snapshot.checks.slice(0, DETAIL_CHECKS)) {
         const title = check.title === '' ? check.key : check.title
         lines.push(codePoints(`${title}：改了 ${check.paths.join('、')} 之后跑 · ${codePoints(commandText(check.argv), 40)}`, DETAIL_WIDTH))
         const value = snapshot.values.get(check.key)
+        const setting = limits === undefined ? undefined : limitSetting(limits, check.key)
+        const raised = setting === undefined ? '' : ` · 上限已调高到 ${setting.capS} 秒：${setting.reason}`
         lines.push(codePoints(value === undefined
-          ? `超时 ${secondsText(checkTimeout({ estimateS: check.estimateS, recentMs: [] }).limitMs)} 秒 · ${check.estimateS === undefined ? '没有估计，用上限' : `写检查的 agent 估 ${check.estimateS} 秒`} · 还没跑过`
-          : `超时 ${secondsText(value.limitMs)} 秒 · ${valueSourceText(value)}${value.previousMs === undefined ? '' : ` · 原 ${secondsText(value.previousMs)} 秒`}`, DETAIL_WIDTH))
+          ? `超时 ${secondsText(checkTimeout({ estimateS: check.estimateS, recentMs: [], capMs: capMsOf(setting) }).limitMs)} 秒 · ${check.estimateS === undefined ? '没有估计，用上限' : `写检查的 agent 估 ${check.estimateS} 秒`} · 还没跑过${raised}`
+          : `超时 ${secondsText(value.limitMs)} 秒 · ${valueSourceText(value)}${value.previousMs === undefined ? '' : ` · 原 ${secondsText(value.previousMs)} 秒`}${raised}`, DETAIL_WIDTH))
       }
       return lines.slice(0, DETAIL_LINES)
     },
