@@ -292,7 +292,9 @@ test('the reminder texts carry the interview sentence on the existing and gaps p
       const text = reminderText(facts)
       assert.equal(text.includes(INTERVIEW_YIELD), path !== 'new', path)
       assert.doesNotMatch(text, /peak|pause|hold|\bwait\b/i, `${path} ${state}`)
-      assert.ok(text.length <= 3500, `${path} ${state}: ${text.length}`)
+      // Design 0.6 §5.1 caps a step notice at 2,500 characters while its own existing-project template runs to about 3,100;
+      // the existing path reaches 2,845 here. 3,000 is the cap proposed in impl-plan §7 Q4, pending the answer.
+      assert.ok(text.length <= 3000, `${path} ${state}: ${text.length}`)
     }
   }
 })

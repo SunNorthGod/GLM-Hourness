@@ -11,6 +11,10 @@
  * `proposalRecordRefusal`, `textCoversRecord`, `plainWordsIn`); a candidate
  * whose words fail them goes to the remarks, and with no candidate left the
  * thing is a guess asked in the chat (`d-ask-three-gates`, the third way).
+ * Names taken from the repository (script names, directories, file paths)
+ * enter the draft only when they are at most 40 characters of
+ * `[A-Za-z0-9._:/@-]` (§8, §12): repository text is data, and a name that
+ * could carry a sentence for the model or the human is not listed at all.
  * A variable starting or ending with Latin letters, digits or ASCII marks
  * next to Han characters gets a space between them, in the text and in the
  * record fields alike, so the record stays word for word in the text.
@@ -50,6 +54,8 @@ const SECRET_NAME = /^(?:\.env.*|.+\.pem|.+\.key)$/i
 const COMMAND_LIMIT = 16
 const PATH_LIMIT = 12
 const SHOWN_LIMIT = 2
+/** A name from the repository that may enter the drafts (§8, §12): at most 40 characters, only these; any other is not listed. */
+const DRAFT_NAME = /^[A-Za-z0-9._:/@-]{1,40}$/
 
 /** A variable as the human reads it: no `*`, cut to `limit` code points with 「…」. */
 function variable(text: string, limit: number): string {
@@ -121,16 +127,18 @@ function thingOf(which: Thing, candidates: readonly string[], template: Template
   return { which, guess, shown: [], more: left }
 }
 
-/** The commands that look like they cost money or hold the machine, as the human reads them. */
+/** The commands that look like they cost money or hold the machine, as the human reads them; a script name outside DRAFT_NAME is not listed. */
 function costCandidates(scan: ScanResult): string[] {
-  const texts = scan.candidates.filter(candidate => candidate.danger === null && looksCostly(candidate)).map(candidate => variable(candidate.text, COMMAND_LIMIT))
+  const texts = scan.candidates
+    .filter(candidate => candidate.danger === null && looksCostly(candidate) && DRAFT_NAME.test(candidate.name ?? candidate.text))
+    .map(candidate => variable(candidate.text, COMMAND_LIMIT))
   return [...new Set(texts)]
 }
 
-/** Top directories of other people's code or build output, and tracked file names that look like secrets. */
+/** Top directories of other people's code or build output, and tracked file names that look like secrets; a path outside DRAFT_NAME is not listed. */
 function touchCandidates(scan: ScanResult, files: readonly string[]): { readonly paths: string[], readonly foreign: boolean, readonly secret: boolean } {
-  const foreign = scan.files.topDirs.filter(dir => FOREIGN_TOP.includes(dir.toLowerCase()))
-  const secret = files.filter(file => SECRET_NAME.test(file.slice(file.lastIndexOf('/') + 1)))
+  const foreign = scan.files.topDirs.filter(dir => FOREIGN_TOP.includes(dir.toLowerCase()) && DRAFT_NAME.test(dir))
+  const secret = files.filter(file => SECRET_NAME.test(file.slice(file.lastIndexOf('/') + 1)) && DRAFT_NAME.test(file))
   const paths = [...new Set([...foreign, ...secret].map(path => variable(path, PATH_LIMIT)))]
   return { paths, foreign: foreign.length > 0, secret: secret.length > 0 }
 }
