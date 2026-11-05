@@ -1640,17 +1640,30 @@ const plainGraph = runScenario('non-glm-graph', 'deepseek-probe', [
 ], 'List the open work, then reply done.', graphRow(graphCopy, join(runDir, 'non-glm-graph', 'home')), graphWs)
 const plainGraphOpen = lastToolResult(plainGraph.steps[1])
 
+// The first step writes a node file and is denied by graph-files-only, so the
+// re-anchoring after each later compaction lists that rule with its count
+// (ORCHESTRATION.md §2.5 重锚附带).
 const compactGraph = runScenario('glm-graph-compact', 'glm-5.3', [
+  { tool: { name: 'Write', arguments: { file_path: join(graphCopy, 'nodes', 'probe-compact.json'), content: '{}\n' } } },
   { tool: { name: 'graph_focus', arguments: { id: focusTask?.id } } },
   { tool: { name: 'Read', arguments: { file_path: join(graphWs, 'README.md') } } },
   { tool: { name: 'Read', arguments: { file_path: join(graphWs, 'README.md') } } },
   { text: 'done' },
-], 'Set the focus, read the README twice, then reply done.', [...graphRow(graphCopy, join(runDir, 'glm-graph-compact', 'home')), '- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'], graphWs)
+], 'Write a node file, set the focus, read the README twice, then reply done.', [...graphRow(graphCopy, join(runDir, 'glm-graph-compact', 'home')), '- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'], graphWs)
 /** Requests that carry a compaction checkpoint, and the projection reasons that follow it in each. */
 const reanchored = compactGraph.steps.flatMap((step) => {
   const at = step.messages.findLastIndex(message => message.source === 'compact-checkpoint')
   return at < 0 ? [] : [step.messages.slice(at + 1).filter(message => message.source === 'glm-graph-projection').map(message => message.projection)]
 })
+/** The first re-anchoring notice, the scenario's denials, and the non-goals of the focus's goal in the copy. */
+const firstReanchor = compactGraph.steps.flatMap(step => step.messages).find(message => message.source === 'glm-graph-projection' && message.projection === 'compaction')
+const compactViolations = jsonl(join(runDir, 'glm-graph-compact', 'home', 'audit', 'violations.jsonl'))
+const DENIED_HEAD = 'Calls the harness denied in this session, by rule (rule id: times).'
+const focusGoal = (() => {
+  let node = copyBefore.nodes.get(focusTask?.id ?? '')
+  while (node !== undefined && node.type !== 'goal') node = node.parent === undefined ? undefined : copyBefore.nodes.get(node.parent)
+  return node
+})()
 
 const graphGoalDir = join(runDir, 'glm-graph-goal')
 const graphGoalWs = join(graphGoalDir, 'ws')
@@ -3161,6 +3174,17 @@ const checks = [
   ['graph row: graph_comment leaves an llm history entry in the copy; the repository graph is unchanged', graphResult(3)?.isError !== true && copyAfter.nodes.get(doingTask?.id ?? '')?.history.at(-1)?.actor === 'llm' && copyAfter.nodes.get(doingTask?.id ?? '')?.history.at(-1)?.text === 'probe comment' && repoGraphBefore === repoGraphAfter, `repo graph ${repoGraphBefore} -> ${repoGraphAfter}`],
   ['graph row: after graph_focus the next request ends with the projection notice (focus); unchanged steps add none; a title edit adds one (changed)', graphNotices(graphSteps[4]).length === 1 && graphSteps[4]?.messages.at(-1)?.source === 'glm-graph-projection' && graphNotices(graphSteps[4])[0]?.projection === 'focus' && graphNotices(graphSteps[5]).length === 1 && graphNotices(graphSteps[6]).length === 1 && graphNotices(graphSteps[7]).length === 2 && graphSteps[7]?.messages.at(-1)?.projection === 'changed' && graphSteps[7]?.messages.at(-1)?.text.includes('probe title') === true, `notices per request: ${graphSteps.map(step => graphNotices(step).map(notice => notice.projection).join('+') || '0').join(', ')}`],
   ['graph row: after a compaction checkpoint the first request carries the projection again (compaction)', reanchored.some(reasons => reasons.includes('compaction')), `${compactGraph.compactions.length} compaction(s); after checkpoints: ${JSON.stringify(reanchored)}`],
+  ['graph row: the re-anchoring after the compaction lists graph-files-only with the session\'s denial count from the journal, and the non-goals of the focus\'s goal', (() => {
+    const denied = compactViolations.filter(record => record.kind === undefined && record.rule === 'graph-files-only')
+    const text = firstReanchor?.text ?? ''
+    const nonGoals = focusGoal?.nonGoals ?? []
+    return denied.length === 1 && text.includes(DENIED_HEAD) && text.includes(`\n- graph-files-only: ${denied.length}\n`) && (nonGoals.length === 0 || (text.includes(`Non-goals of goal ${focusGoal.id},`) && nonGoals.every(line => text.includes(`\n- ${line}\n`))))
+  })(), `journal denials ${compactViolations.filter(record => record.kind === undefined).map(record => record.rule).join(',') || 'none'}; goal ${focusGoal?.id ?? 'none'} with ${focusGoal?.nonGoals?.length ?? 0} non-goal(s); notice tail: ${JSON.stringify((firstReanchor?.text ?? 'no compaction notice').slice(-400))}`],
+  ['graph row: a projection that is not a re-anchoring carries no denied rules, also one added after the session\'s graph-files-only denials (the last request\'s changed notice)', (() => {
+    const all = graphNotices(graphSteps.at(-1))
+    const added = all.length - graphNotices(graphSteps[8]).length
+    return all.length > 0 && added > 0 && all.every(notice => notice.projection !== 'compaction' && !notice.text.includes(DENIED_HEAD))
+  })(), `notices in the last request: ${graphNotices(graphSteps.at(-1)).map(notice => `${notice.projection}${notice.text.includes(DENIED_HEAD) ? '(denied rules)' : ''}`).join(', ') || 'none'}; after the first denial: ${graphNotices(graphSteps.at(-1)).length - graphNotices(graphSteps[8]).length}`],
   ['graph row: a goal round carries the projection (goal-round)', graphNotices(graphRoundTwo).some(notice => notice.projection === 'goal-round'), graphRoundTwo === undefined ? `no round 2 request (${graphGoalSteps.length} goal-agent request(s), exit ${graphGoal.status})` : graphNotices(graphRoundTwo).map(notice => notice.projection).join(', ')],
   ['graph row: Write and Bash into the copy\'s node files are denied by graph-files-only and journaled; a write elsewhere runs (the recorder\'s follow-up records carry a kind)', [8, 9].every(index => graphResult(index)?.isError === true && graphResult(index)?.text.includes('inside the project graph') === true) && graphResult(10)?.isError !== true && !existsSync(graphNodeFile) && existsSync(graphNotes) && graphViolations.filter(record => record.rule === 'graph-files-only' && record.kind === undefined).map(record => record.tool).join(',') === 'Write,Bash', `records: ${graphViolations.map(record => `${record.kind ?? 'denial'}${record.rule.startsWith('graph-files-only') ? '' : `(${record.rule})`}${record.mode === 'shadow' ? '(shadow)' : ''}:${record.tool ?? ''}`).join(', ')}`],
   ['graph row: the workspace-change fallback runs and counts the graph tool writes as known (no late record names a node file)', healthOf(graphRun).guard?.reason.includes('事后纠正启用：工作区变更记录') === true && graphViolations.filter(record => record.mode === 'late').every(record => record.paths.every(path => !path.startsWith('docs/graph/'))), JSON.stringify(graphViolations.filter(record => record.mode === 'late').map(record => record.paths))],
