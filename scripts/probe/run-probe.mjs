@@ -2001,6 +2001,18 @@ const designOne = designScenario('glm-design-one-main', 'glm-5.3', ws => [
   { tool: { name: 'Write', arguments: { file_path: join(ws, '.llm', 'x.txt'), content: 'x\n' } }, status: true },
   { text: 'done' },
 ], { wish: true })
+// A /wish off in an idle session leaves its inbox empty (inject-via-prestep):
+// the main session types /wish into a second root session that never ran,
+// then /wish off, then /wish off again with a message of the person that
+// wakes it. The notices of the two first commands wait in the design row's
+// step mailbox, not in the inbox the desktop host counts as a running task,
+// and the woken session's first request carries both before the message.
+const designWishOffIdle = designScenario('glm-design-wish-off-idle', 'glm-5.3', ws => [
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish' } },
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish off' } },
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish off', say: 'Reply done.' } },
+  { text: 'done' },
+], { others: [[{ text: 'done' }]] })
 // Stage reminders and design-before-release (docs/ORCHESTRATION.md §3.5, §6.1; M3 step 5).
 // The graph of the workspace is seeded before the run. The main agent
 // (the simulated human's /wish) dispatches subagents through the dispatch
@@ -2763,6 +2775,34 @@ function personaChecks() {
     ['design persona (non-GLM): the row is in effect in /hourness-status and ran quietly', inEffectRow(rowAt(designPersonaPlain, designPersonaPlain.steps[0]?.command?.text)) && designPersonaPlain.status === 0 && !stderrOf(PERSONA_PLAIN).includes('dsh-glm-hourness/design'), `${JSON.stringify(rowAt(designPersonaPlain, designPersonaPlain.steps[0]?.command?.text) ?? null)}; exit ${designPersonaPlain.status}`],
   ]
 }
+/**
+ * A /wish off in an idle session (scenario glm-design-wish-off-idle,
+ * inject-via-prestep): the two commands typed into the second root session
+ * leave its inbox empty and log no inbox event; its first request, the turn the
+ * person's message woke, carries the enter notice and the leave notice, in that
+ * order and before the message, and no later request carries them again.
+ */
+function wishOffIdleChecks(wishNotices) {
+  const scenario = designWishOffIdle
+  const mainId = scenario.steps[0]?.sessionId
+  const main = scenario.steps.filter(step => step.sessionId === mainId)
+  const otherId = scenario.steps.find(step => step.sessionId !== mainId)?.sessionId
+  const second = otherId === undefined ? [] : bySession(scenario, otherId)
+  const typed = [0, 1].map(index => main[index]?.other)
+  const idleEmpty = typed.every(line => line?.kind === 'success' && !line.types.includes('agent/inbox/spliced') && isDeepStrictEqual(line.inbox, { nextStep: 0, nextTurn: 0 }))
+  const first = second[0]
+  const notices = wishNotices(first)
+  const at = text => (first?.messages ?? []).findIndex(message => message.source === 'glm-design-wish' && message.text.includes(text))
+  const said = (first?.messages ?? []).findIndex(message => message.role === 'user' && message.source === 'user' && message.text.includes('Reply done.'))
+  const entered = (first?.messages ?? []).findIndex(message => message.source === 'glm-design-wish' && message.text.startsWith('The human made this session\'s agent the main agent'))
+  const left = at('left main-agent mode with /wish off')
+  const later = second.slice(1).every(step => wishNotices(step).length === wishNotices(first).length)
+  return [
+    ['design wish off idle: /wish and /wish off typed into an idle second session succeed, log no inbox event, and leave its inbox empty (nextStep 0, nextTurn 0)', idleEmpty, JSON.stringify(typed.map(line => ({ kind: line?.kind, types: line?.types, inbox: line?.inbox ?? null })))],
+    ['design wish off idle: the first request of the woken session carries the enter notice, then the leave notice, both before the person\'s message; the second /wish off adds none', notices.length === 2 && entered >= 0 && left > entered && said > left && main[2]?.other?.kind === 'success' && main[2].other.resultText === '这个会话本来就不是主 Agent', `${notices.length} notice(s); enter ${entered}, leave ${left}, message ${said}; ${JSON.stringify(main[2]?.other ?? null).slice(0, 120)}`],
+    ['design wish off idle: no later request of the second session carries the notices again (the history keeps the two it admitted), the record is gone, the row warned of nothing', second.length >= 1 && later && designRecord(scenario).kind === 'none' && !stderrOf(scenario.name).includes('dsh-glm-hourness/design') && scenario.status === 0, `${second.length} request(s); record ${designRecord(scenario).kind}; exit ${scenario.status}`],
+  ]
+}
 function designChecks() {
   const zcode = (step) => step?.system.indexOf('You are ZCode, an interactive agent') ?? -1
   const ascending = (...marks) => marks.every(mark => mark >= 0) && marks.every((mark, index) => index === 0 || marks[index - 1] < mark)
@@ -2811,6 +2851,7 @@ function designChecks() {
     ['design one main: a second root session in the same workspace, typing /wish, is told where the main agent is and how to move it; its tool face and the first session\'s are not changed by it', mainSteps[0]?.other?.kind === 'success' && mainSteps[0].other.resultText.includes('这个项目的主 Agent 在另一个会话里') && mainSteps[0].other.resultText.includes('/wish here') && sectionAt(mainSteps[1]) >= 0 && lacks(mainSteps[1], ['Write', 'Edit']), JSON.stringify(mainSteps[0]?.other ?? null).slice(0, 160)],
     ['design one main: /wish here moves the role; the first session\'s next request has no section, its tool face back (Write, Edit, ask_user_question), the notice that the main agent moved; the Write runs', mainSteps[1]?.other?.kind === 'success' && mainSteps[1].other.resultText.startsWith('主 Agent 已从另一个会话移到这里；') && mainSteps[2] !== undefined && sectionAt(mainSteps[2]) < 0 && hasCut(mainSteps[2], GLM_CUT) && wishNotices(mainSteps[2]).some(message => message.text.includes('moved to another session')) && files(one, 'x.txt')[0], `${mainSteps[1]?.other?.kind}; section ${sectionAt(mainSteps[2])}; x.txt ${files(one, 'x.txt')[0]}`],
     ['design one main: the record names the second session, not the first and not the fork; the second session logged its own two commands', holder.kind === 'held' && holder.record.sessionId.startsWith('probe-other-') && holder.record.sessionId !== mainId && holder.record.sessionId !== forkNote?.sessionId && mainSteps[0]?.other?.types.join('>') === 'command/run>command/done', `${holder.kind === 'held' ? holder.record.sessionId : holder.kind}`],
+    ...wishOffIdleChecks(wishNotices),
     ...stageChecks(),
     ...questionChecks(),
     ...interviewChecks(),

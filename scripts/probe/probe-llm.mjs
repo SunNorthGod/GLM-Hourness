@@ -268,7 +268,9 @@ async function typeLine(ctx, agent, line) {
   finally {
     stop()
   }
-  return { text: line, ...outcome, events: events.length, types: events.map(event => event.type), bytes: events.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0) }
+  // What waits in the agent's inbox once the command is over: the desktop host counts a non-empty one as a running task (rc.3 dsh-desktop-host lib/index.js:101).
+  const inbox = agent.inbox === undefined ? undefined : { nextStep: agent.inbox.nextStep.length, nextTurn: agent.inbox.nextTurn.length }
+  return { text: line, ...outcome, events: events.length, types: events.map(event => event.type), bytes: events.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0), ...(inbox === undefined ? {} : { inbox }) }
 }
 
 /** The `/glm-status` text for the request's session. */

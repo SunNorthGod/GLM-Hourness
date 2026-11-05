@@ -242,6 +242,8 @@ export interface WishDeps {
   readonly installHooks: (agent: DesignAgentLike) => void
   /** Make every other live root session of the project, whose mode is on, leave it. */
   readonly demoteOthers: (key: string, except: string) => Promise<void>
+  /** Put a notice before the agent's next step without waking it or filling its inbox (src/shared/step-mailbox.ts); one that reaches nobody is the session's degraded health. */
+  readonly tell: (agent: DesignAgentLike, notice: UserNotice) => void
   readonly now: () => Date
 }
 
@@ -313,7 +315,7 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
     const wasMain = isMainAgent(deps.role, agent)
     if (reading.kind === 'held' && reading.record.sessionId !== session.id && modeOf(deps.role.projections(), session).active) {
       setPending(session, commandId, false)
-      agent.inject(createUserNotice(NOTICE_KIND, 'main agent moved away', MOVED_NOTICE))
+      deps.tell(agent, createUserNotice(NOTICE_KIND, 'main agent moved away', MOVED_NOTICE))
       return done('主 Agent 在另一个会话里，这个会话已经变回普通会话')
     }
     if (file !== undefined && reading.kind === 'held' && reading.record.sessionId === session.id) {
@@ -326,7 +328,7 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
     }
     if (!wasMain) return done('这个会话本来就不是主 Agent')
     setPending(session, commandId, false)
-    agent.inject(createUserNotice(NOTICE_KIND, 'main agent mode off', OFF_NOTICE))
+    deps.tell(agent, createUserNotice(NOTICE_KIND, 'main agent mode off', OFF_NOTICE))
     return done('已退出主 Agent 模式：这个会话的 agent 又可以直接写文件了')
   }
 
@@ -403,7 +405,7 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
     deps.installHooks(agent)
     if (input.wish === '' && isMainAgent(deps.role, agent)) return done(`${lead}这个会话已经是主 Agent`)
     setPending(session, commandId, true)
-    if (input.wish === '') agent.inject(createUserNotice(NOTICE_KIND, 'main agent mode on', ENTER_NOTICE))
+    if (input.wish === '') deps.tell(agent, createUserNotice(NOTICE_KIND, 'main agent mode on', ENTER_NOTICE))
     else if (agent.status === 'running') agent.steer(wishNotice(input.wish, commandId))
     else agent.followup(wishNotice(input.wish, commandId))
     return done(`${lead}已让这个会话的 agent 当主 Agent（项目经理）：它按项目图推进，不写文件；/wish off 退出${input.wish === '' ? '' : '。已把你的愿望交给它'}。${STRONG_MODEL_NOTE}`)

@@ -19,6 +19,7 @@ import type { DesignContext } from '../src/design/index.ts'
 import type { AgentLike, AssemblePayload, AssembledSection, AssembledTool, CommandDefinitionLike, CommandExecutionLike, CommandResultLike, DesignAgentLike, DesignAgentsService, DesignInvocationLike, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, SessionEventLike, SessionLike, SessionProjectionsService, ToolDefinitionLike, ToolExecutionContext, ToolExecutionPayload, ToolsLike, UserNotice } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { fakeInjector, schemaViolations, serviceStore } from './fake-rc3.ts'
+import { preStepWaterfall } from './step-agent.ts'
 
 interface LoggedEvent extends SessionEventLike {
   readonly time: number
@@ -54,7 +55,7 @@ export interface FakeAgent extends DesignAgentLike {
   readonly listeners: AssembleListener[]
   /** Assemble one step the way the agent loop does: the base assembly through the agent's own listeners. */
   assemble(options?: { readonly sections?: readonly AssembledSection[], readonly tools?: readonly AssembledTool[], readonly variables?: Record<string, unknown> }): Promise<AssemblePayload>
-  /** Run `agent/pre-step` for one step the way the agent loop does: the claimed messages through the scoped listeners; what the step admits is appended to the session history. Returns the decision. */
+  /** Run `agent/pre-step` for one step the way the agent loop does: the claimed messages through the scoped listeners; what the step admits is appended to the session history and logged as `user/message`. Returns the decision. */
   step(options?: { readonly messages?: readonly unknown[], readonly step?: number }): Promise<PreStepDecision>
   /** The agent finishes its activity. */
   becomeIdle(): void
@@ -283,6 +284,8 @@ export function designHost(options: { readonly graph?: boolean, readonly project
       const inheritedEvents = agentOptions.inheritFrom?.session.events ?? []
       const events: LoggedEvent[] = inheritedEvents.map(event => ({ ...event }))
       const history: unknown[] = []
+      // The scope's `session/event` listeners: every append dispatches to them while it is appended (session index.ts:899–906).
+      const sessionListeners: Array<(subject: SessionLike, event: SessionEventLike) => void> = []
       const session: FakeSession = {
         id,
         header,
@@ -291,13 +294,22 @@ export function designHost(options: { readonly graph?: boolean, readonly project
         inherited: events.length,
         deriveMessages: () => [...history],
         snapshotEvents: () => [...events],
-        append(type, data) { events.push({ type, seq: events.length, time: Date.now(), data }) },
+        append(type, data) {
+          const event = { type, seq: events.length, time: Date.now(), data }
+          events.push(event)
+          for (const listener of [...sessionListeners]) listener(session, event)
+        },
       }
       const idleWaiters: Array<() => void> = []
       const listeners: AssembleListener[] = []
       const preStepListeners: PreStepListener[] = []
       const agentCtx = {
         on: (event: string, listener: AssembleListener | PreStepListener, opts?: { prepend?: boolean }) => {
+          if (event === 'session/event') {
+            const observer = listener as unknown as (subject: SessionLike, logged: SessionEventLike) => void
+            sessionListeners.push(observer)
+            return () => { sessionListeners.splice(sessionListeners.indexOf(observer), 1) }
+          }
           if (event === 'agent/pre-step') {
             preStepListeners.push(listener as PreStepListener)
             return () => { preStepListeners.splice(preStepListeners.indexOf(listener as PreStepListener), 1) }
@@ -329,12 +341,14 @@ export function designHost(options: { readonly graph?: boolean, readonly project
         async step(stepOptions = {}) {
           const messages = stepOptions.messages ?? []
           const payload: PreStepPayload = { agent, messages, signal: new AbortController().signal, turn: 1, step: stepOptions.step ?? 2 }
-          const chain = preStepListeners.reduceRight<() => Promise<PreStepDecision>>(
-            (next, listener) => () => listener(payload, next),
-            () => Promise.resolve({ kind: 'enter', messages }),
-          )
-          const decision = await chain()
-          if (decision.kind === 'enter') history.push(...decision.messages)
+          const decision = await preStepWaterfall(preStepListeners, payload)
+          if (decision.kind === 'enter') {
+            // The step appends what it admits, one `user/message` each (agent-loop agent.ts:456–470).
+            for (const message of decision.messages) {
+              history.push(message)
+              session.append('user/message', message)
+            }
+          }
           return decision
         },
         followup(message) {

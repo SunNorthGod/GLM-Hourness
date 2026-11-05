@@ -366,10 +366,9 @@ test('a notice goes after the messages the step admits', async () => {
   await agent.assemble()
   const claimed = { id: 'm-1', role: 'user', content: [{ type: 'text', text: '继续' }], source: { kind: 'user' } }
   const decision = await agent.step({ messages: [claimed] })
-  const messages = (decision as { messages: Array<{ id: string }> }).messages
-  assert.equal(messages[0].id, 'm-1')
-  assert.equal(messages.length, 2)
-  assert.equal((messages[1] as unknown as UserNotice).source.kind, STAGE_SOURCE)
+  const messages = (decision as { messages: UserNotice[] }).messages
+  // The /wish notice waits in the row's step mailbox and goes before the claimed messages (src/shared/step-mailbox.ts); the stage reminder goes after them.
+  assert.deepEqual(messages.map(message => message.source.kind === 'user' ? message.id : message.source.kind), ['glm-design-wish', 'm-1', STAGE_SOURCE])
 })
 
 test('an ordinary session, a delegated child and a main agent that left the role get no reminder', async () => {

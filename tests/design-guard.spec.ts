@@ -18,7 +18,7 @@ import type { Actor } from '../src/graph/schema.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import { releaseVerdict } from '../src/guard/design-release.ts'
 import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, NO_WRITE_RULE } from '../src/guard/main-agent-rules.ts'
-import type { PreExecuteDecision } from '../src/shared/dsh-min.ts'
+import type { PreExecuteDecision, UserNotice } from '../src/shared/dsh-min.ts'
 import { denied, designHost, healthOf, journaled, type DesignHost, type FakeAgent } from './design-host.ts'
 import { sh } from './git-fixture.ts'
 import { captureWarnings } from './graph-helpers.ts'
@@ -37,8 +37,12 @@ async function mainAgent(options: Parameters<typeof designHost>[0] = {}): Promis
   return { host, agent }
 }
 
-/** What was put before the agent's next step by the snapshot (the /wish notices are not these). */
-const snapshotNotices = (agent: FakeAgent): FakeAgent['sent'] => agent.sent.filter(sent => sent.message.source?.kind === SNAPSHOT_NOTICE_KIND)
+/** What the snapshot put before the agent's next step (the row's step mailbox, src/shared/step-mailbox.ts; the /wish notices are not these): runs that step. */
+async function snapshotNotices(agent: FakeAgent): Promise<UserNotice[]> {
+  assert.deepEqual(agent.sent.filter(sent => sent.message.source?.kind === SNAPSHOT_NOTICE_KIND), [], 'nothing goes into the inbox')
+  const decision = await agent.step()
+  return decision.kind === 'enter' ? (decision.messages as UserNotice[]).filter(message => message.source?.kind === SNAPSHOT_NOTICE_KIND) : []
+}
 
 const FILE_TOOLS: ReadonlyArray<readonly [string, unknown]> = [
   ['write', { file_path: 'a.txt', content: 'x' }],
@@ -83,7 +87,7 @@ test('the main agent\'s shell may not write files, and its git and its tests are
     for (const command of ['git commit -m x', 'git status', 'git log --oneline', 'npm test', 'ls', 'cat README.md', 'echo "a > b"']) {
       assert.equal((await host.preExecute(agent, 'Bash', { command })).kind, 'allow', command)
     }
-    assert.deepEqual(snapshotNotices(agent), [])
+    assert.deepEqual(await snapshotNotices(agent), [])
   }
 })
 
@@ -205,15 +209,15 @@ test('a git command that can lose work is allowed after a snapshot, and the main
   sh(dir, 'add', 'a.txt')
   sh(dir, 'commit', '--quiet', '-m', 'first')
   assert.equal((await host.preExecute(agent, 'Bash', { command: 'git status' })).kind, 'allow')
-  assert.deepEqual(snapshotNotices(agent), [])
+  assert.deepEqual(await snapshotNotices(agent), [])
   write('precious\n')
   assert.equal((await host.preExecute(agent, 'Bash', { command: 'git checkout -- a.txt' })).kind, 'allow')
-  const notices = snapshotNotices(agent)
+  const notices = await snapshotNotices(agent)
   assert.equal(notices.length, 1)
-  assert.equal(notices[0]?.via, 'inject')
-  const text = notices[0]?.message.content[0]?.text ?? ''
+  const text = notices[0]?.content[0]?.text ?? ''
   assert.match(text, /^\[git 快照\] 执行「git checkout -- a\.txt」之前存了快照 /)
   assert.match(text, /git stash apply [0-9a-f]{40}/)
+  assert.deepEqual(await snapshotNotices(agent), [], 'told once')
   assert.equal(existsSync(join(dir, '.llm', 'snapshots.jsonl')), true)
 })
 
@@ -241,7 +245,7 @@ test('a write in a shell line is denied before git is looked at', async () => {
   const { host, agent } = await inRepository()
   const reason = denied(await host.preExecute(agent, 'Bash', { command: 'git checkout -- a.txt && echo x > b.txt' }))
   assert.match(reason, /^You tried to change files through the shell: /)
-  assert.deepEqual(snapshotNotices(agent), [])
+  assert.deepEqual(await snapshotNotices(agent), [])
 })
 
 // ---------------------------------------------------------------- design-before-release

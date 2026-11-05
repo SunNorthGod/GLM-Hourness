@@ -22,6 +22,7 @@ import { loadGraph } from '../src/graph/store.ts'
 import type { AgentCommandInvocationLike, CommandDefinitionLike, CommandResultLike, InjectableServices, LiveAgentLike, UserNotice } from '../src/shared/dsh-min.ts'
 import { fakeInjector } from './fake-rc3.ts'
 import { fixtureTest, seedAsHuman } from './graph-helpers.ts'
+import { stepScope } from './step-agent.ts'
 
 /** One call on an agent or the subagents service, in the order they happened. */
 type Call =
@@ -29,7 +30,8 @@ type Call =
   | { readonly agent: string, readonly call: 'cancel', readonly cause: unknown, readonly options: unknown }
   | { readonly agent: string, readonly call: 'interrupt', readonly authority: unknown }
 
-type MutableAgent = LiveAgentLike & { status: 'idle' | 'running' }
+/** A live agent on a step scope (tests/step-agent.ts): `step()` runs its next step in rc.3's order and returns what the step admitted. */
+type MutableAgent = LiveAgentLike & { status: 'idle' | 'running', step(messages?: readonly unknown[]): Promise<UserNotice[]> }
 
 interface Fixture {
   readonly dir: string
@@ -48,14 +50,29 @@ interface Fixture {
 const MAIN = 'session-main'
 
 function liveAgent(id: string, cwd: string, calls: Call[]): MutableAgent {
+  const scope = stepScope()
+  const session = { id, header: { id, cwd }, deriveMessages: () => [] }
   return {
     id,
     status: 'idle',
-    session: { id, header: { id, cwd }, deriveMessages: () => [] },
+    session,
+    ctx: scope.ctx,
     followup: message => { calls.push({ agent: id, call: 'followup', message }) },
     inject: message => { calls.push({ agent: id, call: 'inject', message }) },
     cancel: (cause, options) => { calls.push({ agent: id, call: 'cancel', cause, options }) },
+    step: async (messages = [{ id: `user-${id}`, role: 'user', content: [{ type: 'text', text: 'next' }], source: { kind: 'user' } }]) => {
+      const decision = await scope.step(session, { messages })
+      return decision.kind === 'enter' ? (decision.messages as UserNotice[]).filter(message => message.source?.kind === RUN_SOURCE) : []
+    },
   }
+}
+
+/** The pause notice the agent's next step carries, and that the step after it carries none. */
+async function pausedAtNextStep(agent: MutableAgent): Promise<UserNotice> {
+  const told = await agent.step()
+  assert.equal(told.length, 1, JSON.stringify(told))
+  assert.deepEqual(await agent.step(), [], 'told once')
+  return told[0]
 }
 
 const runTest = fixtureTest(async (): Promise<Fixture> => {
@@ -151,14 +168,15 @@ runTest('start: the main agent gets a followup naming the node and asking for gr
   assert.deepEqual(sequence(calls), [`${MAIN}.followup`, `${MAIN}.followup`])
 })
 
-runTest('stop on the main agent: cancel keeping the inbox, then the pause notice through inject', async ({ graph, calls, main, focus, send }) => {
+runTest('stop on the main agent: cancel keeping the inbox, then the pause notice before its next step, not into its inbox', async ({ graph, calls, main, focus, send }) => {
   main.status = 'running'
   focus(MAIN, 'task-1')
   assert.deepEqual(await send('stop task-1'), { kind: 'success', text: '已暂停「开始按钮」：停下了主 Agent' })
-  assert.deepEqual(sequence(calls), [`${MAIN}.cancel`, `${MAIN}.inject`])
+  assert.deepEqual(sequence(calls), [`${MAIN}.cancel`])
   const cancel = calls[0] as Extract<Call, { call: 'cancel' }>
   assert.deepEqual([cancel.cause, cancel.options], [{ kind: 'user' }, { keepInbox: true }])
-  const notice = only(calls, 'inject')
+  main.status = 'idle'
+  const notice = await pausedAtNextStep(main)
   assert.deepEqual(notice.source.graphRun, { action: 'stop', node: 'task-1', commandId: 'command-1', stopped: [MAIN] })
   assert.match(notice.content[0]?.text ?? '', /不要接着做这个节点，也不要重新派发它/)
   const entry = (await nodeOf(graph, 'task-1')).history.at(-1)
@@ -172,12 +190,13 @@ runTest('stop on a child: the main agent gets the notice first, then the child i
   child('child-2', '跟着主 Agent', null, 'running') // no focus of its own: stands on task-2 with the main agent
   child('child-3', '已停下', 'task-1', 'idle')
   assert.deepEqual(await send('stop task-1'), { kind: 'success', text: '已暂停「开始按钮」：停下了子 agent 写开始按钮' })
-  assert.deepEqual(sequence(calls), [`${MAIN}.inject`, 'child-1.interrupt'])
-  assert.deepEqual((calls[1] as Extract<Call, { call: 'interrupt' }>).authority, { kind: 'user', parentSessionId: MAIN })
-  assert.deepEqual(only(calls, 'inject').source.graphRun, { action: 'stop', node: 'task-1', commandId: 'command-1', stopped: ['child-1'] })
+  assert.deepEqual(sequence(calls), ['child-1.interrupt'])
+  assert.deepEqual((calls[0] as Extract<Call, { call: 'interrupt' }>).authority, { kind: 'user', parentSessionId: MAIN })
+  assert.deepEqual((await pausedAtNextStep(main)).source.graphRun, { action: 'stop', node: 'task-1', commandId: 'command-1', stopped: ['child-1'] })
   // On the main agent's node, the child without a focus of its own is stopped with it.
   assert.deepEqual(await send('stop task-2'), { kind: 'success', text: '已暂停「暂停按钮」：停下了主 Agent、子 agent 跟着主 Agent' })
-  assert.deepEqual(sequence(calls.slice(2)), [`${MAIN}.cancel`, `${MAIN}.inject`, 'child-2.interrupt'])
+  assert.deepEqual(sequence(calls.slice(1)), [`${MAIN}.cancel`, 'child-2.interrupt'])
+  assert.deepEqual((await pausedAtNextStep(main)).source.graphRun, { action: 'stop', node: 'task-2', commandId: 'command-1', stopped: [MAIN, 'child-2'] })
 })
 
 runTest('redo: a done task reopens as the human, the agent on it is cancelled, then the message with the acceptance before and after follows up', async ({ graph, calls, main, focus, send }) => {
