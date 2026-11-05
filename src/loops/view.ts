@@ -48,6 +48,10 @@ export interface ViewEntry {
   /** 谁带来的. */
   readonly from: string
   readonly why?: string
+  /** The entry's own rules (design §2.1 `ownRules`), one line each, as the entry gives them. */
+  readonly ownRules?: readonly string[]
+  /** A plugin's entry: the lines its hand-over's `details` gives for this project (design §3.1), or the one sentence that they cannot be read. */
+  readonly details?: readonly string[]
   /** The last run, when the board has one. */
   readonly last?: OutcomeView
   /** ISO time of the next run of a `once`, `daily` or `weekly` entry that runs now; none for `every` (DSH aligns it to its task's anchor) and cron (DSH computes it). */
@@ -134,7 +138,14 @@ interface ViewPluginEntry {
   readonly entry: LoopEntry
   readonly state: string
   readonly reason?: string
+  /** What the hand-over's `details` gave for this project (registry.ts `detailsOf`); absent when it gives none. */
+  readonly details?: DetailsRead
 }
+
+/** One read of a hand-over's `details` for one entry: the lines, or why the page cannot show them (it threw, or broke the limits of service.ts). */
+export type DetailsRead =
+  | { readonly ok: true, readonly lines: readonly string[] }
+  | { readonly ok: false, readonly reason: string }
 
 /** The records 最近跑过的 lists (records.ts `loop-done`, `loop-duplicate`, `loop-task-delete`, the fields the view reads; `recentRecords` reads them in this shape). */
 export type ViewRecord =
@@ -344,6 +355,17 @@ const NO_RUNTIME: ViewRuntime = { last: {}, passing: {}, waiting: 0, records: []
 /** Whether an entry's state lets it run, so its next time is worth showing. */
 const runs = (state: string): boolean => state === 'active' || state === 'ok'
 
+/** The entry's own rules, when it has any. */
+const ownRulesOf = (entry: { readonly ownRules?: readonly string[] } | undefined): Pick<ViewEntry, 'ownRules'> =>
+  entry?.ownRules === undefined || entry.ownRules.length === 0 ? {} : { ownRules: entry.ownRules }
+
+/** A plugin's details as the page lists them: the lines, or the one sentence that they cannot be read (design §5.3; the reason goes to the row health, boards.ts). */
+function detailsLines(read: DetailsRead | undefined, label: string): Pick<ViewEntry, 'details'> {
+  if (read === undefined) return {}
+  if (!read.ok) return { details: [`${label}没给出明细，这一项的明细读不到`] }
+  return read.lines.length === 0 ? {} : { details: read.lines }
+}
+
 /**
  * The view of a project. `board` is undefined when the project's files could
  * not be read; `peak` is absent while the host has no pricing service;
@@ -385,6 +407,8 @@ export function buildView(input: {
       does: doesText(item.entry.action, label),
       from: pluginFrom(item.entry),
       ...(item.entry.why === undefined ? {} : { why: item.entry.why }),
+      ...ownRulesOf(item.entry),
+      ...detailsLines(item.details, label),
     }
   })
   const person = (input.board?.entries ?? []).map((board): ViewEntry => {
@@ -402,6 +426,7 @@ export function buildView(input: {
       does: entry === undefined ? '读不出' : doesText(entry.action, '你'),
       from: personFrom(entry),
       ...(entry?.why === undefined ? {} : { why: entry.why }),
+      ...ownRulesOf(entry),
     }
   })
   const entries = [...plugin, ...person]

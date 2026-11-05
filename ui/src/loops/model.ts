@@ -28,7 +28,7 @@ export interface LoopItem {
   readonly greyed: boolean
   /** How to change and delete one of the person's own; null for a plugin's. */
   readonly changeLine: string | null
-  /** 讲细点: why it is there, the id and its state, in small print. */
+  /** 讲细点: why it is there, the lines its plugin gives for this project, its own rules, its state and the id, in small print. */
   readonly details: readonly string[]
 }
 
@@ -89,6 +89,8 @@ function itemOf(entry: ViewEntry): LoopItem {
     changeLine: mine && entry.state !== 'deleted' ? `要改：跟主 Agent 说「把${entry.title}改成……」；要删：在输入框打 /loops delete ${entry.title}` : null,
     details: [
       ...(entry.why === undefined ? [] : [`为什么有它：${entry.why}`]),
+      ...(entry.details ?? []),
+      ...(entry.ownRules === undefined ? [] : ['它自己的规矩：', ...entry.ownRules.map(rule => `· ${rule}`)]),
       `状态：${STATE_WORDS[entry.state] ?? entry.state}`,
       `id：${entry.id}`,
     ],
