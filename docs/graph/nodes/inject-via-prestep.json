@@ -1,0 +1,24 @@
+{
+  "id": "inject-via-prestep",
+  "type": "task",
+  "title": "插件的提示不再排在会话收件箱里，桌面版能直接关掉",
+  "why": "空闲会话里排着的提示让桌面版以为有任务在跑，关闭时要人点确认；改走步前提示后收件箱是空的，模型看到提示的时机不变",
+  "status": "approved",
+  "parent": "orch",
+  "kind": "implement",
+  "body": "依据 .agents/tasks/desktop-close-2026-11-05/report.md Q2、Q3 与「后续建议」第 1 条。本项目的包用 inject（不叫醒，排进 next-step）送的提示：src/design/mode.ts 的 /wish off、主 Agent 在别处、不带话的 /wish；src/loops/deliver.ts wake 为假时的投递；src/design/index.ts 与 src/graph/run-control.ts 的注入点。改走 agent/pre-step 的步前提示（先例 src/rules/reminder.ts 的规则板提醒），模型仍在下一步之前看到同样的文字；叫醒的投递不动。先按设计评审：逐处列出现在的注入、改后的送法、宿主关停时排着的提示今天被丢掉这一点是否要补。",
+  "acceptance": [
+    "包里不叫醒的提示不再写进会话收件箱，模型在下一步之前照旧看到同样的文字；叫醒的投递不变",
+    "桌面版有空闲会话（最后一次操作是 /wish off 或循环板提醒）时，经 CDP 发 Browser.close 直接退出，不弹确认框，L4 核对",
+    "DESIGN.md 或 ORCHESTRATION.md 同批改；L2 钉住，L3 探针通过，改动在 main 上"
+  ],
+  "history": [
+    {
+      "at": "2026-11-05T15:21:40.550Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "desktop-close-2026-11-05 调查报告「后续建议」第 1 条：本项目的包在空闲会话里注入不叫醒的消息，消息一直排在收件箱里，桌面版因此认为有任务在跑，退出要人点确认；宿主关停时这些消息被丢掉（canceled），模型最终也没读到。修在根上：改走包里已有的步前提示。agent 定，等有并行位开工。",
+      "to": "approved"
+    }
+  ]
+}

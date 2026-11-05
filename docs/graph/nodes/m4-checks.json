@@ -207,6 +207,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "m4-checks-loop-details（wf_0977f7098cfafeae）第 1 轮 code 步被上游 503「No available accounts」打断，没有留下改动；review 步因上游限流暂停，编排方恢复后评审判 CHANGES_REQUESTED（分支对 origin/main 没有提交，B1 没修，挡路 R1 即验收第 5 条），记录在工作树 .llm/review/review.md。第 2 轮 code 步已开始，循环预算 2 轮用到最后一轮；再空跑则停下，等上游稳定后重开。"
+    },
+    {
+      "at": "2026-11-05T16:00:56.547Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks-loop-details（wf_0977f7098cfafeae）第 2 轮 code 步有进展：工作树里 src/loops/view.ts、boards.ts、registry.ts、service.ts、src/env/runner.ts 与 ui/src/loops/ 两个文件已改，尚未提交。这是循环预算的最后一轮。"
+    },
+    {
+      "at": "2026-11-05T16:44:28.855Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m4-checks-loop-details（wf_0977f7098cfafeae）第 2 轮 code 步已把 B1 的修改推到分支：e667fe8「docs(loops): view.json ownRules and details, the page's 讲细点 (m4-checks 5)」，view.json 带上 ownRules 与 details，循环板讲细点照此显示。code 步仍在跑，评审未开始。"
     }
   ]
 }
