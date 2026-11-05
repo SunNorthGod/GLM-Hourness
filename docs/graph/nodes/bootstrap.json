@@ -366,6 +366,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "按 d-habits-into-framework：接管的默认表按 ORCHESTRATION.md §7.5 补回死代码与重复检查，Node 加 knip 与 jscpd，Python 加 vulture；Rust 已有 cargo clippy -D warnings 不另加；Go 先不加 staticcheck，写进默认表「没有覆盖」的说明。已有项目走设计 §5.6 的基线办法，输出读不了的不进门禁。交接管线（wf_f008ac0c87ec6943）B5 一并做，设计 §5.5 同批改。"
+    },
+    {
+      "at": "2026-11-05T17:13:47.104Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管线 B5 第 4 部分已推 origin/bootstrap（69da25b）：设计 0.6 的默认表按 d-tests-required-gate 与 d-habits-into-framework 改写（死代码与重复检查补回默认表）。B5 前 1、2 部分为源码与 L2（3b629b0、56f578a）。运行 01:1x 因限流暂停后已恢复。"
     }
   ]
 }
