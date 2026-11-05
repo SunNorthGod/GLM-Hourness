@@ -263,6 +263,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m5-rest 评审 CHANGES_REQUESTED，1 条阻塞 B1：/memory restore 的记录把只该存在于折叠结果里的字段 forgottenAt 写进了流水，违反已批准的「只在折叠里，不写进流水」（.llm/m5r-review/review.json）。门禁、推送与验收条目对应都核对无误。下一步：修 B1 后复审。"
+    },
+    {
+      "at": "2026-11-05T02:33:58.761Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m5-rest 评审 B1 已修并推：修复 02a2bec（/memory restore 的记录不再把 forgottenAt 写进流水），合并 56d4959（并入带时钟修复的 origin/main 2bd13f6），都在 origin/m5-rest。56d4959 上四道门禁为 0：npm test 3004 通过 / 0 失败 / 1 跳过，探针 388/388，棘轮 73/18/1。下一步：复审。"
     }
   ]
 }
