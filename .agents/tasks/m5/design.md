@@ -450,6 +450,8 @@ Learning digest (hourness): in the last 28 days the person corrected the same ki
 
 学习流水线的落点：问题节点上的 `学自：<键>` 只有在这个问题带预期效果时才算落点；别的类型节点上的照旧算。提醒文字与 `learning_signals` 的说明写明规则提议用 `propose_to_human` 带 `rule`。
 
+到期核对（`effectChecks`、`effectCheckLines`，`/hourness` 晨报调用，`docs/ORCHESTRATION.md` §12）：同意时刻是待决 `done` 时最后一条 `decide` 的 `at`，没拍板、被否、放弃的不核对。到期 = 同意 + `days` 天；之前的窗口 [同意 − `days` 天, 同意)，之后的窗口 [同意, 到期)。`corrections:<键>` 用 `correctionSignals` 在项目图上数；`denials:<id>` 在会话项目的指标流水里数 `rule`（`effect` 为 `deny` 或 `late`）与 `rules.judged`（`how: block`），事件的规则名等于 id 或 `<行>:<名>` 等于 id。`down` 要之后严格少于之前，`up` 要严格多于，相等算没做到。核对不了：指标流水读不到、没有记录、或最早一条晚于之前窗口的起点（只对 `denials`）。旧规则（D10）：同意得更早、仍是 `done` 的规则提议，在这一条的两个窗口里各数一次自己的 `metric`，往自己预期的反方向走了就列在这一条下面。晨报一节「规则提议的核对」：到期落在报告时刻之前 7 天内的，没做到、核对不了、或有旧规则往回走了的才列，全做到了不出这一节；写两段的原始次数，不写比率；最后一行「这里只列出来，规则不会自己变；要撤或要改，跟主 Agent 说」。图读不出时没有这一节（「等你定的事」已写原因）。
+
 不做的事：到期没做到只在晨报里列出，harness 与 agent 都不因此撤、改或加严规则；要撤要改，照旧提给人（`d-rules-human-only`）。规则板的 `rules_propose` 带同一栏、人设规则的 id 进名单，等规则板 R3（`rules-r4d`）。
 
 ### 3.7 汇报细度闭环（m5-5）

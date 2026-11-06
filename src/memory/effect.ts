@@ -11,11 +11,14 @@
  * as the first lines of the question's body, in the fixed words below; this
  * file is the one place that writes and reads those words. Pure: the design
  * row checks the argument and writes the body, the learning digest reads the
- * body back.
+ * body back, and the morning report gets the checks of the proposals whose
+ * days are up (effectChecks, effectCheckLines).
  */
 import { PLAIN_WORDS, plainWordsIn } from '../graph/plain-question.ts'
 import { codePointCount } from '../graph/proposal.ts'
+import type { GraphNode } from '../graph/schema.ts'
 import { CATALOG } from '../rules/builtin.ts'
+import { correctionSignals } from './signals.ts'
 
 /** Limits of the effect, in code points and days. */
 const EFFECT_LIMITS = { effect: 60, minDays: 7, maxDays: 56, ablation: 6000 } as const
@@ -165,4 +168,159 @@ export function effectShown(effect: RuleEffect): string {
       : `撤下 ${effect.lift}，替补是 ${effect.cover}，它也管同一类调用。`)
   }
   return lines.join('\n')
+}
+
+// --- The check when the days are up (M5 design §3.6.1, docs/ORCHESTRATION.md §12) ---
+
+const DAY_MS = 86_400_000
+
+/** A due check is reported for this long after the day it fell due. */
+const REPORT_DAYS = 7
+
+/** One line of the metrics journal, as much of it as the check reads (src/metrics/schema.ts MetricsEvent). */
+export interface JournalEvent {
+  readonly k: string
+  readonly at: string
+  readonly body: Readonly<Record<string, unknown>>
+}
+
+/** The metrics journal of the project: its events, or why it could not be read. */
+export type JournalRead = { readonly events: readonly JournalEvent[] } | { readonly unreadable: string }
+
+/** A rule proposal the person agreed to: the question, its effect and the moment of the agreement. */
+interface Agreed {
+  readonly question: GraphNode
+  readonly effect: RuleEffect
+  readonly at: number
+}
+
+/** The counts of one metric in the two windows of a check, or why they cannot be counted. */
+type Counts = { readonly before: number, readonly after: number } | { readonly unchecked: string }
+
+/** An older rule whose count moved against its own expected effect in the windows of a newer one (D10). */
+interface Backslide {
+  readonly question: string
+  readonly title: string
+  readonly metric: string
+  readonly before: number
+  readonly after: number
+}
+
+/** The check of one rule proposal whose days are up. */
+export interface EffectCheck {
+  readonly question: string
+  readonly title: string
+  readonly effect: RuleEffect
+  readonly agreedAt: string
+  readonly dueAt: string
+  readonly outcome: 'met' | 'missed' | 'unchecked'
+  readonly before?: number
+  readonly after?: number
+  /** Why it could not be checked (outcome unchecked). */
+  readonly reason?: string
+  readonly backslides: readonly Backslide[]
+}
+
+/** The rule proposals the person agreed to: a question that is done, with an expected effect, at the time of its last decision. */
+function agreedProposals(nodes: Iterable<GraphNode>): Agreed[] {
+  return [...nodes].flatMap((question) => {
+    if (question.type !== 'question' || question.status !== 'done') return []
+    const effect = effectOf(question.body)
+    const decided = question.history.filter(entry => entry.op === 'decide').at(-1)
+    const at = decided === undefined ? Number.NaN : Date.parse(decided.at)
+    return effect === undefined || Number.isNaN(at) ? [] : [{ question, effect, at }]
+  })
+}
+
+/** Whether an event of the journal is a denial by the rule `id`: a guard denial or late denial (`rule`), or a block of the rules board (`rules.judged`); the event names the rule with or without its row. */
+function deniedBy(event: JournalEvent, id: string, row: string | undefined): boolean {
+  const named = event.body.rule
+  if (typeof named !== 'string' || (named !== id && `${row}:${named}` !== id)) return false
+  if (event.k === 'rule') return event.body.effect === 'deny' || event.body.effect === 'late'
+  return event.k === 'rules.judged' && event.body.how === 'block'
+}
+
+const ROW_OF: ReadonlyMap<string, string> = new Map(CATALOG.map(entry => [entry.id, entry.row]))
+
+/** The counts of a metric before [from, at) and after [at, due) the agreement. */
+function countsOf(metric: string, nodes: readonly GraphNode[], journal: JournalRead, from: number, at: number, due: number): Counts {
+  const parts = metricOf(metric)
+  if (parts === undefined) return { unchecked: '核对的数认不出' }
+  const iso = (ms: number): string => new Date(ms).toISOString()
+  if (parts.kind === 'corrections') {
+    const { events } = correctionSignals({ nodes, depthWrites: [], since: iso(from), until: iso(due) })
+    const own = events.filter(event => event.key === parts.name).map(event => Date.parse(event.at))
+    return { before: own.filter(ms => ms < at).length, after: own.filter(ms => ms >= at).length }
+  }
+  if ('unreadable' in journal) return { unchecked: `指标流水读不到：${journal.unreadable}` }
+  const times = journal.events.map(event => Date.parse(event.at)).filter(ms => !Number.isNaN(ms))
+  if (times.length === 0) return { unchecked: '指标流水还没有记录' }
+  const earliest = Math.min(...times)
+  if (earliest > from) return { unchecked: `指标流水从 ${iso(earliest).slice(0, 10)} 才有，够不着同意之前的那段` }
+  const row = ROW_OF.get(parts.name)
+  const own = journal.events.filter(event => deniedBy(event, parts.name, row)).map(event => Date.parse(event.at)).filter(ms => ms >= from && ms < due)
+  return { before: own.filter(ms => ms < at).length, after: own.filter(ms => ms >= at).length }
+}
+
+/** Whether the count went the way the effect expected: strictly, an equal count is a miss. */
+const reached = (direction: RuleEffect['direction'], before: number, after: number): boolean => direction === 'down' ? after < before : after > before
+
+/** Whether the count went against the way the effect expected. */
+const wentBack = (direction: RuleEffect['direction'], before: number, after: number): boolean => direction === 'down' ? after > before : after < before
+
+/**
+ * The checks of the rule proposals whose days fell due in the seven days up
+ * to `now`. Each is counted in the window of its own length before the
+ * agreement and the window from the agreement to the day it fell due; the
+ * older agreed rule proposals are counted in the same two windows, and the
+ * ones whose count moved against their own expectation are named with it.
+ * Pure: nothing is changed, no rule is lifted or tightened (d-rules-human-only).
+ */
+export function effectChecks(nodes: Iterable<GraphNode>, journal: JournalRead, now: number): EffectCheck[] {
+  const all = [...nodes]
+  const agreed = agreedProposals(all).sort((a, b) => a.at - b.at || compare(a.question.id, b.question.id))
+  return agreed.flatMap((entry): EffectCheck[] => {
+    const due = entry.at + entry.effect.days * DAY_MS
+    if (due > now || due <= now - REPORT_DAYS * DAY_MS) return []
+    const from = entry.at - entry.effect.days * DAY_MS
+    const counts = countsOf(entry.effect.metric, all, journal, from, entry.at, due)
+    const backslides = agreed.filter(older => older.at < entry.at).flatMap((older): Backslide[] => {
+      const theirs = countsOf(older.effect.metric, all, journal, from, entry.at, due)
+      return 'unchecked' in theirs || !wentBack(older.effect.direction, theirs.before, theirs.after)
+        ? []
+        : [{ question: older.question.id, title: older.question.title, metric: older.effect.metric, before: theirs.before, after: theirs.after }]
+    })
+    const base = { question: entry.question.id, title: entry.question.title, effect: entry.effect, agreedAt: new Date(entry.at).toISOString(), dueAt: new Date(due).toISOString(), backslides }
+    if ('unchecked' in counts) return [{ ...base, outcome: 'unchecked', reason: counts.unchecked }]
+    return [{ ...base, outcome: reached(entry.effect.direction, counts.before, counts.after) ? 'met' : 'missed', before: counts.before, after: counts.after }]
+  })
+}
+
+const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0
+
+/** The day of a moment at the report's offset, YYYY-MM-DD. */
+const dayOf = (at: string, offsetMinutes: number): string => new Date(Date.parse(at) + offsetMinutes * 60_000).toISOString().slice(0, 10)
+
+/**
+ * The morning report's section of the checks (docs/ORCHESTRATION.md §12):
+ * only the checks that missed, could not be checked, or found an older rule
+ * moving back; none when every due check was met. The counts are the raw
+ * numbers of the two windows, no ratio and no score (decision
+ * d-metrics-ratios-person-only; plan §2.3). The last line says the rules do
+ * not change by themselves.
+ */
+export function effectCheckLines(checks: readonly EffectCheck[], offsetMinutes: number): string[] {
+  const listed = checks.filter(check => check.outcome !== 'met' || check.backslides.length > 0)
+  if (listed.length === 0) return []
+  const lines = ['', '## 规则提议的核对']
+  for (const check of listed) {
+    const head = `- ${check.title}（${check.question}，${dayOf(check.agreedAt, offsetMinutes)} 同意，${dayOf(check.dueAt, offsetMinutes)} 到期）`
+    const way = WAY[check.effect.direction]
+    if (check.outcome === 'unchecked') lines.push(`${head}：核对不了，${check.reason ?? '原因未知'}`)
+    else if (check.outcome === 'missed') lines.push(`${head}：没做到。预期 ${check.effect.metric} ${way}，同意前 ${check.effect.days} 天 ${check.before} 次，同意后 ${check.after} 次`)
+    else lines.push(`${head}：做到了。${check.effect.metric} 同意前 ${check.before} 次，同意后 ${check.after} 次`)
+    for (const back of check.backslides) lines.push(`  - 旧规则 ${back.title}（${back.question}）往回走了：${back.metric} 这两段里 ${back.before} 次 → ${back.after} 次`)
+  }
+  lines.push('- 这里只列出来，规则不会自己变；要撤或要改，跟主 Agent 说')
+  return lines
 }
