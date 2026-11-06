@@ -201,6 +201,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "status-hub-3（wf_992ec82f32e990c0）code 步完成并推 origin/status-hub-3：批 9 4c16928、面板 8-1 65e1324、面板 8-2 b6eab12 与 7ba29e0；7ba29e0 上门禁绿（npm test 3176/0，棘轮 73/18/1，探针 422/422）。评审 APPROVED，没有挡路项，不挡路 5 条（8-2 分成两个提交、文档在第二个；8-2 的探针结果只在工作树日志里）。下一步合入。"
+    },
+    {
+      "at": "2026-11-06T02:07:38.744Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "status-hub-3（wf_992ec82f32e990c0）评审 APPROVED 后合入 main 8bddad7（合入 origin/main 7c13564），origin 与 github 一致；合入步正持桌面锁做 L4，结果出来再关相关节点。"
+    },
+    {
+      "at": "2026-11-06T02:19:34.511Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "status-hub-3（wf_992ec82f32e990c0）合入 main 8bddad7，origin 与 github 一致：第 9 批 4c16928（检查的超时只在一处算）、面板 8-1 65e1324（循环板 M4 检查的超时一格与条目自己的规矩）、面板 8-2 b6eab12 与 7ba29e0（人加的脚本与检查条目写明同意的那一版、命令原文与超时来源；脚本原文只在讲细点打开时读，超过 64 KiB 不读）。最终树门禁 build、preflight、npm test（3223/0）、探针 429/429 绿，棘轮 73/18/1；桌面版经 CDP 重启核对没有本项目的错误；工作树与本地分支已删。评审 APPROVED，不挡路两条：8-2 拆成两个提交且文档在第二个，8-2 的探针结果只在工作树日志里。循环板两张周清单（staleEntries、timeoutEntries）在 main 上没有提供方，等 M7。"
     }
   ]
 }

@@ -51,7 +51,10 @@
  * journal holds every line in between. In env-checks-ceiling a check held at
  * its ceiling is one line in the root agent's environment notice, which
  * check_limit takes away by raising the ceiling, and a dispatched subagent
- * never hears of it. The loop board's peak scenario
+ * never hears of it; right after the raise the status hub's collector reads
+ * the env row's env/timeouts with the held check and the raised ceiling,
+ * and the env row's hand-over gives the loop board's page the check with
+ * its timeout held at the ceiling and the raise. The loop board's peak scenario
  * (loops-peak) runs on the GLM route at the probe clock inside a peak, with
  * the loop row and the rules row (少做) enabled and no contribution listing
  * execute.resume-drive: the scripted agent becomes the main agent with /wish,
@@ -107,8 +110,12 @@
  * both packages' client faces. These three also read each project row's
  * settings-page title in their profile. The main checkout and a
  * worktree are tested the same way and ~/.dsh/profiles is never used. Each
- * run writes the DSH home, overlays, request dumps and logs under
- * .llm/probe-runs/<timestamp>/ (gitignored).
+ * run writes the DSH home, overlays, request dumps and logs into a directory
+ * of its own under the system temporary directory
+ * (glm-hourness-probe-<timestamp>-*, scripts/sandbox.mjs openRunDir), outside
+ * the repository tree, where freshly written files are briefly held by
+ * another process (docs/FACTS.md §3). A run that passes deletes it; any other
+ * exit keeps it and prints its path.
  *
  * Guard (exit 2, no conclusion): a profile of that name already exists
  * under the real profiles directory, a profile cannot be generated, or the
@@ -120,7 +127,8 @@
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
@@ -162,13 +170,11 @@ import { checkLog, readLog } from '../../packages/hourness/dist/metrics/read.js'
 import { METRICS_FILES_ONLY } from '../../packages/hourness/dist/metrics/rules.js'
 import { keyOf } from '../../packages/hourness/dist/guard/records.js'
 import { PACKAGES } from '../packages.mjs'
-import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, scenarioWorkspace, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
+import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, openRunDir, PROBE_PROFILES, removeRunDir, repo, requireDesktop, sandboxCommand, scenarioWorkspace, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 import { CANARY } from './probe-net.mjs'
 
 requireDesktop('probe')
-
-const runDir = join(repo, '.llm', 'probe-runs', new Date().toISOString().replace(/[:.]/g, '-'))
 
 // The run boots profiles generated under its own DSH home; the user's
 // profiles directory must not gain them, and the profiles there must keep
@@ -196,9 +202,13 @@ for (const [name, shape] of shapesBefore) {
     process.exit(2)
   }
 }
+const runDir = openRunDir(new Date().toISOString().replace(/[:.]/g, '-'))
 /** The generated profiles by name; every one generated is unlinked on exit, a failed run included. */
 const profiles = {}
-process.on('exit', () => Object.values(profiles).forEach(unlinkProfile))
+process.on('exit', (code) => {
+  Object.values(profiles).forEach(unlinkProfile)
+  if (code !== 0 && existsSync(runDir)) console.error(`probe: run artifacts kept in ${runDir}`)
+})
 for (const [name, packages] of Object.entries(PROBE_PROFILES)) {
   try {
     profiles[name] = generateProfile(join(runDir, 'dsh-root'), name, packages)
@@ -324,8 +334,15 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
   const { exe, args, env } = sandboxCommand(patch, [task], on)
   // Every scenario's sessions run in a repository of its own, so no row keeps project state in this checkout's project.
   const workspace = scenarioWorkspace(dir, cwd)
+  // rc.3's workspace-write sandbox lets writes through under the workspace and the runtime's os.tmpdir();
+  // the run directory is under the system temporary directory, so the runtime gets a temporary directory
+  // of the scenario's own and a target elsewhere in the run directory stays outside both. It sits beside
+  // the scenario directories, not in one: the Windows ACL sandbox refuses a temp root inside the workspace,
+  // and a scenario that names no directory works in its scenario directory.
+  const temp = join(runDir, 'runtime-tmp', name)
+  mkdirSync(temp, { recursive: true })
   const started = Date.now()
-  const result = spawnSync(exe, args, { cwd: workspace, encoding: 'utf8', timeout: 180_000, env })
+  const result = spawnSync(exe, args, { cwd: workspace, encoding: 'utf8', timeout: 180_000, env: { ...env, TEMP: temp, TMP: temp } })
   const elapsedMs = Date.now() - started
   writeFileSync(join(dir, 'stdout.txt'), result.stdout ?? '')
   writeFileSync(join(dir, 'stderr.txt'), result.stderr ?? '')
@@ -1180,6 +1197,8 @@ const envCeilingRun = runScenario('env-checks-ceiling', 'deepseek-probe', [
   { tool: { name: 'write', arguments: { file_path: join(envCeilingWs, 't.txt'), content: 'a\n' } } },
   { tool: { name: 'read', arguments: { file_path: join(envCeilingWs, 't.txt') } } },
   { tool: { name: 'check_limit', arguments: { check: 'tool-1/full', seconds: 120, reason: ENV_CEILING_REASON } } },
+  // Asked once check_limit's result is back: the hub step records the env row's entries after the raise, and the tool reads what the env row hands the loop board's page.
+  { tool: { name: 'probe_loop_page', arguments: { entry: 'env.checks-after-edit' } }, hub: true },
   { tool: { name: 'probe_dispatch', arguments: { task: 'T1', prompt: 'Probe task T1: report.', cwd: envCeilingWs, scope: 'allowed', model: 'deepseek-probe' } } },
   { text: 'Waiting for task T1.' },
   { text: 'done' },
@@ -1196,6 +1215,12 @@ const envCeilingChildNotices = envNoticesOf(envCeilingChild)
 const envCeilingLimitResult = (() => { try { return JSON.parse(lastToolResult(envCeilingMain[3])?.text ?? '') } catch { return undefined } })()
 const envCeilingLimitLines = existsSync(envCeilingLimits) ? readFileSync(envCeilingLimits, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
 const envCeilingJournal = jsonl(join(envCeilingWs, '.llm', 'env-checks', 'timing.jsonl'))
+// The status hub's collector right after check_limit (status hub batch 9): the env row's env/timeouts entry.
+const envCeilingHub = envCeilingMain[3]?.hub
+const envCeilingTimeouts = envCeilingHub?.agent?.items.find(item => item.id === 'env/timeouts')
+// What the env row hands the loop board's page right after check_limit (panel done condition 8-1): one detail line per check, the check with its timeout.
+const envCeilingPage = readEnvLog(envCeilingLog).find(record => record.kind === 'page')?.page
+const envCeilingCheck = Array.isArray(envCeilingPage?.checks) ? envCeilingPage.checks[0] : undefined
 
 // Rules board, a rule of the person across the end of a peak (M6 S3, M6
 // design §16 S3, §7.3, docs/ORCHESTRATION.md §16.12). The clone's rules file
@@ -3118,7 +3143,8 @@ const concurrentDir = join(runDir, 'metrics-concurrent', 'ws')
 mkdirSync(concurrentDir, { recursive: true })
 if (spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: concurrentDir }).status !== 0) throw new Error('probe: metrics-concurrent git init failed')
 const concurrentScript = join(runDir, 'metrics-concurrent', 'append.mjs')
-const concurrentLibrary = './' + slash(relative(join(runDir, 'metrics-concurrent'), join(repo, 'packages', 'hourness', 'dist', 'metrics', 'library.js')))
+// A file URL: the run directory is under the temporary directory, which need not share a drive with the checkout.
+const concurrentLibrary = pathToFileURL(join(repo, 'packages', 'hourness', 'dist', 'metrics', 'library.js')).href
 writeFileSync(concurrentScript, `import { appendEvents } from ${JSON.stringify(concurrentLibrary)}
 const events = Array.from({ length: 5000 }, (_, i) => ({ k: 'count', by: 'guard', body: { what: \`w-\${process.pid}-\${i}\`, value: i } }))
 const result = await appendEvents(process.argv[2], events)
@@ -3309,6 +3335,8 @@ const checks = [
   ['env-checks-ceiling: an estimate of 25 s is held at the 60 s ceiling: the value line records the 75 s wanted', envCeilingRun.status === 0 && envCeilingJournal[0]?.kind === 'value' && envCeilingJournal[0].limitMs === 60000 && envCeilingJournal[0].capped?.wantedMs === 75000 && envCeilingJournal[0].cap?.by === 'default', `exit ${envCeilingRun.status}; ${JSON.stringify(envCeilingJournal.slice(0, 2))}`],
   ['env-checks-ceiling: the root agent\'s environment notice gets the held-at-its-ceiling line with the full key, and check_limit is in its tool face', envCeilingMainNotices.some(text => text.split('\n').includes(ENV_CEILING_HELD)) && names(envCeilingMain[0]).has('check_limit'), envCeilingMainNotices.map(text => text.slice(0, 400).replace(/\n/g, ' | ')).join(' || ')],
   ['env-checks-ceiling: check_limit raises the ceiling to 120 s and limits.jsonl has the raise with the reason and the session; the next notice has no held line', envCeilingLimitResult?.outcome === 'raised' && envCeilingLimitResult.capS === 120 && envCeilingLimitResult.previousCapS === 60 && envCeilingLimitLines.length === 1 && envCeilingLimitLines[0].action === 'raise' && envCeilingLimitLines[0].check === 'tool-1/full' && envCeilingLimitLines[0].reason === ENV_CEILING_REASON && envCeilingLimitLines[0].session === envCeilingStarted?.parentId && !(envNoticesOf(envCeilingMain.slice(-1)).at(-1) ?? '').includes('held at its ceiling'), `${JSON.stringify(envCeilingLimitResult ?? lastToolResult(envCeilingMain[3])?.text ?? null)}; ${JSON.stringify(envCeilingLimitLines)}`],
+  ['env-checks-ceiling: right after check_limit the collector reads env/timeouts at the agent audience: tool-1/full held at 60 s, and under it the raise to 120 s with its reason (status hub batch 9)', envCeilingHub?.error === undefined && envCeilingHub?.agent?.rows.every(row => row.outcome !== 'error') === true && envCeilingTimeouts?.audience === 'agent' && envCeilingTimeouts.text.startsWith('- tool-1/full：超时 60 秒（') && envCeilingTimeouts.text.includes('想要 75 秒，被上限截在 60 秒') && (envCeilingTimeouts.detail ?? []).some(line => line.startsWith('  - 上限已由主 Agent 调高到 120 秒 · ') && line.includes(`：${ENV_CEILING_REASON}；要改回，跟主 Agent 说`)), JSON.stringify(envCeilingHub ?? null).slice(0, 1200)],
+  ['env-checks-ceiling: right after check_limit the env row hands the loop board\'s page one detail line for the check (no timeout in it) and the check with its timeout: 60 s from the estimate of 25 s, held by the cap at 75 s, the raise to 120 s with its reason, a history and no timeouts (panel done condition 8-1)', isDeepStrictEqual(envCeilingPage?.details, ['Full：改了 *.txt 之后跑 · node fast.mjs {files}']) && envCeilingPage.checks.length === 1 && envCeilingCheck?.key === 'tool-1/full' && envCeilingCheck.title === 'Full：full' && envCeilingCheck.timeout?.seconds === 60 && envCeilingCheck.timeout.source?.kind === 'agent-estimate' && envCeilingCheck.timeout.source.estimateS === 25 && isDeepStrictEqual(envCeilingCheck.timeout.held, { by: 'cap', wantedS: 75 }) && envCeilingCheck.timeout.capRaised?.capS === 120 && envCeilingCheck.timeout.capRaised.reason === ENV_CEILING_REASON && Array.isArray(envCeilingCheck.timeout.history) && envCeilingCheck.timeout.history.length >= 1 && isDeepStrictEqual(envCeilingCheck.timeout.timeouts, []) && envCeilingCheck.timeout.timeouts7d === 0, JSON.stringify(envCeilingPage ?? null).slice(0, 1200)],
   ['env-checks-ceiling: a subagent\'s environment notice has the checks line and no held line', envCeilingStarted !== undefined && envCeilingChild.length > 0 && envCeilingChildNotices.length > 0 && envCeilingChildNotices.every(text => text.includes('Checks run after each edit (listed on the loop board): full on *.txt.') && !text.includes('held at its ceiling')), `${envCeilingChild.length} child request(s); ${envCeilingChildNotices.map(text => text.slice(0, 300).replace(/\n/g, ' | ')).join(' || ')}`],
   ['env-notice: the row appended .llm/ to the clone\'s .git/info/exclude and check-ignore verifies it', envIgnored === 0 && envExclude.split('\n').filter(line => line.trim() === '.llm/').length === 1, `check-ignore exit ${envIgnored}; exclude lines: ${envExclude.split('\n').filter(line => line.trim() === '.llm/').length}`],
   titleCheck('client-modules (probe-full)', clientModules.steps[0]?.meta, ['glm', 'hourness']),
@@ -3580,7 +3608,7 @@ for (const [label, ok, detail] of checks) {
   if (!ok) failed += 1
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? `  (${detail})` : ''}`)
 }
-console.log(`probe: ${checks.length - failed}/${checks.length} passed; run artifacts in ${runDir}`)
+console.log(`probe: ${checks.length - failed}/${checks.length} passed`)
 
 // Profile guard: a change to the project part of a user profile voids the
 // run (the probe may have written there, or someone changed this project's
@@ -3597,4 +3625,12 @@ if (voiding.length > 0) {
   console.error('probe: the project part of a user profile changed during the run; the result is void, rerun (a second occurrence is a probe defect)')
   process.exit(2)
 }
-process.exit(failed === 0 ? 0 : 1)
+if (failed > 0) process.exit(1)
+// A run that passed leaves nothing behind; a directory that cannot be deleted is named and the result stands.
+try {
+  removeRunDir(runDir)
+}
+catch (error) {
+  console.warn(`probe: the run directory was not deleted (${error instanceof Error ? error.message : String(error)}): ${runDir}`)
+}
+process.exit(0)

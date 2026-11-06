@@ -39,6 +39,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 .agents/tasks/inject-via-prestep/design.md 评审 APPROVED，8 条 NIT，没有挡路项（design-review.md）。下一步写代码。"
+    },
+    {
+      "at": "2026-11-06T02:19:35.183Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "code 步：e5dda02 把不叫醒的提示从 agent.inject 改走 src/shared/step-mailbox.ts（下一步之前递给模型），合入 origin/main 83c3385，npm test、build、lint 绿；L3 场景 glm-design-wish-off-idle 已加未跑。该步在分支上写了 docs/graph（39d5d2a），之后已由 3860fad 撤回，图只由编排方写。代码评审 CHANGES_REQUESTED 2 条挡路：缺 report.md（含与 m7 的重叠与门禁记录）；合入后的 HEAD 上没跑探针、没有门禁记录。循环第 2 轮接着做。"
+    },
+    {
+      "at": "2026-11-06T02:46:45.022Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "与 M7 的重叠（编排方 2026-11-06）：M7 真实模型运行查出子 agent 的计划与提问通知因不叫醒的 inject 造成死锁，M7 改为对空闲持有者用 followup 叫醒。本线把不叫醒的提示挪进 step-mailbox 时，这两类通知不能进 mailbox；后合入的一方处理冲突并在报告里写明。"
     }
   ]
 }

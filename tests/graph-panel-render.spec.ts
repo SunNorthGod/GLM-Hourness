@@ -81,6 +81,8 @@ interface Views {
   readonly ServicesContext: { readonly Provider: unknown }
   readonly NowContext: { readonly Provider: unknown }
   readonly MainChatContext: { readonly Provider: unknown }
+  readonly ScriptDetails: unknown
+  readonly ScriptReadContext: { readonly Provider: unknown }
 }
 
 let loaded: Promise<Views> | undefined
@@ -89,7 +91,7 @@ let loaded: Promise<Views> | undefined
 function views(): Promise<Views> {
   loaded ??= build({
     stdin: {
-      contents: `export { jsx, markup } from 'react'; export { Home } from './Home.tsx'; export { NodeRow, NowContext, ServicesContext } from './common.tsx'; export { PlanPage } from './Plan.tsx'; export { MainChatContext } from './MainChat.tsx'; export { GuidePage } from './Guide.tsx'; export { registerBoard } from './boards.ts'`,
+      contents: `export { jsx, markup } from 'react'; export { Home } from './Home.tsx'; export { NodeRow, NowContext, ServicesContext } from './common.tsx'; export { PlanPage } from './Plan.tsx'; export { MainChatContext } from './MainChat.tsx'; export { GuidePage } from './Guide.tsx'; export { registerBoard } from './boards.ts'; export { ScriptDetails, ScriptReadContext } from './ScriptDetails.tsx'`,
       resolveDir: fileURLToPath(new URL('../ui/src/graph/', import.meta.url)),
       loader: 'js',
     },
@@ -284,4 +286,15 @@ test('the light theme: grey text takes the secondary label and links mix the ink
   assert.ok(PANEL_CSS.includes(`body:not([data-ds-dark-theme]) .glmg{--g-ink3:${LIGHT_TOKENS.ink3};--g-link:${LIGHT_TOKENS.link}}`))
   assert.match(PANEL_CSS, /\.glmg-more\{[^}]*color:var\(--g-link\)/u)
   assert.match(PANEL_CSS, /\.glmg-meta\{[^}]*color:var\(--g-ink3\)/u)
+})
+
+test('讲细点 of a script, closed, shows its lines and reads nothing; with neither lines nor a file there is nothing to open (rules design 0.10 §9.1, loop board design 0.6 §8.2 item 5)', async () => {
+  const v = await views()
+  const reads: string[] = []
+  const files = { stat: (_s: string, path: string) => { reads.push(path); return Promise.resolve({ ok: false }) }, readBytes: (_s: string, path: string) => { reads.push(path); return Promise.resolve({ ok: false }) } }
+  const within = (props: Record<string, unknown>): string => v.markup(v.jsx(v.ScriptReadContext.Provider, { value: { files, sessionId: 's-1', viewFile: 'C:/p/.llm/loops/view.json' }, children: v.jsx(v.ScriptDetails, props) }))
+  assert.equal(within({ lines: ['id：u-00000001'], file: 'docs/loops/scripts/u-00000001.mjs' }), '<details><summary>讲细点</summary><div>id：u-00000001</div></details>')
+  assert.equal(within({ lines: [], file: 'docs/loops/scripts/u-00000001.mjs' }), '<details><summary>讲细点</summary></details>', 'a script with no other lines still opens to its text')
+  assert.equal(within({ lines: [], file: null }), '')
+  assert.deepEqual(reads, [], 'nothing is read before the person opens it')
 })

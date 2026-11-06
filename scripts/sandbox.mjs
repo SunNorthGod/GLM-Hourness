@@ -11,12 +11,51 @@
  * cannot be computed inside the patch. JSON values are valid YAML.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, lstatSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PACKAGES } from './packages.mjs'
 
 export const repo = resolve(fileURLToPath(new URL('..', import.meta.url)))
+
+/** The name of every probe run directory starts with this; removeRunDir deletes nothing else. */
+const RUN_PREFIX = 'glm-hourness-probe-'
+const sameDir = (a, b) => process.platform === 'win32' ? resolve(a).toLowerCase() === resolve(b).toLowerCase() : resolve(a) === resolve(b)
+
+/**
+ * Make the directory of one probe run: a new directory directly under the
+ * temporary root `tmp` (the system's by default), named after `stamp`. The
+ * run directory used to be `<checkout>/.llm/probe-runs/<stamp>/`; inside the
+ * repository tree a file a few milliseconds old is held by a process outside
+ * DSH often enough that DSH's ReplaceFileW publish of an edit fails with
+ * Win32 1175 in about one run in twenty (docs/FACTS.md §3); under the
+ * temporary directory it does not.
+ */
+export const openRunDir = (stamp, tmp = tmpdir()) => mkdtempSync(join(tmp, `${RUN_PREFIX}${stamp}-`))
+
+/** Unlink every symbolic link and junction under `dir` without following it. */
+function unlinkLinks(dir) {
+  for (const name of readdirSync(dir)) {
+    const path = join(dir, name)
+    const entry = lstatSync(path)
+    if (entry.isSymbolicLink()) unlinkSync(path)
+    else if (entry.isDirectory()) unlinkLinks(path)
+  }
+}
+
+/**
+ * Delete a run directory openRunDir made under `tmp`: every link in it is
+ * unlinked first, so the deletion cannot reach the checkout through a
+ * junction (DEVELOPMENT.md §7, 2026-11-04). Throws, deleting nothing, when
+ * `dir` is not a direct child of `tmp` named with the run prefix, and when a
+ * link or file cannot be removed.
+ */
+export function removeRunDir(dir, tmp = tmpdir()) {
+  if (!sameDir(dirname(dir), tmp) || !basename(dir).startsWith(RUN_PREFIX)) throw new Error(`${dir} is not a probe run directory under ${tmp}`)
+  unlinkLinks(dir)
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+}
 const desktop = process.env.DSH_DESKTOP_DIR ?? join(process.env.LOCALAPPDATA ?? '', 'Programs', 'DeepSeek Harness')
 const exe = join(desktop, 'DeepSeek Harness.exe')
 const bin = join(desktop, 'resources', 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
@@ -116,8 +155,8 @@ export const slash = path => path.replaceAll('\\', '/')
  * `<dir>/home` (memory, workflow, hourness and the journaling rows guard,
  * graph, loops, design and rules get it as their row home, as the user's profile
  * patch does; projectHomeFor takes the row home before the session's project
- * root, and a run's working directories sit in this repository, whose
- * project root would otherwise take the journals) and the DSH home
+ * root, and the project root of a run's working directory would otherwise
+ * take the journals) and the DSH home
  * `<dir>/dsh-home`, so the user-level directory is
  * `<dir>/dsh-home/glm-hourness`. The data row's `projectOverride` is the
  * same project directory: the memory and lessons rows put their project
