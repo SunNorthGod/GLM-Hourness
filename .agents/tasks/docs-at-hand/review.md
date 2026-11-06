@@ -99,3 +99,7 @@ M7（`m3` 工作树）：
 - `docs/ORCHESTRATION.md` §8.6、§18.5、§18.9、§18.10，`docs/DESIGN.md` §2.4a，`docs/FACTS.md` §3 的 `agent-instructions` 压缩一行：草稿的转述相符。
 - 接管设计 §0、§2.1、§2.2：草稿把扫描多出组件候选、接管结束的提醒一句写成对已放行设计的请求、记成批注，与 `d-freeze-until-dogfood`、`d-finish-then-bootstrap` 一致。
 - `d-code-rules-enforce`、`d-defaults-readonly`、`d-rules-visible`、`m7-habits`、`norm-merge-gate`、`d-main-agent-shell`：草稿的用法相符（N2 记了推送一句与一页稿的差异）。
+
+## 第 2 轮（对设计 0.3，只审改动处，2026-11-07）
+
+判定 APPROVED，挡路 0 条，不挡路 12 条（N1 至 N12）。逐条去向见设计 §14。核对过的项：经验行第二个监听器的复用点（env.native、env.dirOf、relevant、briefLine、pushedBy、graphService 与 loadGraph）、scope.ts 的 within 与 repoRelative、默认 daily 条目的校验与绑定路径、两种路由上 DSH 是否送子目录 AGENTS.md 的判法。
