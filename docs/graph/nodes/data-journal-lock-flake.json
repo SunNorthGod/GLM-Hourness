@@ -3,13 +3,26 @@
   "type": "task",
   "title": "两个进程同时写流水时，锁偶尔被误当成过期接管",
   "why": "机器忙的时候流水的锁会被抢走，测试偶发失败挡住合入，真用的时候也可能写坏记录",
-  "status": "doing",
+  "status": "done",
   "parent": "orch",
   "kind": "implement",
   "body": "tests/data-journal.spec.ts 的两进程各追加 200 条一例偶发失败，临时目录留下 .lock.stale-<ms>（m3-metrics-wiring 第 2 轮门禁记录）。先查 src/data 的流水锁：持锁时是否续写时间戳、STALE_LOCK_MS 与负载下的持锁时长、接管过期锁时与原持有者的竞态；确认是产品代码的竞态还是测试夹具的问题，修在原因上。是产品竞态的话，流水在负载下不丢、不重、不交错的保证要有 L2 钉住。",
   "acceptance": [
     "原因写明（产品锁的竞态还是测试夹具），修在原因上；两进程追加一例在负载下（与另一套 npm test 并行）连跑 20 次全绿",
     "是产品竞态时，L2 钉住持锁者活着时锁不会被接管；DESIGN 或 ORCHESTRATION 讲流水锁的一段同批改；门禁全绿，改动在 main 上"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "829236b",
+      "note": "fix(journal): wait 500 ms before taking over an empty lock file"
+    },
+    {
+      "kind": "test",
+      "ref": "node --experimental-strip-types tests/data-journal.spec.ts ×20 on 41471ae, full npm test running concurrently",
+      "exit": 0,
+      "note": "20/20 退出 0，后台 npm test 退出 0，无 .lock.stale- 残留"
+    }
   ],
   "history": [
     {
@@ -32,6 +45,27 @@
       "reason": "运行 data-journal-lock-flake（wf_fcb40f5c2675411f）开工：先在负载下（并行一套 npm test）连跑两进程用例 20 次，核对 829236b 的 L2 与文档；20/20 绿则不改代码、写报告关单，否则修根因、评审、合入",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-06T09:16:47.051Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "data-journal-lock-flake（wf_fcb40f5c2675411f）验证结论 GREEN_NO_CHANGE：原因是产品锁的竞态（appendJournal 没传 unreadableGraceMs，刚 open(wx) 还没写内容的锁被当成空锁立即接管），修在 829236b（M5 的锁选项取 unreadableGraceMs 500），已在 main。负载下（每次都有一套完整 npm test 在后台并行）两进程用例连跑 20 次全部退出 0，没留下 .lock.stale- 文件；829236b 的两条 L2 钉住活着的持锁者（已写入或在宽限期内写入）不被接管；DESIGN.md M5 存储一段与 ORCHESTRATION.md §17.6 记了 500 ms。没有新提交，工作树与分支已删。记录 .agents/tasks/data-journal-lock-flake/report.md、verify.json。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "829236b",
+          "note": "fix(journal): wait 500 ms before taking over an empty lock file"
+        },
+        {
+          "kind": "test",
+          "ref": "node --experimental-strip-types tests/data-journal.spec.ts ×20 on 41471ae, full npm test running concurrently",
+          "exit": 0,
+          "note": "20/20 退出 0，后台 npm test 退出 0，无 .lock.stale- 残留"
+        }
+      ]
     }
   ]
 }
