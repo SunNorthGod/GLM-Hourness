@@ -314,8 +314,13 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
   const { exe, args, env } = sandboxCommand(patch, [task], on)
   // Every scenario's sessions run in a repository of its own, so no row keeps project state in this checkout's project.
   const workspace = scenarioWorkspace(dir, cwd)
+  // rc.3's workspace-write sandbox lets writes through under the workspace and the runtime's os.tmpdir();
+  // the run directory is under the system temporary directory, so the runtime gets one of the scenario's
+  // own, and a target elsewhere in the run directory stays outside both.
+  const temp = join(dir, 'tmp')
+  mkdirSync(temp, { recursive: true })
   const started = Date.now()
-  const result = spawnSync(exe, args, { cwd: workspace, encoding: 'utf8', timeout: 180_000, env })
+  const result = spawnSync(exe, args, { cwd: workspace, encoding: 'utf8', timeout: 180_000, env: { ...env, TEMP: temp, TMP: temp } })
   const elapsedMs = Date.now() - started
   writeFileSync(join(dir, 'stdout.txt'), result.stdout ?? '')
   writeFileSync(join(dir, 'stderr.txt'), result.stderr ?? '')

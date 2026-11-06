@@ -78,6 +78,8 @@ test('every probe scenario boots in the directory scenarioWorkspace gives: the o
   const runner = /function runScenario\([^)]*\) \{[\s\S]*?\n\}\n/.exec(text)?.[0] ?? ''
   assert.ok(runner.includes('const workspace = scenarioWorkspace(dir, cwd)'), 'runScenario asks scenarioWorkspace for the directory')
   assert.ok(runner.includes('spawnSync(exe, args, { cwd: workspace,'), 'the runtime is spawned in that directory')
+  // The run directory is under the system temporary directory, which rc.3's workspace-write sandbox allows; the runtime's own is the scenario's.
+  assert.ok(runner.includes("const temp = join(dir, 'tmp')") && runner.includes('env: { ...env, TEMP: temp, TMP: temp }'), 'the runtime\'s temporary directory is inside the scenario directory')
   // No other place boots the runtime: every scenario goes through runScenario.
   assert.equal(text.match(/sandboxCommand\(/g)?.length, 1)
 })
