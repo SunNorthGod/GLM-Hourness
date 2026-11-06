@@ -56,6 +56,8 @@ export interface ReminderFacts {
   readonly rulesWhole: boolean
   /** The scan found no tests (Node without a test script, Python without tests). */
   readonly testsMissing: boolean
+  /** Checker commands of norm-merge-gate the trial found red on HEAD, or without a result in isolation (§5.6 items 4, 5). */
+  readonly red?: { readonly failed: readonly string[], readonly limited: readonly string[] }
 }
 
 const PATH_WORDS: Readonly<Record<TakeoverPath, string>> = { new: 'new project', existing: 'existing project', gaps: 'gaps of an existing graph' }
@@ -112,6 +114,24 @@ function thingsLines(facts: ReminderFacts): string[] {
   return lines
 }
 
+/** The most commands one red line names. */
+const RED_SHOWN = 4
+
+/**
+ * What the trial says about the gate's checkers (§5.6 items 4, 5): a
+ * checker red on HEAD, or without a result in isolation, leaves
+ * norm-merge-gate, and a task takes its place. A test command stays.
+ */
+function redLines(facts: ReminderFacts): string[] {
+  const red = facts.red
+  if (red === undefined) return []
+  const named = (commands: readonly string[]): string => commands.slice(0, RED_SHOWN).map(command => `\`${command}\``).join(', ') + (commands.length > RED_SHOWN ? ` and ${commands.length - RED_SHOWN} more` : '')
+  return [
+    ...red.failed.length === 0 ? [] : [`The trial found these checkers red on the current code: ${named(red.failed)}. Take them out of norm-merge-gate and propose one task each, "让 <command> 在现在的代码上通过" (old warnings cannot be gated as new-only yet). A test command stays in the gate whatever its result.`],
+    ...red.limited.length === 0 ? [] : [`These checkers gave no result in the trial's isolation: ${named(red.limited)}. Take them out of norm-merge-gate and propose one task each, "拍下 <command> 的基线".`],
+  ]
+}
+
 function testsLine(facts: ReminderFacts): string {
   return facts.testsMissing
     ? 'No tests were found: propose a task "补上测试"; the test command stays in norm-merge-gate, so the first merge is blocked until there is a test.'
@@ -147,6 +167,7 @@ function gapsText(facts: ReminderFacts): string[] {
     INTERVIEW_YIELD,
     `Missing: ${lacking.length === 0 ? 'nothing any more' : lacking.join(', ')}. The harness proposes the norm templates itself.${rest.length === 0 ? '' : ` Propose the rest under the anchor: ${rest.join('; ')}.`}`,
     normsLine(facts),
+    ...redLines(facts),
     ...thingsLines(facts),
     proposedLine(facts),
   ]
@@ -169,6 +190,7 @@ function existingText(facts: ReminderFacts): string[] {
     `5. env as a feature (fixed id env) under the anchor, and tool nodes under it: purpose, usage, why chosen, install place, and the check and config lines in the form ${dir}/defaults.md shows (a check command starts a program without a shell: node, git or an .exe). Do not write an estimate such as \`8s\` into a check line yourself. Do not propose loop-board entries or scripts.`,
     `6. norm-review-floor under the anchor, from ${dir}/floor.md.`,
     testsLine(facts),
+    ...redLines(facts),
     normsLine(facts),
     ...thingsLines(facts),
     proposedLine(facts),

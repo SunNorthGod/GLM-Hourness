@@ -716,6 +716,45 @@ export interface FsPathService {
 }
 
 /**
+ * One runner-failure rule of a confined wrap (rc.3 dsh-sandbox
+ * `RunnerFailureRule`, reference/deepseek-harness packages/sandbox/sandbox/
+ * src/index.ts): a nonzero exit, inside `allowedExitCodes` when given, and a
+ * stderr line (after the exact `informationalLines`) holding one of the
+ * `fatalSignatures`, case-insensitively, means the command never ran.
+ */
+interface RunnerFailureRuleLike {
+  readonly allowedExitCodes?: readonly number[]
+  readonly fatalSignatures: readonly string[]
+  readonly informationalLines?: readonly string[]
+}
+
+/** What `confine` resolves to (rc.3 dsh-sandbox `ConfinedArgv`; sandbox-local:305–336): the argv to spawn instead, how fully it is enforced, the denial dialect and the runner-failure rules. */
+interface ConfinedArgvLike {
+  readonly argv: readonly string[]
+  readonly enforcement: 'full' | 'partial'
+  readonly denialSignatures: readonly string[]
+  readonly runnerFailureRules: readonly RunnerFailureRuleLike[]
+}
+
+/**
+ * The process-sandbox service `sandbox` (rc.3 dsh-sandbox `SandboxProvider`,
+ * sandbox:281–286; `dsh-sandbox-local` in the base composition): wrap an
+ * exact argv under a per-call file policy. It rejects with code
+ * `SANDBOX_UNAVAILABLE` when no backend can enforce the mode, never running
+ * the command unconfined. Without `sessionId` the Windows rung creates and
+ * removes a private temp directory per call (sandbox-local:357–366).
+ */
+export interface SandboxLike {
+  confine(argv: readonly string[], policy: { readonly mode: 'read-only' | 'workspace-write', readonly workspaceRoot: string }, signal?: AbortSignal): Promise<ConfinedArgvLike>
+}
+
+/** The sandbox service, when one with `confine` is composed; undefined otherwise. */
+export function sandboxOf(ctx: ServiceLookup): SandboxLike | undefined {
+  const value: unknown = typeof ctx.get === 'function' ? ctx.get('sandbox') : undefined
+  return typeof (value as Partial<SandboxLike> | undefined)?.confine === 'function' ? value as SandboxLike : undefined
+}
+
+/**
  * A human command invocation (dsh-commands `execute`, lib/index.js
  * `Object.freeze({ commandId, agent, rawInput, attachments, signal })`): the
  * exact receiving agent with its session, and the text after `/name`.

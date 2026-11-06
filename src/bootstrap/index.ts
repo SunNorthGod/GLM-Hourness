@@ -27,6 +27,11 @@ import { BOOTSTRAP_SERVICE } from './service.ts'
 import { settleWorkspace, trackedFiles, untrackedNodeFiles } from './setup.ts'
 import { appendTakeover, openTakeoverOf, type OpenTakeover } from './takeover.ts'
 import { thingLines, thingStates } from './things.ts'
+import { readTrialFile, sweepTrialDirs } from './trial.ts'
+import { TRIAL_MINUTES_DEFAULT } from './trial-plan.ts'
+import { trialStatusLines } from './trial-round.ts'
+import { emitMetric, type EmittedEvent } from '../shared/metrics.ts'
+import { sandboxOf } from '../shared/dsh-min.ts'
 
 /** cordis plugin identity: needs the commands service. */
 export const name = 'dsh-glm-hourness/bootstrap'
@@ -69,7 +74,7 @@ function deliver(agent: DesignInvocationLike['agent'], notice: UserNotice): void
 }
 
 /** `/hourness-init status` (or no argument) while a takeover is open: what it is at, without writing anything. */
-async function openStatus(takeover: OpenTakeover): Promise<string> {
+async function openStatus(takeover: OpenTakeover, root: string): Promise<string> {
   const graph = await loadGraph(takeover.graphDir)
   const { total, byType } = proposedSince(graph, takeover.openedAt)
   const counts = Object.entries(byType).sort(([a], [b]) => a.localeCompare(b)).map(([type, count]) => `${type} ${count}`).join('、')
@@ -78,6 +83,7 @@ async function openStatus(takeover: OpenTakeover): Promise<string> {
     `接管 ${takeover.id} 开着（${PATH_LABELS[takeover.path]}）：这次接管已提 ${total} 个节点${total === 0 ? '' : `（${counts}）`}。`,
     anchor === undefined ? '还没有锚点：主 Agent 提的第一个目标就是锚点，三个规范挂在它下面。' : `锚点 ${anchor}：三个规范挂在它下面。`,
     ...thingLines(thingStates(graph, takeover)),
+    ...trialStatusLines(readTrialFile(root, takeover.id)),
     ...takeover.noted.includes(STAGE_NOTE.code) ? ['设计行的阶段提醒还没有对接管让位：主 Agent 照接管的提醒走。'] : [],
     takeover.path === 'new' ? '下一步：主 Agent 在访谈里问你。' : '下一步：主 Agent 读项目、提节点。',
   ].join('\n')
@@ -93,7 +99,7 @@ export function initCommand(ctx: BootstrapContext, runtime: BootstrapRuntime, ho
 
   const withOpen = async (invocation: DesignInvocationLike, input: Argument, takeover: OpenTakeover, root: string): Promise<CommandResultLike> => {
     const by = { session: invocation.agent.session.id, commandId: invocation.commandId }
-    if (input === '' || input === 'status') return done(await openStatus(takeover))
+    if (input === '' || input === 'status') return done(await openStatus(takeover, root))
     if (input === 'off') {
       const graph = await loadGraph(takeover.graphDir)
       await appendTakeover(root, takeover.id, [{ op: 'takeover-closed', data: { reason: 'abandoned', counts: { proposed: proposedSince(graph, takeover.openedAt).total } } }], by)
@@ -173,8 +179,19 @@ export function initCommand(ctx: BootstrapContext, runtime: BootstrapRuntime, ho
   }
 }
 
+/** Row config: `trialMinutes`, the total of one trial round (1–240 whole minutes, default 45; §2.1). */
+export interface BootstrapConfig {
+  readonly trialMinutes?: unknown
+}
+
+/** The configured total, or the default when it is not a whole number in 1–240. */
+export function trialMinutesOf(config: BootstrapConfig): number {
+  const value = config.trialMinutes
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 240 ? value : TRIAL_MINUTES_DEFAULT
+}
+
 /** cordis plugin entry. */
-export function apply(ctx: BootstrapContext): () => void {
+export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () => void {
   const health = provideRowHealth(ctx, 'bootstrap', 'active', '已加载；/hourness-init 开接管，接管开着时每步提醒主 Agent')
   const disposers: Array<() => void> = [() => { health.dispose() }]
   const report = (agent: AgentLike, state: HealthState, reason: string): void => {
@@ -207,7 +224,26 @@ export function apply(ctx: BootstrapContext): () => void {
     const service = rulesService(ctx) as unknown as Partial<Record<'attachable' | 'acceptProposal', unknown>> | undefined
     return typeof service?.attachable === 'function' && typeof service.acceptProposal === 'function'
   }
-  const runtime = bootstrapRuntime({ graphDir: cwd => graphService(ctx)?.dirFor(cwd), home: homedir, install, report, rulesWhole })
+  const trial = {
+    sandbox: () => sandboxOf(ctx),
+    emit: (event: EmittedEvent, dir: string) => { emitMetric(ctx, event, { dir }) },
+    notify: (agent: AgentLike, notice: UserNotice) => {
+      const live = agent as Partial<DesignInvocationLike['agent']>
+      try {
+        if (live.status === 'running' && typeof live.steer === 'function') live.steer(notice)
+        else if (typeof live.followup === 'function') live.followup(notice)
+      }
+      catch (error) {
+        console.warn(`${name}: trial notice not delivered to agent ${agent.id}: ${message(error)}`)
+      }
+    },
+    trialMinutes: trialMinutesOf(config),
+  }
+  const runtime = bootstrapRuntime({ graphDir: cwd => graphService(ctx)?.dirFor(cwd), home: homedir, install, report, rulesWhole, trial })
+  // The residue of a host that died mid-round (§6.3): best effort, never in the way of activation.
+  void sweepTrialDirs().then((swept) => {
+    if (swept.left.length > 0) health.reactivate('degraded', `试跑目录删不掉：${swept.left.join('、').slice(0, 200)}`)
+  }, () => undefined)
   try {
     if (typeof ctx.provide === 'function') disposers.push(ctx.provide(BOOTSTRAP_SERVICE, runtime.service))
     disposers.push(ctx.on('agent/created', ({ agent }) => { install(agent) }))

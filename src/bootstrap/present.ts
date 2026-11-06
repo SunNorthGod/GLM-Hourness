@@ -19,10 +19,94 @@
  * next to Han characters gets a space between them, in the text and in the
  * record fields alike, so the record stays word for word in the text.
  */
+import { CHECK_TIMEOUT_CAP_MS, CHECK_TIMEOUT_FACTOR, CHECK_TIMEOUT_FLOOR_MS, checkTimeout } from '../env/timeout.ts'
 import { plainWordsIn } from '../graph/plain-question.ts'
 import { askOf, askTextRefusal, proposalRecordRefusal, proposalTitleRefusal, textCoversRecord } from '../graph/proposal.ts'
 import { looksCostly } from './defaults.ts'
 import type { ScanResult } from './scan.ts'
+
+// ------------------------------------------------- timeouts and durations (§7.3)
+
+/**
+ * M7's default limit of one merge-gate command (M7 §3.8.1, the default
+ * configuration; M7 names no constant and has no read-only member that
+ * hands its configured value yet, F49): until it does, every gate-class
+ * timeout is this default and says so.
+ */
+const GATE_DEFAULT_SEC = 1800
+
+/** Who first runs a command after the human agrees: the merge gate (`setup $`, `$`, `when`), the checker after edits, the nightly patrol. */
+export type CommandClass = 'gate' | 'check' | 'patrol'
+
+/** What `executorTimeout` hands back (§7.3): the timeout the executor uses on its first real run. */
+export interface ExecutorTimeout {
+  readonly timeoutSec: number
+  readonly source: 'estimate' | 'default'
+  /** Whether the estimate reaches the executor (today only a check line's `<预计>`). */
+  readonly estimateReaches: boolean
+  readonly clamp?: 'floor' | 'ceiling'
+}
+
+/**
+ * The one place the takeover reads timeouts (§7.3, U13): a check line's
+ * first limit is M4's `checkTimeout` over its estimate (three times, at
+ * least the floor, at most the ceiling; the ceiling without one); a gate
+ * or patrol command gets M7's default whatever the estimate, until the
+ * estimate reaches the merge gate (§25.4).
+ */
+export function executorTimeout(kind: 'check' | 'gate', estimateSec?: number): ExecutorTimeout {
+  if (kind === 'gate') return { timeoutSec: GATE_DEFAULT_SEC, source: 'default', estimateReaches: false }
+  if (estimateSec === undefined) return { timeoutSec: CHECK_TIMEOUT_CAP_MS / 1000, source: 'default', estimateReaches: false }
+  const timeout = checkTimeout({ estimateS: estimateSec, recentMs: [] })
+  const clamp = timeout.capped !== undefined ? 'ceiling' as const : CHECK_TIMEOUT_FACTOR * estimateSec * 1000 < CHECK_TIMEOUT_FLOOR_MS ? 'floor' as const : undefined
+  return { timeoutSec: timeout.limitMs / 1000, source: 'estimate', estimateReaches: true, ...clamp === undefined ? {} : { clamp } }
+}
+
+/**
+ * The one way a time is written (§7.3 item 1): `check` in whole seconds;
+ * `gate` (and patrol, trial times) in seconds below 90, else in whole
+ * minutes, half a minute rounding up.
+ */
+export function durationText(sec: number, kind: 'check' | 'gate'): string {
+  const whole = Math.ceil(sec)
+  if (kind === 'check' || whole < 90) return `${whole} 秒`
+  return `${Math.floor(whole / 60 + 0.5)} 分`
+}
+
+const executorKind = (cls: CommandClass): 'check' | 'gate' => cls === 'check' ? 'check' : 'gate'
+
+/** The 「超时 …」 part, word for word the same in the list's column and in afterTrialText. */
+export function timeoutPart(cls: CommandClass, timeout: ExecutorTimeout): string {
+  const mark = timeout.source === 'default' ? '（默认）' : timeout.clamp === 'ceiling' ? '（到上限）' : ''
+  return `超时 ${durationText(timeout.timeoutSec, executorKind(cls))}${mark}`
+}
+
+const FIRST_RUN: Readonly<Record<CommandClass, string>> = {
+  gate: '同意之后由合入前的检查第一次跑它',
+  check: '同意之后由改完文件就跑的检查在改了文件之后第一次跑它',
+  patrol: '同意之后由夜里的巡检第一次跑它',
+}
+
+const LATE_END: Readonly<Record<CommandClass, string>> = {
+  gate: '，结局是『没过』，主干不前进',
+  check: '，结局是『没跑完』，下一次改动照常再跑',
+  // M7 does not say how a patrol command that runs out ends; not written for it.
+  patrol: '',
+}
+
+/**
+ * What happens next to a command the trial gave no result for (§7.3 item
+ * 2): timed out, out of total time, or not conclusive in isolation. With
+ * `ranSec` (timed out only) at or over the executor's timeout, the sentence
+ * says that run will most likely not finish either.
+ */
+export function afterTrialText(cls: CommandClass, timeout: ExecutorTimeout, ranSec?: number): string {
+  const head = `${FIRST_RUN[cls]}，${timeoutPart(cls, timeout)}`
+  return ranSec !== undefined && ranSec >= timeout.timeoutSec ? `${head}；试跑里它没跑完，这里的上限更短，那一次多半也跑不完${LATE_END[cls]}` : head
+}
+
+/** The executor timeout of a command of a class (a check line with its estimate). */
+export const classTimeout = (cls: CommandClass, estimateSec?: number): ExecutorTimeout => executorTimeout(executorKind(cls), cls === 'check' ? estimateSec : undefined)
 
 /** The two things, by the label their answer goes into: 花钱或独占 (norm-verify-tiers) and 不许碰 (norm-decision-tiers). */
 export type Thing = 'cost' | 'touch'

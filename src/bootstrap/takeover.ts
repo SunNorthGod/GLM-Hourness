@@ -123,7 +123,7 @@ export async function openTakeover(root: string, request: OpenRequest): Promise<
 
 /** One record about a takeover, as the row hands it over. */
 export interface TakeoverRecord {
-  readonly op: 'setup' | 'scan' | 'takeover-path' | 'takeover-closed' | 'note' | 'asked'
+  readonly op: 'setup' | 'scan' | 'takeover-path' | 'takeover-closed' | 'note' | 'asked' | 'trial'
   readonly data: Readonly<Record<string, JsonValue>>
 }
 

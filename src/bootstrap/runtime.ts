@@ -37,6 +37,8 @@ import { appendTakeover, openTakeover, openTakeoverOf, recordAsked, takeoverDir,
 import { NORM_TEMPLATES } from './templates.ts'
 import { thingsAsked, thingStates, touchInside } from './things.ts'
 import { ruleDraft } from './touch.ts'
+import { maybeStartRound, redCheckers, type RoundDeps } from './trial-round.ts'
+import { readTrialFile } from './trial.ts'
 
 /** How a takeover is asked for: `/hourness-init`, with the path the person chose when they gave one. */
 interface PrepareRequest {
@@ -89,6 +91,8 @@ export interface BootstrapDeps {
   readonly report: (agent: AgentLike, state: HealthState, reason: string) => void
   /** Whether the rules board can take a rule through the human's agreement (its service has `attachable` and `acceptProposal`). */
   readonly rulesWhole: () => boolean
+  /** The trial round's host side (src/bootstrap/trial-round.ts); absent, no round starts. `notify` hands the end-of-round notice to the agent. */
+  readonly trial?: Omit<RoundDeps, 'notify'> & { readonly notify: (agent: AgentLike, notice: UserNotice) => void }
 }
 
 /** What the scan says that the reminders keep needing: the tracked files and whether tests were found. */
@@ -167,7 +171,9 @@ export function bootstrapRuntime(deps: BootstrapDeps): BootstrapRuntime {
   const factsOf = async (root: string, takeover: OpenTakeover, graph: LoadedGraph, scan: ScanFacts): Promise<ReminderFacts> => {
     const anchor = anchorOf(graph, takeover.openedAt)
     const gaps = takeover.path === 'gaps' ? gapsOf(graph, scan.files) : undefined
+    const red = takeover.path === 'new' ? undefined : redCheckers(readTrialFile(root, takeover.id))
     return {
+      ...red === undefined || (red.failed.length === 0 && red.limited.length === 0) ? {} : { red },
       takeover: { id: takeover.id, path: takeover.path },
       history: await historyLines(root, takeover.id),
       ...anchor === undefined ? {} : { anchor },
@@ -227,6 +233,20 @@ export function bootstrapRuntime(deps: BootstrapDeps): BootstrapRuntime {
     }
     catch (error) {
       deps.report(agent, 'degraded', `不许碰的草稿写不进：${message(error)}`)
+    }
+  }
+
+  /** Start a trial round in the background when one is due (§6.3); a scan that cannot be read starts none. */
+  const startRound = async (root: string, takeover: OpenTakeover, graph: LoadedGraph, known: Live, agent: AgentLike): Promise<void> => {
+    const trial = deps.trial
+    if (trial === undefined) return
+    try {
+      const scan = JSON.parse(await readFile(join(takeoverDir(root, takeover.id), 'scan.json'), 'utf8')) as ScanResult
+      // The round runs in the background; it never rejects (runTrial settles every failure as an outcome).
+      void maybeStartRound({ root, takeover, graph, scan, files: known.scan?.files ?? [] }, { ...trial, notify: (notice) => { trial.notify(agent, notice) } })
+    }
+    catch (error) {
+      deps.report(agent, 'degraded', `试跑没能开始：${message(error)}`)
     }
   }
 
@@ -372,6 +392,7 @@ export function bootstrapRuntime(deps: BootstrapDeps): BootstrapRuntime {
       }
       const facts = await factsOf(root, takeover, graph, known.scan)
       await writeTouchDrafts(root, known, facts.touchInside, agent)
+      await startRound(root, takeover, graph, known, agent)
       return stepReminder(history, admitted, facts)
     },
   }
