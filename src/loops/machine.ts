@@ -43,7 +43,7 @@ import { join } from 'node:path'
 import { auditPaths } from '../memory/audit.ts'
 import { writeAtomic, type StoreIo } from '../rules/store.ts'
 import { quotaOf, type UsagePricing } from '../shared/pricing.ts'
-import { loginLine, quotaLowLine, quotaLowOf, type LoginView, type QuotaView, type QuotaWindowView } from '../shared/quota.ts'
+import { loginLine, quotaLowLine, quotaLowOf, type LoginView, type QuotaRequest, type QuotaView, type QuotaWindowView } from '../shared/quota.ts'
 import { isGlmModel } from '../shared/route.ts'
 import { CHANNEL_LOGIN_REJECTED, CHANNEL_QUOTA_LOW, loginRejectedKey, quotaLowKey } from './channel.ts'
 import { createRunLock, type LockStand, type RunLock } from './lock.ts'
@@ -362,7 +362,7 @@ export function createMachineRunner(deps: MachineDeps): MachineRunner {
   }
 
   /** The quota (M6-L2): one read when GLM was used and the last reading is old enough, then the windows against each entry's rule. */
-  async function quota(read: (request?: { waitMs?: number, read?: boolean }) => Promise<QuotaView>, cached: QuotaView, entries: readonly LoopEntry[], project: string | undefined): Promise<void> {
+  async function quota(read: (request?: QuotaRequest) => Promise<QuotaView>, cached: QuotaView, entries: readonly LoopEntry[], project: string | undefined): Promise<void> {
     if (state === undefined) return
     if (!await glmUsage()) return
     const now = deps.now()
@@ -377,7 +377,8 @@ export function createMachineRunner(deps: MachineDeps): MachineRunner {
     const started = deps.now()
     let view: QuotaView | undefined
     try {
-      view = await read({ waitMs: QUOTA_WAIT_MS })
+      // The read is the board's, for the project its event would go to: the channel files its glm.quota-read there (metrics design §3.5).
+      view = await read({ waitMs: QUOTA_WAIT_MS, asker: { kind: 'service', ...(project === undefined ? {} : { dir: project }) } })
     }
     catch (error) {
       deps.report(`读 GLM 额度失败：${message(error)}`, 'info')

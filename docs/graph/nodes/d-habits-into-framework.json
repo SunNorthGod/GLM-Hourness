@@ -1,0 +1,26 @@
+{
+  "id": "d-habits-into-framework",
+  "type": "decision",
+  "title": "人的工程习惯做成编排框架的默认做法，人设与说话风格照旧不进插件",
+  "why": "别的项目装上 Hourness 也照这些习惯干活，不靠人自己机器上的用户级配置",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "习惯原文在人的 ~/.zcode/AGENTS.md 第四、五节（报告 .agents/tasks/habits-framework/report.md 第二步）。各条落在规范阶梯的哪一级：\n- 修根因：节点重开过时，任务书要求先找原因、交回写明原因（m7-habits）；重开过而交回没写原因的，由交回门禁拦下，规则登进规则总表，一句话或 /rules lift 能撤；审查认为只修了表现时记不挡路的发现，不改 d-failure-plans 的三类（Q2）。第二次重开时工具结果先提醒一次，第三次照旧问人（habits-prompts）。\n- 不留死代码、条款过时整条重写、仓库里不长 IDE 或工具专用的目录与配置：任务书常驻一句（m7-habits）。IDE 一条只到提示词一级，不进门禁，项目已经提交的这类文件照旧（Q4，人推翻了报告的推荐）。接管的默认表按 ORCHESTRATION.md §7.5 补回 knip、jscpd（Node）与 vulture（Python），Rust 已有 clippy -D warnings，Go 先不加 staticcheck（接管线 B5）。\n- 汇报说清每个结论是读过、跑过还是推断，先前的结论被推翻、检查没过放在最前：主 Agent 身份段加一句，上限 3000 抬到 3200（Q3，habits-prompts）。\n- 规范节点的正文写意图与判断依据，不穷举：graph_propose 的工具说明（habits-prompts）。\n- 长会话规则重读：重锚补规范摘要，L3 实测压缩后宿主是否补回用户级与项目 AGENTS.md（m4-reanchor-norms）。\n- 干净区已在框架里，不动。\n人设、称呼、语气这类说话风格照旧不进插件。CHARTER.md §9 存放表与 hourness 目标的非目标按此改写（Q1；文档随 habits-prompts 同批改）。",
+  "history": [
+    {
+      "at": "2026-11-05T13:48:47.414Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "习惯融进框架的调查报告 .agents/tasks/habits-framework/report.md 提了四件要人定的事（Q1–Q4），编排方都推荐「可以」。人答 Q1–Q3 可以；Q4（IDE 目录这一条不进框架）人推翻推荐，要求也加进框架。编排方定 IDE 一条只到提示词一级（任务书一句），不进门禁，已经提交这类文件的项目照旧。",
+      "relay": "其余是\n哦，ide那条也加进去吧",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-06T00:58:57.023Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "长会话规则重读一条（报告 H2）落地：m4-reanchor-norms 合入 main 8ca520b。报告 2.2 没核实的两点已实测：压缩之后 dsh-agent-instructions 每次补回用户级与项目 AGENTS.md，子 agent 也收到（FACTS.md §3）。"
+    }
+  ]
+}

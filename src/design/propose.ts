@@ -29,7 +29,8 @@ import type { HealthState } from '../shared/health.ts'
 import { PROPOSE_TO_HUMAN, type ShownProposal } from '../shared/tool-names.ts'
 import { askBoard, attachBody, boardOfBody, resolveAttach, type AttachBoard, type AttachDetail, type Attachment } from './attach.ts'
 import { bodyWithEffect, effectOf, effectShown, ruleEffectOf, type RuleEffect } from '../memory/effect.ts'
-import { emitMetric } from './metrics.ts'
+import { toMetricsId } from '../shared/metrics.ts'
+import { emitDesign, optionalId, type DesignMetricEvent } from './metrics.ts'
 import { TALK_SHAPES, type TalkState } from './talk.ts'
 import { confirmGate, isRecord, mainAgentCall, moduleOfGoal, openGoal, readGraph, refuse, refuseWith, releasePage, releaseReady, toolShell } from './tool-support.ts'
 
@@ -166,11 +167,14 @@ interface Args {
 class Refused extends Error {
   reasonCode: string
   field: string | undefined
+  /** For not-in-text: where the record had to be, the question sentence (ask) or the whole text. */
+  within: string | undefined
 
-  constructor(message: string, reasonCode: string, field?: string) {
+  constructor(message: string, reasonCode: string, field?: string, within?: string) {
     super(message)
     this.reasonCode = reasonCode
     this.field = field
+    this.within = within
   }
 }
 
@@ -302,7 +306,7 @@ function checkWords(form: AskForm, args: Args, record: Parameters<typeof proposa
   if (bad !== undefined) throw new Refused(JSON.stringify({ code: 'invalid', message: bad.message, field: bad.field, hint: bad.hint }), 'record', bad.field)
   const missing = textCoversRecord(args.text, record, form)
   if (missing !== undefined) {
-    throw new Refused(JSON.stringify({ code: 'invalid', message: `${missing.field} is not in text word for word`, field: 'text', hint: `put the ${missing.field} of the record word for word ${missing.within === 'ask' ? 'in the sentence that ends with the question mark' : 'in text'}: what the human agrees to must be what is kept` }), 'not-in-text', 'text')
+    throw new Refused(JSON.stringify({ code: 'invalid', message: `${missing.field} is not in text word for word`, field: 'text', hint: `put the ${missing.field} of the record word for word ${missing.within === 'ask' ? 'in the sentence that ends with the question mark' : 'in text'}: what the human agrees to must be what is kept` }), 'not-in-text', missing.field, missing.within)
   }
 }
 
@@ -324,18 +328,18 @@ function talkRead(deps: DesignToolDeps, agent: AgentLike): TalkState | undefined
 }
 
 /** What a call of kind confirm or release checks before it looks at the goal: the graph, the words (the limits of a recommend, the plain words) and the number of this question in the reply. */
-async function beforeGoalCall(deps: DesignToolDeps, agent: AgentLike, where: Where, args: GoalArgs): Promise<{ readonly graph: LoadedGraph, readonly number: 1 | 2 | 3 }> {
+async function beforeGoalCall(deps: DesignToolDeps, agent: AgentLike, where: Where, args: GoalArgs): Promise<{ readonly graph: LoadedGraph, readonly number: 1 | 2 | 3, readonly state: TalkState | undefined }> {
   const state = talkRead(deps, agent)
   const graph = await readGraph(where.dir)
   checkLimits('recommend', args.text)
   checkPlain('text', args.text)
-  return { graph, number: numberOf(state) }
+  return { graph, number: numberOf(state), state }
 }
 
 /** The error a call of kind confirm or release throws: a refusal of the harness is counted for the metrics and thrown as the message the model reads; any other error as it is. */
-function refusedCall(kind: Kind, error: unknown): Error {
+function refusedCall(deps: DesignToolDeps, agent: AgentLike, kind: Kind, error: unknown): Error {
   if (!(error instanceof Refused)) return error instanceof Error ? error : new Error(String(error))
-  emitMetric({ event: 'design.proposal-refused', kind, reason: error.reasonCode, field: error.field })
+  emitDesign(deps.lookup, agent, refusedEvent(kind, undefined, error, undefined))
   return new Error(error.message, { cause: error })
 }
 
@@ -348,7 +352,7 @@ function refusedCall(kind: Kind, error: unknown): Error {
  */
 async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where, args: GoalArgs): Promise<Record<string, unknown>> {
   try {
-    const { graph, number } = await beforeGoalCall(deps, agent, where, args)
+    const { graph, number, state } = await beforeGoalCall(deps, agent, where, args)
     const goal = confirmGate(graph, openGoal(graph, args.goal))
     // The sample of the user graph is not cut: one too big for a page is refused, like the release page (user graph design 0.4.1 §5.1, flows:page).
     const page = renderUserGraph(userGraphOf(graph, goal), 'confirm')
@@ -356,7 +360,7 @@ async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
       refuse('gate_unmet', `the requirement of "${goal.id}" is not complete; missing: ${CONFIRM_PAGE_LABEL}`, `${CONFIRM_PAGE_LABEL}: the user graph is too big for one page: split the goal, or shorten flow and step titles`)
     }
     const text = withUserPage(renderAsk(args.text, number, undefined, args.sample, false), page)
-    emitMetric({ event: 'design.proposal-shown', kind: 'confirm', number, goal: goal.id, codePoints: codePointCount(args.text), points: codePointCount(text), sample: args.sample !== undefined })
+    emitDesign(deps.lookup, agent, { k: 'design.proposal-shown', body: { kind: 'confirm', number, goal: toMetricsId(goal.id), pending: toMetricsId(goal.id), units: codePointCount(args.text), points: codePointCount(text), sample: args.sample !== undefined, again: shownBefore(state, 'confirm', goal.id, undefined) } })
     return {
       tool: PROPOSE_TO_HUMAN,
       kind: 'confirm',
@@ -368,7 +372,7 @@ async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
     }
   }
   catch (error) {
-    throw refusedCall('confirm', error)
+    throw refusedCall(deps, agent, 'confirm', error)
   }
 }
 
@@ -384,7 +388,7 @@ async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
  */
 async function releaseCall(deps: DesignToolDeps, agent: AgentLike, where: Where, args: GoalArgs): Promise<Record<string, unknown>> {
   try {
-    const { graph, number } = await beforeGoalCall(deps, agent, where, args)
+    const { graph, number, state } = await beforeGoalCall(deps, agent, where, args)
     const goal = openGoal(graph, args.goal)
     const module = args.module === undefined ? undefined : moduleOfGoal(graph, goal, args.module)
     const ready = releaseReady(graph, goal, module)
@@ -393,7 +397,7 @@ async function releaseCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
     // After the page the harness appends the user page (user graph design 0.4.1 §5.2, §5.3); its size is the release gate's flows:page.
     const userPage = releaseUserPage(userGraphOf(graph, goal), module)
     const text = withUserPage(renderAsk(args.text, number, undefined, exact, false), userPage)
-    emitMetric({ event: 'design.proposal-shown', kind: 'release', number, goal: goal.id, module: module?.id, codePoints: codePointCount(args.text), points: codePointCount(text), sample: args.sample !== undefined, page: args.page !== undefined })
+    emitDesign(deps.lookup, agent, { k: 'design.proposal-shown', body: { kind: 'release', number, goal: toMetricsId(goal.id), ...optionalId('module', module?.id), pending: toMetricsId(module?.id ?? goal.id), units: codePointCount(args.text), points: codePointCount(text), sample: args.sample !== undefined, again: shownBefore(state, 'release', goal.id, module?.id) } })
     return {
       tool: PROPOSE_TO_HUMAN,
       kind: 'release',
@@ -407,8 +411,18 @@ async function releaseCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
     }
   }
   catch (error) {
-    throw refusedCall('release', error)
+    throw refusedCall(deps, agent, 'release', error)
   }
+}
+
+/** design.proposal-refused for a refusal of the harness: the reason code, the field and where the record had to be, the prefix of attach. */
+function refusedEvent(kind: Kind, form: string | undefined, error: Refused, attach: string | undefined): DesignMetricEvent {
+  return { k: 'design.proposal-refused', body: { kind, ...optionalId('form', form), code: toMetricsId(error.reasonCode), ...optionalId('field', error.field), ...optionalId('within', error.within), ...optionalId('attach', attach?.split(':')[0]) } }
+}
+
+/** Whether this confirm or release (the goal, or the module) was put to the human before in this session. */
+function shownBefore(state: TalkState | undefined, kind: 'confirm' | 'release', goal: string, module: string | undefined): boolean {
+  return state?.shown.some(entry => entry.kind === kind && entry.goal === goal && entry.module === module) ?? false
 }
 
 /** A question in the proposal shape that still waits for the human, found by its id. */
@@ -470,7 +484,7 @@ export function proposeTool(deps: DesignToolDeps): ToolDefinitionLike {
         const goal = goalOf(await readGraph(where.dir), shown.question.id)?.id
         const { lines, exact } = exactOfShown(shown)
         const text = renderAsk(args.text, number, shown.question.form === 'choose' ? shown.question.ways : undefined, lines, shown.sample !== undefined)
-        emitMetric({ event: 'design.proposal-shown', kind: 'question', form, number, goal, question: shown.question.id, attach: shown.attach?.split(':')[0], codePoints: codePointCount(args.text), points: codePointCount(text), sample: shown.sample !== undefined, again })
+        emitDesign(deps.lookup, agent, { k: 'design.proposal-shown', body: { kind: 'question', form, number, goal: toMetricsId(goal), pending: toMetricsId(shown.question.id), ...optionalId('attach', shown.attach?.split(':')[0]), units: codePointCount(args.text), points: codePointCount(text), sample: shown.sample !== undefined, again } })
         return {
           tool: PROPOSE_TO_HUMAN,
           kind: 'question',
@@ -485,7 +499,7 @@ export function proposeTool(deps: DesignToolDeps): ToolDefinitionLike {
       }
       catch (error) {
         if (error instanceof Refused) {
-          emitMetric({ event: 'design.proposal-refused', kind: 'question', form: args.form, reason: error.reasonCode, field: error.field, attach: args.attach?.split(':')[0] })
+          emitDesign(deps.lookup, agent, refusedEvent('question', args.form, error, args.attach))
           throw new Error(error.message, { cause: error })
         }
         throw error

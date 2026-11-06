@@ -3,7 +3,7 @@
   "type": "task",
   "title": "GLM 包的四类事件交给指标流水",
   "why": "额度读取、上游限额、登录被拒与高峰提醒都记进同一份流水，便于对账",
-  "status": "doing",
+  "status": "done",
   "parent": "m6",
   "kind": "implement",
   "tier": "standard",
@@ -20,6 +20,24 @@
     {
       "type": "depends",
       "to": "metrics"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "133a876",
+      "note": "GLM 包的四类事件交给指标流水"
+    },
+    {
+      "kind": "commit",
+      "ref": "cf0ed57",
+      "note": "合入 main 的合并提交，origin 与 github 经 ls-remote 一致"
+    },
+    {
+      "kind": "test",
+      "ref": "build、preflight、npm test、npm run -s probe on cf0ed57",
+      "exit": 0,
+      "note": "探针 420/420，棘轮 eslint 73 / knip 18 / jscpd 1"
     }
   ],
   "history": [
@@ -54,6 +72,68 @@
       "reason": "运行 m6-metrics-events（wf_2bf0ad146e8238b2）开工：指标流水已在 main（31c9e0f 起），原先的被挡条件已满足",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-05T11:26:33.593Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "实现已在分支 m6-metrics-events（133a876，已推 origin，基于 main 8560d80，未合入）：四种事件经 src/glm-llm/metrics.ts 的 glmMetricSink 交指标服务（by: glm）；额度读取的归属由 QuotaRequest.asker 带（/glm-status、/hourness 带会话，循环板带项目目录），上游限额与登录被拒归模型请求的会话，高峰提醒归 agent 的会话；服务不在时不交、不告警，事件里没有令牌、指纹与请求头。门禁：build 0、npm test 0（3172 通过 0 失败，新 spec tests/glm-metrics.spec.ts 16 项），探针 420/420（各场景流水里有 glm.quota-read 与 glm.peak-reminder，没有拒收）。剩合入 main；验收两条按 L2 已核。"
+    },
+    {
+      "at": "2026-11-05T11:33:02.689Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方补记：上一条批注（main b6bbbf7）是 m6-metrics-events 的代码步自己写进 docs/graph 并推 main 的，违反任务书「不动 docs/graph」。内容属实，保留不回退；已告诉该步之后不再写图或推 main。下一步评审。"
+    },
+    {
+      "at": "2026-11-05T12:41:09.483Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m6-metrics-events（wf_2bf0ad146e8238b2）评审 APPROVED，没有挡路发现（工作树 .agents/tasks/m6-metrics-events-review/review.json、review.md）。不挡路 3 条，其中 N1：m4-suppressions 第 1 条的指标事件已由 3f59b61 交过，合入时在 m4 一侧补一条批注写明。下一步合入 main。"
+    },
+    {
+      "at": "2026-11-05T12:55:21.812Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入步（wf_2bf0ad146e8238b2 merge）在跑：分支已合入 origin/main，origin/m6-metrics-events 在 201007c，还没进 main。进 main 后关节点，并在 m4-suppressions 一侧补 N1 的批注（第 1 条的指标事件已由 3f59b61 交过）。"
+    },
+    {
+      "at": "2026-11-05T13:48:50.951Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "m6-metrics-events（wf_2bf0ad146e8238b2）完成：评审 APPROVED，没有挡路发现；合入 main cf0ed57，src/glm-llm/index.ts 一处冲突两边都留；合入树门禁全绿。验证层 L2；合入步时桌面版在运行，没有重启（不杀进程），当前 main 上的行加载由 glm-context-window-desktop-check（wf_f773f9cedc7b4708）一并核对。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "133a876",
+          "note": "GLM 包的四类事件交给指标流水"
+        },
+        {
+          "kind": "commit",
+          "ref": "cf0ed57",
+          "note": "合入 main 的合并提交，origin 与 github 经 ls-remote 一致"
+        },
+        {
+          "kind": "test",
+          "ref": "build、preflight、npm test、npm run -s probe on cf0ed57",
+          "exit": 0,
+          "note": "探针 420/420，棘轮 eslint 73 / knip 18 / jscpd 1"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-05T15:32:42.352Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面核对 A 顺带核了本节点：在 b923210 的构建上跑 /glm-status，临时项目的指标流水里有一条 by=glm、k=glm.quota-read 的事件（14:32:45Z，ok true、ms 555、by command），之前这份流水里没有 by=glm 的行。另外三类（上游限额、登录被拒、高峰提醒）要碰上限流、登录被拒或高峰开始才会出，这次没有触发。"
+    },
+    {
+      "at": "2026-11-05T16:08:34.279Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面核对 A（wf_f773f9cedc7b4708）顺带核到本节点的代码在人的桌面版上生效：执行 /glm-status 时临时项目的指标流水多出一条 by=glm、k=glm.quota-read 的事件（writer 是 39012 的宿主，build b923210），流水里此前没有 by=glm 的行；其余三类事件要限额、登录被拒或高峰开始才触发，没有核。"
     }
   ]
 }

@@ -15,8 +15,9 @@ import { PROPOSE_TO_HUMAN, RECORD_HUMAN_ANSWER, shownProposalOf } from '../share
 
 /**
  * The guide to talking with the human (decision d-ask-three-gates: whether
- * to ask, when to ask, how to interview), English instructions with the
- * person's words in Chinese. Followed in the system prompt by
+ * to ask, when to ask, how to interview; decision d-habits-into-framework:
+ * how reliable each conclusion of a report is, and bad news first), English
+ * instructions with the person's words in Chinese. Followed in the system prompt by
  * PLAIN_WORDS_GUIDE (src/graph/plain-question.ts); how to ask is in
  * TALK_SHAPES and the examples, in the description of propose_to_human.
  */
@@ -28,6 +29,7 @@ export const TALK_GUIDE = [
   `Every other question that needs their answer goes through ${PROPOSE_TO_HUMAN}, and you show its text as given; its description has the four shapes (recommend, choose, want, look) and the limits.`,
   'Ask at a natural stopping point, report first and questions last, at most three in one reply, one decision each.',
   'In the report before the questions, say for each one what it is about and where it came from, in one sentence.',
+  'Say of every conclusion whether you read it, ran it or inferred it; an earlier conclusion of yours that turned out wrong, or a check that failed, goes first in the report.',
   `A short answer to a matter that cannot be taken back is restated first ("那我记成：…") unless it is plainly yes (${[...AGREE_WORDS, '第 N 条'].map(word => `「${word}」`).join('')}); wait for their yes before you record it with ${RECORD_HUMAN_ANSWER} and their exact words.`,
   'Ask at the project-manager level, never about code, and never what you can look up.',
 ].join(' ')
@@ -297,4 +299,18 @@ export function personSaid(state: TalkState, quotes: readonly string[], afterMs:
     }
   }
   return { ok: true, relay: quotes.join('\n') }
+}
+
+/**
+ * The first message the human sent after `afterMs` that has `quote` as a
+ * whole phrase, as personSaid finds it: its time, and whether the main
+ * agent's message before it said it would record the answer. For the
+ * metrics of a recorded answer (the wait, `noted`); undefined when no
+ * message has it.
+ */
+export function quotedMessage(state: TalkState, quote: string, afterMs: number): { readonly time: number, readonly restated: boolean } | undefined {
+  const needle = normalizeTalk(quote)
+  if (needle.length === 0) return undefined
+  const message = state.people.find(entry => entry.time > afterMs && onBoundaries(normalizeTalk(entry.text), needle) === 'found')
+  return message === undefined ? undefined : { time: message.time, restated: message.restated }
 }

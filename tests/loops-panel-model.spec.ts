@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { readFile, readdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { plainWordsIn } from '../src/graph/plain-question.ts'
@@ -7,10 +10,12 @@ import { LOOP_DEFAULTS } from '../src/loops/defaults.ts'
 import { LOOP_EVENT_TABLE } from '../src/loops/events.ts'
 import type { LoopEntry, LoopEntryDefinition, PersonEntry } from '../src/loops/model.ts'
 import { nextOccurrence } from '../src/loops/trigger.ts'
-import { buildView, momentText, runLine, type LoopsView, type ViewRuntime } from '../src/loops/view.ts'
+import { buildView, momentText, runLine, type LoopsView, type ScriptStanding, type ViewRuntime } from '../src/loops/view.ts'
+import { scriptStandingOf } from '../src/loops/boards.ts'
 import { loopsBoard } from '../ui/src/loops/board.ts'
-import { buildLoopsPage } from '../ui/src/loops/model.ts'
+import { buildLoopsPage, type LoopItem } from '../ui/src/loops/model.ts'
 import { holdLoopsSource, LoopsSource } from '../ui/src/loops/source.ts'
+import { projectRootOfView, readScriptText, scriptTextHead } from '../ui/src/graph/script-text.ts'
 import { BOARD_ORDER } from '../ui/src/graph/boards.ts'
 import { fakeRemote, fakeSessions, until } from './panel-helpers.ts'
 
@@ -48,7 +53,7 @@ const SCRIPT = { kind: 'script', script: { file: 'docs/loops/scripts/u-00000001.
 const CHECK = { kind: 'check', tool: 'tsc', argv: ['node', 'tsc', '--noEmit'], report: 'on-change' } as const
 
 /** A view with one entry of every kind of trigger and action, plus the runtime given. */
-function richView(runtime?: ViewRuntime): LoopsView {
+function richView(runtime?: ViewRuntime, scriptStanding?: (entry: PersonEntry) => ScriptStanding | undefined): LoopsView {
   const plugin = [
     pluginEntry(tell('loops.once', { kind: 'once', at: '2026-11-05T02:30:00.000Z' })),
     pluginEntry(tell('loops.every-half-hour', { kind: 'every', seconds: 1800 }, { action: { kind: 'tell-main', text: 'Hi.', wake: false } })),
@@ -69,7 +74,7 @@ function richView(runtime?: ViewRuntime): LoopsView {
     journal: { unacknowledged: [] },
     git: undefined,
   }
-  return buildView({ at: AT, project: 'p', plugin, board, events: LOOP_EVENT_TABLE, ...(runtime === undefined ? {} : { runtime }) })
+  return buildView({ at: AT, project: 'p', plugin, board, events: LOOP_EVENT_TABLE, ...(runtime === undefined ? {} : { runtime }), ...(scriptStanding === undefined ? {} : { scriptStanding }) })
 }
 
 const entryOf = (view: LoopsView, id: string) => view.entries.find(entry => entry.id === id)!
@@ -224,11 +229,275 @@ test('a project without a view yet, or without entries of the person\'s, says ho
   assert.equal(page.mineEmpty, '还没有你加的。要加：跟主 Agent 说「每 30 分钟查一下服务器，挂了告诉我」')
 })
 
+// --- A person's script or check entry (design §8.2 item 5, plain-ui 1.3 §4.7) ---
+
+const AGREED_DAY = `${new Date('2026-11-01T01:00:00.000Z').getMonth() + 1} 月 ${new Date('2026-11-01T01:00:00.000Z').getDate()} 日`
+
+test('a person\'s script entry says it is the version agreed to and its timeout with where the number came from; a check entry its command too; a deleted or a telling entry has no such lines', () => {
+  const view = richView()
+  assert.deepEqual(entryOf(view, 'u-00000001').work, [
+    `脚本：你 ${AGREED_DAY} 同意的那一版`,
+    '超时 30 秒（条目里写明的）：超时算没跑完，告诉事件来的那个会话，这次的事件下次再跑；崩溃算没过',
+  ])
+  assert.equal(entryOf(view, 'u-00000001').script, 'docs/loops/scripts/u-00000001.mjs')
+  assert.deepEqual(entryOf(view, 'u-00000002').work, [
+    `检查：项目图上「tsc」的命令，你 ${AGREED_DAY} 同意的那一条`,
+    '命令：node tsc --noEmit',
+    '超时 60 秒（设计里定的固定值）：超时算没跑完，告诉主 Agent，这次的事件下次再跑；崩溃算没过',
+  ])
+  assert.equal(entryOf(view, 'u-00000002').script, undefined, 'a check has no script to open')
+  assert.equal(entryOf(view, 'u-00000004').work?.[0], '脚本：这台电脑上没有你同意的记录，先不跑')
+  assert.deepEqual([entryOf(view, 'u-00000003').work, entryOf(view, 'u-00000003').script], [undefined, undefined])
+  assert.equal(entryOf(view, 'loops.daily').work, undefined)
+})
+
+test('a script that is not the agreed bytes, gone or too large reads so before the next run; an unadopted entry stays unadopted whatever the file is', () => {
+  const lineOf = (standing: ScriptStanding, id = 'u-00000001'): string | undefined => entryOf(richView(undefined, () => standing), id).work?.[0]
+  assert.equal(lineOf('changed'), '脚本 docs/loops/scripts/u-00000001.mjs 和你同意的那一版不一样，先不跑；要接着用，跟主 Agent 说「把重启之后查一下服务的脚本给我看一下」')
+  assert.equal(lineOf('missing'), '脚本文件不见了：docs/loops/scripts/u-00000001.mjs，先不跑')
+  assert.equal(lineOf('too-large'), '脚本太大，先不跑')
+  assert.equal(lineOf('agreed'), `脚本：你 ${AGREED_DAY} 同意的那一版`)
+  assert.equal(lineOf('changed', 'u-00000004'), '脚本：这台电脑上没有你同意的记录，先不跑')
+  const asked: string[] = []
+  richView(undefined, (entry) => { asked.push(entry.id); return 'agreed' })
+  assert.deepEqual(asked, ['u-00000001', 'u-00000004'], 'only a script entry that is not deleted is read')
+})
+
+test('a check whose last run was refused for a changed or unreadable command says so; the command line stays', () => {
+  const linesOf = (reason: string): readonly string[] | undefined => entryOf(richView({ last: { 'u-00000002': { at: '2026-11-01T09:00:00.000Z', outcome: 'refused', reason } }, passing: {}, waiting: 0, records: [] }), 'u-00000002').work
+  assert.deepEqual(linesOf('check-changed')?.slice(0, 2), [`检查：项目图上「tsc」的命令改过了，和你 ${AGREED_DAY} 同意的那一条不一样，先不跑；要接着用，跟主 Agent 说「把改了 ts 就跑检查的检查再看一眼，同意一次」`, '命令：node tsc --noEmit'])
+  assert.equal(linesOf('check-missing')?.[0], '检查：取不到项目图上「tsc」的命令，先不跑')
+  assert.equal(linesOf('outside-project')?.[0], `检查：项目图上「tsc」的命令，你 ${AGREED_DAY} 同意的那一条`)
+})
+
+test('the page model carries the work lines and the script\'s file; a plugin entry has none', () => {
+  const page = buildLoopsPage(richView())
+  const [script, checker, unadopted] = page.mine.rows
+  assert.deepEqual([script.workLines.length, script.script], [2, 'docs/loops/scripts/u-00000001.mjs'])
+  assert.deepEqual([checker.workLines[1], checker.script], ['命令：node tsc --noEmit', null])
+  assert.equal(unadopted.workLines[0], '脚本：这台电脑上没有你同意的记录，先不跑')
+  assert.deepEqual([page.timed.rows[0].workLines, page.timed.rows[0].script], [[], null])
+  assert.deepEqual(plainWordsIn(page.mine.rows.flatMap(row => row.workLines).join('\n')), [])
+})
+
+test('the host reads a script\'s standing with the executor\'s test: the agreed bytes, other bytes, no file, over 64 KiB', () => {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'loops-standing-')))
+  try {
+    const text = 'console.log(1)\n'
+    const entry = (file: string, sha = createHash('sha256').update(text).digest('hex')): PersonEntry => ({ id: 'u-00000001', title: 't', when: { kind: 'event', events: ['loops.host-restarted'] }, action: { kind: 'script', script: { file, sha256: sha, lang: 'node' }, report: 'always' }, source: { kind: 'person', at: AT, via: 'chat', relay: '好', proposal: 'lp-0123abcd' } })
+    mkdirSync(join(root, 'docs', 'loops', 'scripts'), { recursive: true })
+    writeFileSync(join(root, 'docs', 'loops', 'scripts', 'a.mjs'), text)
+    writeFileSync(join(root, 'docs', 'loops', 'scripts', 'big.mjs'), 'x'.repeat(65_537))
+    assert.equal(scriptStandingOf(root, entry('docs/loops/scripts/a.mjs')), 'agreed')
+    assert.equal(scriptStandingOf(root, entry('docs/loops/scripts/a.mjs', 'b'.repeat(64))), 'changed')
+    assert.equal(scriptStandingOf(root, entry('docs/loops/scripts/gone.mjs')), 'missing')
+    assert.equal(scriptStandingOf(root, entry('docs/loops/scripts/big.mjs')), 'too-large')
+    assert.equal(scriptStandingOf(root, { ...entry('x'), action: CHECK }), undefined, 'a check runs no script')
+  }
+  finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('讲细点 reads a script from the project root of the board\'s view.json, its size first: the text, over 64 KiB not read, no file, a failed read, no root', async () => {
+  const big = 'x'.repeat(65_537)
+  const fake = fakeRemote({ 'C:/p/docs/loops/scripts/u-1.mjs': 'console.log(1)\n', 'C:/p/docs/loops/scripts/big.mjs': big, 'C:/p/docs/loops/scripts/bad.mjs': 'x' })
+  assert.deepEqual(projectRootOfView('C:/p/.llm/loops/view.json'), { root: 'C:/p', separator: '/' })
+  assert.deepEqual(projectRootOfView('C:\\p\\.llm\\rules\\view.json'), { root: 'C:\\p', separator: '\\' })
+  assert.equal(projectRootOfView('C:/p/view.json'), null)
+  const project = { root: 'C:/p', separator: '/' }
+  const read = (file: string) => readScriptText(fake.remote.workspaceFiles, 's1', project, file, new AbortController().signal)
+  assert.deepEqual(await read('docs/loops/scripts/u-1.mjs'), { kind: 'text', text: 'console.log(1)\n' })
+  assert.deepEqual(await read('docs/loops/scripts/big.mjs'), { kind: 'too-large' })
+  assert.equal(fake.readsOf('C:/p/docs/loops/scripts/big.mjs'), 0, 'a file over 64 KiB is not read')
+  assert.deepEqual(await read('docs/loops/scripts/gone.mjs'), { kind: 'missing' })
+  fake.fail('C:/p/docs/loops/scripts/bad.mjs', 'boom')
+  assert.deepEqual(await read('docs/loops/scripts/bad.mjs'), { kind: 'failed', message: 'boom' })
+  const file = 'docs/loops/scripts/u-1.mjs'
+  const heads = ([{ kind: 'reading' }, { kind: 'text', text: '' }, { kind: 'too-large' }, { kind: 'missing' }, { kind: 'failed', message: 'boom' }, { kind: 'no-root' }] as const).map(shown => scriptTextHead(shown, file))
+  assert.deepEqual(heads, [
+    `正在读脚本原文：${file}`,
+    `脚本原文：${file}`,
+    `脚本 ${file} 超过 64 KiB，这里不显示原文`,
+    `脚本文件不见了：${file}`,
+    '脚本原文读不出：boom',
+    '脚本原文读不出：不知道这个项目在哪',
+  ])
+  assert.deepEqual(plainWordsIn(heads.join('\n')), [])
+})
+
+// --- The timeout cell of a plugin entry's checks (plain-ui 1.3 §4.7, §8.2) ---
+
+/** The day the cell writes, on the clock of this machine. */
+const day = (at: string): string => `${new Date(at).getMonth() + 1} 月 ${new Date(at).getDate()} 日`
+const WRITTEN = '2026-10-29T03:00:00.000Z'
+const RAISED_AT = '2026-11-01T02:00:00.000Z'
+const CHECKER = tell('env.checks-after-edit', { kind: 'event', events: ['loops.host-restarted'] }, { title: '改完文件就跑检查', action: { kind: 'self', does: '跑这个项目里批过的检查', by: 'glm-hourness/env' }, ownRules: ['一步最多等 20 秒'] })
+const ESTIMATE = { kind: 'agent-estimate', estimateS: 4, at: WRITTEN, session: 'a3f2' }
+const measured = (runs: number, slowestS: number): Record<string, unknown> => ({ kind: 'measured', runs, slowestS })
+/** The history and the (empty) timeouts an estimate or measured runs owe. */
+const OWED = { history: [{ at: WRITTEN, seconds: 12, source: '写检查的 agent 估 4 秒' }], timeouts: [] }
+const check = (timeout: Record<string, unknown>, key = 'tool-1/lint'): unknown => ({ key, title: 'Lint：lint', timeout })
+
+interface Heard {
+  readonly warn: Array<readonly [string, string]>
+  readonly info: Array<readonly [string, string]>
+}
+
+/** The view of one plugin entry, the checker's, whose hand-over gives these checks and detail lines. */
+const checkerView = (checks: readonly unknown[], details: readonly string[] = []): LoopsView =>
+  buildView({ at: AT, project: 'p', plugin: [{ entry: pluginEntry(CHECKER), state: 'active', details: { ok: true, lines: details } }], board: undefined, events: LOOP_EVENT_TABLE, checks: () => checks as never })
+
+/** The checker's row on the page of that view, and what the cell told. */
+function checkerRow(checks: readonly unknown[], details: readonly string[] = []): { readonly row: LoopItem, readonly heard: Heard } {
+  const heard: Heard = { warn: [], info: [] }
+  const page = buildLoopsPage(checkerView(checks, details), { warn: (key, text) => { heard.warn.push([key, text]) }, info: (key, text) => { heard.info.push([key, text]) } })
+  const row = page.events.rows[0]
+  assert.ok(row !== undefined && row.id === CHECKER.id)
+  return { row, heard }
+}
+
+test('buildView puts a plugin entry\'s own rules and what its hand-over gives the page into the entry; empty lists stay out', () => {
+  const view = checkerView([check({ seconds: 60, source: { kind: 'ceiling' } })], ['Lint：改了 *.txt 之后跑 · node lint.mjs {files}'])
+  const [entry] = view.entries
+  assert.deepEqual([entry?.ownRules, entry?.details, entry?.checks], [['一步最多等 20 秒'], ['Lint：改了 *.txt 之后跑 · node lint.mjs {files}'], [check({ seconds: 60, source: { kind: 'ceiling' } })]])
+  const [bare] = buildView({ at: AT, project: 'p', plugin: [{ entry: pluginEntry({ ...CHECKER, ownRules: [] }), state: 'active', details: { ok: true, lines: [] } }], board: undefined, events: LOOP_EVENT_TABLE, checks: () => [] }).entries
+  assert.deepEqual([bare?.ownRules, bare?.details, bare?.checks], [undefined, undefined, undefined])
+})
+
+test('the timeout cell words the four sources: an estimate with its day and session, the runs, the ceiling, a fixed number; a missing source reads as a fixed number, told once per board as information (plain-ui 1.3 §4.7)', () => {
+  const cases: ReadonlyArray<readonly [Record<string, unknown>, readonly string[]]> = [
+    [{ seconds: 12, source: ESTIMATE, ...OWED }, [`Lint：lint · 超时 12 秒（agent 估跑 4 秒，乘 3 · ${day(WRITTEN)}，会话 a3f2）`, '最近没有超时']],
+    [{ seconds: 12, source: { kind: 'agent-estimate', estimateS: 4, at: WRITTEN, who: 'human' }, ...OWED }, [`Lint：lint · 超时 12 秒（你估跑 4 秒，乘 3 · ${day(WRITTEN)}，会话未记）`, '最近没有超时']],
+    [{ seconds: 15, source: measured(10, 5), ...OWED, timeouts7d: 2 }, ['Lint：lint · 超时 15 秒（系统按最近 10 次最慢的 5 秒的 3 倍定）', '最近 7 天超时 2 次']],
+    [{ seconds: 15.4, source: measured(1, 5), ...OWED }, ['Lint：lint · 超时 15.4 秒（系统按最近 1 次最慢的 5 秒的 3 倍定）', '最近没有超时']],
+    [{ seconds: 60, source: { kind: 'ceiling' } }, ['Lint：lint · 超时 60 秒（上限 · 没写估计）']],
+    [{ seconds: 60, source: { kind: 'fixed-by-design' } }, ['Lint：lint · 超时 60 秒（设计里定的固定值）']],
+  ]
+  for (const [timeout, lines] of cases) {
+    const { row, heard } = checkerRow([check(timeout)])
+    assert.deepEqual(row.checkLines, lines)
+    assert.deepEqual([heard.warn, heard.info], [[], []], 'the ceiling and a fixed number owe no history and no timeouts')
+    assert.ok(!row.details.some(line => line.includes('没有记录')), JSON.stringify(row.details))
+  }
+  const { row, heard } = checkerRow([check({ seconds: 60 }), check({ seconds: 30 }, 'tool-1/other')])
+  assert.deepEqual(row.checkLines, ['Lint：lint · 超时 60 秒（设计里定的固定值）', 'Lint：lint · 超时 30 秒（设计里定的固定值）'])
+  assert.deepEqual([heard.warn, [...new Set(heard.info.map(([key]) => key))]], [[], ['loops:no-source']], 'one key for the whole board')
+})
+
+test('a number held at the floor or the ceiling says what three times was and where it was held (P11-01)', () => {
+  const cases: ReadonlyArray<readonly [Record<string, unknown>, string]> = [
+    [{ seconds: 5, source: { ...ESTIMATE, estimateS: 1 }, held: { by: 'floor', wantedS: 3 }, ...OWED }, `超时 5 秒（agent 估跑 1 秒，乘 3 是 3 秒，不足下限，取下限 5 秒 · ${day(WRITTEN)}，会话 a3f2）`],
+    [{ seconds: 60, source: { ...ESTIMATE, estimateS: 25 }, held: { by: 'cap', wantedS: 75 }, ...OWED }, `超时 60 秒（agent 估跑 25 秒，乘 3 本该是 75 秒，超过上限，保持上限 60 秒，已告诉主 Agent · ${day(WRITTEN)}，会话 a3f2）`],
+    [{ seconds: 5, source: measured(10, 1), held: { by: 'floor', wantedS: 3 }, ...OWED }, '超时 5 秒（系统按最近 10 次最慢的 1 秒算，3 倍是 3 秒，不足下限，取下限 5 秒）'],
+    [{ seconds: 60, source: measured(3, 30), held: { by: 'cap', wantedS: 90 }, ...OWED }, '超时 60 秒（系统按最近 3 次最慢的 30 秒算，3 倍本该是 90 秒，超过上限，保持上限 60 秒，已告诉主 Agent）'],
+  ]
+  for (const [timeout, sentence] of cases) {
+    const { row, heard } = checkerRow([check(timeout)])
+    assert.equal(row.checkLines[0], `Lint：lint · ${sentence}`)
+    assert.deepEqual(heard.warn, [])
+  }
+})
+
+test('the cell checks three times the run time within 0.5 s: without held against the number, with held against what was computed; a mismatch or a held that does not fit is 没有记录, told once per entry, and the rest of the cell stands (P12-01, P13-03)', () => {
+  const lone = checkerRow([check({ seconds: 5, source: measured(10, 1), ...OWED })])
+  assert.deepEqual(lone.row.checkLines, ['Lint：lint · 超时 5 秒（没有记录：超时的数和来源对不上（5 秒，3 倍是 3 秒））', '最近没有超时'], 'the board left out held: the page does not write 「1 秒的 3 倍定」')
+  assert.deepEqual(lone.heard.warn.map(([key]) => key), ['env.checks-after-edit:tool-1/lint:triple'])
+  const cases: ReadonlyArray<readonly [Record<string, unknown>, string]> = [
+    [{ seconds: 60, source: { ...ESTIMATE, estimateS: 25 }, held: { by: 'cap', wantedS: 80 }, ...OWED }, '没有记录：算出来的数和来源对不上（算出来是 80 秒，3 倍是 75 秒）'],
+    [{ seconds: 5, source: measured(10, 2), held: { by: 'floor', wantedS: 6 }, ...OWED }, '没有记录：算出来的 6 秒不比超时的 5 秒少，却写着取下限'],
+    [{ seconds: 60, source: measured(10, 2), held: { by: 'up', wantedS: 6 }, ...OWED }, '没有记录：下限或上限的说法读不懂'],
+    [{ seconds: 60, source: { kind: 'ceiling' }, held: { by: 'cap', wantedS: 75 } }, '没有记录：这种来源不会被下限抬高或被上限截住'],
+    [{ seconds: 60, source: { kind: 'guess' } }, '没有记录：来源不在四种里'],
+    [{ seconds: 12, source: { kind: 'agent-estimate', at: WRITTEN }, ...OWED }, '没有记录：缺估的秒数'],
+    [{ seconds: 12, source: { kind: 'agent-estimate', estimateS: 4 }, ...OWED }, '没有记录：缺估的日期'],
+    [{ seconds: 12, source: { kind: 'measured', runs: 0, slowestS: 4 }, ...OWED }, '没有记录：缺运行的次数或最慢的秒数'],
+  ]
+  for (const [timeout, words] of cases) {
+    const { row, heard } = checkerRow([check(timeout)])
+    assert.equal(row.checkLines[0], `Lint：lint · 超时 ${String(timeout.seconds)} 秒（${words}）`)
+    assert.equal(heard.warn.length, 1, words)
+  }
+  const nothing = checkerRow([check({ seconds: 0, source: { kind: 'ceiling' } }), { key: 'odd' }])
+  assert.deepEqual(nothing.row.checkLines, ['Lint：lint · 超时：没有记录：超时的数读不懂'], 'a check that is not one is left out')
+  assert.deepEqual(nothing.heard.warn.map(([key]) => key), ['env.checks-after-edit:tool-1/lint:seconds', 'env.checks-after-edit:check'])
+  // Through the console: the same entry, check and reason is told once however often the page is made.
+  const told: unknown[] = []
+  const warn = console.warn
+  console.warn = (...args: unknown[]) => { told.push(args) }
+  try {
+    for (let pass = 0; pass < 3; pass++) buildLoopsPage(checkerView([check({ seconds: 7, source: measured(10, 1), ...OWED }, 'tool-9/once')]))
+  }
+  finally {
+    console.warn = warn
+  }
+  assert.equal(told.length, 1)
+})
+
+test('a raised ceiling is a line under the timeout with its day, reason and how to take it back; a bad reason keeps the seconds and the day; on a fixed number or with bad seconds or day it is 没有记录 (P12-02, P13-04)', () => {
+  const raised = (capRaised: unknown, source: unknown = { kind: 'ceiling' }): { readonly row: LoopItem, readonly heard: Heard } => checkerRow([check({ seconds: 60, source, capRaised })])
+  const good = raised({ capS: 120, at: RAISED_AT, reason: '整个项目要跑一分多钟' })
+  assert.deepEqual(good.row.checkLines, ['Lint：lint · 超时 60 秒（上限 · 没写估计）', `上限已由主 Agent 调高到 120 秒 · ${day(RAISED_AT)}：整个项目要跑一分多钟；要改回，跟主 Agent 说`])
+  assert.deepEqual(good.heard.warn, [], 'the number not yet computed under the raised ceiling is not checked against it')
+  const reasons: ReadonlyArray<readonly [unknown, string]> = [['第一行\n第二行', '理由不止一行'], ['  ', '理由是空的'], [undefined, '缺理由'], [7, '理由不是一句话']]
+  for (const [reason, why] of reasons) {
+    const { row, heard } = raised({ capS: 120, at: RAISED_AT, ...(reason === undefined ? {} : { reason }) })
+    assert.equal(row.checkLines[1], `上限已由主 Agent 调高到 120 秒 · ${day(RAISED_AT)}（理由没有记录：${why}）；要改回，跟主 Agent 说`)
+    assert.deepEqual(heard.warn.map(([key]) => key), ['env.checks-after-edit:tool-1/lint:reason'])
+  }
+  const bad: ReadonlyArray<readonly [unknown, unknown, string]> = [
+    [{ capS: 120, at: RAISED_AT, reason: 'r' }, { kind: 'fixed-by-design' }, '没有记录：设计里定的固定值不会被调高上限'],
+    [{ capS: -1, at: RAISED_AT, reason: 'r' }, { kind: 'ceiling' }, '没有记录：调高到几秒读不懂'],
+    ['120', { kind: 'ceiling' }, '没有记录：调高到几秒读不懂'],
+    [{ capS: 120, at: 'yesterday', reason: 'r' }, { kind: 'ceiling' }, '没有记录：调高的日期读不懂'],
+  ]
+  for (const [capRaised, source, line] of bad) {
+    const { row, heard } = raised(capRaised, source)
+    assert.equal(row.checkLines[1], line)
+    assert.equal(heard.warn.length, 1)
+  }
+})
+
+test('讲细点 has the hand-over\'s lines, the history newest first with 第一个值, the last five timeouts and the entry\'s own rules; the seven days\' line is the board\'s count, else the records of the week before the view; the first two sources owe a history and a timeouts list (plain-ui 1.3 §4.7, P10-02)', () => {
+  const history = [
+    { at: '2026-11-01T02:00:00.000Z', seconds: 15, previousS: 5, source: '系统按最近 1 次，最慢 5 秒' },
+    { at: '2026-11-01T01:00:00.000Z', seconds: 5, source: '你估 1 秒，会话未记' },
+  ]
+  const timeouts = Array.from({ length: 6 }, (_, index) => ({ at: `2026-11-01T0${6 - index}:30:00.000Z`, limitS: 5, elapsedS: 5.21, outcome: '算没跑完，下一次改动照常再跑' }))
+  const { row, heard } = checkerRow([check({ seconds: 15, source: measured(1, 5), history, timeouts })], ['Lint：改了 *.txt 之后跑 · node lint.mjs {files}'])
+  assert.deepEqual(row.checkLines, ['Lint：lint · 超时 15 秒（系统按最近 1 次最慢的 5 秒的 3 倍定）', '最近 7 天超时 6 次'], 'no count from the board: the records of the week are counted, all six')
+  assert.deepEqual(row.details, [
+    '为什么有它：env.checks-after-edit 的理由',
+    'Lint：改了 *.txt 之后跑 · node lint.mjs {files}',
+    'Lint：lint的来历（新的在前）：',
+    `${momentText(history[0].at)} · 15 秒 · 原 5 秒 · 系统按最近 1 次，最慢 5 秒`,
+    `${momentText(history[1].at)} · 5 秒 · 第一个值 · 你估 1 秒，会话未记`,
+    'Lint：lint最近的超时：',
+    ...timeouts.slice(0, 5).map(item => `${momentText(item.at)} · 限 5 秒 · 跑了 5.2 秒 · 算没跑完，下一次改动照常再跑`),
+    '它自己的规矩：',
+    '· 一步最多等 20 秒',
+    '状态：在用',
+    'id：env.checks-after-edit',
+  ])
+  assert.deepEqual(heard.warn, [])
+  assert.ok(!row.checkLines.some(line => line.includes('20 秒')), 'the step\'s 20 seconds are the checker\'s own rule, not in the timeout cell (P12-05)')
+  assert.equal(checkerRow([check({ seconds: 15, source: measured(1, 5), history, timeouts: [{ ...timeouts[0], at: '2026-10-20T00:00:00.000Z' }] })]).row.checkLines[1], '最近没有超时', 'a timeout before the week does not count')
+  const owing = checkerRow([check({ seconds: 12, source: ESTIMATE })])
+  assert.deepEqual(owing.row.checkLines, [`Lint：lint · 超时 12 秒（agent 估跑 4 秒，乘 3 · ${day(WRITTEN)}，会话 a3f2）`])
+  assert.ok(owing.row.details.includes('Lint：lint的来历：没有记录：缺来历') && owing.row.details.includes('Lint：lint最近的超时：没有记录：缺超时记录'), JSON.stringify(owing.row.details))
+  assert.deepEqual(owing.heard.warn.map(([key]) => key).sort(), ['env.checks-after-edit:tool-1/lint:history', 'env.checks-after-edit:tool-1/lint:timeouts'])
+  const shaped = checkerRow([check({ seconds: 60, source: { kind: 'ceiling' }, history: [{ at: WRITTEN, seconds: 60, source: 'x' }, { at: WRITTEN, seconds: 5, source: 'y' }], timeouts: [{ at: WRITTEN }], timeouts7d: -1 })])
+  assert.ok(shaped.row.details.includes('Lint：lint的来历：没有记录：来历第 1 条缺时间、新值、旧值或来源') && shaped.row.details.includes('Lint：lint最近的超时：没有记录：超时记录第 1 条缺时间、限、用时或结局'), 'given to a ceiling, they are checked all the same')
+  assert.equal(shaped.row.checkLines[1], '没有记录：最近 7 天的超时次数读不懂')
+  const lines = [row, owing.row, shaped.row].flatMap(item => [...item.checkLines, ...item.details])
+  assert.deepEqual(plainWordsIn(lines.join('\n')), [])
+})
+
 // --- Plain words ------------------------------------------------------------
 
 /** The string literals with Chinese in them of the files that make what the person reads. */
 async function fixedStrings(): Promise<string> {
-  const files = ['src/loops/view.ts', 'src/loops/commands.ts', 'ui/src/loops/model.ts', 'ui/src/loops/source.ts', 'ui/src/loops/LoopsPage.tsx']
+  const files = ['src/loops/view.ts', 'src/loops/commands.ts', 'ui/src/loops/model.ts', 'ui/src/loops/timeouts.ts', 'ui/src/loops/source.ts', 'ui/src/loops/LoopsPage.tsx', 'ui/src/graph/script-text.ts', 'ui/src/graph/ScriptDetails.tsx']
   const texts = await Promise.all(files.map(file => readFile(join(import.meta.dirname, '..', ...file.split('/')), 'utf8')))
   return texts.flatMap(text => text.match(/'[^'\n]*[\u4e00-\u9fff][^'\n]*'|`[^`]*[\u4e00-\u9fff][^`]*`|>[^<>{}\n]*[\u4e00-\u9fff][^<>{}\n]*</g) ?? []).join('\n')
 }
@@ -356,4 +625,5 @@ test('no file under ui/src/loops/ calls commands.execute or renders a write cont
   const files = (await readdir(dir)).filter(name => /\.(ts|tsx)$/.test(name))
   assert.ok(files.length >= 4, `the page package is there: ${files.length}`)
   for (const file of files) assert.equal(WRITE_MARK.test(await readFile(join(dir, file), 'utf8')), false, `${file} must not write: no commands.execute, no button, toggle or form`)
+  for (const file of ['script-text.ts', 'ScriptDetails.tsx']) assert.equal(WRITE_MARK.test(await readFile(join(dir, '..', 'graph', file), 'utf8')), false, `the shared 讲细点 of a script (ui/src/graph/${file}) must not write either`)
 })

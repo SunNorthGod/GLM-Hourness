@@ -360,6 +360,30 @@
       "actor": "llm",
       "op": "comment",
       "text": "对账 B 半（report-b.md (c)）：运行 bootstrap-impl（wf_f008ac0c87ec6943）只有 bs-setup、bs-plan、bs-build-loop、bs-report，没有合入 main 的一步，B0–B6 做完也停在 origin/bootstrap。编排方照 m4-checks、panel-2、m5-rest 的做法，运行结束后另派 land-bootstrap 合入 main。onboarding 第 14 条的过渡三步（人 11-05 选 A）要等接管行进 main 才有地方显示；写过渡字的 UI 活原计划归面板线，面板线已收，并入 land-bootstrap 或其后一条线。计划里的 Q3（扫描读不读 issue）没问过人、也没上图：B2 已按选项 A 做，不改验收原文，编排方定下照 A。"
+    },
+    {
+      "at": "2026-11-05T13:48:50.324Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "按 d-habits-into-framework：接管的默认表按 ORCHESTRATION.md §7.5 补回死代码与重复检查，Node 加 knip 与 jscpd，Python 加 vulture；Rust 已有 cargo clippy -D warnings 不另加；Go 先不加 staticcheck，写进默认表「没有覆盖」的说明。已有项目走设计 §5.6 的基线办法，输出读不了的不进门禁。交接管线（wf_f008ac0c87ec6943）B5 一并做，设计 §5.5 同批改。"
+    },
+    {
+      "at": "2026-11-05T17:13:47.104Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管线 B5 第 4 部分已推 origin/bootstrap（69da25b）：设计 0.6 的默认表按 d-tests-required-gate 与 d-habits-into-framework 改写（死代码与重复检查补回默认表）。B5 前 1、2 部分为源码与 L2（3b629b0、56f578a）。运行 01:1x 因限流暂停后已恢复。"
+    },
+    {
+      "at": "2026-11-05T20:16:58.320Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管线（wf_f008ac0c87ec6943）B5 bootstrap-paths 做完，六个提交 3b629b0、56f578a、68de8cb、69da25b、d9df637、878c007 已推 origin/bootstrap；最后的树上 build、preflight、npm test（3195/0/0）、探针 427/427 绿，棘轮 73/18/1。按 d-habits-into-framework 补进默认表的死代码与重复检查已在，各工具输出能否被读的试跑有记录。下一步 B5 评审，然后 B6。"
+    },
+    {
+      "at": "2026-11-05T21:29:40.466Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B5 评审 CHANGES_REQUESTED：F1 候选名字没按设计 §8、§12 过滤；F2 提醒的长度上限从 2500 放到 3500 没有记录理由。循环接着修。"
     }
   ]
 }

@@ -517,6 +517,66 @@
       "actor": "llm",
       "op": "comment",
       "text": "习惯融进框架的调查重派 investigate-habits-into-framework-retry（wf_6ff0de9e869c0de0）：上一次 wf_502bec1b9882532c 被上游返回截断，没有留下报告。这次要求边查边写，报告 .agents/tasks/habits-framework/report.md。另开 m5-habit-rule（wf_b5171bd117c811ba）与 m4-reanchor-violations（wf_b007fba3eafafeec）；m7-handback-path-check 等 M7 合入 main 后开。"
+    },
+    {
+      "at": "2026-11-05T11:33:01.873Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "习惯融进框架的调查完成（investigate-habits-into-framework-retry，wf_6ff0de9e869c0de0；首次运行 wf_502bec1b9882532c 被上游截断未留报告），报告 .agents/tasks/habits-framework/report.md。习惯全文在 ~/.zcode/AGENTS.md 第四、五节（另有同文一份 ~/.dsh/AGENTS.md，DSH 的 dsh-agent-instructions 把它送进本机每个会话，靠的是人的用户级配置，别人装插件拿不到）。录 9 条：已在框架里 5 条（规则重读、第三次修交人、汇报粒度、如实汇报的门禁一半、干净区，其中 3 条只有一部分）；只在本仓库 4 条（不长 IDE 目录、不留死代码、条款整条重写、写规则说意图）；框架完全没有 1 条：遇到问题查根因、修在根上。方案：修根因挂在重开过的节点上（框架认不出修 bug，认得出重开）——任务书加一句并附上次重开理由，交回加 cause 字段、没写由交回门禁拦下，审查看到只修表现记不挡路的发现，第二次重开时先提醒一次；不留死代码与条款整条重写合成任务书里常驻一句，接管默认表按 ORCHESTRATION §7.5 补回 knip、jscpd、vulture。任务书、交回、审查的改动在 m7 分支，等 M7 合入后另开一件小活；第二次重开的提醒、重锚补规范摘要、接管默认表现在就能做。四件交人定：Q1 工程习惯进插件（宪章 §9 与 hourness 目标的非目标要改写），Q2 没写原因由交回门禁挡、只修了表现不挡路，Q3 主 Agent 身份段上限 3000 抬到 3200 放一句汇报可靠度，Q4 IDE 目录这条不进框架；四件都推荐可以。"
+    },
+    {
+      "at": "2026-11-05T15:32:41.885Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05 答编排方「全开照旧，还是先停消融与状态页两条中等的线让小活先收」：原话「先全开吧，你盯着点就行，任务也是做完一点就落盘一点」。照此：十三条线都不停，编排方每次被叫醒时查一遍、恢复被限流暂停的运行；编排方已逐条通知在跑的步骤，每做完一块就提交并推到自己的分支、报告边做边写，上游 503 打断时不丢已做的部分。"
+    },
+    {
+      "at": "2026-11-05T16:44:29.370Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 00:45 巡检：13 条线。上游限流把 bootstrap（wf_f008ac0c87ec6943）、m4-reanchor-violations（wf_b007fba3eafafeec）、status-hub-3（wf_992ec82f32e990c0）、m5-rule-expected-effect（wf_24a77ef57c68c12c）四条暂停，编排方已全部恢复。按人的「做完一点就落盘一点」，各线阶段提交照常推到自己的分支：bootstrap 56f578a（B5 第 2 部分 L2）、m4-checks-loop-details e667fe8、m3-metrics-wiring cb4c442。ablation 第 3 轮 code 步在跑（加的 3 轮里的第 1 轮）。"
+    },
+    {
+      "at": "2026-11-05T17:13:46.855Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 01:11 巡检：13 条运行全部因上游限流（Model service error 5xx）暂停在当前步，编排方逐条恢复（M7、bootstrap、ablation、status-hub-3、m3-metrics-wiring、m5-habit-rule、m5-rule-expected-effect、m4-reanchor-violations、m4-checks-loop-details、habits-prompts 合入步、glm-context-window-check-b、desktop-close-docs）；恢复后 habits-prompts 与 M7 已确认重新在跑。暂停期间各分支已推的阶段提交都在 origin，没有丢失。compact-recall-redact 仍等 habits-prompts 合入后重派合入步。"
+    },
+    {
+      "at": "2026-11-05T18:04:29.492Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 约 02:00 人重启了 Kiro，在跑的运行都被暂停（Interrupted by agent restart）。编排方逐条恢复：habits-prompts、M7、m4-checks-loop-details、glm-context-window-check-b、desktop-close-docs 及其余在跑的线，各步保留自己的会话从断点接着做；分支上已推的提交不受影响。"
+    },
+    {
+      "at": "2026-11-05T18:36:58.101Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 02:35 人问在跑几条、能开的是否都开了。编排方对过图上可开工的清单：除刚开的 inject-via-prestep 外，m7-1、m7-2、m7-4、m7-6..m7-9、m7-habits、m7-handback-path-check、rules-r4d 都等 M7 合入 main；m4-reanchor-norms 等 m4-reanchor-violations 合入（评审已 APPROVED，合入步在跑）；m4-request-card 的验收第 10 条要人的原话，还没问。在跑 14 条：M7、bootstrap、ablation、status-hub-3、m3-metrics-wiring、m5-habit-rule、m5-rule-expected-effect、m4-reanchor-violations（合入）、m4-checks-loop-details（合入）、habits-prompts（清 cookie 后重启桌面版）、desktop-close-docs、guide-metrics-line、compact-recall-redact-land、inject-via-prestep。"
+    },
+    {
+      "at": "2026-11-05T19:17:01.155Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 03:1x：主检出出现别的线写进来的已跟踪改动（knip.js、package.json、src/design/propose.ts、ui/src/loops/LoopsPage.tsx）与未跟踪 src/memory/effect.ts，挡住了 m4-checks-loop-details 的快进合入。像是 ablation、m5-rule-expected-effect、status-hub-3 的步骤违反了「主检出只放锁目录」，具体哪一步写的没查。处理：收进主检出的 stash，不还原、不丢；已向 ablation、m5-rule-expected-effect 的 code 步重申只在工作树改。另记 status-hub-3 code 步完成（4c16928、65e1324、b6eab12、7ba29e0 已推；门禁绿，探针 422/422），下一步评审。"
+    },
+    {
+      "at": "2026-11-06T01:31:03.492Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "主检出第三次被别的线写进草稿（前两次：m4-checks-loop-details 合入时四个文件、m4-reanchor-norms 合入时 package.json）：这次是 docs/DESIGN.md，08:58，内容是损坏的编辑，几个工作树的 DESIGN.md 修改时刻里 bootstrap（08:59:39）最接近，来源未核实。已存档还原。写主检出的源头还没堵上：各线任务书都写了只在自己的工作树改，仍有步骤写进主检出。后续要查是哪类步骤（推断：用绝对路径的编辑工具把主检出路径当成工作树路径）并在任务书模板与规则上修根因，不再逐次清理。"
+    },
+    {
+      "at": "2026-11-06T02:07:39.009Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "10:06 巡检：上游限流又暂停了 inject-via-prestep、ablation、m5-rule-expected-effect、bootstrap 四条运行，编排方已恢复。在跑：M7 真实模型运行一步（wf_36d1d690c7e1de90 real-model-run）、m5-habit-rule 第 2 轮评审、status-hub-3 合入后 L4、probe-run-dir-outside-repo 合入（主检出已干净，已告知接着做）。主检出已跟踪文件干净，两把探针锁空闲。"
+    },
+    {
+      "at": "2026-11-06T02:56:29.431Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "主检出第四次被别的线写进东西：10:26:36 出现未跟踪的 src/memory/effect.ts（14168 字节，与 .worktrees/m5-rule-expected-effect 里 10:27:01 写入的同名文件同源），probe-run-dir-outside-repo 合入步在主检出 build 时 tsc 报错（exit 2），已把它挪到 .agents/tasks/probe-run-dir-outside-repo/stray/src-memory-effect.ts-1026.txt 存档（没删），重建通过。前三次：m4-checks-loop-details 合入时的四个文件（stash@{0}）、inject-via-prestep 的 package.json、DESIGN.md 的坏草稿。推断原因：步骤用相对路径或默认 cwd 调文件工具与命令，落到 Kiro 工作区根即主检出。编排方已告知 m5-rule-expected-effect 一律用工作树绝对路径并在交回前核对主检出 status；以后派活的任务书都写这一条。"
     }
   ]
 }

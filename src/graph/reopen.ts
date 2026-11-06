@@ -1,13 +1,19 @@
 /**
- * The third rework's question for the human (m4 design §4.6; task m4-rules,
- * acceptance item 2; docs/ORCHESTRATION.md §2.4): when an LLM reopens a node
- * from done to doing for the third time, the harness files one proposal-style
+ * The second rework's reminder and the third rework's question for the human
+ * (m4 design §4.6; task m4-rules, acceptance item 2; task habits-prompts,
+ * decision d-habits-into-framework; docs/ORCHESTRATION.md §2.4): when an LLM
+ * reopens a node from done to doing for the second time, the tool result
+ * carries one sentence telling the caller to find the cause and write it into
+ * the node before changing code (a prompt only: nobody is asked, nothing is
+ * blocked); for the third time, the harness files one proposal-style
  * question under the node — one plan in four lines, no options to pick from —
  * and hands it to the caller's next batch with a notice. The counting rule
  * (the whole document keeps this one reading): the first completion ends the
  * building; every reopen after it starts one fix, so the n-th reopen is the
- * n-th fix starting, and the question is filed as the third fix is about to
- * begin. A question of this kind is recognized by its history, not its text:
+ * n-th fix starting; the reminder goes out as the second fix begins and the
+ * question is filed as the third fix is about to begin, both counted in the
+ * same window (the reopens after the last closed question of this kind).
+ * A question of this kind is recognized by its history, not its text:
  * the first history entry is a propose by the harness whose reason is exactly
  * `第三次修复：<node id>`, so an edited body still reads as one. The question
  * keeps the fields the engine's proposal shape has (M3 appendix 0.6 cancelled
@@ -187,6 +193,9 @@ export function reopenQuestion(node: GraphNode, reopens: readonly ReopenEntry[])
     title,
   }
 }
+
+/** The one sentence the caller reads when its reopen starts the second fix of the node (REOPEN_LIMIT - 1 in the window); the third reopen carries only the question's notice. */
+export const SECOND_FIX_NOTICE = 'This reopen starts the second fix of this node: find the cause and write it into this node before you change code.'
 
 /** Why the harness shows it to the caller of a root agent (design §4.6, adapted to propose_to_human's text parameter: M3's checks hold the text to the record, so the three lines travel in it). */
 export function reopenNotice(question: ReopenQuestion, id: string): string {

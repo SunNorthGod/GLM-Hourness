@@ -17,6 +17,7 @@ import { TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement, type RefObject } from 'react'
 import type { ClientContext, RemoteRoot, SessionsClient } from '../dsh.ts'
 import { registerBoard } from '../graph/boards.ts'
+import { ScriptDetails, ScriptReadContext } from '../graph/ScriptDetails.tsx'
 import { holdSource, type GraphSnapshot, type GraphSource } from '../graph/source.ts'
 import { rulesBoard } from './board.ts'
 import { buildRulesPage } from './model.ts'
@@ -85,7 +86,7 @@ function EntryItem({ entry, waiting }: { readonly entry: Entry, readonly waiting
       {entry.lines.map((line, index) => <div className="glmr-line" key={`${index}:${line}`}>{line}</div>)}
       {entry.jump === null ? null : <Jump text={entry.jump} to={waiting} />}
       {entry.grey.map((line, index) => <div className="glmr-grey" key={`${index}:${line}`}>{line}</div>)}
-      <Details lines={entry.details} />
+      <ScriptDetails lines={entry.details} file={entry.script} />
     </div>
   )
 }
@@ -200,8 +201,12 @@ function makeRulesPage(remote: RemoteRoot, sessions: SessionsClient): (props: { 
     }, [sessionId])
     if (where === 'absent') return null
     if (where !== 'project') return <RulesBody model={buildRulesPage(null, new Map(), { noProject: where })} loading={false} problem={null} />
-    if (source === undefined || graph === undefined) return null
-    return <RulesContent source={source} graph={graph} />
+    if (source === undefined || graph === undefined || viewFile === null) return null
+    return (
+      <ScriptReadContext.Provider value={{ files: remote.workspaceFiles, sessionId, viewFile }}>
+        <RulesContent source={source} graph={graph} />
+      </ScriptReadContext.Provider>
+    )
   }
 }
 

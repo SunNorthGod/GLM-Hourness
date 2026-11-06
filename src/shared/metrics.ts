@@ -13,11 +13,29 @@
  * 0.6 trial. Value lists that a sibling design owns stay there: such fields
  * are typed `string` (id) and only the names are fixed here.
  */
-import type { ServiceLookup } from './dsh-min.ts'
+import type { ServiceLookup, SessionLike } from './dsh-min.ts'
 import { buildStamp } from './build-info.ts'
 
 /** The cordis service name the metrics row provides. */
 export const METRICS_SERVICE = 'glmHournessMetrics'
+
+/**
+ * The shape of an id in an event (§4.4): no whitespace, no backslash, no
+ * non-ASCII, at most 120 characters. The journal's validator uses it, and a
+ * sender shapes the ids it builds from outside text with it.
+ */
+export const METRICS_ID_PATTERN = /^[A-Za-z0-9_.:@+/-]{1,120}$/
+
+/**
+ * A value for an id field built from outside text (a session id, a tool
+ * name, a node id): itself when it has the shape of an id, else `other`, so
+ * that the event is not refused whole for one field; `none` when there is
+ * no value and the field is required.
+ */
+export function toMetricsId(value: string | undefined): string {
+  if (value === undefined || value === '') return 'none'
+  return METRICS_ID_PATTERN.test(value) ? value : 'other'
+}
 
 /** A key-to-count map (`map` in the field grammar): id keys, integer, boolean or id values. */
 export type MetricsMap = Readonly<Record<string, number | boolean | string>>
@@ -284,6 +302,9 @@ export type EmittedEvent =
   | EventsOf<DesignBodies>
   | EventsOf<BootstrapBodies>
 
+/** One kind's event of a namespace before the sender adds the submitter: the kind and its body (a sender row's sink adds `by`). */
+export type BodyEventOf<B> = { [K in keyof B & string]: { readonly k: K, readonly body: B[K] } }[keyof B & string]
+
 /** What the service takes: an emitted event plus the build stamp `emitMetric` added and the session id the service adds. */
 export type QueuedEvent = EmittedEvent & { readonly v?: string, readonly sid?: string }
 
@@ -291,6 +312,15 @@ export type QueuedEvent = EmittedEvent & { readonly v?: string, readonly sid?: s
 export interface MetricsWhere {
   readonly sessionId?: string
   readonly dir?: string
+}
+
+/** Where an event of a session belongs: the session and its working directory, each only when it is there. */
+export function metricsWhereOf(session: Pick<SessionLike, 'id' | 'header'> | undefined): MetricsWhere {
+  const cwd = session?.header.cwd
+  return {
+    ...(session === undefined || session.id === '' ? {} : { sessionId: session.id }),
+    ...(typeof cwd === 'string' && cwd !== '' ? { dir: cwd } : {}),
+  }
 }
 
 /** The process-local state the /hourness coverage line reads (metrics design §7.3): what this host's writer dropped, the last background self-check's finding, and the events no project could take. */
