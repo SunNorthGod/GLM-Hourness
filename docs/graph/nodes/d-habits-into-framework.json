@@ -15,6 +15,12 @@
       "reason": "习惯融进框架的调查报告 .agents/tasks/habits-framework/report.md 提了四件要人定的事（Q1–Q4），编排方都推荐「可以」。人答 Q1–Q3 可以；Q4（IDE 目录这一条不进框架）人推翻推荐，要求也加进框架。编排方定 IDE 一条只到提示词一级（任务书一句），不进门禁，已经提交这类文件的项目照旧。",
       "relay": "其余是\n哦，ide那条也加进去吧",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-06T00:58:57.023Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "长会话规则重读一条（报告 H2）落地：m4-reanchor-norms 合入 main 8ca520b。报告 2.2 没核实的两点已实测：压缩之后 dsh-agent-instructions 每次补回用户级与项目 AGENTS.md，子 agent 也收到（FACTS.md §3）。"
     }
   ]
 }

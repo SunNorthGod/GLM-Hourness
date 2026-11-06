@@ -208,6 +208,20 @@ for (const [name, packages] of Object.entries(PROBE_PROFILES)) {
     process.exit(2)
   }
 }
+// The host's workspace instructions (dsh-agent-instructions) read $DSH_HOME/AGENTS.md. The
+// scenario glm-compact-instructions boots probe-full under a DSH home of its own that holds
+// one, so no other scenario's requests gain it; it stays out of `profiles`, whose count the
+// sandbox check compares with the generated names.
+const instructionsHome = join(runDir, 'dsh-root-instructions')
+let instructionsProfile
+try {
+  instructionsProfile = generateProfile(instructionsHome, 'probe-full', PROBE_PROFILES['probe-full'])
+}
+catch (error) {
+  console.error(`probe: cannot generate the instructions profile under ${instructionsHome}: ${error instanceof Error && 'code' in error ? error.code : String(error)}`)
+  process.exit(2)
+}
+process.on('exit', () => unlinkProfile(instructionsProfile))
 const PACKAGE_NAME = Object.fromEntries(PACKAGES.map(pkg => [pkg.key, pkg.name]))
 
 /** A solid red 8x8 RGB PNG, built byte by byte so the fixture needs no binary file. */
@@ -1669,6 +1683,52 @@ const focusGoal = (() => {
   while (node !== undefined && node.type !== 'goal') node = node.parent === undefined ? undefined : copyBefore.nodes.get(node.parent)
   return node
 })()
+/** The approved, live norm nodes below the focus's goal in the copy, as the re-anchoring lists them (src/graph/reanchor.ts goalNorms). */
+const focusNorms = (() => {
+  if (focusGoal === undefined) return []
+  const under = node => {
+    for (let at = node; at !== undefined; at = at.parent === undefined ? undefined : copyBefore.nodes.get(at.parent)) {
+      if (at.status === 'dropped' || at.status === 'superseded') return false
+      if (at.id === focusGoal.id) return at !== node
+    }
+    return false
+  }
+  return [...copyBefore.nodes.values()].filter(node => node.type === 'norm' && ['approved', 'doing', 'done'].includes(node.status) && under(node)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+})()
+const NORMS_HEAD = 'Norms in effect under goal'
+
+// Host workspace instructions after a compaction (docs/FACTS.md §3; habits
+// report §2.2, H2): dsh-agent-instructions puts $DSH_HOME/AGENTS.md and the
+// project's AGENTS.md into the first request as one baseline message. The
+// scenario boots under a DSH home holding a user-level AGENTS.md, works in a
+// repository holding a project AGENTS.md, compacts at every step boundary,
+// and dispatches a subagent; the checks read whether the baseline comes back
+// after each checkpoint and whether the child's first request carries it.
+const instructionsDir = join(runDir, 'glm-compact-instructions')
+const instructionsWs = join(instructionsDir, 'ws')
+const USER_MARK = 'PROBE-USER-INSTRUCTIONS-MARK'
+const PROJECT_MARK = 'PROBE-PROJECT-INSTRUCTIONS-MARK'
+mkdirSync(instructionsWs, { recursive: true })
+writeFileSync(join(instructionsHome, 'AGENTS.md'), `# probe user instructions\n\n${USER_MARK}\n`)
+writeFileSync(join(instructionsWs, 'AGENTS.md'), `# probe project instructions\n\n${PROJECT_MARK}\n`)
+writeFileSync(join(instructionsWs, 'README.md'), 'probe workspace\n')
+const compactInstructions = runScenario('glm-compact-instructions', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(instructionsWs, 'README.md') } } },
+  { tool: { name: 'Read', arguments: { file_path: join(instructionsWs, 'README.md') } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'I1', prompt: 'Probe task I1: reply done.', cwd: instructionsWs, scope: '.', model: 'glm-5.3' } } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the subagent run' } } },
+  { text: 'done' },
+], 'Read the README twice, dispatch task I1, wait, then reply done.', [...dispatchRow(join(instructionsDir, 'dispatch.jsonl')), '- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'], instructionsWs, [[{ text: 'child done' }]], instructionsProfile)
+const instructionsChildId = dispatchRecord('glm-compact-instructions').find(entry => entry.kind === 'started')?.childId
+const instructionsMain = compactInstructions.steps.filter(step => step.sessionId !== instructionsChildId)
+const instructionsChild = bySession(compactInstructions, instructionsChildId)
+/** The workspace instruction messages of a request after its last compaction checkpoint (all of them when it has none). */
+const instructionsAfterCheckpoint = (step) => {
+  const at = step?.messages.findLastIndex(message => message.source === 'compact-checkpoint') ?? -1
+  return (step?.messages ?? []).slice(at + 1).filter(message => message.source === 'agent-instructions')
+}
+const bothMarks = messages => messages.some(message => message.text.includes(USER_MARK) && message.text.includes(PROJECT_MARK))
+const instructionsCheckpointed = instructionsMain.filter(step => step.messages.some(message => message.source === 'compact-checkpoint'))
 
 const graphGoalDir = join(runDir, 'glm-graph-goal')
 const graphGoalWs = join(graphGoalDir, 'ws')
@@ -3194,6 +3254,17 @@ const checks = [
     const added = all.length - graphNotices(graphSteps[8]).length
     return all.length > 0 && added > 0 && all.every(notice => notice.projection !== 'compaction' && !notice.text.includes(DENIED_HEAD))
   })(), `notices in the last request: ${graphNotices(graphSteps.at(-1)).map(notice => `${notice.projection}${notice.text.includes(DENIED_HEAD) ? '(denied rules)' : ''}`).join(', ') || 'none'}; after the first denial: ${graphNotices(graphSteps.at(-1)).length - graphNotices(graphSteps[8]).length}`],
+  ['graph row: the re-anchoring after the compaction lists the approved norm nodes under the focus\'s goal, one per line (id: title); no other projection lists them', (() => {
+    const text = firstReanchor?.text ?? ''
+    const listed = focusNorms.length === 0
+      ? !text.includes(NORMS_HEAD)
+      : text.includes(`\n${NORMS_HEAD} ${focusGoal.id},`) && focusNorms.every(norm => text.includes(`\n- ${norm.id}: ${norm.title}\n`))
+    const others = [...graphSteps, ...compactGraph.steps].flatMap(step => graphNotices(step)).filter(notice => notice.projection !== 'compaction')
+    return firstReanchor !== undefined && listed && others.length > 0 && others.every(notice => !notice.text.includes(NORMS_HEAD))
+  })(), `goal ${focusGoal?.id ?? 'none'} with ${focusNorms.length} norm(s): ${focusNorms.map(norm => norm.id).join(', ') || 'none'}; other projections with norms: ${[...graphSteps, ...compactGraph.steps].flatMap(step => graphNotices(step)).filter(notice => notice.projection !== 'compaction' && notice.text.includes(NORMS_HEAD)).length}`],
+  ['host instructions: the first request carries the workspace baseline (agent-instructions) with the user-level $DSH_HOME/AGENTS.md and the project AGENTS.md', bothMarks(instructionsAfterCheckpoint(instructionsMain[0])), `exit ${compactInstructions.status}; first request sources: ${(instructionsMain[0]?.messages ?? []).map(message => message.source).join(',')}`],
+  ['host instructions: after every compaction checkpoint the next request carries the baseline again with both files', instructionsCheckpointed.length > 0 && instructionsCheckpointed.every(step => bothMarks(instructionsAfterCheckpoint(step))), `${compactInstructions.compactions.length} compaction(s); baseline messages after the checkpoint per request: ${instructionsCheckpointed.map(step => `${instructionsAfterCheckpoint(step).length}${bothMarks(instructionsAfterCheckpoint(step)) ? '' : '(marks missing)'}`).join(', ') || 'no checkpointed request'}`],
+  ['host instructions: the dispatched subagent\'s first request carries the baseline with both files', instructionsChildId !== undefined && bothMarks(instructionsAfterCheckpoint(instructionsChild[0])), `child ${instructionsChildId ?? 'not started'}; ${instructionsChild.length} child request(s); first request sources: ${(instructionsChild[0]?.messages ?? []).map(message => message.source).join(',')}`],
   ['graph row: a goal round carries the projection (goal-round)', graphNotices(graphRoundTwo).some(notice => notice.projection === 'goal-round'), graphRoundTwo === undefined ? `no round 2 request (${graphGoalSteps.length} goal-agent request(s), exit ${graphGoal.status})` : graphNotices(graphRoundTwo).map(notice => notice.projection).join(', ')],
   ['graph row: Write and Bash into the copy\'s node files are denied by graph-files-only and journaled; a write elsewhere runs (the recorder\'s follow-up records carry a kind)', [8, 9].every(index => graphResult(index)?.isError === true && graphResult(index)?.text.includes('inside the project graph') === true) && graphResult(10)?.isError !== true && !existsSync(graphNodeFile) && existsSync(graphNotes) && graphViolations.filter(record => record.rule === 'graph-files-only' && record.kind === undefined).map(record => record.tool).join(',') === 'Write,Bash', `records: ${graphViolations.map(record => `${record.kind ?? 'denial'}${record.rule.startsWith('graph-files-only') ? '' : `(${record.rule})`}${record.mode === 'shadow' ? '(shadow)' : ''}:${record.tool ?? ''}`).join(', ')}`],
   ['graph row: the workspace-change fallback runs and counts the graph tool writes as known (no late record names a node file)', healthOf(graphRun).guard?.reason.includes('事后纠正启用：工作区变更记录') === true && graphViolations.filter(record => record.mode === 'late').every(record => record.paths.every(path => !path.startsWith('docs/graph/'))), JSON.stringify(graphViolations.filter(record => record.mode === 'late').map(record => record.paths))],
