@@ -52,6 +52,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "m5-rule-expected-effect（wf_24a77ef57c68c12c）第 2 轮 code 步：两批都做完，门禁绿，L3 420/420，分支推到 origin 6f0028a，第 1 轮的 F1–F3（含计划 §2.3 的冲突清单）已处理，主检出里没有本线的代码改动。第 2 轮评审 CHANGES_REQUESTED，新挡路 1 条：src/memory/effect.ts 的 countsOf 用 Math.min(...times)，流水到约 13 万条时栈溢出，整个 /hourness 报告崩掉（本仓库流水已有 7.3 万条）。循环两轮预算用完；编排方按人「全开、盯着」的定调加 2 轮修这一条（改成逐个比较，L2 补大数组一例），不问人。"
+    },
+    {
+      "at": "2026-11-06T04:05:43.954Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第 2 轮挡路 F1（countsOf 的 Math.min(...times) 在约 13 万条流水时栈溢出）在 801a999 修好：改成逐个比较，L2 加 40 万条事件一例；build、preflight、棘轮 73/18/1 绿，npm test 一项失败是 loops-run 的旧竞态（main 的 4598fa7 已修，本分支还没合入）。第 3 轮评审 APPROVED。合入前要解 HANDOFF.md、ORCHESTRATION.md、package.json、src/design/propose.ts 的合并冲突，并在合并结果上重跑门禁与 L3。"
     }
   ]
 }
