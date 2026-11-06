@@ -51,7 +51,10 @@
  * journal holds every line in between. In env-checks-ceiling a check held at
  * its ceiling is one line in the root agent's environment notice, which
  * check_limit takes away by raising the ceiling, and a dispatched subagent
- * never hears of it. The loop board's peak scenario
+ * never hears of it; right after the raise the status hub's collector reads
+ * the env row's env/timeouts with the held check and the raised ceiling,
+ * and the env row's hand-over gives the loop board's page the check with
+ * its timeout held at the ceiling and the raise. The loop board's peak scenario
  * (loops-peak) runs on the GLM route at the probe clock inside a peak, with
  * the loop row and the rules row (少做) enabled and no contribution listing
  * execute.resume-drive: the scripted agent becomes the main agent with /wish,
@@ -206,6 +209,20 @@ for (const [name, packages] of Object.entries(PROBE_PROFILES)) {
     process.exit(2)
   }
 }
+// The host's workspace instructions (dsh-agent-instructions) read $DSH_HOME/AGENTS.md. The
+// scenario glm-compact-instructions boots probe-full under a DSH home of its own that holds
+// one, so no other scenario's requests gain it; it stays out of `profiles`, whose count the
+// sandbox check compares with the generated names.
+const instructionsHome = join(runDir, 'dsh-root-instructions')
+let instructionsProfile
+try {
+  instructionsProfile = generateProfile(instructionsHome, 'probe-full', PROBE_PROFILES['probe-full'])
+}
+catch (error) {
+  console.error(`probe: cannot generate the instructions profile under ${instructionsHome}: ${error instanceof Error && 'code' in error ? error.code : String(error)}`)
+  process.exit(2)
+}
+process.on('exit', () => unlinkProfile(instructionsProfile))
 const PACKAGE_NAME = Object.fromEntries(PACKAGES.map(pkg => [pkg.key, pkg.name]))
 
 /** A solid red 8x8 RGB PNG, built byte by byte so the fixture needs no binary file. */
@@ -430,13 +447,18 @@ const compacted = runScenario('glm-compact', 'glm-5.3', [
 // GLM compaction with the transcript row enabled through the overlay (it
 // ships disabled): the checkpoint ends with ZCode's transcript sentence
 // naming the plaintext export under the scenario home, and the model reads
-// that file with Read ({transcript}, scripts/probe/probe-llm.mjs).
+// that file with Read ({transcript}, scripts/probe/probe-llm.mjs). The task
+// text carries two fake credentials (a Bearer value, a named-prefix key),
+// assembled from parts so that no line of this file is a token for the
+// secret scan; the export must carry neither (src/data/transcript.ts).
 const transcriptHome = join(runDir, 'glm-compact-transcript', 'home')
+const TRANSCRIPT_FAKES = [['Bearer', 'probe0123456789ABCDEFGHIJ'].join(' '), ['sk', '-'].join('') + 'probe0123456789abcdefgh']
+const TRANSCRIPT_FAKES_LINE = 'Probe credentials: [redacted] and [redacted].'
 const compactTranscript = runScenario('glm-compact-transcript', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
   { tool: { name: 'Read', arguments: { file_path: '{transcript}' } } },
   { text: 'done', status: true },
-], 'Read package.json, read the transcript the summary names, then reply done.', [
+], `Read package.json, read the transcript the summary names, then reply done. Probe credentials: ${TRANSCRIPT_FAKES.join(' and ')}.`, [
   '- id: compaction-basic',
   '  config: { thresholdRatio: 0.02, retainTokens: 0 }',
   '- id: glm-hourness/transcript',
@@ -1159,6 +1181,8 @@ const envCeilingRun = runScenario('env-checks-ceiling', 'deepseek-probe', [
   { tool: { name: 'write', arguments: { file_path: join(envCeilingWs, 't.txt'), content: 'a\n' } } },
   { tool: { name: 'read', arguments: { file_path: join(envCeilingWs, 't.txt') } } },
   { tool: { name: 'check_limit', arguments: { check: 'tool-1/full', seconds: 120, reason: ENV_CEILING_REASON } } },
+  // Asked once check_limit's result is back: the hub step records the env row's entries after the raise, and the tool reads what the env row hands the loop board's page.
+  { tool: { name: 'probe_loop_page', arguments: { entry: 'env.checks-after-edit' } }, hub: true },
   { tool: { name: 'probe_dispatch', arguments: { task: 'T1', prompt: 'Probe task T1: report.', cwd: envCeilingWs, scope: 'allowed', model: 'deepseek-probe' } } },
   { text: 'Waiting for task T1.' },
   { text: 'done' },
@@ -1175,6 +1199,12 @@ const envCeilingChildNotices = envNoticesOf(envCeilingChild)
 const envCeilingLimitResult = (() => { try { return JSON.parse(lastToolResult(envCeilingMain[3])?.text ?? '') } catch { return undefined } })()
 const envCeilingLimitLines = existsSync(envCeilingLimits) ? readFileSync(envCeilingLimits, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
 const envCeilingJournal = jsonl(join(envCeilingWs, '.llm', 'env-checks', 'timing.jsonl'))
+// The status hub's collector right after check_limit (status hub batch 9): the env row's env/timeouts entry.
+const envCeilingHub = envCeilingMain[3]?.hub
+const envCeilingTimeouts = envCeilingHub?.agent?.items.find(item => item.id === 'env/timeouts')
+// What the env row hands the loop board's page right after check_limit (panel done condition 8-1): one detail line per check, the check with its timeout.
+const envCeilingPage = readEnvLog(envCeilingLog).find(record => record.kind === 'page')?.page
+const envCeilingCheck = Array.isArray(envCeilingPage?.checks) ? envCeilingPage.checks[0] : undefined
 
 // Rules board, a rule of the person across the end of a peak (M6 S3, M6
 // design §16 S3, §7.3, docs/ORCHESTRATION.md §16.12). The clone's rules file
@@ -1654,6 +1684,52 @@ const focusGoal = (() => {
   while (node !== undefined && node.type !== 'goal') node = node.parent === undefined ? undefined : copyBefore.nodes.get(node.parent)
   return node
 })()
+/** The approved, live norm nodes below the focus's goal in the copy, as the re-anchoring lists them (src/graph/reanchor.ts goalNorms). */
+const focusNorms = (() => {
+  if (focusGoal === undefined) return []
+  const under = node => {
+    for (let at = node; at !== undefined; at = at.parent === undefined ? undefined : copyBefore.nodes.get(at.parent)) {
+      if (at.status === 'dropped' || at.status === 'superseded') return false
+      if (at.id === focusGoal.id) return at !== node
+    }
+    return false
+  }
+  return [...copyBefore.nodes.values()].filter(node => node.type === 'norm' && ['approved', 'doing', 'done'].includes(node.status) && under(node)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+})()
+const NORMS_HEAD = 'Norms in effect under goal'
+
+// Host workspace instructions after a compaction (docs/FACTS.md §3; habits
+// report §2.2, H2): dsh-agent-instructions puts $DSH_HOME/AGENTS.md and the
+// project's AGENTS.md into the first request as one baseline message. The
+// scenario boots under a DSH home holding a user-level AGENTS.md, works in a
+// repository holding a project AGENTS.md, compacts at every step boundary,
+// and dispatches a subagent; the checks read whether the baseline comes back
+// after each checkpoint and whether the child's first request carries it.
+const instructionsDir = join(runDir, 'glm-compact-instructions')
+const instructionsWs = join(instructionsDir, 'ws')
+const USER_MARK = 'PROBE-USER-INSTRUCTIONS-MARK'
+const PROJECT_MARK = 'PROBE-PROJECT-INSTRUCTIONS-MARK'
+mkdirSync(instructionsWs, { recursive: true })
+writeFileSync(join(instructionsHome, 'AGENTS.md'), `# probe user instructions\n\n${USER_MARK}\n`)
+writeFileSync(join(instructionsWs, 'AGENTS.md'), `# probe project instructions\n\n${PROJECT_MARK}\n`)
+writeFileSync(join(instructionsWs, 'README.md'), 'probe workspace\n')
+const compactInstructions = runScenario('glm-compact-instructions', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(instructionsWs, 'README.md') } } },
+  { tool: { name: 'Read', arguments: { file_path: join(instructionsWs, 'README.md') } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'I1', prompt: 'Probe task I1: reply done.', cwd: instructionsWs, scope: '.', model: 'glm-5.3' } } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the subagent run' } } },
+  { text: 'done' },
+], 'Read the README twice, dispatch task I1, wait, then reply done.', [...dispatchRow(join(instructionsDir, 'dispatch.jsonl')), '- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'], instructionsWs, [[{ text: 'child done' }]], instructionsProfile)
+const instructionsChildId = dispatchRecord('glm-compact-instructions').find(entry => entry.kind === 'started')?.childId
+const instructionsMain = compactInstructions.steps.filter(step => step.sessionId !== instructionsChildId)
+const instructionsChild = bySession(compactInstructions, instructionsChildId)
+/** The workspace instruction messages of a request after its last compaction checkpoint (all of them when it has none). */
+const instructionsAfterCheckpoint = (step) => {
+  const at = step?.messages.findLastIndex(message => message.source === 'compact-checkpoint') ?? -1
+  return (step?.messages ?? []).slice(at + 1).filter(message => message.source === 'agent-instructions')
+}
+const bothMarks = messages => messages.some(message => message.text.includes(USER_MARK) && message.text.includes(PROJECT_MARK))
+const instructionsCheckpointed = instructionsMain.filter(step => step.messages.some(message => message.source === 'compact-checkpoint'))
 
 const graphGoalDir = join(runDir, 'glm-graph-goal')
 const graphGoalWs = join(graphGoalDir, 'ws')
@@ -2322,6 +2398,10 @@ const transcriptLines = transcriptText.split('\n')
 const transcriptLong = transcriptLines.filter(line => Array.from(line).length > 1000)
 const transcriptSplit = transcriptLines.some(line => Array.from(line).length === 1000 && line.includes('"test:1"'))
 const transcriptRead = [...compactTranscript.steps, ...compactTranscript.compactions].flatMap(request => request.messages).find(message => message.role === 'tool' && message.text.includes('Transcript of session'))
+// The fake credentials of the task text reach the session's first request; the export carries neither, reads them as [redacted] and counts its replacements in the header.
+const transcriptFakesAsked = compactTranscript.steps[0]?.messages.some(message => message.role === 'user' && TRANSCRIPT_FAKES.every(fake => message.text.includes(fake))) === true
+const transcriptFakesLeft = TRANSCRIPT_FAKES.filter(fake => transcriptText.includes(fake)).length
+const transcriptReplaced = transcriptLines.slice(0, 5).map(line => /Replaced in this export: (\d+)\.$/.exec(line)?.[1]).find(count => count !== undefined)
 
 // The memory row journals one usage record per model call from the
 // llm/stream request fields (rc.3 GenerateOptions: provider, model,
@@ -3150,6 +3230,8 @@ const checks = [
   ['env-checks-ceiling: an estimate of 25 s is held at the 60 s ceiling: the value line records the 75 s wanted', envCeilingRun.status === 0 && envCeilingJournal[0]?.kind === 'value' && envCeilingJournal[0].limitMs === 60000 && envCeilingJournal[0].capped?.wantedMs === 75000 && envCeilingJournal[0].cap?.by === 'default', `exit ${envCeilingRun.status}; ${JSON.stringify(envCeilingJournal.slice(0, 2))}`],
   ['env-checks-ceiling: the root agent\'s environment notice gets the held-at-its-ceiling line with the full key, and check_limit is in its tool face', envCeilingMainNotices.some(text => text.split('\n').includes(ENV_CEILING_HELD)) && names(envCeilingMain[0]).has('check_limit'), envCeilingMainNotices.map(text => text.slice(0, 400).replace(/\n/g, ' | ')).join(' || ')],
   ['env-checks-ceiling: check_limit raises the ceiling to 120 s and limits.jsonl has the raise with the reason and the session; the next notice has no held line', envCeilingLimitResult?.outcome === 'raised' && envCeilingLimitResult.capS === 120 && envCeilingLimitResult.previousCapS === 60 && envCeilingLimitLines.length === 1 && envCeilingLimitLines[0].action === 'raise' && envCeilingLimitLines[0].check === 'tool-1/full' && envCeilingLimitLines[0].reason === ENV_CEILING_REASON && envCeilingLimitLines[0].session === envCeilingStarted?.parentId && !(envNoticesOf(envCeilingMain.slice(-1)).at(-1) ?? '').includes('held at its ceiling'), `${JSON.stringify(envCeilingLimitResult ?? lastToolResult(envCeilingMain[3])?.text ?? null)}; ${JSON.stringify(envCeilingLimitLines)}`],
+  ['env-checks-ceiling: right after check_limit the collector reads env/timeouts at the agent audience: tool-1/full held at 60 s, and under it the raise to 120 s with its reason (status hub batch 9)', envCeilingHub?.error === undefined && envCeilingHub?.agent?.rows.every(row => row.outcome !== 'error') === true && envCeilingTimeouts?.audience === 'agent' && envCeilingTimeouts.text.startsWith('- tool-1/full：超时 60 秒（') && envCeilingTimeouts.text.includes('想要 75 秒，被上限截在 60 秒') && (envCeilingTimeouts.detail ?? []).some(line => line.startsWith('  - 上限已由主 Agent 调高到 120 秒 · ') && line.includes(`：${ENV_CEILING_REASON}；要改回，跟主 Agent 说`)), JSON.stringify(envCeilingHub ?? null).slice(0, 1200)],
+  ['env-checks-ceiling: right after check_limit the env row hands the loop board\'s page one detail line for the check (no timeout in it) and the check with its timeout: 60 s from the estimate of 25 s, held by the cap at 75 s, the raise to 120 s with its reason, a history and no timeouts (panel done condition 8-1)', isDeepStrictEqual(envCeilingPage?.details, ['Full：改了 *.txt 之后跑 · node fast.mjs {files}']) && envCeilingPage.checks.length === 1 && envCeilingCheck?.key === 'tool-1/full' && envCeilingCheck.title === 'Full：full' && envCeilingCheck.timeout?.seconds === 60 && envCeilingCheck.timeout.source?.kind === 'agent-estimate' && envCeilingCheck.timeout.source.estimateS === 25 && isDeepStrictEqual(envCeilingCheck.timeout.held, { by: 'cap', wantedS: 75 }) && envCeilingCheck.timeout.capRaised?.capS === 120 && envCeilingCheck.timeout.capRaised.reason === ENV_CEILING_REASON && Array.isArray(envCeilingCheck.timeout.history) && envCeilingCheck.timeout.history.length >= 1 && isDeepStrictEqual(envCeilingCheck.timeout.timeouts, []) && envCeilingCheck.timeout.timeouts7d === 0, JSON.stringify(envCeilingPage ?? null).slice(0, 1200)],
   ['env-checks-ceiling: a subagent\'s environment notice has the checks line and no held line', envCeilingStarted !== undefined && envCeilingChild.length > 0 && envCeilingChildNotices.length > 0 && envCeilingChildNotices.every(text => text.includes('Checks run after each edit (listed on the loop board): full on *.txt.') && !text.includes('held at its ceiling')), `${envCeilingChild.length} child request(s); ${envCeilingChildNotices.map(text => text.slice(0, 300).replace(/\n/g, ' | ')).join(' || ')}`],
   ['env-notice: the row appended .llm/ to the clone\'s .git/info/exclude and check-ignore verifies it', envIgnored === 0 && envExclude.split('\n').filter(line => line.trim() === '.llm/').length === 1, `check-ignore exit ${envIgnored}; exclude lines: ${envExclude.split('\n').filter(line => line.trim() === '.llm/').length}`],
   titleCheck('client-modules (probe-full)', clientModules.steps[0]?.meta, ['glm', 'hourness']),
@@ -3186,6 +3268,17 @@ const checks = [
     const added = all.length - graphNotices(graphSteps[8]).length
     return all.length > 0 && added > 0 && all.every(notice => notice.projection !== 'compaction' && !notice.text.includes(DENIED_HEAD))
   })(), `notices in the last request: ${graphNotices(graphSteps.at(-1)).map(notice => `${notice.projection}${notice.text.includes(DENIED_HEAD) ? '(denied rules)' : ''}`).join(', ') || 'none'}; after the first denial: ${graphNotices(graphSteps.at(-1)).length - graphNotices(graphSteps[8]).length}`],
+  ['graph row: the re-anchoring after the compaction lists the approved norm nodes under the focus\'s goal, one per line (id: title); no other projection lists them', (() => {
+    const text = firstReanchor?.text ?? ''
+    const listed = focusNorms.length === 0
+      ? !text.includes(NORMS_HEAD)
+      : text.includes(`\n${NORMS_HEAD} ${focusGoal.id},`) && focusNorms.every(norm => text.includes(`\n- ${norm.id}: ${norm.title}\n`))
+    const others = [...graphSteps, ...compactGraph.steps].flatMap(step => graphNotices(step)).filter(notice => notice.projection !== 'compaction')
+    return firstReanchor !== undefined && listed && others.length > 0 && others.every(notice => !notice.text.includes(NORMS_HEAD))
+  })(), `goal ${focusGoal?.id ?? 'none'} with ${focusNorms.length} norm(s): ${focusNorms.map(norm => norm.id).join(', ') || 'none'}; other projections with norms: ${[...graphSteps, ...compactGraph.steps].flatMap(step => graphNotices(step)).filter(notice => notice.projection !== 'compaction' && notice.text.includes(NORMS_HEAD)).length}`],
+  ['host instructions: the first request carries the workspace baseline (agent-instructions) with the user-level $DSH_HOME/AGENTS.md and the project AGENTS.md', bothMarks(instructionsAfterCheckpoint(instructionsMain[0])), `exit ${compactInstructions.status}; first request sources: ${(instructionsMain[0]?.messages ?? []).map(message => message.source).join(',')}`],
+  ['host instructions: after every compaction checkpoint the next request carries the baseline again with both files', instructionsCheckpointed.length > 0 && instructionsCheckpointed.every(step => bothMarks(instructionsAfterCheckpoint(step))), `${compactInstructions.compactions.length} compaction(s); baseline messages after the checkpoint per request: ${instructionsCheckpointed.map(step => `${instructionsAfterCheckpoint(step).length}${bothMarks(instructionsAfterCheckpoint(step)) ? '' : '(marks missing)'}`).join(', ') || 'no checkpointed request'}`],
+  ['host instructions: the dispatched subagent\'s first request carries the baseline with both files', instructionsChildId !== undefined && bothMarks(instructionsAfterCheckpoint(instructionsChild[0])), `child ${instructionsChildId ?? 'not started'}; ${instructionsChild.length} child request(s); first request sources: ${(instructionsChild[0]?.messages ?? []).map(message => message.source).join(',')}`],
   ['graph row: a goal round carries the projection (goal-round)', graphNotices(graphRoundTwo).some(notice => notice.projection === 'goal-round'), graphRoundTwo === undefined ? `no round 2 request (${graphGoalSteps.length} goal-agent request(s), exit ${graphGoal.status})` : graphNotices(graphRoundTwo).map(notice => notice.projection).join(', ')],
   ['graph row: Write and Bash into the copy\'s node files are denied by graph-files-only and journaled; a write elsewhere runs (the recorder\'s follow-up records carry a kind)', [8, 9].every(index => graphResult(index)?.isError === true && graphResult(index)?.text.includes('inside the project graph') === true) && graphResult(10)?.isError !== true && !existsSync(graphNodeFile) && existsSync(graphNotes) && graphViolations.filter(record => record.rule === 'graph-files-only' && record.kind === undefined).map(record => record.tool).join(',') === 'Write,Bash', `records: ${graphViolations.map(record => `${record.kind ?? 'denial'}${record.rule.startsWith('graph-files-only') ? '' : `(${record.rule})`}${record.mode === 'shadow' ? '(shadow)' : ''}:${record.tool ?? ''}`).join(', ')}`],
   ['graph row: the workspace-change fallback runs and counts the graph tool writes as known (no late record names a node file)', healthOf(graphRun).guard?.reason.includes('事后纠正启用：工作区变更记录') === true && graphViolations.filter(record => record.mode === 'late').every(record => record.paths.every(path => !path.startsWith('docs/graph/'))), JSON.stringify(graphViolations.filter(record => record.mode === 'late').map(record => record.paths))],
@@ -3243,6 +3336,7 @@ const checks = [
   ['glm compact transcript: the sentence names <scenario home>/transcripts/<session id>.txt, which starts with the header line for that session', transcriptPath !== undefined && resolve(transcriptPath) === resolve(transcriptHome, 'transcripts', `${transcriptSession}.txt`) && resolve(transcriptPath).startsWith(`${resolve(transcriptHome, 'transcripts')}${sep}`) && transcriptLines[0]?.startsWith(`Transcript of session ${transcriptSession}, exported `) === true, `${transcriptPath ?? 'no path'}; ${transcriptLines[0]?.slice(0, 120) ?? ''}`],
   ['glm compact transcript: the model\'s Read of the named file returns the export (a recorded request carries that tool result)', transcriptRead !== undefined && transcriptRead.isError !== true, transcriptRead === undefined ? `no tool result with the export text in ${compactTranscript.steps.length} step(s) and ${compactTranscript.compactions.length} compaction(s)` : transcriptRead.text.slice(0, 160).replace(/\n/g, ' | ')],
   ['glm compact transcript: no line of the export is longer than 1000 code points, and the long test:1 line of package.json is split', transcriptText.length > 0 && transcriptLong.length === 0 && transcriptSplit, `${transcriptLines.length} line(s); ${transcriptLong.length} over 1000; split test:1 line ${transcriptSplit}`],
+  ['glm compact transcript: the two fake credentials of the task reach the session but not the export, which reads them as [redacted] and counts its replacements in the header; /glm-status gives the same count', transcriptFakesAsked && transcriptFakesLeft === 0 && transcriptText.includes(TRANSCRIPT_FAKES_LINE) && Number(transcriptReplaced) >= TRANSCRIPT_FAKES.length && healthOf(compactTranscript).transcript?.reason.includes(`遮掉 ${transcriptReplaced} 处`) === true, `in the first request: ${transcriptFakesAsked}; left in the export: ${transcriptFakesLeft} of ${TRANSCRIPT_FAKES.length}; redacted task line: ${transcriptText.includes(TRANSCRIPT_FAKES_LINE)}; header count: ${transcriptReplaced ?? 'none'}`],
   ['glm compact transcript: in glm-compact (transcript row disabled, the shipped default) no checkpoint names a transcript', checkpointsOf(compacted).length > 0 && checkpointsOf(compacted).every(message => !message.text.includes(TRANSCRIPT_MARK)), `${checkpointsOf(compacted).length} checkpoint(s)`],
   ['glm compact transcript: /glm-status of the session lists the transcript row in effect with the export it wrote', healthOf(compactTranscript).transcript?.status === ACTED && healthOf(compactTranscript).transcript.reason.startsWith('压缩前导出'), JSON.stringify(healthOf(compactTranscript).transcript ?? null)],
   ['memory usage: one record per GLM step with the request provider, model and session id', glmUsage.length === glm.steps.length && glmUsage.every(record => record.provider === 'glm-probe' && record.model === 'glm-5.3' && typeof record.sessionId === 'string' && record.sessionId.length > 0), `${glmUsage.length} record(s) for ${glm.steps.length} step(s); first: ${JSON.stringify(glmUsage[0] ?? null).slice(0, 120)}`],

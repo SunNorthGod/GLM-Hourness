@@ -759,7 +759,7 @@ test('glm-compact and the transcript row: a GLM compaction summary ends with the
     assert.deepEqual(texts, [`Summary:\nbody${transcriptNote(path)}`])
     const written = readFileSync(path, 'utf8').split('\n')
     assert.ok(written[0]?.startsWith('Transcript of session S1, exported '), written[0])
-    assert.deepEqual(written.slice(1), renderTranscript('S1', documents, new Date(0)).split('\n').slice(1))
+    assert.deepEqual(written.slice(1), renderTranscript('S1', documents, new Date(0)).text.split('\n').slice(1))
     stopCompact()
     stopTranscript()
   }

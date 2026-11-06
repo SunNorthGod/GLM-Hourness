@@ -44,11 +44,12 @@ import type { AgentLike, PreExecuteDecision, PreExecuteHost, ServiceLookup, Sess
 import type { JsonValue } from '../shared/json.ts'
 import { dialectNames, dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import type { HealthState } from '../shared/health.ts'
+import { metricsWhereOf, toMetricsId, type BodyEventOf, type DesignBodies, type MetricsWhere } from '../shared/metrics.ts'
 import { DELEGATIONS_ID } from '../shared/answer-marks.ts'
 import { sessionRoute } from '../shared/route.ts'
 import { GRAPH_TOOL_NAMES } from '../shared/tool-names.ts'
 import { baseFor, type ViolationRecord } from './index.ts'
-import { guardGit, SNAPSHOT_NOTICE_KIND, snapshotCorrection, type SnapshotEnvironment } from './git-snapshot.ts'
+import { guardGit, SNAPSHOT_NOTICE_KIND, snapshotCorrection, type SavedSnapshot, type SnapshotEnvironment } from './git-snapshot.ts'
 import { judgeDispatchedWrite, releaseCorrection, type ReleaseDeps } from './design-release.ts'
 import { attemptOf, DELEGATIONS_CORRECTION, GRAPH_CLI_CORRECTION, graphCliWrite, judgeGraphStage, judgeMainAgentGraph, relayOf, stageCandidate, SUBAGENT_RELAY_CORRECTION, writesDelegations, type GraphRuleDeps, type SessionKind, type StageAttempt } from './main-agent-graph.ts'
 import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, GRAPH_CLI_RULE, GRAPH_DELEGATIONS_RULE, GRAPH_RELAY_RULE, GRAPH_STAGE_RULE, NO_WRITE_RULE } from './main-agent-rules.ts'
@@ -121,6 +122,9 @@ export interface BypassAlert {
   readonly what: string
   readonly goal?: string
   readonly node?: string
+  /** The stage the node had and the one the write would give it, when the write moves a stage. */
+  readonly stageFrom?: string
+  readonly stageTo?: string
 }
 
 /** What the design row hands to the rules. */
@@ -137,10 +141,42 @@ export interface MainAgentRulesDeps extends Pick<ReleaseDeps, 'agents' | 'graph'
   readonly tell: (agent: AgentLike, notice: { readonly kind: string, readonly summary: string, readonly text: string }) => boolean
   /** A delegated session sent the human's words with a graph write: told to the human and the main agent. Never rejects into the call. */
   readonly bypass: (alert: BypassAlert) => void
-  /** One metrics event (src/design/metrics.ts); never throws. */
-  readonly metric: (event: { readonly event: string, readonly [field: string]: unknown }) => void
+  /** One metrics event of the design row's kinds (src/design/metrics.ts), filed under the session; never throws. */
+  readonly metric: (event: BodyEventOf<DesignBodies>, where: MetricsWhere) => void
   /** The machine the snapshot runs on; tests replace the parts they control. */
   readonly snapshots?: SnapshotEnvironment
+}
+
+/**
+ * `git.snapshot` for one saved snapshot (M3 addendum 0.6 §3.12): the risk
+ * class, what it saved (whether there is a stash commit `S` and a working
+ * tree commit `W`, and how many files were in the way, to be cleaned and in
+ * a removed work tree), whether a tag was set, the ignored files of a removed
+ * work tree and how long it took. Counts and flags only, no path.
+ */
+function snapshotEvent(snapshot: SavedSnapshot): BodyEventOf<DesignBodies> {
+  const { entry } = snapshot
+  const files = entry.files
+  return {
+    k: 'git.snapshot',
+    body: {
+      class: entry.risk,
+      saved: {
+        stash: entry.stash !== undefined,
+        worktree: entry.worktree !== undefined,
+        files: files?.count ?? 0,
+        inTheWay: files?.inTheWay ?? 0,
+        cleaned: files?.cleaned ?? 0,
+        removed: files?.worktree ?? 0,
+        refs: entry.moved.length,
+        ...entry.skipped === undefined ? {} : { skipped: entry.skipped },
+      },
+      tagged: entry.tag !== undefined,
+      ignored: entry.ignored?.count ?? 0,
+      ignoredBytes: entry.ignored?.bytes ?? entry.ignored?.bytesAtLeast ?? 0,
+      ms: Math.max(0, Math.round(snapshot.ms)),
+    },
+  }
 }
 
 function message(error: unknown): string {
@@ -173,7 +209,7 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
       const reason = renderCorrection(correction)
       const cwd = typeof session.header.cwd === 'string' && session.header.cwd.length > 0 ? session.header.cwd : undefined
       deps.journal({ at: new Date().toISOString(), rule, tool: payload.name, agentId: agent.id, sessionId: session.id, ...origin, correction: reason, ...extra }, cwd)
-      deps.metric({ event: 'design.rule-denied', rule, tool: call.name, session: who })
+      deps.metric({ k: 'design.rule-denied', body: { rule, tool: toMetricsId(call.name), sessionKind: who } }, metricsWhereOf(session))
       return { kind: 'deny' as const, reason }
     }
     /** A delegated or an ordinary session tried to move work on without the human: the denial goes to the journal with who tried and at what, and the human and the main agent are told. */
@@ -189,7 +225,7 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
       })
       if (attempt === undefined) return decision
       try {
-        deps.bypass({ rule, agent: { id: agent.id, session }, kind, tool: call.name, what: attempt.what, ...attempt.goal === undefined ? {} : { goal: attempt.goal }, ...attempt.node === undefined ? {} : { node: attempt.node } })
+        deps.bypass({ rule, agent: { id: agent.id, session }, kind, tool: call.name, what: attempt.what, ...attempt.goal === undefined ? {} : { goal: attempt.goal }, ...attempt.node === undefined ? {} : { node: attempt.node }, ...attempt.stageFrom == null ? {} : { stageFrom: attempt.stageFrom }, ...attempt.stageTo == null ? {} : { stageTo: attempt.stageTo } })
       }
       catch (error) {
         deps.report(agent, 'degraded', `不经人的同意推进目标的写入被拒了，但没能告诉人（${message(error)}）`)
@@ -247,7 +283,11 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
     // The base the shell's relative paths resolve from: the session's working directory, as the guard row reads it.
     const base = baseFor(ctx, agent)
     const git = await guardGit({ command: shell.command, dialects: shell.dialects, base, sessionId: session.id, agentId: agent.id }, deps.snapshots)
-    if (git.kind === 'refuse') return denial(GIT_SNAPSHOT_RULE, snapshotCorrection(shell.command, git.refusal))
+    if (git.kind === 'refuse') {
+      deps.metric({ k: 'git.snapshot-refused', body: { code: git.refusal.code } }, metricsWhereOf(session))
+      return denial(GIT_SNAPSHOT_RULE, snapshotCorrection(shell.command, git.refusal))
+    }
+    for (const snapshot of git.saved) deps.metric(snapshotEvent(snapshot), metricsWhereOf(session))
     for (const text of git.notices) {
       if (!deps.tell(agent, { kind: SNAPSHOT_NOTICE_KIND, summary: 'git snapshot saved', text })) deps.report(agent, 'degraded', '快照已存，但没能告诉主 Agent 恢复办法')
     }

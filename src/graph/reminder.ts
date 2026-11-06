@@ -17,15 +17,16 @@
  * notices from the visible history, so the focus is also kept in memory
  * per session; a process restart between a compaction and the next step
  * loses it until graph_focus is called again. The re-anchoring notice also
- * carries the goal's non-goals and the rules denied in this session
- * (reanchor.ts); they stay out of the digest, so no other step carries them.
+ * carries the goal's non-goals, the titles of its approved norm nodes and
+ * the rules denied in this session (reanchor.ts); they stay out of the
+ * digest, so no other step carries them.
  */
 import { createUserNotice, type AgentLike, type DerivedMessage, type UserNotice } from '../shared/dsh-min.ts'
 import { installStepNotice, toolCallArguments, toolCallOutcomes } from '../shared/step-notice.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
 import { changeReason, digestOf, isGoalRound, noticeHistory, type DigestFacts } from './digest-notice.ts'
 import { projectNode, type NodeRef, type Projection } from './projection.ts'
-import { reanchorLines, sessionDenials } from './reanchor.ts'
+import { goalNorms, reanchorLines, sessionDenials } from './reanchor.ts'
 import { FOCUS_TOOL } from './live.ts'
 import { readGraph, type GraphRead } from './row-health.ts'
 import type { FocusMemory } from './tools.ts'
@@ -177,16 +178,16 @@ async function projectionNotice(input: ProjectionInput): Promise<UserNotice | un
   const anchor = state.checkpoint?.id
   const facts: ProjectionFacts = { focus, digest, ...(anchor === undefined ? {} : { anchor }), reason }
   // Only the re-anchoring carries the extra lines; the digest stays the projection's, so the next step adds nothing.
-  const extra = reason === 'compaction' ? await reanchorExtra(input, projection) : []
+  const extra = reason === 'compaction' ? await reanchorExtra(input, projection, 'graph' in read ? goalNorms(read.graph, focus) : []) : []
   const text = extra.length === 0 ? body : [body, ...extra].join('\n')
   return createUserNotice(PROJECTION_SOURCE, `project graph projection of ${focus} (${reason})`, wrapSystemReminder(text), { graphProjection: facts })
 }
 
 /** The re-anchoring's lines; the journal's read is told to the row health, and a failed read only leaves the denials out. */
-async function reanchorExtra(input: ProjectionInput, projection: Projection | undefined): Promise<string[]> {
+async function reanchorExtra(input: ProjectionInput, projection: Projection | undefined, norms: Parameters<typeof reanchorLines>[1]): Promise<string[]> {
   const denials = await sessionDenials(input.reanchor.journal(input.cwd), input.sessionId)
   input.reanchor.told(input.sessionId, 'problem' in denials ? denials.problem : undefined)
-  return reanchorLines(projection, denials)
+  return reanchorLines(projection, norms, denials)
 }
 
 /**

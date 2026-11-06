@@ -17,11 +17,11 @@ import { auditPaths, type DecisionRecord, type UsageRecord } from '../memory/aud
 import { classifyRecord, journalEarliest, type GuardRecord, type LiftRecord } from '../guard/records.ts'
 import { liftRecordPath } from '../guard/lift.ts'
 import { liftLines, renderStamp, ruleLines, type LiftsInput } from '../guard/status.ts'
-import { suppressionLineOf } from '../env/status.ts'
+import { checkTimeouts, suppressionLineOf, timeoutLines } from '../env/status.ts'
 import { runGit } from '../data/git-process.ts'
 import type { SuppressionRecord } from '../env/suppressions.ts'
-import { limitSetting, parseLimits, type LimitLine } from '../env/limit-tool.ts'
-import { lastValues, parseTiming, secondsText, valueSourceText, type TimingLine } from '../env/timeout.ts'
+import { parseLimits, type LimitLine } from '../env/limit-tool.ts'
+import { parseTiming, type TimingLine } from '../env/timeout.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { listOpenItems } from '../graph/projection.ts'
 import type { HistoryEntry } from '../graph/schema.ts'
@@ -180,39 +180,16 @@ function requestLineOf(records: readonly { ref: string, outcome: string }[], gra
   return `- 申报 ${asked.size} 次：放行 ${approved}（已用 ${grants}、作废 ${voids}）、不放行 ${declined}、没答 ${unanswered}`
 }
 
-/** The checks' timeouts look back this far (design §6.3.1 「看得见」). */
-const TIMING_WINDOW_MS = 7 * 24 * 3600 * 1000
-
 /**
- * The section of the checks' timeouts (design §6.3.1, §3.10): one line per
- * check that has a value, with the value and where it came from (whose
- * estimate, in which session, or that the session was not recorded; then
- * what was wanted when the value is held at the ceiling), the
- * timeouts of the last seven days and the latest one, and the runs dropped
- * from the queue; under it, when the check's last line in limits.jsonl is a
- * raise, the raised ceiling with its day and reason (never a value line's
- * `cap`: a reset shows at once). Empty when the journal has no value line.
+ * The section of the checks' timeouts (design §6.3.1, §3.10): the env
+ * module's facts and lines (src/env/status.ts `checkTimeouts`,
+ * `timeoutLines`), the same computation the status entry `env/timeouts`
+ * hands (status hub design 0.3 §12 M4 row). Empty when the journal has no
+ * value line.
  */
 function timingSection(timing: readonly TimingLine[], limits: readonly LimitLine[], now: number, offsetMinutes: number): string[] {
-  const since = now - TIMING_WINDOW_MS
-  const recent = (line: TimingLine): boolean => !Number.isNaN(Date.parse(line.at)) && Date.parse(line.at) >= since && Date.parse(line.at) <= now
-  const lines: string[] = []
-  for (const [check, value] of lastValues({ lines: timing, bad: 0 })) {
-    const timeouts = timing.filter(line => line.kind === 'timeout' && line.check === check && recent(line))
-    const queued = timing.filter(line => line.kind === 'queue' && line.check === check && recent(line)).length
-    const last = timeouts.at(-1)
-    const late = last?.kind !== 'timeout' ? '近 7 天没有超时' : `近 7 天超时 ${timeouts.length} 次（最近一次：上限 ${secondsText(last.limitMs)} 秒，跑了 ${(last.elapsedMs / 1000).toFixed(1)} 秒，${renderStamp(Date.parse(last.at), offsetMinutes)}）`
-    lines.push(`- ${check}：超时 ${secondsText(value.limitMs)} 秒（${valueSourceText(value, true)}）· ${late}${queued === 0 ? '' : ` · 排队太久没跑 ${queued} 次`}`)
-    const setting = limitSetting({ lines: limits, bad: 0 }, check)
-    if (setting !== undefined) lines.push(`  - 上限已由主 Agent 调高到 ${setting.capS} 秒 · ${renderDay(setting.at, offsetMinutes)}：${setting.reason}；要改回，跟主 Agent 说`)
-  }
+  const lines = timeoutLines(checkTimeouts(timing, limits, now), offsetMinutes)
   return lines.length === 0 ? [] : ['', '## 检查的超时', ...lines]
-}
-
-/** The day of a moment at the report's offset, YYYY-MM-DD; a moment that does not read is written as recorded. */
-function renderDay(at: string, offsetMinutes: number): string {
-  const ms = Date.parse(at)
-  return Number.isNaN(ms) ? at : new Date(ms + offsetMinutes * 60_000).toISOString().slice(0, 10)
 }
 
 /** The section of the asks: what waits for the person, who settled the rest, and how many dispatch calls were made. */

@@ -39,6 +39,8 @@ interface RulesEntry {
   readonly greyed: boolean
   /** A line that leads to the group of the waiting work; null when there is none. */
   readonly jump: string | null
+  /** A person's rule that runs a script: its file from the project root, read when 讲细点 opens; null for the others. */
+  readonly script: string | null
 }
 
 /** One checklist node of the graph in the gates group (plan Q1 B). */
@@ -174,6 +176,7 @@ const entry = (key: string, title: string, parts: Partial<Omit<RulesEntry, 'key'
   details: parts.details ?? [],
   greyed: parts.greyed ?? false,
   jump: parts.jump ?? null,
+  script: parts.script ?? null,
 })
 
 /** 此刻是不是高峰, and when that turns. */
@@ -371,6 +374,7 @@ function personEntry(rule: RulesPersonView): RulesEntry {
       ...(rule.condition !== undefined && rule.onUnknown === 'apply' ? ['条件读不出时照样按成立处理'] : []),
     ],
     greyed: !rule.inForce,
+    script: rule.script?.file ?? null,
   })
 }
 
