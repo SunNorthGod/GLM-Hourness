@@ -396,6 +396,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B6 bootstrap-trial 评审 CHANGES_REQUESTED，2 条挡路：F1 复用的失败的准备命令之后的命令没标 afterSetupFailure（trial.ts:381-383）；F2 宿主在一轮中途退出后，同一份计划的轮次再也不跑（trial-round.ts:143-144）。门禁与探针 439/439 绿。循环接着修（第 11 轮）。"
+    },
+    {
+      "at": "2026-11-06T10:31:19.784Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管线（wf_f008ac0c87ec6943）结束：B6 评审两条挡路（F1 复用失败的准备命令后续未标 afterSetupFailure；F2 宿主中途挂掉后同计划的一轮不再重跑）修在 8f036e2，先合入 origin/main（11d6279）；两个提交上四道门禁退出 0（test 3323、3324 过 / 0 失败），探针 446/446，棘轮 73/18/1；B6F 评审 APPROVED，loopState ALL_DONE。B0–B6 全部在 origin/bootstrap（8f036e2，工作树干净），行出厂仍禁用，未合入 main。B7–B10 顺延：B7 等 M7 的 gate-norm.ts 与 floor.ts 进 main，B8、B9 等 M7/M3，B10 等 B7 与 M7 派发。最终报告预计对 origin/m7 有 5 处冲突，对另三条线没有。"
     }
   ]
 }

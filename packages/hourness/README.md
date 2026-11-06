@@ -35,7 +35,7 @@ Declared in `cordis.patch.yml` (DSH Loader dialect). Row ids keep the `glm-hourn
 | `glm-hourness/data` | data directory service: the user-level directory and the project `.llm` | enabled |
 | `glm-hourness/guard` | execution boundary for tool calls | enabled |
 | `glm-hourness/memory` | memory tools and the audit journal | enabled |
-| `glm-hourness/lessons` | lessons board: pitfalls and fixes per project, `/lessons` | disabled |
+| `glm-hourness/lessons` | lessons board: pitfalls and fixes per project, `/lessons` | enabled |
 | `glm-hourness/workflow` | decision journal of dispatched work | enabled |
 | `glm-hourness/hourness` | `/hourness` morning report and usage panel | enabled |
 | `glm-hourness/graph` | project graph tools for agents | enabled |

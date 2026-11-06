@@ -595,6 +595,30 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-06 17:00 人要求尽量并行。在跑 6 路：M7（第三次真实模型运行）、接管（B6 评审两条挡路在修）、消融（后台队列，高峰后自动续跑）、data-journal-lock-flake、compact-recall-l4、lessons-enable。其余就绪节点（m7-1、m7-2、m7-4、m7-6、m7-7、m7-8、m7-9、m7-habits、m7-handback-path-check、rules-r4d、m4-request-card）代码都压在 M7 分支上，等 M7 合入 main；主检出写入拦截同属 M7 写范围一类，也等 M7。"
+    },
+    {
+      "at": "2026-11-06T09:14:17.740Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-06 澄清「AI 知识库」指的是此前提炼给编排方的一位业内人士的项目开发经验：把文档放到 AI 手边。编排方在仓库、docs/graph 与 .agents/tasks 里按关键词查过，没找到这份提炼的记录，判断它只在早先的对话里、随上下文截断丢了，等人重发原文。现状对照（实读）：框架已做到的是会话开局与每次压缩之后把用户级与项目 AGENTS.md 交给模型（宿主 dsh-agent-instructions，L3 实测见 FACTS.md §3，m4-reanchor-norms）、每步的图投影、env 分支提醒、记忆索引、派活简报带经验；只在本仓库成立、框架不带的是文档地图与分工（AGENTS.md「文档」一节、CHARTER.md §11）和条款整条重写的写法，别的项目装上 Hourness 不会得到文档地图，也没有文档过时的检查。人重发原文后逐条对照再定要不要提节点。"
+    },
+    {
+      "at": "2026-11-06T10:31:20.053Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第六次往主检出写：17:50 主检出出现未提交的 tests/metrics-schema.spec.ts 改动（+5/-2），与 .worktrees/m5-index-truncation-alarm 里 17:51 写的同一文件内容一致。编排方存档到 .agents/tasks/zcode-parity/stray/metrics-schema-1750.patch 后还原主检出，并提醒该步只写自己的工作树。工具层挡主检出写入的线仍等 M7 合入后与写范围检查一起做。"
+    },
+    {
+      "at": "2026-11-06T10:34:05.695Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "Kiro 2026-11-06 18:30 前后再次重启，编排方对账：在跑的五路都已恢复。M7（wf_36d1d690c7e1de90）real-model-run-3 在跑；lessons-enable（wf_7ed94028a156d1cb）desktop-l4 在跑、持 desktop-lock；m5-index-truncation-alarm（wf_8924e7a9cdb716c0）code 步在跑；compact-recall-l4（wf_07a1fd00ce69e723）l4-check 在跑；ablation（wf_5f5345b05e5c4e89）code 步等回话，后台队列 pid 60792 活着、持 probe-lock，高峰已过，编排方回它照原计划跑完再写报告。main = origin = github = 6e545fd，主检出没有已跟踪改动。"
+    },
+    {
+      "at": "2026-11-06T10:55:20.025Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-06 说当时发过那份「把文档放到 AI 手边」的提炼（据 ZCode 会话里人的原话：从抖音下的一个人的编程理论，让编排方融合进设计）。编排方再查：仓库 docs/、docs/graph、.agents/tasks、video/ 与 ~/.zcode/cli 的 memories、artifacts、rollout 按「抖音」「手边」「知识库」等关键词都没有原文；ZCode 那边 2026-11-06 18:45 的会话（sess_067e6066）同样查过、同样没找到。原文多半只在 ZCode 早先会话的对话库 ~/.zcode/cli/db/db.sqlite（约 27 GB，ZCode 运行时被占用，编排方不去动它）。建议人请 ZCode 按「抖音」搜它自己的历史会话，或直接重发原文；拿到后逐条对照框架。"
     }
   ]
 }
