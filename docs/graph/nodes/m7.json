@@ -675,6 +675,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 E9：plan-e9 步被上游错误（server_error: context canceled）截断，没写出计划，.worktrees/m3/.llm/wf/m7-e9/ 是空的，只留下主检出 .llm/logs 里的读取日志（m7-e9-plan-*.log，最后写入 04:59）。e9-code 步发现没有计划后停下等编排方，没改任何东西（m7 HEAD 仍是 c85da4a，树干净）。编排方选 A：另派 m7-plan-e9-retry（wf_b53e8674fee05fae，只读，边写边落盘）照 E8 计划的格式写 E9 计划，明确骨架场景复用哪套探针机制，并列出 M7 合入 main 时要吸收的改动（身份段 3200、对话段 2000 的上限，reminder.ts 与 src/loops 的改动）；计划写好后再让 e9-code 接着做。"
+    },
+    {
+      "at": "2026-11-05T23:08:15.187Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E9 计划重写完成（m7-plan-e9-retry，wf_b53e8674fee05fae）：.worktrees/m3/.llm/wf/m7-e9/plan.md，5 个批次项、偏离 D1–D8、门禁清单、后续步骤说明、合入 main 时要吸收的改动与摘要，没有挡住它的编排方问题。e9-code 步接着按计划实现。"
     }
   ]
 }
