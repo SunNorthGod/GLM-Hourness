@@ -71,6 +71,9 @@
 
   结论：没有单一门槛。正例落在 0.30–0.43，反例 N1–N3 在它上面（0.875–1.000），N4、N5 在它下面；任何能收下 P1 的门槛（≤ 0.30）都收下 N1–N3。词集重合认不出「相反」与「换了语言」，范围也分不开（P1 本身跨范围）。另外 N1–N3 在现行的名字加说明 ≥ 0.6 下已经被当作同一条，这是现行匹配本来的误认。按编排方的第 2 条停下，A、B 都没有动代码。
 
+- 编排方定 (2)（2026-11-06）：A 照旧；软检查 `maybe_declined`（只比说明 ≥ 0.25，或名字加说明 ≥ 0.6），点名那条「不用」并写出路，`notSame: true` 放行并在 `ask` 记录与指标 `count`（`what: habit-not-same`，`by: memory`）里记下被放过的「不用」；同名与同组键的「不用」仍是 `declined_recently`，`notSame` 撤不掉；不是新规则，`habit-ask-first` 不动。
+- bb726f1：上面一条的代码、L2 `tests/memory-habit-declined.spec.ts`（12 例：两对真实再问得 `maybe_declined`；五个反例低于 0.25 直接问得出或带 `notSame` 放行并记下；过期的不拦；索引与 `memory_query` 列在期内的）与 M5 设计 §3.8、ORCHESTRATION §8.3/§8.5、HANDOFF 同一提交。指标的提交方加 `memory`（`MetricsBy`、`METRICS_BY`）。build 0、check-lint 0（eslint 73 / knip 18 / jscpd 1）、`npm test` 0（3203/3203）。
+- 两档模型重跑（bb726f1 的构建）：两档模型会话 2 都没有再问，也没有调 `memory_habit`；回复里都说「之前说过不用，不再问」。验收第 2 条成立。记录在 `habit-rule-runs.md` 第二轮。
+
 未做：
-- 验收第 2 条的「28 天内不再问」：B 的门槛分不开正反例，等编排方再定。
 - 合入 main、批次 L4：归落地步骤。没有写 `docs/graph`（编排方要求）。

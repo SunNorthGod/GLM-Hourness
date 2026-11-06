@@ -33,3 +33,20 @@
 - 不成立：验收第 2 条「说了不用之后 28 天内不会再问」两档模型都没有做到。会话 2 里两个模型都对同一条习惯换了名字与说法再问，`memory_habit ask` 没有认出它是同一条，人被问了第二次。
 - 原因（实读 `src/memory/habit.ts` `earlierOutcome`）：「同一条习惯」只按两样认：`learnedFrom` 的组键有交集，或 `sameText`（名字相同，或「名字 + 说明」的词集 Jaccard ≥ 0.6）。这里没有组键；名字两次不同；词集 Jaccard 按 `src/data/words.ts` 的切词算，GLM-5.3 那一对 0.30、Flash 那一对 0.46，都低于 0.6。另外会话开局的索引与 `memory_query` 都不列「不用」的记录（`src/memory/recall.ts` 不读 `declined`），模型在问之前看不到人已经说过不用。范围不是原因：`earlierOutcome` 跨两个范围找。
 - 这一缺口在 `memory_habit` 本身（m5-4 的匹配规则），不在 `habit-ask-first`；L2 `tests/memory-habit.spec.ts` 的 `declined_recently` 用例用的是同名或组键相同的再问，没有钉住换了说法的再问。
+
+## 第二次运行（修正之后，2026-11-06 09:10 起，UTC+8 谷段）
+
+分支 `m5-habit-rule` bb726f1（会话索引与 `memory_query` 列在期内的「不用」；`ask` 的说明与一条在期内的「不用」词集重合 ≥ 0.25 得 `maybe_declined`，带 `notSame: true` 才放行并记下撤开的那条），build 之后的产物（`build-info.json` 的 `commit` 为 bb726f1、`dirty: false`）。做法、任务、模拟人与第一次相同；探针锁 `.llm/probe-lock-2`。
+
+| | GLM-5.3 | GLM-5.3-Flash |
+| --- | --- | --- |
+| 模型请求 / 积分（谷段计价，原价） | 14 次 / 36（72） | 14 次 / 13（26） |
+| 会话 1 | `memory_habit ask`（`python-single-quotes`，范围 `project`）→ 人「不用」→ `decline` | `memory_habit ask`（`prefer-single-quotes-python`，范围 `project`）→ 人「不用」→ `decline` |
+| 会话 2 | 工具只有 Read、Bash、Edit；没有调 `memory_habit`，没有问。回复末尾：「这条『Python 字符串用单引号』我之前问过你，你当时说了不记，在 2026-12-04 之前我不会再问」 | 工具只有 Read、Bash、Edit；没有调 `memory_habit`，没有问。回复末尾：「这个习惯你之前已经说过不用记了，所以我不再问」 |
+| `maybe_declined` / `notSame` | 没有出现（会话 2 没有 `ask`） | 同左 |
+| 问答卡、`habit-ask-first` 拦下 | 0、0 | 0、0 |
+| 违规流水 | 2 行 `file-tools-only`（`mode: late`，`__pycache__`），与本规则无关 | 同左 |
+
+记忆流水：两档模型的项目流水各只有会话 1 的一对 `ask` / `decline`，用户级流水为空；会话 2 没有新行。两个会话 2 的事件流里都有会话开局索引的「不用」一行。
+
+结论：验收第 2 条在两档模型上都成立：说了「不用」之后，下一个会话里模型从索引看到这条「不用」与到期日，没有再问。这一次起作用的是索引（做法 A）；软检查 `maybe_declined` 在真实运行里没被碰到，它由 L2 `tests/memory-habit-declined.spec.ts` 钉住（两对第一次的真实再问都被拒，五个反例低于 0.25 或带 `notSame` 放行并记下）。两次运行合计积分：GLM-5.3 82（原价 164），GLM-5.3-Flash 28（原价 57）。
