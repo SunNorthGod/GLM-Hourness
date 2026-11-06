@@ -3,13 +3,41 @@
   "type": "task",
   "title": "探针的临时运行目录挪到仓库外面",
   "why": "仓库树下的文件会被别的进程短暂占住，探针偶发失败挡住合入；放到系统临时目录就不会撞上",
-  "status": "doing",
+  "status": "done",
   "parent": "orch",
   "kind": "implement",
   "body": "scripts/probe/run-probe.mjs 与 scripts/sandbox.mjs 的每次运行目录现在在工作树的 .llm/probe-runs 下。compact-recall-redact 合入步（.agents/tasks/compact-recall-redact/land.md）实测：仓库树下写文件后 40 ms 做 ReplaceFileW，500 次败 6–10 次（Win32 1175），%TEMP% 下 0/500；历史 82 次 glm 运行 4 次撞上。先只读确认占住文件的是什么（不改系统设置、不加杀毒排除），再把运行目录改到 os.tmpdir() 下的独立目录，每个场景仍各是一个 git 仓库（loops-machine 第 1 批的做法，防止把项目根认到主检出），失败时保留目录并在输出里写明路径，成功后清掉。查看运行产物的文档与脚本同批改。ablation 分支也改了这两个脚本，合入时以先合入的一方为准处理冲突。",
   "acceptance": [
     "探针每次运行的目录在系统临时目录下、不在仓库树里；每个场景仍是独立 git 仓库；失败的运行保留目录并打印路径",
     "占住文件的进程写明查到了什么（或没查到）；glm 的 Edit 与 Read 两项连跑 3 次全绿；DEVELOPMENT.md 与 FACTS.md 同批改；门禁全绿，改动在 main 上"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "c4ec40a",
+      "note": "probe run dir under the system temp dir"
+    },
+    {
+      "kind": "commit",
+      "ref": "acc3661",
+      "note": "each scenario's runtime its own TEMP"
+    },
+    {
+      "kind": "commit",
+      "ref": "f13596b",
+      "note": "runtime TEMP beside the scenario directories"
+    },
+    {
+      "kind": "commit",
+      "ref": "aeb046d",
+      "note": "合入 main，两个远端一致"
+    },
+    {
+      "kind": "test",
+      "ref": "build、preflight、npm test、check-lint、npm run -s probe on 7732aa5（aeb046d 的代码与之相同）",
+      "exit": 0,
+      "note": "探针 429/429；f13596b 上连跑 3 次 422/422"
+    }
   ],
   "history": [
     {
@@ -32,6 +60,42 @@
       "actor": "llm",
       "op": "comment",
       "text": "code 步完成：c4ec40a、acc3661、f13596b 已推 origin/probe-run-dir-outside-repo；f13596b 上 build、preflight、npm test、check-lint（73/18/1）绿，连跑 3 次全量探针 422/422，glm 的 Edit 与 Read 三次都过。占住文件的进程没查到，推断是 Kiro 工作区的文件监视（未核实）。评审 APPROVED，没有挡路项；不挡路：合入 main、loops 那条偶发测试、%TEMP% 下失败运行留下的目录。合入步开工前发现主检出有一处不属于它的已跟踪改动 docs/DESIGN.md（08:58 写入，标题重复、§2.2 行表删了 design、loops、transcript、ui 四行并挪动 env 行，是坏的编辑），按规矩停下。编排方把它存档为 .agents/tasks/zcode-parity/stray/design-md-0858.patch 并在主检出还原，主检出已跟踪文件干净，合入步接着做。"
+    },
+    {
+      "at": "2026-11-06T02:56:29.136Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "probe-run-dir-outside-repo（wf_15841f21cb194d57）完成：评审 APPROVED、没有挡路发现；合入 main aeb046d，origin 与 github 经 ls-remote 一致；合入树 build、preflight、npm test（3225/3225）、check-lint（73/18/1）绿，探针 429/429；主检出 dist 按 main HEAD 重建（build-info cf40fe3，已跟踪文件干净）。只改脚本与文档，不重启桌面版。探针每次运行的目录改到系统临时目录下（glm-hourness-probe-<时刻>-*），每个场景仍是独立 git 仓库，全过时自删，失败时保留并打印路径；各场景运行时的 TEMP 放在运行目录的 runtime-tmp/<场景> 下（rc.3 沙盒的两条限制见报告）。f13596b 上连跑 3 次全量探针 422/422，glm 的 Edit 与 Read 三次都过。占住文件的进程没查到确切的：Defender 已关、索引与 OneDrive 的数据对不上，Restart Manager 查询时句柄已关；最符合数据的是 Kiro 工作区的文件监视或代码索引（推断，未经句柄查询确认）。DEVELOPMENT.md §3、§7 与 FACTS.md §3 同批改。报告 .agents/tasks/probe-run-dir-outside-repo/report.md。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "c4ec40a",
+          "note": "probe run dir under the system temp dir"
+        },
+        {
+          "kind": "commit",
+          "ref": "acc3661",
+          "note": "each scenario's runtime its own TEMP"
+        },
+        {
+          "kind": "commit",
+          "ref": "f13596b",
+          "note": "runtime TEMP beside the scenario directories"
+        },
+        {
+          "kind": "commit",
+          "ref": "aeb046d",
+          "note": "合入 main，两个远端一致"
+        },
+        {
+          "kind": "test",
+          "ref": "build、preflight、npm test、check-lint、npm run -s probe on 7732aa5（aeb046d 的代码与之相同）",
+          "exit": 0,
+          "note": "探针 429/429；f13596b 上连跑 3 次 422/422"
+        }
+      ]
     }
   ]
 }

@@ -32,7 +32,7 @@ docs/          宪章、设计、编排、路线、事实账、流程、交接�
 video/         宣传视频：独立的 Remotion 项目（自带 package.json 与检查），全部用代码渲染、配乐从零合成；不进两个包的构建与检查，根目录 ESLint 忽略它；现有 24 秒样片 Sample（video/README.md）
 AGENTS.md      仓库规则
 package.json   开发工作区根（dsh-glm-hourness，private，不是 bundle）：脚本、开发依赖与 peerDependencies
-.llm/          不入库，项目目录：rules/（规则板的流水与快照，`rules` 行启用后才有）、audit/（违规与决策；旧的用量副本与 dialect-init 流水已于 2026-10-29 删除）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/、calibration-runs/；旧的 credentials.json 与 device-mid.txt 已于 2026-10-29 删除（m1-cleanup）
+.llm/          不入库，项目目录：rules/（规则板的流水与快照，`rules` 行启用后才有）、audit/（违规与决策；旧的用量副本与 dialect-init 流水已于 2026-10-29 删除）、memory.json、docs/（原始资料快照与抓取脚本）、probe-runs/（2026-11-06 以前的探针运行；之后的运行在系统临时目录下，`DEVELOPMENT.md` §3）、calibration-runs/；旧的 credentials.json 与 device-mid.txt 已于 2026-10-29 删除（m1-cleanup）
 ~/.dsh/glm-hourness/  仓库外，用户级目录：audit/usage.jsonl、credentials.json（2026-10-29 起为版本 2）、device-mid.txt（m1-parity 起不再使用，DESIGN.md §2.4）
 reference/     不入库：审计用参考源码（zcode-api、deepseek-harness、ZCode、zcode-plugins）、ZCode 发布包副本 zcode-3.16.3/ 与 zcode-3.17.1/（逐字门禁只读后者）与桌面版运行时包导出 dsh-desktop-0.2.1-rc.3/，约 2.5 GB
 .agents/       不入库：编排任务状态与一次性脚本（如 m1-parity 集成报告 zcode-parity/、批次 L4 记录 m1-l4/、借用审计报告 dsh-borrow-audit/report.md、缓存调查 cache-2026-10-28/）

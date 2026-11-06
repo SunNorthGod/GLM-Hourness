@@ -571,6 +571,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "10:06 巡检：上游限流又暂停了 inject-via-prestep、ablation、m5-rule-expected-effect、bootstrap 四条运行，编排方已恢复。在跑：M7 真实模型运行一步（wf_36d1d690c7e1de90 real-model-run）、m5-habit-rule 第 2 轮评审、status-hub-3 合入后 L4、probe-run-dir-outside-repo 合入（主检出已干净，已告知接着做）。主检出已跟踪文件干净，两把探针锁空闲。"
+    },
+    {
+      "at": "2026-11-06T02:56:29.431Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "主检出第四次被别的线写进东西：10:26:36 出现未跟踪的 src/memory/effect.ts（14168 字节，与 .worktrees/m5-rule-expected-effect 里 10:27:01 写入的同名文件同源），probe-run-dir-outside-repo 合入步在主检出 build 时 tsc 报错（exit 2），已把它挪到 .agents/tasks/probe-run-dir-outside-repo/stray/src-memory-effect.ts-1026.txt 存档（没删），重建通过。前三次：m4-checks-loop-details 合入时的四个文件（stash@{0}）、inject-via-prestep 的 package.json、DESIGN.md 的坏草稿。推断原因：步骤用相对路径或默认 cwd 调文件工具与命令，落到 Kiro 工作区根即主检出。编排方已告知 m5-rule-expected-effect 一律用工作树绝对路径并在交回前核对主检出 status；以后派活的任务书都写这一条。"
     }
   ]
 }
