@@ -26,6 +26,12 @@
       "reason": "运行 probe-run-dir-outside-repo（wf_15841f21cb194d57）开工：先只读查占住文件的进程，再把探针运行目录挪到 os.tmpdir() 下",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-06T01:31:03.222Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "code 步完成：c4ec40a、acc3661、f13596b 已推 origin/probe-run-dir-outside-repo；f13596b 上 build、preflight、npm test、check-lint（73/18/1）绿，连跑 3 次全量探针 422/422，glm 的 Edit 与 Read 三次都过。占住文件的进程没查到，推断是 Kiro 工作区的文件监视（未核实）。评审 APPROVED，没有挡路项；不挡路：合入 main、loops 那条偶发测试、%TEMP% 下失败运行留下的目录。合入步开工前发现主检出有一处不属于它的已跟踪改动 docs/DESIGN.md（08:58 写入，标题重复、§2.2 行表删了 design、loops、transcript、ui 四行并挪动 env 行，是坏的编辑），按规矩停下。编排方把它存档为 .agents/tasks/zcode-parity/stray/design-md-0858.patch 并在主检出还原，主检出已跟踪文件干净，合入步接着做。"
     }
   ]
 }
