@@ -107,6 +107,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "compact-recall-l4（wf_07a1fd00ce69e723）桌面 L4 在隔离实例完成（端口 9341，经 CDP 跳过欢迎窗口，构建 bad85a4，人的 profile 哈希前后不变）：8 项检查通过——摘要以 ZCode 原句加路径结尾；文件在 .llm/transcripts 下、23 827 字节、不进 git（.git/info/exclude）；两个植入的假凭证在导出里都是 [redacted]（遮掉 16 处）；压缩后模型按路径分页 Read 两次并答对；控制台没有本包新错误；禁用时 transcript 未加载、摘要无追加（逐字相同由 L2/L3 钉住）。13 次 GLM 请求、247 006 token，5 小时额度 5%→6%，高峰外。观察（非缺陷）：模型把凭证拆开改写（「sk- 接上 l4fake…」）时没有令牌形状，遮掉认不出，导出里原样保留，这是按形状判的固有边界；导出也带进注入的用户角色提示。L4 步建议出厂启用。是否把 transcript 行改成默认启用（导出文件会写在每个项目的 .llm/ 下）交人定，记录 .agents/tasks/compact-recall/l4.md。"
+    },
+    {
+      "at": "2026-11-06T11:54:56.984Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-06 读了 L4 结论与代价（模型自己拆开写的凭证按形状认不出，可能留在项目 .llm/transcripts/ 的明文文件里，该目录不进 git）后答「那就开」。派 transcript-enable（wf_e67d1f1c90ebd359）照 bad85a49 的做法把 glm-hourness/transcript 行改为出厂启用：删 disabled、L2 钉住出厂启用、探针加出厂启用一项、glm-compact 的「禁用与无行逐字相同」改为在场景里显式禁用后照旧核对、DESIGN/HANDOFF/ORCHESTRATION 同批改并记下 l4.md 观察 1 的局限与人的决定；全量门禁与探针、独立评审、合入、人的桌面版核对 /glm-status 里 transcript 生效（不在人的会话里触发压缩）；桌面不过就新提交改回禁用。"
     }
   ]
 }

@@ -39,6 +39,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "独立评审 APPROVED，无挡路（.agents/tasks/m5-index-truncation-alarm/review.json，78f77ef9）。下一步合入；两个计数在指标板「记录范围」一组，合入后要桌面核对。"
+    },
+    {
+      "at": "2026-11-06T11:54:57.215Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入 main 6b0b8085（wf_8924e7a9cdb716c0），origin 与 github ls-remote 一致；合入树上门禁全绿，探针 437/437，棘轮 73/18/1 未升。剩验收第 2 条的桌面核对：指标板「记录范围」一组的新行，随下一次桌面重启（transcript-enable 的桌面核对）一起看。记录 .agents/tasks/m5-index-truncation-alarm/report.md。"
     }
   ]
 }
