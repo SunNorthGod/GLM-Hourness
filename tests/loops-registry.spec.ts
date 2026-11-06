@@ -424,7 +424,7 @@ test('an entry whose event nobody declares is listed greyed with the reason and 
   assert.ok(own.ok)
   assert.deepEqual(own.dropped, [])
   const state = (): Record<string, string> => Object.fromEntries(registry.entries().map(item => [item.entry.id, item.state]))
-  assert.deepEqual(state(), { 'loops.deps-after-merge': 'waiting', 'loops.remind-waiting': 'active', 'loops.peak-start': 'waiting', 'loops.peak-end': 'waiting' })
+  assert.deepEqual(state(), { 'loops.deps-after-merge': 'waiting', 'loops.remind-waiting': 'active', 'loops.unsynced-daily': 'active', 'loops.peak-start': 'waiting', 'loops.peak-end': 'waiting' })
   const deps = registry.entries().find(item => item.entry.id === 'loops.deps-after-merge')
   assert.deepEqual(deps?.waitingOn, ['hourness.trunk-advanced', 'hourness.outside-advance'])
   assert.match(deps?.reason ?? '', /hourness\.trunk-advanced.*项目编排.*这一项现在不跑/)
@@ -436,7 +436,7 @@ test('an entry whose event nobody declares is listed greyed with the reason and 
 
   const execute = registry.contribute(EXECUTE, M7_EXECUTE)
   assert.ok(execute.ok)
-  assert.deepEqual(state(), { 'loops.deps-after-merge': 'active', 'loops.remind-waiting': 'active', 'loops.peak-start': 'waiting', 'loops.peak-end': 'waiting', ...Object.fromEntries(M7_ENTRIES.map(entry => [entry.id, 'active'])) })
+  assert.deepEqual(state(), { 'loops.deps-after-merge': 'active', 'loops.remind-waiting': 'active', 'loops.unsynced-daily': 'active', 'loops.peak-start': 'waiting', 'loops.peak-end': 'waiting', ...Object.fromEntries(M7_ENTRIES.map(entry => [entry.id, 'active'])) })
   assert.deepEqual(registry.entries().find(item => item.entry.id === 'loops.deps-after-merge')?.waitingOn, [])
 
   const half = registryWith()
@@ -455,7 +455,7 @@ test('withdrawn, the declaring part leaves its events and the entries that wait 
   execute.dispose()
   assert.equal(registry.entries().find(item => item.entry.id === 'loops.deps-after-merge')?.state, 'waiting')
   assert.equal(registry.events().has('hourness.trunk-advanced'), false)
-  assert.deepEqual(ids(registry.entries()), ['loops.deps-after-merge', 'loops.remind-waiting', 'loops.peak-start', 'loops.peak-end'])
+  assert.deepEqual(ids(registry.entries()), ['loops.deps-after-merge', 'loops.remind-waiting', 'loops.unsynced-daily', 'loops.peak-start', 'loops.peak-end'])
 })
 
 test('when the event arrives and the entry does not fit it, the entry is dropped and the row health is told', () => {
@@ -567,10 +567,10 @@ test('the keys of the loop row\'s events: the event name without its namespace, 
 
 // --------------------------------------------------- the loop row\'s four entries
 
-test('the loop row brings exactly four entries, with the names, times, doers and words of design §5.2', () => {
-  assert.deepEqual(LOOP_DEFAULTS.map(entry => entry.id), ['loops.deps-after-merge', 'loops.remind-waiting', 'loops.peak-start', 'loops.peak-end'])
-  const [deps, remind, start, end] = LOOP_DEFAULTS as [LoopEntryDefinition, LoopEntryDefinition, LoopEntryDefinition, LoopEntryDefinition]
-  assert.deepEqual(LOOP_DEFAULTS.map(entry => entry.title), ['依赖文件变了之后：查依赖', '有事等你太久时：再跟你说一次', 'GLM 高峰开始时：按你选的高峰模式收放', 'GLM 高峰结束时：接上挪开的活'])
+test('the loop row brings exactly five entries, with the names, times, doers and words of design §5.2', () => {
+  assert.deepEqual(LOOP_DEFAULTS.map(entry => entry.id), ['loops.deps-after-merge', 'loops.remind-waiting', 'loops.unsynced-daily', 'loops.peak-start', 'loops.peak-end'])
+  const [deps, remind, unsynced, start, end] = LOOP_DEFAULTS as [LoopEntryDefinition, LoopEntryDefinition, LoopEntryDefinition, LoopEntryDefinition, LoopEntryDefinition]
+  assert.deepEqual(LOOP_DEFAULTS.map(entry => entry.title), ['依赖文件变了之后：查依赖', '有事等你太久时：再跟你说一次', '每天下班前：查有没有没提交、没推送的改动', 'GLM 高峰开始时：按你选的高峰模式收放', 'GLM 高峰结束时：接上挪开的活'])
 
   assert.deepEqual(deps.when, { kind: 'event', events: ['hourness.trunk-advanced', 'hourness.outside-advance'] })
   assert.deepEqual(deps.filter, { files: { paths: DEPENDENCY_FILES } })
@@ -592,6 +592,18 @@ test('the loop row brings exactly four entries, with the names, times, doers and
   })
   assert.deepEqual(remind.limits, { debounceSeconds: 60, maxPerHour: 1 })
 
+  // The end-of-day check is a time entry: it listens to no event, has no limits or quiet hours, and says in its words that it only reports.
+  assert.deepEqual(unsynced.when, { kind: 'daily', time: '18:05' })
+  assert.equal(unsynced.limits, undefined)
+  assert.equal(unsynced.quiet, undefined)
+  assert.equal(unsynced.action.kind, 'tell-main')
+  assert.equal(unsynced.action.kind === 'tell-main' && unsynced.action.wake, true)
+  const told = unsynced.action.kind === 'tell-main' ? unsynced.action.text : ''
+  assert.doesNotMatch(told, /[{}]/, 'no placeholder: the entry has no event to fill it from')
+  assert.match(told, /Read only: run git worktree list;.*git status --short.*git branch -vv.*git stash list\./)
+  assert.match(told, /If everything is committed and pushed, end your turn without telling the human anything\./)
+  assert.match(told, /Do not commit or push because of this reminder; the human decides\./)
+
   assert.deepEqual(start.when, { kind: 'event', events: ['channel.peak-changed'] })
   assert.deepEqual(start.filter, { edge: { in: ['start'] } })
   assert.deepEqual(start.action, { kind: 'self', does: '规则板定档位与上限，项目编排派活时照上限数', by: 'glm-hourness/rules' })
@@ -606,7 +618,7 @@ test('the loop row brings exactly four entries, with the names, times, doers and
   assert.deepEqual(LOOP_ACTIONS.map(action => action.id), ['loops.peak-end'])
 })
 
-test('the four entries are sound: one line of why each, no word a person has not learned, and the shared checks accept them', () => {
+test('the five entries are sound: one line of why each, no word a person has not learned, and the shared checks accept them', () => {
   for (const entry of LOOP_DEFAULTS) {
     assert.ok(typeof entry.why === 'string' && entry.why.length > 0 && !entry.why.includes('\n'), entry.id)
     assert.deepEqual(plainWordsIn(`${entry.title}${entry.why ?? ''}${entry.basis ?? ''}`), [], entry.id)

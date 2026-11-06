@@ -32,7 +32,7 @@
  * - lists projects from the host's workspace registry, so a project with a
  *   main agent runs before any session of it is open (design §6.1);
  * - hands over the loop row's own events (events.ts) as the always-there part of
- *   the event table, and its own four entries (defaults.ts);
+ *   the event table, and its own five entries (defaults.ts);
  * - keeps the entries a person agreed to (store.ts): files in the repository's
  *   `docs/loops/`, the change record in the project's `.llm/loops/`; settles what
  *   git or an editor changed behind its back whenever a session starts in a
