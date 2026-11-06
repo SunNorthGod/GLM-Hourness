@@ -1,16 +1,18 @@
 /**
  * The service the rules row provides for the rows that ask whether a rules
- * board is there (docs/ORCHESTRATION.md §16.2, §16.11; design §7.2): types,
- * constants and the reader only, so the guard row imports it without importing
- * the rules row. The guard adds `declaration` to its `glm:guard` prompt section
- * when it reads the service, and adds nothing while the rules row is off, so
- * the model is told about the board only when there is one.
+ * board is there (docs/ORCHESTRATION.md §16.2, §16.11, §16.15; design §7.2):
+ * types, constants and the reader only, so the guard row and the design row
+ * import it without importing the rules row. The guard adds `declaration` to
+ * its `glm:guard` prompt section when it reads the service, and adds nothing
+ * while the rules row is off, so the model is told about the board only when
+ * there is one. The design row (M3) takes the other three members for
+ * `attach: 'rules:<proposal>'` (src/design/attach.ts): `attachable` before a
+ * proposal is put to the human, `proposalLine` for the last line of the
+ * question, `acceptProposal` once the human agreed.
  *
- * `RulesService` has the one member the guard reads. The members for the path
- * of a person's agreement (`attachable`, `acceptProposal`, `staleEntries`)
- * arrive with that path, which is not built yet; the reader checks the members
- * that exist and takes a service that has more.
+ * The reader checks the members that exist and takes a service that has more.
  */
+import type { AttachService } from '../shared/attach.ts'
 import type { ServiceLookup } from '../shared/dsh-min.ts'
 
 /** The cordis service name the rules row provides. */
@@ -24,6 +26,21 @@ export interface RulesService {
   readonly declaration: string
 }
 
+/** What the rules row provides: the line for the guard and the three members the design row takes for `attach: 'rules:<proposal>'` (src/shared/attach.ts). */
+export interface RulesBoardService extends RulesService, AttachService {}
+
+/** The last line of the question that carries a proposal: names the proposal and nothing else (design §9.3 step 2). */
+export function proposalLine(id: string): string {
+  return `规则板提议 \`${id}\``
+}
+
+const LINE_PATTERN = /规则板提议 `(p-[0-9a-f]{8})`\s*$/
+
+/** The proposal a question body ends with; undefined when it ends with none of this board's. The inverse of `proposalLine`. */
+export function proposalIdOf(body: string): string | undefined {
+  return LINE_PATTERN.exec(body)?.[1]
+}
+
 /** Read the service; undefined while the rules row is off, or when a member has the wrong type (reported to `problem`). */
 export function rulesService(ctx: ServiceLookup, problem?: (message: string) => void): RulesService | undefined {
   const value: unknown = typeof ctx.get === 'function' ? ctx.get(RULES_SERVICE) : undefined
@@ -32,4 +49,11 @@ export function rulesService(ctx: ServiceLookup, problem?: (message: string) => 
   if (typeof declaration === 'string' && declaration.length > 0) return value as RulesService
   problem?.(`${RULES_SERVICE} has the wrong shape; the guard declares no rules board`)
   return undefined
+}
+
+/** The service with the members of the path of agreement, or undefined while the rules row is off or does not have them. */
+export function rulesBoardService(ctx: ServiceLookup): RulesBoardService | undefined {
+  const value = rulesService(ctx)
+  const members = value as Partial<Record<keyof RulesBoardService, unknown>> | undefined
+  return typeof members?.attachable === 'function' && typeof members.proposalLine === 'function' && typeof members.acceptProposal === 'function' ? value as RulesBoardService : undefined
 }

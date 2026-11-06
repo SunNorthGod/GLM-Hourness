@@ -32,7 +32,7 @@ import type { JournalRecord, ProjectState, RulesActor } from './model.ts'
 import { refusalFor } from './permissions.ts'
 import { planWrite } from './plan.ts'
 import { parseRequest, type Request } from './request.ts'
-import { adoptRepoLocked, exportRepo, restoreRepoLocked, settleLocked, settleProject, type ProjectRead } from './repo.ts'
+import { adoptRepoLocked, exportRepo, putScriptFiles, restoreRepoLocked, settleLocked, settleProject, type ProjectRead } from './repo.ts'
 import { appendRecord, ensureRuntimeDir, journalIsFull, realStoreIo, ROTATE_BYTES, rotateJournal, rulesPaths, stamp, writeSnapshot, type RulesPaths, type StoreIo } from './store.ts'
 
 export interface ApplyError {
@@ -111,9 +111,14 @@ export function openRulesBoard(options: BoardOptions): RulesBoard {
       // A journal that is full is set aside before the record, which then follows the base the new journal begins with.
       const rotate = journalIsFull(paths, rotateAt)
       const now = new Date(io.now())
-      const plan = planWrite({ now, seq: load.nextSeq + (rotate ? 1 : 0), paths }, state, request)
+      const plan = planWrite({ now, seq: load.nextSeq + (rotate ? 1 : 0), paths, actor }, state, request)
       if (!plan.ok) return fail(plan.code, plan.message)
       if (!plan.changed) return { ok: true, changed: false, state, file: 'unchanged' }
+      // The script of an accepted proposal is in the repository before the record that pins its hash.
+      if (plan.scriptFiles !== undefined) {
+        const refused = await putScriptFiles(paths, plan.scriptFiles, io)
+        if (refused !== undefined) return fail('io', refused)
+      }
       const record: JournalRecord = {
         seq: load.nextSeq + (rotate ? 1 : 0),
         at: now.toISOString(),

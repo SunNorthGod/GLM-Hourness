@@ -96,8 +96,8 @@ export function textDigest(text: string): string {
 /** The top-level fields a change replaces or deletes as a whole. */
 const FIELDS: readonly string[] = ['peakMode', 'repo', 'recovered', 'nextTicket']
 
-/** The collections a change touches one entry of; `proposals` of the full design is not among them. */
-const COLLECTIONS: readonly string[] = ['rules', 'signals', 'detectors', 'scripts', 'tickets', 'notices', 'unresolved']
+/** The collections a change touches one entry of. */
+const COLLECTIONS: readonly string[] = ['rules', 'signals', 'detectors', 'scripts', 'proposals', 'tickets', 'notices', 'unresolved']
 
 /**
  * The state after a record. Pure: it reads no clock, file or process table.

@@ -20,7 +20,7 @@ export const GRAPH_TOOL_NAMES: readonly string[] = [
  * one-ticket-per-session entry queues). tests/contracts.spec.ts pins the
  * registration of src/rules/index.ts to this list.
  */
-export const RULES_TOOL_NAMES: readonly string[] = ['rules_show']
+export const RULES_TOOL_NAMES: readonly string[] = ['rules_show', 'rules_propose']
 
 /**
  * The DSH native tools that dispatch a subagent. A call to one of them is a

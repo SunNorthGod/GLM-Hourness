@@ -17,10 +17,11 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PEAK_LEVEL_WORDS } from '../shared/peak-mode.ts'
 import { PEAK_STOP_SIGNATURE } from './builtin.ts'
-import { matchesType, ticketProblem } from './entries.ts'
+import { matchesType, signalProblem, ticketProblem } from './entries.ts'
 import { HEARTBEAT_FRESH_MS } from './heartbeat.ts'
 import { evaluateCondition, judgeInput } from './judge.ts'
-import { canonicalJson, effectivePeakMode, repoJson, repoPart, stateProblem, type Change, type Condition, type PeakModeSetting, type ProjectState, type RepoRules, type Rule, type SignalState, type SignalType, type Ticket } from './model.ts'
+import { canonicalJson, effectivePeakMode, repoJson, repoPart, signalTypesOf, stateProblem, validateRule, type Change, type Condition, type PeakModeSetting, type ProjectState, type Proposal, type RepoRules, type Rule, type RulesActor, type SignalState, type SignalType, type Ticket } from './model.ts'
+import { sha256Of } from './proposal.ts'
 import type { HostRef, Request } from './request.ts'
 import { GLM_PEAK, effectiveSignal } from './signals.ts'
 import { applyRecord, skippedLines, stateDigest, textDigest, type RulesPaths } from './store.ts'
@@ -31,10 +32,18 @@ export interface PlanContext {
   /** The sequence number the record will carry. */
   readonly seq: number
   readonly paths: RulesPaths
+  /** Who writes: the entry's identity; a proposal that is rejected or accepted records it when the request names none. */
+  readonly actor: RulesActor
 }
 
 /** What the engine writes: the request is not one of the two that settle a rules file with their own record (engine.ts). */
 export type PlannedRequest = Exclude<Request, { readonly op: 'repo-adopt' | 'repo-restore' }>
+
+/** A script a write puts in the repository: the path relative to the project root with /, and the exact text. */
+interface ScriptFile {
+  readonly file: string
+  readonly text: string
+}
 
 interface Refused {
   readonly ok: false
@@ -60,6 +69,8 @@ export type Plan =
     readonly snapshot: string
     /** The part a person decided changed: the rules file is to be written from `part`, or removed when nothing is decided any more. */
     readonly rewrite?: { readonly part: RepoRules | undefined }
+    /** Script files to write before the record is appended: a proposal accepted with a script. */
+    readonly scriptFiles?: readonly ScriptFile[]
   }
 
 const refuse = (code: Refused['code'], message: string): Refused => ({ ok: false, code, message })
@@ -73,6 +84,8 @@ interface Own {
   readonly changes: readonly Change[]
   /** The rules file is written even though the decided part reads the same (the person chose the same level again, and the file was changed from outside). */
   readonly forceFile?: true
+  /** Files of the project the write puts in place before the record: the scripts of an accepted proposal, byte for byte. */
+  readonly scriptFiles?: readonly ScriptFile[]
 }
 
 type Step = Own | Refused | 'unchanged'
@@ -404,8 +417,192 @@ function planOwn(request: PlannedRequest, state: ProjectState, ctx: PlanContext)
     case 'ticket-cancel': return planCancel(request, state, ctx)
     case 'recovery-accept':
     case 'recovery-dismiss': return planRecovery(request, state, ctx)
+    case 'propose': return planPropose(request, state, ctx)
+    case 'proposal-show': return planShow(request, state, ctx)
+    case 'proposal-accept': return planAccept(request, state, ctx)
+    case 'proposal-reject': return planReject(request, state, ctx)
+    case 'proposal-expire': return planProposalExpire(request, state, ctx)
     case 'notice-add': return planNoticeAdd(request, ctx)
     case 'notice-delivered': return planNoticeDelivered(request, state)
+  }
+}
+
+// ------------------------------------------------------------- proposals
+//
+// An agent proposes and the person's word makes it so (design §9.3). Proposing writes the proposal and nothing that
+// holds anybody; accepting writes what it says, as the person's, in the same record that marks it accepted. What an
+// accepted proposal writes is checked again against the state of that moment: the rule it holds may no longer pass
+// the validation (a signal it reads was deleted since), and a script that changed after the person read it does not
+// get approved.
+
+/** The second `/rules accept` of a proposal that runs or removes something takes effect only this long after the first showed its text. */
+export const SHOWN_VALID_MS = 30 * MINUTE_MS
+/** A proposal the person decided, or that lapsed, is kept this long for the rules page and the journal's reader. */
+const PROPOSAL_KEPT_MS = 30 * DAY_MS
+
+function proposalOf(state: ProjectState, id: string): Proposal | Refused {
+  return own(state.proposals, id) ?? refuse('conflict', `没有提议 ${id}（可能已经处理过了）`)
+}
+
+/** Whether the person is shown text before agreeing: a script, or entries to remove. */
+const hasDetail = (proposal: Proposal): boolean => proposal.script !== undefined || proposal.kind === 'remove'
+
+function planPropose(request: Extract<Request, { readonly op: 'propose' }>, state: ProjectState, ctx: PlanContext): Step {
+  const draft = request.proposal
+  if (own(state.proposals, draft.id) !== undefined) return refuse('conflict', `提议编号 ${draft.id} 已经有了，换一个再提`)
+  const proposal: Proposal = { ...draft, status: 'open', at: ctx.now.toISOString() }
+  const changes: Change[] = [{ path: ['proposals', draft.id], value: proposal }]
+  if (draft.replaces !== undefined) {
+    const older = own(state.proposals, draft.replaces)
+    if (older === undefined || older.status !== 'open') return refuse('conflict', `${draft.replaces} 不是还没定的提议，不能被取代`)
+    changes.push({ path: ['proposals', older.id], value: { ...older, status: 'superseded' } })
+  }
+  return { target: draft.id, to: proposal, reason: `${draft.via === 'graph' ? '会话里的 agent' : 'agent'} 提议：${draft.describe}（${draft.reason}）`, changes }
+}
+
+function planShow(request: Extract<Request, { readonly op: 'proposal-show' }>, state: ProjectState, ctx: PlanContext): Step {
+  const proposal = proposalOf(state, request.id)
+  if ('ok' in proposal) return proposal
+  if (proposal.status !== 'open') return refuse('conflict', `${proposal.id} 已经 ${proposal.status}，不用看了`)
+  return { target: proposal.id, reason: `人看了提议 ${proposal.id} 的原文`, changes: [{ path: ['proposals', proposal.id], value: { ...proposal, shownAt: ctx.now.toISOString() } }] }
+}
+
+/** What accepting a proposal writes, as changes, and the files to put in place before the record. */
+interface Applied {
+  readonly changes: readonly Change[]
+  readonly from?: unknown
+  readonly to?: unknown
+  readonly forceFile?: true
+  readonly scriptFiles?: readonly ScriptFile[]
+}
+
+function applyRule(proposal: Proposal, origin: Rule['origin'], state: ProjectState, ctx: PlanContext): Applied | Refused {
+  const body = proposal.body as Record<string, unknown>
+  const id = body.id as string
+  const existing = Object.values(state.rules ?? {}).filter(rule => rule.status === 'active')
+  if (existing.some(rule => rule.id === id)) return refuse('conflict', `规则 ${id} 已经在生效，要换就先解除它`)
+  const issue = validateRule(body, { now: ctx.now, signals: signalTypesOf(state.signals), existing })[0]
+  if (issue !== undefined) return refuse('invalid', `提议里的规则现在不合规则板的写法（${issue.path}：${issue.message}）`)
+  const rule = { ...body, origin, status: 'active' } as unknown as Rule
+  const pin: readonly Change[] = proposal.script === undefined
+    ? []
+    : [{ path: ['scripts', id], value: { file: proposal.script.file, sha256: proposal.script.sha256, lang: proposal.script.lang, approvedAt: origin.at } }]
+  return {
+    to: rule,
+    changes: [{ path: ['rules', id], value: rule }, ...pin],
+    ...(proposal.script === undefined ? {} : { scriptFiles: [{ file: proposal.script.file, text: proposal.script.text }] }),
+  }
+}
+
+function applySwitch(proposal: Proposal, state: ProjectState): Applied | Refused {
+  const { name, type, description } = proposal.body as { readonly name: string, readonly type: SignalType, readonly description?: string }
+  if (own(state.signals, name) !== undefined || name === GLM_PEAK) return refuse('conflict', `项目里已经有信号「${name}」`)
+  const signal: SignalState = { type, ...(description === undefined ? {} : { description }) }
+  const problem = signalProblem(signal, `signals.${name}`, true)
+  if (problem !== undefined) return refuse('invalid', `提议里的开关不合规则板的写法：${problem}`)
+  return { to: signal, changes: [{ path: ['signals', name], value: signal }] }
+}
+
+function applyPeak(proposal: Proposal, origin: Rule['origin'], state: ProjectState): Applied | Refused {
+  const { level } = proposal.body as { readonly level: PeakModeSetting['level'] }
+  const current = effectivePeakMode(state)
+  if (current.level === level && current.origin === 'human') return refuse('conflict', `高峰模式已经是「${PEAK_LEVEL_WORDS[level].name}」`)
+  const setting: PeakModeSetting = { level, at: origin.at, origin: { actor: origin.actor, ...(origin.relay === undefined ? {} : { relay: origin.relay }), ...(origin.question === undefined ? {} : { question: origin.question }) } }
+  return { from: current.level, to: level, changes: [{ path: ['peakMode'], value: setting }], forceFile: true }
+}
+
+function applyRemove(proposal: Proposal, state: ProjectState): Applied | Refused {
+  const changes: Change[] = []
+  for (const entry of proposal.body as ReadonlyArray<{ readonly id: string }>) {
+    const step = planDelete({ op: 'rule-delete', id: entry.id }, state)
+    if (typeof step !== 'object' || 'ok' in step) return typeof step === 'object' ? step : refuse('conflict', `删不了 ${entry.id}`)
+    changes.push(...step.changes)
+  }
+  return { changes }
+}
+
+function applyRepin(proposal: Proposal, origin: Rule['origin'], state: ProjectState, ctx: PlanContext): Applied | Refused {
+  const { id } = proposal.body as { readonly id: string }
+  const rule = ruleOf(state, id, '重新批准脚本')
+  if ('ok' in rule) return rule
+  if (rule.status !== 'active' || rule.action.kind !== 'script' || proposal.script === undefined) return refuse('conflict', `规则 ${id} 不在生效，或没有脚本，不用重新批准`)
+  let now: string | undefined
+  try {
+    now = readFileSync(join(ctx.paths.projectRoot, ...proposal.script.file.split('/')), 'utf8')
+  }
+  catch {
+    now = undefined
+  }
+  if (now === undefined || sha256Of(now) !== proposal.script.sha256) return refuse('invalid', '脚本在你看过之后又改了，要重新给你看')
+  const updated: Rule = { ...rule, action: { ...rule.action, script: { ...rule.action.script, sha256: proposal.script.sha256 } } }
+  const pin = { file: proposal.script.file, sha256: proposal.script.sha256, lang: proposal.script.lang, approvedAt: origin.at }
+  return { from: rule, to: updated, changes: [{ path: ['rules', id], value: updated }, { path: ['scripts', id], value: pin }] }
+}
+
+function applyProposal(proposal: Proposal, origin: Rule['origin'], state: ProjectState, ctx: PlanContext): Applied | Refused {
+  switch (proposal.kind) {
+    case 'rule': return applyRule(proposal, origin, state, ctx)
+    case 'lift': {
+      const step = planLift({ op: 'rule-lift', id: (proposal.body as { readonly id: string }).id }, state)
+      return typeof step === 'object' ? ('ok' in step ? step : { from: step.from, to: step.to, changes: step.changes }) : refuse('conflict', '没有可解除的规则')
+    }
+    case 'switch': return applySwitch(proposal, state)
+    case 'peak-mode': return applyPeak(proposal, origin, state)
+    case 'remove': return applyRemove(proposal, state)
+    case 'repin': return applyRepin(proposal, origin, state, ctx)
+  }
+}
+
+function planAccept(request: Extract<Request, { readonly op: 'proposal-accept' }>, state: ProjectState, ctx: PlanContext): Step {
+  const proposal = proposalOf(state, request.id)
+  if ('ok' in proposal) return proposal
+  if (proposal.status === 'accepted') return 'unchanged'
+  if (proposal.status !== 'open') return refuse('conflict', `${proposal.id} 已经 ${proposal.status}，不能再同意`)
+  if (request.board === true && hasDetail(proposal)) {
+    const shown = proposal.shownAt === undefined ? Number.NaN : Date.parse(proposal.shownAt)
+    if (!(ctx.now.getTime() - shown <= SHOWN_VALID_MS)) return refuse('conflict', `${proposal.id} 带着要你先看的原文：先打一次 /rules accept ${proposal.id} 看原文，看过了 30 分钟内再打一次才生效`)
+  }
+  const now = ctx.now.toISOString()
+  const origin: Rule['origin'] = {
+    actor: request.by,
+    at: now,
+    ...(request.relay === undefined ? {} : { relay: request.relay }),
+    proposedBy: proposal.proposedBy,
+    ...(request.question === undefined ? {} : { question: request.question }),
+  }
+  const applied = applyProposal(proposal, origin, state, ctx)
+  if ('ok' in applied) return applied
+  const accepted: Proposal = { ...proposal, status: 'accepted', ...(request.question === undefined ? {} : { question: request.question }), decidedBy: { actor: request.by, ...(request.relay === undefined ? {} : { relay: request.relay }), at: now } }
+  return {
+    target: proposal.id,
+    from: applied.from ?? proposal,
+    to: applied.to ?? accepted,
+    reason: `人${request.by === 'llm' ? '在对话里' : ''}同意了提议 ${proposal.id}：${proposal.describe}`,
+    changes: [...applied.changes, { path: ['proposals', proposal.id], value: accepted }],
+    ...(applied.forceFile === true ? { forceFile: true as const } : {}),
+    ...(applied.scriptFiles === undefined ? {} : { scriptFiles: applied.scriptFiles }),
+  }
+}
+
+function planReject(request: Extract<Request, { readonly op: 'proposal-reject' }>, state: ProjectState, ctx: PlanContext): Step {
+  const proposal = proposalOf(state, request.id)
+  if ('ok' in proposal) return proposal
+  if (proposal.status === 'rejected') return 'unchanged'
+  if (proposal.status !== 'open') return refuse('conflict', `${proposal.id} 已经 ${proposal.status}，不能再否掉`)
+  const decidedBy = { actor: request.by ?? ctx.actor as 'human' | 'llm' | 'harness', ...(request.relay === undefined ? {} : { relay: request.relay }), at: ctx.now.toISOString() }
+  return { target: proposal.id, from: proposal.status, to: 'rejected', reason: `人否掉了提议 ${proposal.id}：${proposal.describe}`, changes: [{ path: ['proposals', proposal.id], value: { ...proposal, status: 'rejected', decidedBy } }] }
+}
+
+function planProposalExpire(request: Extract<Request, { readonly op: 'proposal-expire' }>, state: ProjectState, ctx: PlanContext): Step {
+  const proposal = proposalOf(state, request.id)
+  if ('ok' in proposal) return proposal
+  if (proposal.status !== 'open') return refuse('conflict', `${proposal.id} 已经 ${proposal.status}，不用过期`)
+  return {
+    target: proposal.id,
+    from: proposal.status,
+    to: 'expired',
+    reason: `提议 ${proposal.id} 提了 7 天，图上没有待决指向它，记为过期`,
+    changes: [{ path: ['proposals', proposal.id], value: { ...proposal, status: 'expired', decidedBy: { actor: 'harness', at: ctx.now.toISOString() } }, cause: 'expire' }],
   }
 }
 
@@ -453,6 +650,10 @@ function cleanup(ctx: PlanContext, state: ProjectState, touched: ReadonlySet<str
         : nowMs - Date.parse(ticket.since) >= DAY_MS ? 'age' : undefined
     if (why !== undefined) changes.push({ path, value: { ...ticket, state: 'expired', expiredWhy: why, closedAt: now }, cause: 'expire' })
   }
+  for (const proposal of Object.values(state.proposals ?? {})) {
+    if (proposal.status === 'open' || touched.has(`proposals/${proposal.id}`)) continue
+    if (nowMs - Date.parse(proposal.decidedBy?.at ?? proposal.at) > PROPOSAL_KEPT_MS) changes.push({ path: ['proposals', proposal.id], cause: 'prune' })
+  }
   for (const rule of Object.values(state.rules ?? {})) {
     if (rule.status !== 'active' || touched.has(`rules/${rule.id}`) || rule.lifetime.kind === 'session' || rule.lifetime.kind === 'until-lifted') continue
     if (lifetimeEnded(rule, state, ctx.now).ended) changes.push({ path: ['rules', rule.id], value: { ...rule, status: 'expired' }, cause: 'expire' })
@@ -488,6 +689,7 @@ export function planWrite(ctx: PlanContext, state: ProjectState, request: Planne
       next,
       snapshot: stateDigest(next),
       ...(rewrite ? { rewrite: { part: decided } } : {}),
+      ...(step.scriptFiles === undefined ? {} : { scriptFiles: step.scriptFiles }),
     }
   }
   catch (error) {

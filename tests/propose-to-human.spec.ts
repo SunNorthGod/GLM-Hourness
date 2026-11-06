@@ -380,7 +380,8 @@ test('with no board in the table, attach is refused with the reason, and a prefi
   for (const attach of ['rules:p-3f9a1c07', 'loops:lp-3f9a1c07', 'scripts:x']) {
     const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('recommend'), attach }))
     assert.deepEqual([error?.code, error?.field], ['invalid', 'attach'], attach)
-    assert.match(error?.message ?? '', /no component in this composition takes attach (rules:|loops:|scripts:)/, attach)
+    // The rules board has its row in the table; the host in this test does not run it. The loops board has none yet.
+    assert.match(error?.message ?? '', attach.startsWith('rules:') ? /the rules board is not running here/ : /no component in this composition takes attach (loops:|scripts:)/, attach)
   }
   assert.equal((await engine.load()).revision, before)
 })
