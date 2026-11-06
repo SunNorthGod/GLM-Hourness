@@ -3,7 +3,7 @@
   "type": "task",
   "title": "经验页",
   "why": "人在一页上看到本项目生效的经验，也能删掉不对的",
-  "status": "doing",
+  "status": "done",
   "parent": "lessons",
   "kind": "implement",
   "body": "M5 设计 0.7（.agents/tasks/m5/design.md）§1.2 的 lessons-3。实现步骤见 .agents/tasks/m5/impl-plan.md 的 S10（习惯相关的几节在 S12）。验证层：L2（视图模型与静态检查）；L4（DevTools 截图）。",
@@ -21,6 +21,25 @@
     {
       "type": "depends",
       "to": "m5-1"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "bad85a49",
+      "note": "feat: ship the lessons row enabled"
+    },
+    {
+      "kind": "test",
+      "ref": "build、preflight、npm test、check-lint、npm run -s probe on bad85a49",
+      "exit": 0,
+      "note": "棘轮 73/18/1，探针 437/437，经验场景 27/27"
+    },
+    {
+      "kind": "check",
+      "ref": ".agents/tasks/lessons-enable/l4.md",
+      "exit": 0,
+      "note": "人的桌面版 L4：(a)–(d)、lessons_query、控制台全部通过"
     }
   ],
   "history": [
@@ -64,6 +83,33 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面批次 L4（wf_be2ff3a8b7d83155）：人的 profile 里经验行仍是出厂 disabled: true（/hourness-status「未加载」），页脚「经验 ›」打开是「这个项目还没有经验」。在人的 profile 上的 L4 照旧等经验行在出厂包里启用之后；隔离实例上的那一轮已在 .agents/tasks/m5/l4-2026-11-05.md。"
+    },
+    {
+      "at": "2026-11-06T11:16:08.344Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "lessons-enable（wf_7ed94028a156d1cb）完成：glm-hourness/lessons 行出厂启用合入 main bad85a49（两个远端 ls-remote 一致），评审 1 轮无挡路；人的桌面版（bad85a4 构建）L4：(a) 经验页列出 21 条真实经验（记忆、折叠与候选用临时工作区夹具）、(b) 页面没有控件（L2 18/18）、(c) 流水追加后 1.95 秒更新、(d) 可见的一半通过（隐藏的一半由 L2 钉住），lessons_query 与控制台检查通过；不需要改回禁用。桌面版重启干净，跑在 9333。工作树与分支已删。记录 .agents/tasks/lessons-enable/l4.md、report.md。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "bad85a49",
+          "note": "feat: ship the lessons row enabled"
+        },
+        {
+          "kind": "test",
+          "ref": "build、preflight、npm test、check-lint、npm run -s probe on bad85a49",
+          "exit": 0,
+          "note": "棘轮 73/18/1，探针 437/437，经验场景 27/27"
+        },
+        {
+          "kind": "check",
+          "ref": ".agents/tasks/lessons-enable/l4.md",
+          "exit": 0,
+          "note": "人的桌面版 L4：(a)–(d)、lessons_query、控制台全部通过"
+        }
+      ]
     }
   ]
 }
