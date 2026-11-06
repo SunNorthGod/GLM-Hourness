@@ -14,7 +14,7 @@ import { RECUR_SOURCE } from '../src/lessons/notices.ts'
 import { journalFile } from '../src/lessons/storage.ts'
 import type { AgentLike, PostExecuteDecision, PostExecuteHost, PreExecuteListener, ToolExecuteInput, ToolFinalResult, UserNotice } from '../src/shared/dsh-min.ts'
 import { captureWarnings } from './graph-helpers.ts'
-import { kinds, rowHealth, withRow, WORK, type Row, type RowOptions } from './lessons-row-host.ts'
+import { fakeTool as tool, kinds, rowHealth, withRow, WORK, type Row, type RowOptions } from './lessons-row-host.ts'
 import { agentOf } from './memory-helpers.ts'
 
 const FRAGMENT = 'dsh : The term \'dsh\' is not recognized'
@@ -48,19 +48,6 @@ const shellValue = (run: ShellRun) => ({
   stderr: { text: run.stderr ?? '', truncated: false },
 })
 
-/** Register a tool of the host that answers each call with `produce`'s next outcome; a function throws what it returns an Error for. */
-function tool(row: Row, name: string, produce: () => unknown): void {
-  row.runtime.ctx.tools.register({
-    name,
-    description: `fake ${name}`,
-    parameters: { type: 'object', properties: {} },
-    output: { schema: { type: 'object' }, render: () => [{ type: 'text', text: 'output' }] },
-    execute: () => {
-      const outcome = produce()
-      return outcome instanceof Error ? Promise.reject(outcome) : Promise.resolve(outcome)
-    },
-  })
-}
 
 /** A shell tool that answers with the runs in order (the last one repeats). */
 function shell(row: Row, name: string, runs: readonly ShellRun[]): void {

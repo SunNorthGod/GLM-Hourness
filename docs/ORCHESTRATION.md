@@ -1154,7 +1154,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 
 ### 8.6 经验板〔M5 步骤 L1、L2、P1、S1 已实现并合入 main，验到 L2、L3；种子导入、`/lessons` 与面板经验页在 2026-11-04 的桌面批次里看过（导入的是批次自己的临时项目）；第一批 21 条经验 2026-11-05 导入本项目的 `.llm/lessons.jsonl`；行 2026-11-06 起出厂启用，L3 场景 `glm-lessons`、`non-glm-lessons`、`glm-lessons-failure`、`non-glm-lessons-failure` 已通过，人的桌面版首轮验收还欠〕
 
-经验板（`src/lessons/`，行 `glm-hourness/lessons`）记「在某种情况下踩过的坑与解法」。一条经验写明情况（文件、工具、命令、报错片段）、坑、解法、证据、最近一次确认；都属于项目，存在项目的 `.llm/lessons.jsonl`，没有用户级经验（`d-memory-scope`）。设计与验收在 `.agents/tasks/m5/design.md` §4（项目图节点 `lessons`）。经验是建议，不是规则：行不注册任何 `tools/pre-execute` 监听器，不拦任何调用（`d-code-rules-enforce`：本行没有规则）；它监听工具调用的唯一处是 `tools/post-execute`，只往失败的结果里加提醒，不改调用、不拒绝。
+经验板（`src/lessons/`，行 `glm-hourness/lessons`）记「在某种情况下踩过的坑与解法」。一条经验写明情况（文件、工具、命令、报错片段）、坑、解法、证据、最近一次确认；都属于项目，存在项目的 `.llm/lessons.jsonl`，没有用户级经验（`d-memory-scope`）。设计与验收在 `.agents/tasks/m5/design.md` §4（项目图节点 `lessons`）。经验是建议，不是规则：行不注册任何 `tools/pre-execute` 监听器，不拦任何调用（`d-code-rules-enforce`：本行没有规则）；它监听工具调用的唯一处是 `tools/post-execute`（两个监听器：失败匹配与路径提醒），只往结果里加提醒，不改调用、不拒绝。
 
 - 来源：worker 交回的候选经验，经服务 `glmHournessLessons` 的 `propose` 收下（契约 `src/lessons/service.ts`）。签名与某条生效经验相同的并入它，与人删过的相同的丢弃，其余成为候选；字段不合格或像密钥的答 `rejected`，什么都不写；服务自己写不成的答 `{error}`，派发一侧走退路批注 `[候选经验] …`，经验行在主 Agent 的下一步（距上次检查超过一分钟且图的修订变了；`propose` 失败之后不等一分钟）把图上的批注导入成候选，每条批注只试一次，被拒的也记一条 `import`。根 agent 自己遇到的坑用 `lessons_merge new` 直接写。
 - 工具：`lessons_query`（所有 agent，worker 在内；GLM 路由上常驻）按 `text`、`file`、`command`、`error` 查生效经验，其后至多两条候选，标 `status: "candidate"` 与 `unreviewed`；`lessons_merge`（根 agent；GLM 路由上延迟，候选提醒里写着它的名字）九种动作：`new`（从候选或自己写）、`into`、`revise`、`confirm`、`retire`、`drop`、`reopen`、`delete`、`restore`。`delete`、`restore` 与恢复人删掉的东西是人的决定：身份为人（输入框的 `/lessons`），或 `llm` 带人的原话（`relay`），没带得 `user_only`；删除是墓碑加快照，不抹掉。子 agent 调 `lessons_merge` 得 `role`，正路是交回结构；`lessons_merge` 的工具面过滤和记忆行的同一做法（`agent/created` 上的不带 `prepend` 的 `system-prompt/assemble` 监听器）。
@@ -1162,7 +1162,14 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 - `/lessons show | delete <L-编号> | restore <L-编号> | drop <C-编号>`（输入框，身份为人）；命令行 `npm run -s lessons -- [--cwd 文件夹] show | apply [--file 文件]`（`DEVELOPMENT.md` §14），`apply` 按 `lessons_merge` 的规则以 `llm` 身份写，同签名的跳过，所以同一个文件可以再导一次；会话投影 `hournessLessons` 把项目流水的路径交给面板的经验页（`ui/src/lessons/`）。
 - 服务给 M7 的另两个成员：`stats`（期间的新增、并入、丢弃、过期、人删、人恢复，开着的候选，每条经验碰到的会话数，删后复发）与 `hygiene`（读不出的行、180 天没确认的经验、超过 7 天的候选、相似的经验、被拒的批注）。
 - 失败匹配（`src/lessons/failure.ts`，`tools/post-execute` 上的 host 级监听器，所有 agent 的调用都看得到，子 agent 的也是）：shell 工具（原生名 `pwsh` 或 `bash`，GLM 路由上的 `Bash` 就是 `pwsh`）退出码不是 0 或超时，或任何工具的结果是错误（被 `tools/pre-execute` 拒绝的调用也是），而输出里有某条生效经验的报错片段（规整后的子串，片段至少 8 个字符，颜色码去掉后也要够）时，这次调用的结果多带一条提醒（来源 `glm-hourness-lessons`，至多 2 条经验，最长的片段在前），下一次请求里它紧跟在这次工具结果之后。同一会话里同一条经验不再提醒（可见历史里这种提醒列过的，加上本进程已经推给这个会话的）；成功的调用从不触发；`run_code` 的传输层子调用与没有 agent 的调用不看。每条推出去的经验追加一条 `hit`（会话、agent、调用号、原生工具名），不等写完；写失败只告警一次并进行健康。监听器自己出错时结果原样不动，告警一次，行健康写原因。任何调用都不被拦，下游监听器的决定与上下文原样保留。
+- 路径提醒（`src/lessons/path.ts`、`docs.ts`，同一行里 `tools/post-execute` 上的第二个监听器，设计在 `.agents/tasks/docs-at-hand/design.md` 0.3 §5，项目图节点 `docs-at-hand`）：原生 `read`、`write`、`edit`（GLM 路由上的 `Read`、`Write`、`Edit` 按别名表换成原生名）成功之后、不带 `parent` 的调用，结果多带一条提醒（来源 `glm-hourness-lessons-path`），把这条路径上项目知道的东西合成一条：按这条仓库相对路径匹配到的经验（`match.ts` 的 `relevant`，至多 3 条，每条用 `briefLine`）；路径所属组件（离文件最近的、含 `AGENTS.md` 的上级目录，检出根不算）的 `AGENTS.md` 里「决策」一节列的 id 与图里写入范围覆盖这条路径的任务的 `source` 连线指向的决策，各自在图上此刻的状态、验证与取代者（至多 5 条，图里没有的写 `not in the graph`）；写入范围覆盖这条路径、状态为已批准或进行中的任务（至多 3 条）；DSH 没有送达时的组件 `AGENTS.md` 正文（至多 2,500 字符）；`write`、`edit` 之后「保持文档为真」一句。整条至多 4,000 字符。「DSH 会送」按这次调用判：调用名（不是换算后的原生名）是 `read`、`write`、`edit`、组件目录在会话工作目录之下、可见历史里有来源 `agent-instructions` 的消息（DSH 那一行与文件系统在），或组件目录是工作目录本身或它的上级（开局基线已带）；读的就是组件 `AGENTS.md` 本身时不带正文；GLM 路由上别名调用的名字 DSH 的触发表不认，由本行送。同一会话里同一组件的正文（按内容摘要）、同一个决策、活、经验只提醒一次（可见历史里两种来源的提醒列过的，加上本进程已推给这个会话的，与失败匹配共用一份记录；压缩之后再触碰再来一次），「保持文档为真」按会话加组件一次；一步里并行的调用先到先得。读组件文件、图或经验账本出错只丢那一部分，行健康写明（备注键 `path`）；监听器自己抛错时结果原样返回。没有新的开关：关掉经验行，它跟着关。
 - 还没做：派发简报里带经验和交回处理调 `propose`（M7 的派发简报与交回，E1b）、周报里的经验一节（E8）；这两件等 M7，经验板自己的部分不受影响。
+
+### 8.7 组件 AGENTS.md 的格式〔设计 `docs-at-hand` 0.3 §4；读它的部分已实现，L2〕
+
+目录里有 `AGENTS.md`（检出根以下，不含根本身）就是一个组件，一个文件所属的组件是离它最近的那个，不另设登记表。组件只有这一个文件，DSH 加载子目录 `AGENTS.md` 时一并带上；没有 `FLOW.md`、`CASES.md`。文字用项目自己的语言，建议 6 KB 以内；重要的节在前，因为路径提醒在 DSH 没送达时只带前 2,500 字符。节的次序：开头一段话（做什么、边界）；「约束与不变量」（每条写为什么与出处）；「决策」（标题写 `Decisions` 或 `决策`，只列图上的决策 id，每行 `- <id>`，可跟一句说明，不写结论，结论与状态由路径提醒按 id 在图上现查）；「验证」（覆盖它的测试与探针场景名）；「流程」（Mermaid，主流程与特殊分支各一张，节点用代码里的符号名）；「案例」（每条一个三级标题加前提、操作、期望三句话，能自动化的写出测试或场景名）。不放修改历史（`git log` 与图上的任务）、待办与进度（图上的任务）、决策的结论与理由正文（图上的决策节点）；出现这些就是放错了地方。
+
+谁写：接管之后的 `kind: docs` 任务与新项目模块的第一件活（第三批，等 M7），worker 随改动更新；谁核对：交回里一行 `docs` 与审查清单一条（第三批，等 M7）。本仓库自己的组件不在此列，要不要写由人定；写了的那一批同批改 `CHARTER.md` §11 与 `AGENTS.md` 的「文档」一节。
 
 ## 9. 规范体系
 

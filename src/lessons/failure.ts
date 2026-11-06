@@ -33,6 +33,8 @@ import { noteWrite, readLessons, writeLessons, type LessonsEnv } from './storage
 
 /** The source of the reminder after a failed call. */
 export const FAILURE_SOURCE = 'glm-hourness-lessons'
+/** The source of the reminder after a successful read, write or edit (src/lessons/path.ts); its `keys` fact lists what it told, lessons by id. */
+export const PATH_SOURCE = 'glm-hourness-lessons-path'
 
 const SHELLS: ReadonlySet<string> = new Set(['pwsh', 'bash'])
 const STDERR_TAIL = 4_000
@@ -47,6 +49,8 @@ export interface FailureParts {
   report(session: SessionLike): Promise<void>
   /** Warn on the console once per key. */
   warn(key: string, text: string): void
+  /** What this process pushed to each session; the reminder at a file (src/lessons/path.ts) shares it, so a lesson one of them told is not told by the other. Absent: the listener keeps its own. */
+  readonly pushedBy?: WeakMap<SessionLike, Set<string>>
 }
 
 const tail = (text: string, max: number): string => text.length > max ? text.slice(text.length - max) : text
@@ -70,12 +74,13 @@ export function failureText(native: string, result: ToolFinalResult): string | u
   return SHELLS.has(native) ? shellFailure(result.value) : undefined
 }
 
-/** The lessons the session was told about: the notices of this source in its visible history, and what this process pushed since. */
-function toldTo(session: SessionLike, pushed: ReadonlySet<string>): Set<string> {
+/** What the session was told: the lessons of the failure notices in its visible history, the keys of the reminders at a file, and what this process pushed since. */
+export function toldTo(history: readonly DerivedMessage[], pushed: ReadonlySet<string>): Set<string> {
   const told = new Set(pushed)
-  for (const message of session.deriveMessages() as readonly DerivedMessage[]) {
-    const lessons = message.role === 'user' && message.source?.kind === FAILURE_SOURCE ? message.source.lessons : undefined
-    if (Array.isArray(lessons)) for (const id of lessons) if (typeof id === 'string') told.add(id)
+  for (const message of history) {
+    if (message.role !== 'user') continue
+    const items = message.source?.kind === FAILURE_SOURCE ? message.source.lessons : message.source?.kind === PATH_SOURCE ? message.source.keys : undefined
+    if (Array.isArray(items)) for (const item of items) if (typeof item === 'string') told.add(item)
   }
   return told
 }
@@ -125,7 +130,7 @@ async function remind(parts: FailureParts, pushedBy: WeakMap<SessionLike, Set<st
   env.note(session.id, 'failure', undefined)
   const pushed = pushedBy.get(session) ?? new Set<string>()
   pushedBy.set(session, pushed)
-  const matches = matchFailure(read.reading.state, failure, { skip: toldTo(session, pushed) })
+  const matches = matchFailure(read.reading.state, failure, { skip: toldTo(session.deriveMessages() as readonly DerivedMessage[], pushed) })
   if (matches.length === 0) return undefined
   for (const { lesson } of matches) pushed.add(lesson.id)
   recordHits(parts, dir, { session, agent, callId: exec.callId, tool }, matches)
@@ -134,7 +139,7 @@ async function remind(parts: FailureParts, pushedBy: WeakMap<SessionLike, Set<st
 
 /** Install the listener on the host; the function that takes it back. */
 export function installFailureMatching(parts: FailureParts): () => void {
-  const pushedBy = new WeakMap<SessionLike, Set<string>>()
+  const pushedBy = parts.pushedBy ?? new WeakMap<SessionLike, Set<string>>()
   return parts.ctx.on('tools/post-execute', async (exec, result, next) => {
     const downstream = await next()
     const { agent } = exec
