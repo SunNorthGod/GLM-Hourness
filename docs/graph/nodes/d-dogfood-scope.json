@@ -3,9 +3,9 @@
   "type": "decision",
   "title": "自举前只做主 Agent 与执行线的最薄骨架",
   "why": "先让最小的一条链跑通，其余模块搬进 DSH 之后由主 Agent 自己做",
-  "status": "approved",
+  "status": "superseded",
   "parent": "dogfood",
-  "verification": "unverified",
+  "verification": "superseded",
   "body": "自举（dogfood）之前，Kiro 这边只实现 M3（主 Agent）与 M7 的最薄骨架（M7 设计 §10：E0、E1a、E1b、E2–E9、H1），加骨架验收（L3 骨架场景、真实模型从放行跑到目标完成一次、第一批 L4）。规则板、循环板、面板 0.7、M4、M5、M6 0.4、指标流水、接管项目的实现，在自举开始后交给 DSH 里的主 Agent 做，设计仍按两层循环先放行。没有采用全在 Kiro 这边做完再搬：剩下的模块加起来比这两块大好几倍，搬之前摸不到真实的卡点。已知代价：刚搬进去时没有规则板，高峰少做档的并发上限不生效；怎样补见本节点批注。",
   "history": [
     {
@@ -38,6 +38,16 @@
           "to": "先让最小的一条链跑通，其余模块搬进 DSH 之后由主 Agent 自己做"
         }
       }
+    },
+    {
+      "at": "2026-11-06T18:24:39.693Z",
+      "actor": "llm",
+      "op": "supersede",
+      "reason": "d-dogfood-scope 的限制（自举之前只做 M3 与 M7 骨架）在 2026-10-31T05:20 的批注里已写明被 d-build-all-released 取代，当时没有连线；按 d-no-run-cap 取代 d-five-runs 的写法补一条 supersedes。d-build-all-released 是人 2026-10-31 定的：能开工的都开工，不再只做自举骨架。",
+      "relay": "你把能派的活都派出去，需要我审查的给我；现在不用省积分了，能开工的都开开",
+      "from": "approved",
+      "to": "superseded",
+      "by": "d-build-all-released"
     }
   ]
 }

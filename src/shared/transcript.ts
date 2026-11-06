@@ -4,8 +4,9 @@
  * (src/data/transcript-row.ts) provides `glmHournessTranscript`; the GLM
  * channel package's glm-compact row reads it lazily through cordis `ctx.get`
  * and, when a GLM compaction summary is done, asks it to export the
- * session's log as plain text. The row ships disabled, so the service is
- * normally absent and glm-compact's output is unchanged.
+ * session's log as plain text. The row ships enabled; with it disabled, or
+ * with only the GLM package installed, the service is absent and
+ * glm-compact's output is unchanged.
  */
 import type { ServiceLookup } from './dsh-min.ts'
 

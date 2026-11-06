@@ -3,7 +3,7 @@
   "type": "feature",
   "title": "设计循环：从许愿到放行的最小一圈",
   "why": "人说一句愿望，主 Agent 访谈、出方案、交人放行，这一圈能走通",
-  "status": "doing",
+  "status": "done",
   "parent": "orch",
   "body": "设计循环见 ORCHESTRATION.md §4（ROADMAP.md M3）。",
   "acceptance": [
@@ -13,6 +13,28 @@
     {
       "type": "depends",
       "to": "m2"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "3fbc1e9",
+      "note": "M3 第 8 步：访谈八步与需求卡，在 origin/main"
+    },
+    {
+      "kind": "commit",
+      "ref": "88c1d69",
+      "note": "标定修复后 GLM-5.3 三次里 2 次全过 interview-expense-log，解锁条件满足"
+    },
+    {
+      "kind": "commit",
+      "ref": "2bf2b16",
+      "note": "m3 合入 main（第 12 步 b）"
+    },
+    {
+      "kind": "commit",
+      "ref": "d6a2c26",
+      "note": "设计行默认启用"
     }
   ],
   "history": [
@@ -614,6 +636,42 @@
       "actor": "llm",
       "op": "comment",
       "text": "子决定 d-interview-cards 由 d-main-agent-no-ask-card 替掉（人 2026-11-05「都按你说的来」），新决定的做法已在 main、带证据关闭。m3 还剩 m3-metrics-wiring 在做。"
+    },
+    {
+      "at": "2026-11-06T18:24:27.833Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "唯一验收是标定任务 interview-expense-log 从一句话到骨架放行全程走通，与 m3-2 第 3 条同证据（2026-11-05T10:05 对账批注）。子节点 m3-1 到 m3-5、m3-6、m3-main-persona、m3-metrics-wiring 与全部子决定都已关，m3 没有未满足的关口。本次再核：3fbc1e9、88c1d69、2bf2b16、d6a2c26 均在 origin/main（git merge-base --is-ancestor 退出码 0）；88c1d69 之后 GLM-5.3 三次标定 2/3 全过，记录在 .llm/calibration-runs/2026-11-03T05-48-55-107Z/（本机，不入库）。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "3fbc1e9",
+          "note": "M3 第 8 步：访谈八步与需求卡，在 origin/main"
+        },
+        {
+          "kind": "commit",
+          "ref": "88c1d69",
+          "note": "标定修复后 GLM-5.3 三次里 2 次全过 interview-expense-log，解锁条件满足"
+        },
+        {
+          "kind": "commit",
+          "ref": "2bf2b16",
+          "note": "m3 合入 main（第 12 步 b）"
+        },
+        {
+          "kind": "commit",
+          "ref": "d6a2c26",
+          "note": "设计行默认启用"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-06T18:55:04.798Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B8 开工凭据（接管计划 B8；接管设计 0.6 §16 B3 开工条件 F48 二选一里的第二种：编排方在 m3 节点记批注，写明依据与这是谁的解读）。依据一，人放行了接管设计 0.6：决定节点 d-bootstrap-released 记着人 2026-11-01 读接管一页稿后的原话「读别人的项目时那个权限不用，放开就行。Agent没那么容易被骗」「其余都没问题」，批准那一条的 relay 是「读别人的项目时那个权限不用，放开就行。Agent没那么容易被骗。其余都没问题」；设计 0.6 §3.1 白纸黑字写了对 M3 的两处接缝：`/wish` 问接管服务的 wants、调 prepare（愿望由接管保管时 holdWish 为真，不发许愿 notice）、阶段提醒问 holds。依据二，人定了先彻底做完再进自举：决定节点 d-finish-then-bootstrap 记着人 2026-11-03 的原话「先不用按自举算了，干脆直接在我们这边彻底做完再进自举吧」，节点正文写「M4 剩余、M7 全部、M5 S12、状态板块、面板与新手引导、指标、用户图全部彻底做完后，最后做接管、进自举」；d-freeze-until-dogfood 的正文记着人 2026-11-05 定「与 d-finish-then-bootstrap 冲突的地方按后者办」。解读：接管是排在最后做的一块，它的设计 0.6 已放行，设计里写明的对 M3 的两处接缝随接管实现一起办，不再等「自举开始」。这是编排方在人睡前授权（「尽量你自己拿决定别卡任务」，2026-11-07）下做的解读，不是人对这两处接缝本身说过的话；人可以推翻：推翻时把 bootstrap 分支上的 B8 提交撤下即可，两处接缝只在 src/design/mode.ts、src/design/stage-notice.ts、src/design/index.ts 与接管行的服务里，接管行默认禁用，B8 没有合入 main。"
     }
   ]
 }
