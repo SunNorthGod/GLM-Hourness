@@ -33,6 +33,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "code 步完成：78f77ef9（分支 m5-index-truncation-alarm，未推送）。build、preflight、npm test（3277/3277）、check-lint（73/18/1，无上升）都退出 0；两个计数放在指标板「记录范围」一组的新行，所以欠一次桌面核对。下一步独立评审。"
+    },
+    {
+      "at": "2026-11-06T11:16:08.816Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "独立评审 APPROVED，无挡路（.agents/tasks/m5-index-truncation-alarm/review.json，78f77ef9）。下一步合入；两个计数在指标板「记录范围」一组，合入后要桌面核对。"
     }
   ]
 }
