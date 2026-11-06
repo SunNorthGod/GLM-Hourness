@@ -78,7 +78,7 @@ import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/healt
 import { disposerList } from '../shared/row-support.ts'
 import Schema from '../shared/schemastery.ts'
 import { installExecuteRules, type ExecuteRulesDeps } from '../guard/execute-rules.ts'
-import { latestDispatch, registeredAttempt, recordCommunication, reviewTargetOf } from './attempts.ts'
+import { latestDispatch, registeredAttempt, recordCommunication, reviewTargetOf, writesPlannedFile } from './attempts.ts'
 import { createGraphCache, dispatchTool, realCommandRunner, type DispatchDeps, type GraphCache } from './dispatch.ts'
 import { answerWorkerTool, askMainTool, submitPlanTool, type RequestsDeps } from './requests.ts'
 import { sha256Hex } from './digest.ts'
@@ -212,6 +212,17 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     isWorker: (agentId) => {
       const attempt = registeredAttempt(agentId)
       return attempt !== undefined && agentsService()?.get(agentId) !== undefined
+    },
+    // The scratch-only exemption (§3.2.1): a live worker with an approved plan, the target in its worktree and in its scope or plan.
+    inApprovedScope: (agentId, target) => {
+      try {
+        const attempt = registeredAttempt(agentId)
+        if (attempt === undefined || agentsService()?.get(agentId) === undefined) return false
+        return writesPlannedFile(attempt, cache.get(attempt.graphDir)?.nodes.get(attempt.node)?.writeScope ?? [], target)
+      }
+      catch {
+        return false
+      }
     },
     trunkAdvanceFor: callId => trunkGate?.trunkAdvanceFor(callId),
     runAction: (action, record) => loopLink.runAction(action, record),

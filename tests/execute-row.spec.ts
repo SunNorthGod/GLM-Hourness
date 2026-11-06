@@ -171,7 +171,7 @@ function rulesOver(project: Project, cache: ReturnType<typeof createGraphCache>,
 
 // ---- the row wiring ----
 
-test('the execute row registers dispatch_task, check_commit and await_human, dispatch_task\u2019s description is the example constant\u2019s text, glmHournessExecute is provided with its three members, the drive listens to goal/changed with the completion gate in the pre-execute chain, and the hournessHandback projection is registered', async () => {
+test('the execute row registers dispatch_task, check_commit and await_human, dispatch_task\u2019s description is the example constant\u2019s text, glmHournessExecute is provided with its four members, the drive listens to goal/changed with the completion gate in the pre-execute chain, and the hournessHandback projection is registered', async () => {
   const runtime = fakeRuntime({ natives: [] })
   // The host's tools service, as inject would hand it over.
   runtime.ctx.provide('tools', {
@@ -198,6 +198,7 @@ test('the execute row registers dispatch_task, check_commit and await_human, dis
   assert.ok(runtime.listeners.filter(entry => entry.event === 'tools/pre-execute').every(entry => entry.options?.prepend === true), 'the completion gate and the chain rules are prepended')
   const service = runtime.ctx.get(EXECUTE_SERVICE) as ExecuteService | undefined
   assert.ok(service !== undefined && service.isWorker('nobody') === false, 'glmHournessExecute.isWorker is provided')
+  assert.equal(service.inApprovedScope('nobody', join(process.cwd(), 'src', 'x.mjs')), false, 'glmHournessExecute.inApprovedScope is provided and false for an agent the register does not hold (§3.2.1)')
   assert.equal(typeof service.trunkAdvanceFor, 'function', 'glmHournessExecute.trunkAdvanceFor is provided (R4-F4)')
   assert.equal(service.trunkAdvanceFor('no-such-call'), undefined)
   assert.equal(typeof service.runAction, 'function', 'glmHournessExecute.runAction is provided (§2.5 point 2)')
@@ -427,7 +428,7 @@ test('the GLM peak cap limits a second GLM dispatch to slots_full; a non-GLM mod
 
 test('with the execute service on, the main agent\u2019s no-write denial points at dispatch_task; without it, at the subagent tool', async () => {
   const withExecute = designHost()
-  ;withExecute.services.set(EXECUTE_SERVICE, { isWorker: () => false, trunkAdvanceFor: () => undefined, runAction: () => Promise.resolve({ outcome: 'skipped', reason: 'test' }) } satisfies ExecuteService)
+  ;withExecute.services.set(EXECUTE_SERVICE, { isWorker: () => false, inApprovedScope: () => false, trunkAdvanceFor: () => undefined, runAction: () => Promise.resolve({ outcome: 'skipped', reason: 'test' }) } satisfies ExecuteService)
   designApply(withExecute.ctx)
   const agent = withExecute.addAgent('s1')
   assert.equal((await withExecute.execute(agent, '/wish'))?.result.kind, 'success')

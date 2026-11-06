@@ -5,7 +5,8 @@
  * arrangement as src/shared/peak-mode.ts, whose reader serves the rows that
  * read the rules board.
  *
- * Three members: the one M3's rules judge with; the trunk advance a running
+ * Four members: the one M3's rules judge with; the one the guard row's
+ * scratch-only rule asks for a registered worker's planned files; the trunk advance a running
  * call was allowed to make, which the rules board's gate is to read for
  * `gate.trunk-advance` (R4-F4, §18.2; src/rules/gate.ts does not read it
  * yet); and `runAction`, the loop board's `run` for the row's harness
@@ -26,6 +27,15 @@ export interface ExecuteService {
    * comes from this and the row's own rules, never from the child id's shape.
    */
   isWorker(agentId: string): boolean
+  /**
+   * Whether the agent id names a live registered worker (role `worker`, not
+   * a reviewer or a check) whose plan is approved, and the absolute path
+   * `target` lies in that worker's worktree inside its task's write scope
+   * (the row's cached graph) or its approved plan's paths (§3.2.1). The
+   * guard row's scratch-only rule passes such a write: the file is the
+   * task's, not a one-off script. False for everything else, never throws.
+   */
+  inApprovedScope(agentId: string, target: string): boolean
   /**
    * The local trunk advance the call `callId` was allowed to make (§3.8.4):
    * `advanceOk` held and the result is known before the call runs. Recorded
@@ -48,7 +58,7 @@ export function executeService(ctx: ServiceLookup, problem?: (message: string) =
   const value: unknown = typeof ctx.get === 'function' ? ctx.get(EXECUTE_SERVICE) : undefined
   if (value === undefined || value === null) return undefined
   const service = value as Partial<Record<keyof ExecuteService, unknown>>
-  if (typeof service.isWorker === 'function' && typeof service.trunkAdvanceFor === 'function' && typeof service.runAction === 'function') return value as ExecuteService
+  if (typeof service.isWorker === 'function' && typeof service.inApprovedScope === 'function' && typeof service.trunkAdvanceFor === 'function' && typeof service.runAction === 'function') return value as ExecuteService
   problem?.(`${EXECUTE_SERVICE} has the wrong shape; the dispatch chain reads as ungated`)
   return undefined
 }

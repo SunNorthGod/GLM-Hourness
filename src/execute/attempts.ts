@@ -15,6 +15,7 @@ import { isGlmModel } from '../shared/route.ts'
 import { staleness } from '../graph/pins.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import type { GraphNode } from '../graph/schema.ts'
+import { repoRelative, within } from './scope.ts'
 
 type AttemptRole = 'worker' | 'review' | 'acceptance-review' | 'check'
 
@@ -297,6 +298,21 @@ export function registeredAttempt(childId: string): Attempt | undefined {
 /** Every dispatch in the register, for the running counts the gates and the health read. */
 export function registeredDispatches(): readonly Attempt[] {
   return [...register.values()]
+}
+
+/**
+ * Whether a dispatch's write of the absolute path `target` is a file its
+ * approved plan puts in place (§3.2.1, the scratch-only exemption): the
+ * dispatch is a worker whose plan is approved, the target lies in its
+ * worktree (not the root itself, not its `.git`) and inside the approved
+ * plan's paths or the task's write scope `scope`. Pure; the liveness check
+ * is the caller's.
+ */
+export function writesPlannedFile(attempt: Attempt, scope: readonly string[], target: string): boolean {
+  if (attempt.role !== 'worker' || attempt.plan !== 'approved' || attempt.worktree === undefined) return false
+  const relative = repoRelative(attempt.worktree, attempt.worktree, target)
+  if (relative === undefined || relative === '') return false
+  return within(attempt.planPaths ?? [], relative) || within(scope, relative)
 }
 
 /** What `dispatch_task` returns (§3.1.1): the dispatch's facts and the brief digest, the plan as words. */
