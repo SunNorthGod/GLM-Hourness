@@ -256,6 +256,7 @@ test('a person\'s rule says 什么时候 · 筛选 · 动作, its condition now,
   assert.deepEqual(entryOf(page, 'mine', 'r-s1').lines.slice(-3), ['脚本：docs/rules/scripts/r-s1.mjs', '这台电脑上没有你看过原文的记录，先不跑', `超时 ${design} 秒（设计里定的固定值） · 超时或出错时放行（默认）`])
   assert.ok(entryOf(page, 'mine', 'r-s2').lines.includes('脚本 docs/rules/scripts/r-s2.mjs 和你同意的那一版不一样，没在跑；要用改过的这一版，跟主 Agent 说，它会把新的原文给你看'))
   assert.ok(entryOf(page, 'mine', 'r-s3').lines.includes('脚本文件不见了'))
+  assert.deepEqual([entryOf(page, 'mine', 'r-s1').script, entryOf(page, 'mine', 'r-push').script], ['docs/rules/scripts/r-s1.mjs', null], 'a script rule hands 讲细点 its file to read when opened')
   assert.deepEqual(mine.tail, ['要加一条：跟主 Agent 说你要的规矩，例如「今晚 21 点以后别推送」，它会把要写的规则作为一个方案给你看'])
   assert.equal(JSON.stringify(page).includes('4 周没用过'), false, 'the weekly proposal is not on main')
   const empty = groupOf(pageOf(viewOf()), 'mine')

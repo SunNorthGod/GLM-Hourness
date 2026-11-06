@@ -681,6 +681,24 @@
       "actor": "llm",
       "op": "comment",
       "text": "E9 计划重写完成（m7-plan-e9-retry，wf_b53e8674fee05fae）：.worktrees/m3/.llm/wf/m7-e9/plan.md，5 个批次项、偏离 D1–D8、门禁清单、后续步骤说明、合入 main 时要吸收的改动与摘要，没有挡住它的编排方问题。e9-code 步接着按计划实现。"
+    },
+    {
+      "at": "2026-11-06T00:58:57.248Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 E9 第 (1) 节（骨架场景）完成并推到 origin/m7：c0d89dd、59ebb1f、fb37d60（wip(m7-e9)）。树 af3da93 上 build、preflight、npm test（3164：3163 过、1 跳过）0，棘轮 73/18/1，探针 478/478，glm-exec-skeleton 的 11 项全过；execute 行仍出厂停用。下一步 E9 评审。"
+    },
+    {
+      "at": "2026-11-06T01:04:22.936Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 E9（第 1 节，骨架场景）评审 APPROVED，0 条发现。三个 wip(m7-e9) 提交 c0d89dd、59ebb1f、fb37d60 已在 2026-11-06 08:57 推上 origin/m7，HEAD 树 af3da93 等于评审与门禁的树：build 0、preflight 0、npm test 3164（3163 过、1 跳过）、棘轮 73/18/1、探针 478/478（11 项 glm-exec-skeleton 全过，运行 2026-11-06T00-40-40-699Z）；execute 行仍出厂停用。e9-commit 步发现要压成一个提交就得强推已发布的历史，停下问。编排方定：不强推，三个 wip 提交留在 origin/m7 作 E9 的记录；M7 合入 main 时由合入步决定是否以压缩合并进 main（不改写 origin/m7）。下一步 real-model-run。"
+    },
+    {
+      "at": "2026-11-06T01:05:19.514Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 E9 第 (1) 节在 m7 分支落定（wf_36d1d690c7e1de90 e9-commit）：按编排方选的 A，三个已推的 wip(m7-e9) 提交 c0d89dd1、59ebb1f3、fb37d604 原样作为 E9 的记录，没有压缩、没有强推；origin/m7 = HEAD = fb37d604，树 af3da938 即评审（APPROVED，0 条发现）与门禁用的树。门禁：build 0、preflight 0、npm test 3164（3163 过、1 跳过）、棘轮 73/18/1、探针 478/478，含 glm-exec-skeleton 的 11 项。execute 行仍出厂停用。压缩留到 M7 合入 main 时（C）。下一步 real-model-run，然后合入、L4 与报告。"
     }
   ]
 }

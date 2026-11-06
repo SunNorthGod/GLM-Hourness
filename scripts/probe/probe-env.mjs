@@ -4,9 +4,11 @@
  * for the loop board, which provides no service in the headless runtime
  * (it has no session controller, loop board design 0.6 §3.1). It provides a
  * minimal `glmHournessLoops` whose `listens` is always true and records every
- * `contribute`, `emit` and `recordRun` it receives, and registers the probe
- * tool `probe_check_command {tool, check?}`, which answers with what the env
- * row's service `glmHournessEnv` reads for the calling session's directory.
+ * `contribute`, `emit` and `recordRun` it receives, and registers two probe
+ * tools: `probe_check_command {tool, check?}`, which answers with what the env
+ * row's service `glmHournessEnv` reads for the calling session's directory,
+ * and `probe_loop_page {entry}`, which answers with what the env row's latest
+ * hand-over gives the board's page for that entry there (`details`, `checks`).
  * Every record lands in a JSONL log (`out`) the checks read. Not part of the
  * bundle: loaded only through the overlay that scripts/probe/run-probe.mjs
  * generates.
@@ -30,9 +32,12 @@ export function apply(ctx, config = {}) {
       // The checks read an absent line as a step that never happened.
     }
   }
+  /** The latest hand-over of each row, for probe_loop_page. */
+  const handed = new Map()
   const board = {
     declaration: DECLARATION,
     contribute: (source, contribution) => {
+      if (typeof source?.row === 'string') handed.set(source.row, contribution)
       log({
         kind: 'contribute',
         source,
@@ -64,6 +69,21 @@ export function apply(ctx, config = {}) {
         : undefined
       log({ kind: 'check-command', service: service !== undefined, command: command ?? null })
       return { command: command ?? null }
+    },
+  }))
+  disposers.push(ctx.tools.register({
+    name: 'probe_loop_page',
+    description: 'Probe only: what the env row\'s hand-over gives the loop board\'s page for one entry, for this session\'s directory.',
+    parameters: { type: 'object', properties: { entry: { type: 'string', description: 'The entry id' } }, required: ['entry'] },
+    output: { schema: { type: 'object' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    execute: (args, exec) => {
+      const cwd = exec?.agent?.session?.header?.cwd
+      const contribution = handed.get('glm-hourness/env')
+      const entry = String(args.entry)
+      const read = member => typeof cwd === 'string' && typeof contribution?.[member] === 'function' ? contribution[member](entry, cwd) : null
+      const page = { details: read('details'), checks: read('checks') }
+      log({ kind: 'page', entry, page })
+      return Promise.resolve(page)
     },
   }))
   return () => {

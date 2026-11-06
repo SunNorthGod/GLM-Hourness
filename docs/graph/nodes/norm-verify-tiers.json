@@ -105,6 +105,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "desktop-close-docs（wf_674d79b3e6a53992）合入 main 5b577d9，origin 与 github 经 ls-remote 一致。3068772：DEVELOPMENT.md §1.1 L4 一行的关闭与重启规程（关闭前不留没取走的注入消息；Browser.close 发一次不等回应；每 5 秒查主进程、lockfile 与顶层窗口，见 #32770 退出确认框就停下请人点；没有框而 2 分钟未退出也停下报告；托盘里也算在运行），合入步快进 main 后在主检出重建 dist 的规则，§7 两行事故，FACTS 六行。cb1d2f3：启动前清掉 127.0.0.1 的 dsh-auth-* cookie（先备份），人允许改桌面版 userData 与 ~/.dsh，§7 一行 2026-11-06 事故，FACTS 一行 cookie 上限。合入树门禁：build 0、preflight 0、npm test 0（3180/3180）、check-lint 0（73/18/1）。工作树与分支已删。记录 .agents/tasks/desktop-close-2026-11-05/docs-step.md。原定「每 30 秒看一次、至多等 15 分钟」作废。"
+    },
+    {
+      "at": "2026-11-06T00:17:36.775Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "guide-metrics-line 的桌面步按新规程关桌面版：发 Browser.close 后没有 #32770 确认框，约 21 秒退出（m4-checks-loop-details 那次 6 秒）。inject-via-prestep 合入之前，空闲会话里没有排队消息时关闭请求已能直接生效。"
     }
   ]
 }

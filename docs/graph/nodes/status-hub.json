@@ -201,6 +201,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "status-hub-3（wf_992ec82f32e990c0）code 步完成并推 origin/status-hub-3：批 9 4c16928、面板 8-1 65e1324、面板 8-2 b6eab12 与 7ba29e0；7ba29e0 上门禁绿（npm test 3176/0，棘轮 73/18/1，探针 422/422）。评审 APPROVED，没有挡路项，不挡路 5 条（8-2 分成两个提交、文档在第二个；8-2 的探针结果只在工作树日志里）。下一步合入。"
+    },
+    {
+      "at": "2026-11-06T02:07:38.744Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "status-hub-3（wf_992ec82f32e990c0）评审 APPROVED 后合入 main 8bddad7（合入 origin/main 7c13564），origin 与 github 一致；合入步正持桌面锁做 L4，结果出来再关相关节点。"
     }
   ]
 }

@@ -264,13 +264,60 @@ reminderTest('the re-anchoring after a compaction lists the rules denied in this
   assert.equal(graphHealthOf(runtime)?.state, 'active')
 }, { journal: true })
 
-reminderTest('a session without denials re-anchors with the projection alone, whether the journal exists or not', async ({ focus, step, runtime, workspace }) => {
+/** Focus task-1, take the projection, compact once (c-1) and take the re-anchoring that follows. */
+async function focusThenCompact({ focus, step, runtime }: Fixture): Promise<{ first: UserNotice, bare: UserNotice }> {
   await focus('task-1')
   const [first] = await step()
   assert.ok(first !== undefined)
   compact(runtime, 'c-1')
   const [bare] = await step({ messages: [], step: 3 })
   assert.ok(bare !== undefined)
+  assert.equal(facts(bare).reason, 'compaction')
+  return { first, bare }
+}
+
+reminderTest('the re-anchoring lists the titles of the approved norm nodes under the focus\'s goal, one per line; a goal without them adds no section; no other step does', async (fixture) => {
+  const { step, human, rev, runtime, graph } = fixture
+  const { first, bare } = await focusThenCompact(fixture)
+  assert.equal(text(bare), text(first), 'a goal without norm nodes: no norms section')
+  await human({ op: 'propose', reason: '规范', node: { id: 'norm-tests', type: 'norm', title: '改代码前测试先过', parent: 'goal-1', acceptance: ['npm test 退出码 0'] } })
+  await human({ op: 'propose', reason: '规范', node: { id: 'norm-docs', type: 'norm', title: '文档与行为同一批提交', parent: 'feature-1', acceptance: ['同一个提交'] } })
+  // Not listed: a norm the human dropped, a norm still waiting for approval, a norm under another goal.
+  await human({ op: 'propose', reason: '规范', node: { id: 'norm-old', type: 'norm', title: '旧规矩', parent: 'goal-1', acceptance: ['x'] } })
+  await human({ op: 'status', id: 'norm-old', rev: await rev('norm-old'), to: 'dropped', reason: '不用了' })
+  const proposed = await openEngine(graph).apply('llm', { op: 'propose', reason: '提议', node: { id: 'norm-draft', type: 'norm', title: '还没批', parent: 'goal-1', acceptance: ['x'] } })
+  assert.ok(proposed.ok, JSON.stringify(proposed))
+  assert.equal((await loadGraph(graph)).nodes.get('norm-draft')?.status, 'proposed')
+  await human({ op: 'propose', reason: '另一个目标', node: { type: 'goal', title: '别的目标', acceptance: ['y'] } })
+  await human({ op: 'propose', reason: '规范', node: { id: 'norm-elsewhere', type: 'norm', title: '别处的规矩', parent: 'goal-2', acceptance: ['z'] } })
+  assert.deepEqual(await step(), [], 'new norm nodes are not neighbors of the focus: an ordinary step adds nothing')
+  compact(runtime, 'c-2')
+  const [anchored] = await step()
+  assert.ok(anchored !== undefined)
+  assert.equal(facts(anchored).reason, 'compaction')
+  assert.equal(facts(anchored).digest, facts(first).digest, 'the norms stay out of the digest')
+  const close = '\n</system-reminder>'
+  assert.equal(text(anchored), `${text(first).slice(0, -close.length)}\n${[
+    'Norms in effect under goal goal-1, approved by the human (graph_show gives the items of each):',
+    '- norm-docs: 文档与行为同一批提交',
+    '- norm-tests: 改代码前测试先过',
+  ].join('\n')}${close}`)
+  assert.deepEqual(await step(), [], 'the next step sees the same digest and adds nothing')
+  await human({ op: 'edit', id: 'task-1', rev: await rev('task-1'), reason: '改名', set: { title: '读投影二' } })
+  const [changed] = await step()
+  assert.ok(changed !== undefined)
+  assert.equal(facts(changed).reason, 'changed')
+  assert.ok(!text(changed).includes('Norms in effect'), 'a changed projection carries no norms')
+  const round = userMessage('<goal_round>\nObjective: "项目图"\nRound: 2/256\n</goal_round>', { kind: GOAL_ROUND_SOURCE, goalId: 'goal-a', revision: 1, round: 2 })
+  const [beat] = await step({ messages: [round] })
+  assert.ok(beat !== undefined)
+  assert.equal(facts(beat).reason, 'goal-round')
+  assert.ok(!text(beat).includes('Norms in effect'), 'a goal round carries no norms')
+}, { journal: true })
+
+reminderTest('a session without denials re-anchors with the projection alone, whether the journal exists or not', async (fixture) => {
+  const { step, runtime, workspace } = fixture
+  const { first, bare } = await focusThenCompact(fixture)
   assert.equal(text(bare), text(first), 'no journal yet: no denial, no section')
   await writeJournal(workspace, [
     denial('graph-files-only', 'agent-2'),
