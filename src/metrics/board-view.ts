@@ -146,6 +146,22 @@ function agreeRow(events: readonly MetricsEvent[], window: BoardWindow): { reado
   return { value: answers.length === 0 ? '—' : `${pct(agree, answers.length)}（${answers.length} 次里 ${agree} 次）`, total: answers.length }
 }
 
+/**
+ * The one memory line of the coverage group (m5-index-truncation-alarm): how
+ * often the session index was cut at a cap and how often memory_query found
+ * nothing, the two numbers that say whether keyword recall still fits.
+ */
+function memoryRow(current: CalcGroup | undefined, previous: CalcGroup | undefined): Row {
+  const pair = (group: CalcGroup | undefined): { readonly value: string, readonly cuts: number } => {
+    const cut = rowOf(group, '索引截掉')
+    const empty = rowOf(group, '查询落空')
+    return { value: cut === undefined || empty === undefined ? '—' : `索引截掉 ${cut.value}，查询落空 ${empty.value}`, cuts: cut?.samples ?? 0 }
+  }
+  const now = pair(current)
+  const before = pair(previous)
+  return { label: '记忆索引截掉与查询落空', values: [now.value, before.value], samples: [now.cuts, before.cuts] }
+}
+
 /** The board's groups over the two windows (§7.6.2's 上板的数). */
 export function boardView(input: BoardViewInput): BoardViewShape {
   const windowed = (window: BoardWindow) => ({ events: input.events, basis: input.basis, from: window.from, to: window.to, tz: input.tz, findings: input.findings })
@@ -213,6 +229,7 @@ export function boardView(input: BoardViewInput): BoardViewShape {
         { label: '依据', values: [facts.basis, '—'] },
         { label: '无法读取', values: [`${input.findings.unreadable.length} 行`, '—'] },
         { label: '丢失', values: [rowOf(factGroup('覆盖'), '丢失与拒收')?.value ?? '—', rowOf(factGroupPrev('覆盖'), '丢失与拒收')?.value ?? '—'] },
+        memoryRow(factGroup('记忆'), factGroupPrev('记忆')),
       ],
     },
   ]

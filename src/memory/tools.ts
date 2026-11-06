@@ -17,6 +17,7 @@
 import { secretRefusal } from '../data/secret-shape.ts'
 import { invalid, isObject, isRefusal, refuse, type Refusal } from '../data/refusal.ts'
 import type { AgentLike, SessionLike, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
+import { metricsWhereOf } from '../shared/metrics.ts'
 import { MEMORY_HABIT } from '../shared/tool-names.ts'
 import { checkSourceKnown, checkStore, classify, judgeStore, revokeRecord, revokeRefusal, reviewRecord, storeRecord, strength, askRecord, declineRecord, HABIT_DECLINE_DAYS, type MemoryEntry, type MemoryState, type MemoryType, type Scope, type HabitFields } from './model.ts'
 import { firstReply, saidInReply, saidLatest, shownSinceLastPerson } from './answers.ts'
@@ -288,6 +289,10 @@ async function query(env: MemoryEnv, args: unknown, exec: unknown): Promise<unkn
         .filter(({ score }) => score > 0)
         .sort((a, b) => b.score - a.score || (a.entry.name < b.entry.name ? -1 : 1))
   const matches = ranked.slice(0, request.limit).map(({ entry }) => entry)
+  // A query that found nothing is counted, never its words (m5-index-truncation-alarm): whether keyword recall still finds what is there is a decision to make on data.
+  if (matches.length === 0) {
+    env.emit?.({ k: 'memory.query-empty', by: 'memory', body: { mode: request.name === undefined ? 'focus' : 'name', ...(request.type === undefined ? {} : { type: request.type }), searched: candidates.length } }, metricsWhereOf(caller.session))
+  }
   // A recalled fact counts as reviewed; a preference does not fade, so it has nothing to review. A failed review is only noted.
   const facts = matches.filter(entry => entry.kind === 'fact').map(entry => entry.name)
   if (facts.length > 0 && places.project !== undefined) {

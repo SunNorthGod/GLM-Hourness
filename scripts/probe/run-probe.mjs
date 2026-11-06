@@ -2153,6 +2153,21 @@ const designOne = designScenario('glm-design-one-main', 'glm-5.3', ws => [
   { tool: { name: 'Write', arguments: { file_path: join(ws, '.llm', 'x.txt'), content: 'x\n' } }, status: true },
   { text: 'done' },
 ], { wish: true })
+// A /wish off in an idle session leaves its inbox empty (inject-via-prestep):
+// the main session types /wish into a second root session that never ran,
+// then /wish off, then /wish off again with a message of the person that
+// wakes it. The notices of the two first commands wait in the design row's
+// step mailbox, not in the inbox the desktop host counts as a running task,
+// and the woken session's first request carries both before the message.
+const designWishOffIdle = designScenario('glm-design-wish-off-idle', 'glm-5.3', ws => [
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish' } },
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish off' } },
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish off', say: 'Reply done.' } },
+  // The woken session runs its turn while the main one waits; without the
+  // wait the run ends before that turn sends its first request.
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the second session run' } } },
+  { text: 'done' },
+], { others: [[{ text: 'done' }]] })
 // Stage reminders and design-before-release (docs/ORCHESTRATION.md §3.5, §6.1; M3 step 5).
 // The graph of the workspace is seeded before the run. The main agent
 // (the simulated human's /wish) dispatches subagents through the dispatch
@@ -3564,6 +3579,34 @@ function personaChecks() {
     ['design persona (non-GLM): the row is in effect in /hourness-status and ran quietly', inEffectRow(rowAt(designPersonaPlain, designPersonaPlain.steps[0]?.command?.text)) && designPersonaPlain.status === 0 && !stderrOf(PERSONA_PLAIN).includes('dsh-glm-hourness/design'), `${JSON.stringify(rowAt(designPersonaPlain, designPersonaPlain.steps[0]?.command?.text) ?? null)}; exit ${designPersonaPlain.status}`],
   ]
 }
+/**
+ * A /wish off in an idle session (scenario glm-design-wish-off-idle,
+ * inject-via-prestep): the two commands typed into the second root session
+ * leave its inbox empty and log no inbox event; its first request, the turn the
+ * person's message woke, carries the enter notice and the leave notice, in that
+ * order and before the message, and no later request carries them again.
+ */
+function wishOffIdleChecks(wishNotices) {
+  const scenario = designWishOffIdle
+  const mainId = scenario.steps[0]?.sessionId
+  const main = scenario.steps.filter(step => step.sessionId === mainId)
+  const otherId = scenario.steps.find(step => step.sessionId !== mainId)?.sessionId
+  const second = otherId === undefined ? [] : bySession(scenario, otherId)
+  const typed = [0, 1].map(index => main[index]?.other)
+  const idleEmpty = typed.every(line => line?.kind === 'success' && !line.types.includes('agent/inbox/spliced') && isDeepStrictEqual(line.inbox, { nextStep: 0, nextTurn: 0 }))
+  const first = second[0]
+  const notices = wishNotices(first)
+  const at = text => (first?.messages ?? []).findIndex(message => message.source === 'glm-design-wish' && message.text.includes(text))
+  const said = (first?.messages ?? []).findIndex(message => message.role === 'user' && message.source === 'user' && message.text.includes('Reply done.'))
+  const entered = (first?.messages ?? []).findIndex(message => message.source === 'glm-design-wish' && message.text.startsWith('The human made this session\'s agent the main agent'))
+  const left = at('left main-agent mode with /wish off')
+  const later = second.slice(1).every(step => wishNotices(step).length === wishNotices(first).length)
+  return [
+    ['design wish off idle: /wish and /wish off typed into an idle second session succeed, log no inbox event, and leave its inbox empty (nextStep 0, nextTurn 0)', idleEmpty, JSON.stringify(typed.map(line => ({ kind: line?.kind, types: line?.types, inbox: line?.inbox ?? null })))],
+    ['design wish off idle: the first request of the woken session carries the enter notice, then the leave notice, both before the person\'s message; the second /wish off adds none', notices.length === 2 && entered >= 0 && left > entered && said > left && main[2]?.other?.kind === 'success' && main[2].other.resultText === '这个会话本来就不是主 Agent', `${notices.length} notice(s); enter ${entered}, leave ${left}, message ${said}; ${JSON.stringify(main[2]?.other ?? null).slice(0, 120)}`],
+    ['design wish off idle: no later request of the second session carries the notices again (the history keeps the two it admitted), the record is gone, the row warned of nothing', second.length >= 1 && later && designRecord(scenario).kind === 'none' && !stderrOf(scenario.name).includes('dsh-glm-hourness/design') && scenario.status === 0, `${second.length} request(s); record ${designRecord(scenario).kind}; exit ${scenario.status}`],
+  ]
+}
 function designChecks() {
   const zcode = (step) => step?.system.indexOf('You are ZCode, an interactive agent') ?? -1
   const ascending = (...marks) => marks.every(mark => mark >= 0) && marks.every((mark, index) => index === 0 || marks[index - 1] < mark)
@@ -3612,6 +3655,7 @@ function designChecks() {
     ['design one main: a second root session in the same workspace, typing /wish, is told where the main agent is and how to move it; its tool face and the first session\'s are not changed by it', mainSteps[0]?.other?.kind === 'success' && mainSteps[0].other.resultText.includes('这个项目的主 Agent 在另一个会话里') && mainSteps[0].other.resultText.includes('/wish here') && sectionAt(mainSteps[1]) >= 0 && lacks(mainSteps[1], ['Write', 'Edit']), JSON.stringify(mainSteps[0]?.other ?? null).slice(0, 160)],
     ['design one main: /wish here moves the role; the first session\'s next request has no section, its tool face back (Write, Edit, ask_user_question), the notice that the main agent moved; the Write runs', mainSteps[1]?.other?.kind === 'success' && mainSteps[1].other.resultText.startsWith('主 Agent 已从另一个会话移到这里；') && mainSteps[2] !== undefined && sectionAt(mainSteps[2]) < 0 && hasCut(mainSteps[2], GLM_CUT) && wishNotices(mainSteps[2]).some(message => message.text.includes('moved to another session')) && files(one, 'x.txt')[0], `${mainSteps[1]?.other?.kind}; section ${sectionAt(mainSteps[2])}; x.txt ${files(one, 'x.txt')[0]}`],
     ['design one main: the record names the second session, not the first and not the fork; the second session logged its own two commands', holder.kind === 'held' && holder.record.sessionId.startsWith('probe-other-') && holder.record.sessionId !== mainId && holder.record.sessionId !== forkNote?.sessionId && mainSteps[0]?.other?.types.join('>') === 'command/run>command/done', `${holder.kind === 'held' ? holder.record.sessionId : holder.kind}`],
+    ...wishOffIdleChecks(wishNotices),
     ...stageChecks(),
     ...questionChecks(),
     ...interviewChecks(),
@@ -4568,6 +4612,7 @@ const checks = [
   ['rules-peak-stop: the journal has the ticket opened by the harness, the level changed by the person, and the ticket closed by the harness with its goal resumed, in that order; nothing is written in the scenario\'s user-level directory', isDeepStrictEqual(stopJournal.map(record => [record.op, record.actor]).filter(([op]) => op === 'ticket-open' || op === 'peak-mode-set' || op === 'ticket-update'), [['ticket-open', 'harness'], ['peak-mode-set', 'human'], ['ticket-update', 'harness']]) && !existsSync(join(runDir, 'rules-peak-stop', 'dsh-home', 'glm-hourness', 'rules')), JSON.stringify(stopJournal.map(record => [record.op, record.actor]))],
   ['rules-peak-stop-exit: V13, the host exits with the goal paused at the stop level: the run is clean and the way out agrees with itself: a row that unloaded (its heartbeat file is gone) resumed the goal and wrote it on the ticket, a runner that left without unloading it left the goal and the ticket as the stop made them', stopExitProject.ready && rulesPeakStopExit.status === 0 && !stderrOf('rules-peak-stop-exit').includes('dsh-glm-hourness/rules') && stopExitNotes.some(entry => entry.kind === 'stop-held' && entry.goal?.phase === 'paused') && (stopExitUnloaded ? typeof stopExitState?.tickets?.['q-1']?.resumedAt === 'string' && stopExitOps.includes('resume') : stopExitState?.tickets?.['q-1']?.state === 'deferred' && stopExitState.tickets['q-1'].resumedAt === undefined && stopExitOps.join() === 'create,pause'), `unloaded ${stopExitUnloaded}; exit ${rulesPeakStopExit.status}; goal operations ${JSON.stringify(stopExitOps)}; ticket ${JSON.stringify(stopExitState?.tickets?.['q-1'] ?? null)}; journal ${JSON.stringify(stopExitJournal.map(record => [record.op, record.reason ?? null]).slice(-3))}; ${stderrOf('rules-peak-stop-exit').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['loops: the row ships enabled since the rules-loops merge: the boot scenarios list it in effect on both routes', glmHealth.loops?.status === ACTED && plainHealth.loops?.status === ACTED, `${healthLine(glmHealth, 'loops')}; ${healthLine(plainHealth, 'loops')}`],
+  ['lessons: the row ships enabled since the lessons enablement: without the overlay the boot scenarios list it loaded on both routes', glmHealth.lessons !== undefined && glmHealth.lessons.status !== '未加载' && plainHealth.lessons !== undefined && plainHealth.lessons.status !== '未加载', `${healthLine(glmHealth, 'lessons')}; ${healthLine(plainHealth, 'lessons')}`],
   ['loops: the row, enabled by the overlay in a scratch git clone that carries a person\'s entry file, boots, runs its four steps and exits clean with nothing from it on stderr', loopsBoard.ready && loops.status === 0 && loops.steps.length === 4 && !stderrOf('loops').includes('dsh-glm-hourness/loops'), `exit ${loops.status}, ${loops.steps.length} step(s), git ${loopsBoard.ready}; ${stderrOf('loops').split('\n').find(line => line.includes('loops')) ?? 'no stderr line mentions loops'}`],
   ['loops: a file tool writing into docs/loops/ is refused by loops:files-only with the four-part text, the entry file is as it was, and the refusal is journaled as a plain denial (the gate\'s records carry no mode, G1)', lastToolResult(loops.steps[1])?.isError === true && LOOPS_DENIAL.test(lastToolResult(loops.steps[1]).text) && readFileSync(loopsBoard.entryFile, 'utf8') === LOOPS_ENTRY_TEXT && rulesRecordOf(loopsRecords, 'loops:files-only') !== undefined && rulesRecordOf(loopsRecords, 'loops:files-only')?.mode === undefined, lastToolResult(loops.steps[1])?.text?.slice(0, 200) ?? 'no result'],
   ['loops: a shell command writing into the project\'s .llm/loops/ is refused by the same rule, not by file-tools-only, and the board\'s change record does not carry what it wrote (the recorder\'s follow-up records carry a kind)', lastToolResult(loops.steps[2])?.isError === true && (lastToolResult(loops.steps[2])?.text ?? '').includes('Rule loops:files-only') && loopsJournalText !== '' && !loopsJournalText.split('\n').includes('probe') && loopsRecords.filter(record => record.rule === 'loops:files-only' && record.kind === undefined).length === 2, `${lastToolResult(loops.steps[2])?.text?.slice(0, 160) ?? 'no result'}; ${loopsRecords.filter(record => record.rule === 'loops:files-only').length} journal line(s) for the rule`],

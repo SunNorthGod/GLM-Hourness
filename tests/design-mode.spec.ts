@@ -22,7 +22,7 @@ import { STR_REPLACE_EDITOR_UNKNOWN, WRITE_NATIVES } from '../src/design/role-fa
 import { claimHolder, holderFileOf, mainAgentOf, readHolder, replaceHolder } from '../src/graph/main-agent-holder.ts'
 import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
 import { PLAIN_QUESTION_GUIDE, PLAIN_WORDS_GUIDE, plainWordsIn } from '../src/graph/plain-question.ts'
-import type { AssemblePayload, AssembledTool } from '../src/shared/dsh-min.ts'
+import type { AssemblePayload, AssembledTool, UserNotice } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { BASE_TOOLS, designHost, type DesignHost, type FakeAgent } from './design-host.ts'
 import { captureWarnings } from './graph-helpers.ts'
@@ -75,6 +75,12 @@ const sectionOf = (assembled: AssemblePayload): { readonly name: string, readonl
 const toolNames = (assembled: AssemblePayload): string[] => assembled.tools.map(tool => tool.name)
 const projectionOf = (host: DesignHost, agent: FakeAgent): unknown => host.projections.stateOf(agent.session, MAIN_AGENT_KEY)
 const isOn = (host: DesignHost, agent: FakeAgent): boolean => (projectionOf(host, agent) as { active: boolean }).active
+
+/** The /wish notices the agent's next step admits (the row's step mailbox puts them before the step, src/shared/step-mailbox.ts). */
+const wishNoticesOfStep = async (agent: FakeAgent): Promise<UserNotice[]> => {
+  const decision = await agent.step()
+  return decision.kind === 'enter' ? (decision.messages as UserNotice[]).filter(message => message.source?.kind === 'glm-design-wish') : []
+}
 
 const tool = (name: string, parameters: Record<string, unknown> = { type: 'object', properties: {} }): AssembledTool => ({ name, description: name, parameters })
 const EDITOR = tool('str_replace_editor', { type: 'object', properties: { command: { type: 'string', enum: ['view', 'create', 'str_replace', 'insert', 'undo_edit'] }, path: { type: 'string' } }, required: ['command', 'path'] })
@@ -271,14 +277,17 @@ test('/wish makes the session the main agent: record, projection, one notice tha
   const holder = readHolder(recordFile(host))
   assert.equal(holder.kind, 'held')
   assert.ok(holder.kind === 'held' && holder.record.sessionId === 's1' && holder.record.graphDir === graphDirOf(host) && !Number.isNaN(Date.parse(holder.record.since)))
-  assert.equal(agent.sent.length, 1)
-  assert.equal(agent.sent[0]?.via, 'inject')
-  assert.equal(agent.sent[0]?.message.source.kind, 'glm-design-wish')
+  assert.deepEqual(agent.sent, [], 'nothing goes into the inbox of the idle agent')
   assert.equal(agent.woken, undefined, 'an empty /wish does not wake an idle agent')
   assert.ok(sectionOf(await agent.assemble()))
   assert.deepEqual(sessionHealth(host, agent), { state: 'active', reason: MAIN_AGENT_ACTIVE })
+  const told = await wishNoticesOfStep(agent)
+  assert.equal(told.length, 1)
+  assert.ok(told[0]?.content[0]?.text.startsWith('The human made this session\'s agent the main agent of this project with /wish'))
+  assert.deepEqual(await wishNoticesOfStep(agent), [], 'told once')
   assert.equal((await type(host, agent, '/wish')).text, '这个会话已经是主 Agent')
-  assert.equal(agent.sent.length, 1, 'already the main agent: nothing more is sent')
+  assert.deepEqual(agent.sent, [], 'already the main agent: nothing more is sent')
+  assert.deepEqual(await wishNoticesOfStep(agent), [])
 })
 
 test('/wish with a sentence wakes an idle agent: its first assembly, started before the command returns, already has the section; the wish is quoted in the notice', async () => {
@@ -343,10 +352,14 @@ test('/wish off ends the role from the very next step, deletes the record and te
   assert.deepEqual(reply?.result, { kind: 'success', text: '已退出主 Agent 模式：这个会话的 agent 又可以直接写文件了' })
   assert.deepEqual(readHolder(recordFile(host)), { kind: 'none' })
   assert.equal(isOn(host, agent), false)
-  assert.equal(agent.sent.at(-1)?.via, 'inject')
-  assert.ok(agent.sent.at(-1)?.message.content[0]?.text.includes('/wish off'))
+  assert.deepEqual(agent.sent, [], 'nothing goes into the inbox of the idle agent')
+  assert.equal(agent.woken, undefined)
+  const told = await wishNoticesOfStep(agent)
+  assert.deepEqual(told.map(notice => notice.content[0]?.text.includes('left main-agent mode with /wish off')), [false, true], 'the enter notice of the /wish, then the leave notice, both at the next step')
+  assert.deepEqual(await wishNoticesOfStep(agent), [], 'told once')
   assert.deepEqual(await type(host, agent, '/wish off'), { kind: 'success', text: '这个会话本来就不是主 Agent' })
-  assert.equal(agent.sent.length, 2, 'a /wish off that changes nothing sends nothing')
+  assert.deepEqual(await wishNoticesOfStep(agent), [], 'a /wish off that changes nothing sends nothing')
+  assert.deepEqual(agent.sent, [])
 })
 
 /** A command whose request is cancelled after its handler returned: the log ends with `command/done` in error. */
@@ -467,9 +480,11 @@ test('/wish here moves the role: the record changes hands, the open session gets
   assert.equal(sectionOf(await first.assemble({ tools: FACE })), undefined)
   assert.ok(toolNames(await first.assemble({ tools: FACE })).includes('write'), 'the old session has its write tool back')
   assert.ok(sectionOf(await second.assemble()))
-  const told = first.sent.at(-1)
-  assert.equal(told?.via, 'inject')
-  assert.ok(told?.message.content[0]?.text.includes('moved to another session'))
+  assert.deepEqual(first.sent, [], 'nothing goes into the inbox of the session that lost the role')
+  const told = await wishNoticesOfStep(first)
+  assert.ok(told.at(-1)?.content[0]?.text.includes('moved to another session'), JSON.stringify(told.map(notice => notice.content[0]?.text)))
+  assert.equal(told.filter(notice => notice.content[0]?.text.includes('moved to another session')).length, 1)
+  assert.equal((await wishNoticesOfStep(first)).length, 0, 'told once')
   assert.equal((await type(host, first, '/wish off')).text, '这个会话本来就不是主 Agent', 'the old session\'s own /wish off changes nothing now')
   assert.equal(readHolder(recordFile(host)).kind, 'held', 'and does not delete the new holder\'s record')
 })

@@ -41,6 +41,12 @@ export interface MemoryIndex {
   readonly faded: number
   /** Whether a limit cut entries off the end. */
   readonly truncated: boolean
+  /** Entries that would be listed without the limits (active, and not faded). */
+  readonly eligible: number
+  /** Characters the listed entry lines take, newlines between them included. */
+  readonly chars: number
+  /** The limit that stopped the list, when one did. */
+  readonly cap?: 'lines' | 'chars'
 }
 
 const byName = (a: MemoryEntry, b: MemoryEntry): number => a.name < b.name ? -1 : a.name > b.name ? 1 : 0
@@ -119,5 +125,14 @@ export function renderIndex(entries: readonly MemoryEntry[], now: string, declin
     ...(faded === 0 ? [] : [`${faded} faded ${faded === 1 ? 'memory is' : 'memories are'} not listed; memory_query finds ${faded === 1 ? 'it' : 'them'}.`]),
     'Read a memory in full with memory_query {"name": "<name>"}.',
   ]
-  return { text: wrapSystemReminder(lines.join('\n')), listed: kept, faded, truncated: kept < ordered.length }
+  const truncated = kept < ordered.length
+  return {
+    text: wrapSystemReminder(lines.join('\n')),
+    listed: kept,
+    faded,
+    truncated,
+    eligible: ordered.length,
+    chars,
+    ...(truncated ? { cap: kept === INDEX_MAX_LINES ? 'lines' as const : 'chars' as const } : {}),
+  }
 }

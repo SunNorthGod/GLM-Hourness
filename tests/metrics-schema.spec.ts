@@ -19,6 +19,7 @@ import { EXECUTE_KINDS } from '../src/metrics/kinds/execute.ts'
 import { GLM_KINDS } from '../src/metrics/kinds/glm.ts'
 import { HOST_KINDS } from '../src/metrics/kinds/host.ts'
 import { LOOP_KINDS } from '../src/metrics/kinds/loops.ts'
+import { MEMORY_KINDS } from '../src/metrics/kinds/memory.ts'
 import { OPERATE_KINDS } from '../src/metrics/kinds/operate.ts'
 import { PROGRESS_KINDS } from '../src/metrics/kinds/progress.ts'
 import { RULES_KINDS } from '../src/metrics/kinds/rules.ts'
@@ -50,14 +51,16 @@ test('every namespace holds exactly the kinds its design section lists', () => {
   const design = ['design.proposal-shown', 'design.answer-recorded', 'design.delegation', 'design.proposal-refused', 'design.answer-refused', 'design.holder-moved', 'design.rule-denied', 'design.bypass-refused', 'git.snapshot', 'git.snapshot-refused']
   // takeover 0.6: 1 kind.
   const bootstrap = ['bootstrap.trial']
+  // the memory row (project graph node m5-index-truncation-alarm): 2 kinds.
+  const memory = ['memory.index-truncated', 'memory.query-empty']
   const pinned: ReadonlyArray<readonly [string, readonly string[], readonly KindTable[]]> = [
     ['host', host, HOST_KINDS], ['timeout', timeout, TIMEOUT_KINDS], ['progress', progress, PROGRESS_KINDS],
     ['rules', rules, RULES_KINDS], ['loops', loops, LOOP_KINDS], ['execute', execute, EXECUTE_KINDS],
     ['operate', operate, OPERATE_KINDS], ['glm', glm, GLM_KINDS], ['design', design, DESIGN_KINDS],
-    ['bootstrap', bootstrap, BOOTSTRAP_TABLES],
+    ['bootstrap', bootstrap, BOOTSTRAP_TABLES], ['memory', memory, MEMORY_KINDS],
   ]
   for (const [namespace, expected, tables] of pinned) assert.deepEqual(tables.map(table => table.name), expected, namespace)
-  assert.equal(METRICS_KINDS.size, host.length + timeout.length + progress.length + rules.length + loops.length + execute.length + operate.length + glm.length + design.length + bootstrap.length)
+  assert.equal(METRICS_KINDS.size, host.length + timeout.length + progress.length + rules.length + loops.length + execute.length + operate.length + glm.length + design.length + bootstrap.length + memory.length)
 })
 
 /** A typical body for one field table, generated from the closed grammar itself. */

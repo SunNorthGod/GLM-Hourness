@@ -717,6 +717,36 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7（wf_36d1d690c7e1de90）：叫醒修复 a2f934e 经 fix-review APPROVED（0 挡路、2 不挡路，范围 fb37d604..a2f934ec，树 9f5cd81a），fix-converge 无改动跳过。real-model-run 步结束：第 1 次卡在交计划的通知不叫醒（已修），第 2 次卡在 scratch-only 拦登记子 agent 在写范围内写新文件，§10.3 第 2 条仍未满足，记录 .worktrees/m3/.llm/wf/m7-e9/rmr/record.md。land 步发现它的任务书要求带 execute 启用合入，与本节点已记的选项 A（先修 guard、独立评审、第三次真实运行通过后才合入）冲突，停下来问；编排方答 A：land 步不做任何改动结束（m7 仍是 a2f934ec，main 8bd0550c 未动），剩余步骤改为 guard-fix（先合入 origin/main，登记子 agent 在计划批准后写自己写范围或计划内的路径不受 scratch-only 拦，其余照旧，L2 正反例，文档同批）→ 独立 guard 评审循环 → 第三次真实模型运行（只在高峰外）→ 原样的 land、l4、report（edit-workflow-r6 待批）。"
+    },
+    {
+      "at": "2026-11-06T06:17:20.389Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 人看到 Kiro 的 workflow 与本项目编排层相像，编排方对照之后列了四条从这一夜实际踩到的坑里得来的经验，人答：「行，那就记吧。我们独有的图概念我认为才是最缺的，要不然人都把控不了整体架构。」四条供 M7 的派活、返工计数、交回与完成门对照：一、上游 503 打空的轮次被算进返工预算（ablation、m4-reanchor-violations 各白用数轮），返工计数要分开「做了被打回」与「没跑起来」；二、子线四次把草稿写进主检出（package.json、DESIGN.md、propose.ts、src/memory/effect.ts），任务书提醒挡不住，「只写自己那块」要在工具层拦，写范围检查要覆盖主检出；三、半成品提交推上去之后再压缩就要强推（E9），交回规则要写明什么时候可以推、什么时候只留本地；四、一轮只交计划、没交代码也走完整轮评审（ablation、m5-rule-expected-effect），完成门应在评审之前挡下空交回。人的话另记：项目图是本项目与通用 workflow 最大的不同，状态带验收与证据、跟着 git 走，是人把控整体架构的依据。"
+    },
+    {
+      "at": "2026-11-06T07:58:13.337Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 guard-fix 步完成：先把 origin/main 137359f 合进 m7（9aa3a9a6，解了 9 处冲突），再提交 guard 修复 07ee5baa（树 085e936f）：已登记、活着、计划已批的子 agent 在自己的 writeScope 或计划列出的路径里写文件时不受 scratch-only 拦，其余照旧。门禁 build、preflight、test（3477/3477）、check-lint（73/18/1）、探针 529/529 全为 0，已推 origin/m7 = 07ee5baa。记录 .worktrees/m3/.llm/wf/m7-e9/guard-fix.md。下一步独立 guard 评审，然后高峰外第三次真实模型运行。"
+    },
+    {
+      "at": "2026-11-06T08:38:08.218Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "guard 修复 07ee5baa（合入 origin/main 137359f 为 9aa3a9a6，9 处冲突）经独立 guard-review APPROVED：0 挡路、3 不挡路，范围 a2f934ec..07ee5baa，树 085e936f，门禁记录成立（3477/3477，探针 529/529，棘轮 73/18/1）；guard-converge 无改动跳过。评审提示 origin/main 已前进到 63da5e25（inject-via-prestep），合入步要再合一次 main，wake.ts 不受影响。下一步高峰外的第三次真实模型运行。"
+    },
+    {
+      "at": "2026-11-06T11:18:46.035Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 19:18：real-model-run-3（wf_36d1d690c7e1de90）在跑，19:17 取了 .llm/desktop-lock（headless，glm-5.3 主 Agent，高峰外）；过了才走 land-2、l4、report。"
+    },
+    {
+      "at": "2026-11-06T12:44:47.924Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 real-model-run-3（wf_36d1d690c7e1de90）完成：第三次真实模型在 headless、glm-5.3 主 Agent 下达到设计 §10.3 第 2 条：主 Agent 把 goal-1 从 release 推到 complete，没有工人、没有人问题。进程后来以退出码 1 结束，但那时 goal-1 已经完成了 18 分钟。下一步 land-2。desktop-lock 已释放。"
     }
   ]
 }

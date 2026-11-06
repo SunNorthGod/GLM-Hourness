@@ -15,6 +15,16 @@ import { denied, designHost, healthOf, hostWithoutTalkProjection, journaled, sle
 import { captureWarnings } from './graph-helpers.ts'
 import { frameworkReleased, mainAgentWithGoal, writeDesign, type MainAgentFixture } from './design-tools-helpers.ts'
 import { exampleRecord } from './proposal-examples.ts'
+import type { UserNotice } from '../src/shared/dsh-min.ts'
+
+/** The glm-design-bypass notices the main agent's next step admits (the design row's step mailbox puts them before the step, src/shared/step-mailbox.ts). */
+async function bypassTold(agent: FakeAgent): Promise<UserNotice[]> {
+  const decision = await agent.step()
+  return decision.kind === 'enter' ? (decision.messages as UserNotice[]).filter(message => message.source?.kind === 'glm-design-bypass') : []
+}
+
+/** The texts of those notices. */
+const bypassNoticesOfStep = async (agent: FakeAgent): Promise<string[]> => (await bypassTold(agent)).map(notice => notice.content[0].text)
 
 /** A question for the human in the proposal shape, put by the main agent. */
 async function proposal(fixture: MainAgentFixture): Promise<string> {
@@ -120,17 +130,17 @@ test('a subagent\'s relay is refused whatever it says; the attempt is journaled 
   assert.deepEqual([row.goal, row.node, row.tool, row.agentId], ['goal-1', 'goal-1', 'graph_edit', 'child'])
   // The stage was not touched.
   assert.equal((await engine.load()).nodes.get('goal-1')?.stage, 'interview')
-  // The main agent reads it in its next step, once in ten minutes for the same session and goal.
-  const notices = agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass')
-  assert.equal(notices.length, 1)
-  assert.equal(notices[0].via, 'inject')
-  assert.equal(notices[0].message.content[0].text, '[拦下] 子 agent「child」想不经人的同意把「记账小工具」推到 release，harness 拒绝了（main-agent-graph-relay）。下一次回复里用一句话告诉人。')
+  // The main agent reads it in its next step, once in ten minutes for the same session and goal; nothing goes into its inbox.
+  assert.deepEqual(agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass'), [])
+  assert.deepEqual(await bypassNoticesOfStep(agent), ['[拦下] 子 agent「child」想不经人的同意把「记账小工具」推到 release，harness 拒绝了（main-agent-graph-relay）。下一次回复里用一句话告诉人。'])
+  assert.deepEqual(await bypassNoticesOfStep(agent), [], 'told once')
   denied(await host.preExecute(child, 'graph_edit', call))
   denied(await host.preExecute(child, 'graph_approve', { id: 'goal-1', rev, reason: '批准', relay: '可以，放行' }))
-  assert.equal(agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass').length, 1, 'no second notice for the same session and goal')
+  assert.deepEqual(await bypassNoticesOfStep(agent), [], 'no second notice for the same session and goal')
   const other = host.addAgent('child-2', { origin: 'subagent', parentSession: agent.id })
   denied(await host.preExecute(other, 'graph_edit', call))
-  assert.equal(agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass').length, 2, 'another session is another notice')
+  assert.equal((await bypassNoticesOfStep(agent)).length, 1, 'another session is another notice')
+  assert.deepEqual(agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass'), [])
   // The row says it: the main agent's health, from the next step on.
   await host.created(agent)
   await agent.assemble()
@@ -334,7 +344,7 @@ test('the main agent cannot move a goal on with a graph tool, even with the huma
   // What does not move it on is left alone: the same stage, a step back, a note, any other field.
   for (const set of [{ stage: 'interview' }, { stage: 'wish' }, { body: '需求：记账' }]) assert.equal((await host.preExecute(agent, 'graph_edit', { id: 'goal-1', rev, set, reason: '改' })).kind, 'allow', JSON.stringify(set))
   // The main agent does not tell anyone about its own refusal: it is given the way.
-  assert.equal(agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass').length, 0)
+  assert.equal((await bypassTold(agent)).length, 0)
 })
 
 test('a goal in the design is no more moved on by a graph tool; sending it back needs the human\'s words, and once released the stage rule leaves it alone', async () => {
@@ -412,7 +422,7 @@ test('a subagent or an ordinary session that tries to move a goal on is refused,
   // The goal did not move.
   assert.deepEqual([(await fixture.node('goal-1')).status, (await fixture.node('goal-1')).stage], ['approved', 'design'])
   // The main agent's next reply tells the human: a notice for each session and goal in ten minutes (an attempt that names no goal is its own), and the row says so.
-  const notices = agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass').map(entry => entry.message.content[0].text)
+  const notices = (await bypassTold(agent)).map(entry => entry.content[0].text)
   assert.equal(notices.length, 4)
   assert.equal(notices[0], '[拦下] 子 agent「child」想不经人的同意把「记账小工具」推到 release，harness 拒绝了（main-agent-graph-stage）。下一次回复里用一句话告诉人。')
   assert.equal(notices[2], '[拦下] 另一个会话「plain」想不经人的同意把「记账小工具」推到 release，harness 拒绝了（main-agent-graph-stage）。下一次回复里用一句话告诉人。')
@@ -443,7 +453,7 @@ test('what a delegated or an ordinary session may do to the graph is untouched: 
     assert.equal((await host.preExecute(who, 'graph_edit', { id: 'goal-1', rev: released, set: { stage: 'decompose' }, reason: '分解' })).kind, 'allow', who.id)
     assert.equal((await host.preExecute(who, 'graph_approve', { id: task, rev: (await fixture.engine.load()).revisions.get(task), reason: '放行集合' })).kind, 'allow', who.id)
   }
-  assert.equal(agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass').length, 0)
+  assert.equal((await bypassTold(agent)).length, 0)
 })
 
 test('when the graph cannot be read the five calls that could move a goal on are refused, whoever makes them; the other graph calls go on', async () => {
@@ -580,7 +590,7 @@ test('a goal proposed with the human\'s words is proposed in the loop: with no s
   }
   const rows = (await journaled(host, 6)).filter(row => row.rule === GRAPH_STAGE_RULE)
   assert.equal(rows.filter(row => row.sessionId === 'plain').length, 2)
-  const notices = agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass').map(entry => entry.message.content[0].text)
+  const notices = (await bypassTold(agent)).map(entry => entry.content[0].text)
   assert.ok(notices.includes('[拦下] 另一个会话「plain」想不经人的同意提议不走设计循环的目标「偷渡」，harness 拒绝了（main-agent-graph-stage）。下一次回复里用一句话告诉人。'), JSON.stringify(notices))
   // Where the gates are: in the wish or the interview, and what waits for the human to approve.
   for (const stage of ['wish', 'interview']) {
@@ -670,7 +680,7 @@ test('no session runs the graph\'s command line to write: edit, approve and the 
   assert.equal(rows.length, count)
   assert.deepEqual([...new Set(rows.map(row => row.sessionId))].sort(), ['child', 'plain', 's1'])
   // Nothing in it carries the human's words, so nobody is told.
-  assert.equal(agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass').length, 0)
+  assert.equal((await bypassTold(agent)).length, 0)
   // The bash tool and a terminal are shells too.
   const bash = denied(await host.preExecute(plain, 'bash', { command: 'pnpm graph edit -' }))
   assert.match(bash, /^Inside DSH the project graph changes through the graph tools\./)
@@ -681,11 +691,11 @@ test('a delegated or an ordinary session that runs the command line with `relay`
   const { host, agent, child, plain } = await sessions()
   const command = 'npm run -s graph -- edit \'{"id":"goal-1","set":{"stage":"design"},"relay":"可以，放行"}\''
   denied(await host.preExecute(agent, 'pwsh', { command }))
-  assert.equal(agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass').length, 0, 'the main agent only gets the denial')
+  assert.equal((await bypassTold(agent)).length, 0, 'the main agent only gets the denial')
   denied(await host.preExecute(child, 'pwsh', { command }))
   denied(await host.preExecute(plain, 'pwsh', { command }))
-  const notices = agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass')
-  assert.deepEqual(notices.map(entry => entry.message.content[0].text), [
+  assert.deepEqual(agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass'), [])
+  assert.deepEqual(await bypassNoticesOfStep(agent), [
     '[拦下] 子 agent「child」想不经人的同意用命令行带转述的话改项目图（edit），harness 拒绝了（main-agent-graph-cli）。下一次回复里用一句话告诉人。',
     '[拦下] 另一个会话「plain」想不经人的同意用命令行带转述的话改项目图（edit），harness 拒绝了（main-agent-graph-cli）。下一次回复里用一句话告诉人。',
   ])
@@ -695,7 +705,7 @@ test('a delegated or an ordinary session that runs the command line with `relay`
   assert.deepEqual([sessionOf('s1'), sessionOf('child'), sessionOf('plain')], [undefined, { id: 'child', kind: 'subagent', parent: 's1' }, { id: 'plain', kind: 'ordinary' }])
   // Without `relay` in the text a subagent is denied and nobody is told.
   denied(await host.preExecute(child, 'pwsh', { command: 'pnpm graph decide -' }))
-  assert.equal(agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass').length, 2)
+  assert.equal((await bypassTold(agent)).length, 0)
 })
 
 test('the rules table lists the two graph rules of the step that opens confirm, both for every session', () => {
@@ -762,7 +772,7 @@ test('a subagent or an ordinary session that approves below a module that is not
   }
   const rows = (await journaled(host, 2)).filter(row => row.rule === GRAPH_STAGE_RULE)
   assert.deepEqual(rows.map(row => [row.tool, row.node, row.goal, (row.session as { kind: string }).kind]).sort(), [['graph_approve', 'task-a', 'goal-1', 'ordinary'], ['graph_approve', 'task-a', 'goal-1', 'subagent']])
-  const notices = agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass').map(entry => entry.message.content[0].text)
+  const notices = (await bypassTold(agent)).map(entry => entry.content[0].text)
   assert.deepEqual(notices, [
     '[拦下] 子 agent「child」想不经人的同意批准「写记账」，harness 拒绝了（main-agent-graph-stage）。下一次回复里用一句话告诉人。',
     '[拦下] 另一个会话「plain」想不经人的同意批准「写记账」，harness 拒绝了（main-agent-graph-stage）。下一次回复里用一句话告诉人。',
@@ -828,7 +838,7 @@ test('a module is sent back to design by the main agent alone: a subagent and an
   }
   const rows = (await journaled(host, 2)).filter(row => row.rule === GRAPH_STAGE_RULE)
   assert.deepEqual(rows.map(row => [row.tool, row.node, row.stageFrom, row.stageTo, (row.session as { kind: string }).kind]).sort(), [['graph_edit', 'module-a', 'release', 'design', 'ordinary'], ['graph_edit', 'module-a', 'release', 'design', 'subagent']])
-  const notices = agent.sent.filter(entry => entry.message.source.kind === 'glm-design-bypass').map(entry => entry.message.content[0].text)
+  const notices = (await bypassTold(agent)).map(entry => entry.content[0].text)
   assert.deepEqual(notices, [
     '[拦下] 子 agent「child」想不经人的同意把模块「记账」退回设计，harness 拒绝了（main-agent-graph-stage）。下一次回复里用一句话告诉人。',
     '[拦下] 另一个会话「plain」想不经人的同意把模块「记账」退回设计，harness 拒绝了（main-agent-graph-stage）。下一次回复里用一句话告诉人。',

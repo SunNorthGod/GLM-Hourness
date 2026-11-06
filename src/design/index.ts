@@ -57,6 +57,7 @@ import { recordTool } from './record.ts'
 import { mainAgentFace, ordinaryFace } from './role-face.ts'
 import { installStageNotice } from './stage-notice.ts'
 import { HIDDEN_FROM_MAIN_AGENT, TALK_PROJECTION, parseTalkState, personSaid, talkApply, talkFold, talkInit, type TalkState } from './talk.ts'
+import { createStepMailbox } from '../shared/step-mailbox.ts'
 
 /** Row config: the persona of the main agent (persona.ts) and the project directory (workspace `.llm`) for the violation journal; defaults to the calling session's project. */
 export interface DesignConfig {
@@ -152,6 +153,9 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
   }
   const health = provideRowHealth(ctx, 'design', ...status())
   disposers.push(() => { health.dispose() })
+  // Notices that do not wake a session go before its next step, not into its inbox: the desktop host counts a waiting inbox as a running task (src/shared/step-mailbox.ts).
+  const mailbox = createStepMailbox('design')
+  disposers.push(() => { mailbox.dispose() })
 
   // Warned once per row process: a state that cannot be read tends to repeat on every step.
   let warnedRead = false
@@ -256,7 +260,8 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
     noticed.set(key, at)
     const live = agents()?.get(holder.record.sessionId)
     if (live === undefined) return
-    live.inject(createUserNotice('glm-design-bypass', 'a write that moves work on without the human was refused', `[拦下] ${label}想不经人的同意${alert.what}，harness 拒绝了（${alert.rule}）。下一次回复里用一句话告诉人。`))
+    const posted = mailbox.post(live, createUserNotice('glm-design-bypass', 'a write that moves work on without the human was refused', `[拦下] ${label}想不经人的同意${alert.what}，harness 拒绝了（${alert.rule}）。下一次回复里用一句话告诉人。`))
+    if (posted.via === 'none') health.report(live.id, 'degraded', `没能告诉主 Agent 有写入被拦下：${posted.reason}`)
   }
 
   let reportedOffFailure = false
@@ -442,6 +447,10 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
         await leaveRole(other)
       }
     },
+    tell: (agent, notice) => {
+      const posted = mailbox.post(agent, notice)
+      if (posted.via === 'none') health.report(agent.id, 'degraded', `提示没能送到这个会话：${posted.reason}`)
+    },
     now: () => new Date(),
     moved: holderMove,
   }
@@ -570,8 +579,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
       tell: (agent, notice) => {
         const live = agents()?.get(agent.id)
         if (live === undefined) return false
-        live.inject(createUserNotice(notice.kind, notice.summary, notice.text))
-        return true
+        return mailbox.post(live, createUserNotice(notice.kind, notice.summary, notice.text)).via !== 'none'
       },
     }))
   }
