@@ -7,7 +7,10 @@
  * approval re-check refuses brief_stale and plan_invalid without moving the
  * worker's held call; ask_main returns the answer inside the same call and
  * times out into the stated assumption; answer_worker is the main agent's
- * only. The dispatch half of the carried plan — the path union a later
+ * only; the plan and question notices wake an idle holder whose goal is
+ * active with one followup (an inject would wait for a goal round the driver
+ * never starts while the worker's call is open) and steer a running one.
+ * The dispatch half of the carried plan — the path union a later
  * dispatch registers — runs against the real dispatch tool.
  */
 import assert from 'node:assert/strict'
@@ -17,7 +20,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openEngine } from '../src/graph/engine.ts'
 import { parsePins, pinsOf, renderPins } from '../src/graph/pins.ts'
-import type { AgentLike, ServiceLookup, ToolExecutionContext, UserNotice } from '../src/shared/dsh-min.ts'
+import { createUserNotice, type AgentLike, type ServiceLookup, type ToolExecutionContext, type UserNotice } from '../src/shared/dsh-min.ts'
+import { deliver } from '../src/rules/wake.ts'
+import { fakeLive, type FakeLive } from './fake-rc3.ts'
 import { createGraphCache, dispatchTool, type DispatchDeps } from '../src/execute/dispatch.ts'
 import { answerWorkerTool, askMainTool, oldestPending, submitPlanTool, type RequestsDeps } from '../src/execute/requests.ts'
 import { forgetAttempt, registerAttempt, registeredAttempt } from '../src/execute/attempts.ts'
@@ -312,6 +317,82 @@ test('a question nobody answers within the wait times out into the stated assump
     const held = rig1.ask({ question: 'And now?', assumption: 'Ship as is.' }, rig1.childExec)
     assert.deepEqual(await held, ASK_TIMEOUT)
     assert.equal(oldestPending('question', rig1.project.graphDir), undefined)
+  })
+})
+
+// ---- how the request notices reach the holder (§3.3.2 step 3, §3.4.3) ----
+
+/**
+ * The rig's tools over the rc.3 live registry and goal service of the fake
+ * host: the holder `main-1` is live with a goal in the active phase, the way
+ * the drive leaves it after the dispatch ends its turn.
+ */
+function liveTools(rig1: Rig, status: 'idle' | 'running'): { readonly live: FakeLive, readonly submit: Exec, readonly ask: Exec, readonly answer: Exec, readonly lookup: ServiceLookup } {
+  const live = fakeLive()
+  live.add(rig1.mainExec.agent!, status)
+  live.setGoal('main-1', 'active')
+  const lookup: ServiceLookup = { get: (name: string) => name === 'agents' ? live.agents : name === 'goals' ? live.goals : rig1.deps.lookup.get?.(name) }
+  const deps: RequestsDeps = { ...rig1.deps, lookup }
+  return {
+    live,
+    lookup,
+    submit: (args, exec) => submitPlanTool(deps).execute(args, exec),
+    ask: (args, exec) => askMainTool(deps).execute(args, exec),
+    answer: (args, exec) => answerWorkerTool(deps).execute(args, exec),
+  }
+}
+
+test('a plan reaches an idle holder whose goal is active with a followup, once, and the approval releases the worker', async () => {
+  await withRig({ planWaitMs: 4000 }, async (rig1) => {
+    const tools = liveTools(rig1, 'idle')
+    // The other notices keep the wake table: an idle holder with an active goal gets them injected (goal-round-driver:249).
+    assert.deepEqual(deliver(tools.lookup, 'main-1', createUserNotice('glm-hourness-loop', 'probe', 'not a request')), { kind: 'sent', how: 'inject' })
+    tools.live.woken.length = 0
+    const held = tools.submit(GOOD_PLAN, rig1.childExec)
+    await settled()
+    const request = oldestPending('plan', rig1.project.graphDir, 'task-1')
+    assert.ok(request !== undefined, 'the submit registered no request')
+    // An inject would wait for a step the driver never starts while it waits for this worker (goal-round-driver:132).
+    assert.deepEqual(tools.live.woken.map(entry => [entry.how, entry.kind]), [['followup', 'glm-hourness-execute']])
+    assert.deepEqual(await tools.answer({ request: request.id, verdict: 'approve' }, rig1.mainExec), { delivered: true })
+    assert.deepEqual(await held, { status: 'approved', version: 1 })
+    assert.equal(tools.live.woken.length, 1, 'the holder was woken more than once')
+    assert.deepEqual(tools.live.goalCalls, [], 'the notice touched the goal')
+    assert.equal(tools.live.goalOf('main-1')?.phase, 'active')
+  })
+})
+
+test('a question reaches an idle holder whose goal is active with a followup, once, and the answer returns to the worker', async () => {
+  await withRig({ askWaitMs: 4000 }, async (rig1) => {
+    const tools = liveTools(rig1, 'idle')
+    const held = tools.ask({ question: 'RSS or Atom?', assumption: 'Ship RSS.' }, rig1.childExec)
+    await settled()
+    const request = oldestPending('question', rig1.project.graphDir, 'task-1')
+    assert.ok(request !== undefined, 'the ask registered no request')
+    assert.deepEqual(tools.live.woken.map(entry => [entry.how, entry.kind]), [['followup', 'glm-hourness-execute']])
+    assert.deepEqual(await tools.answer({ request: request.id, text: 'atom' }, rig1.mainExec), { delivered: true })
+    assert.deepEqual(await held, { status: 'answered', text: 'atom' })
+    assert.equal(tools.live.woken.length, 1, 'the holder was woken more than once')
+    assert.deepEqual(tools.live.goalCalls, [], 'the notice touched the goal')
+  })
+})
+
+test('a running holder is steered for a plan and a question, never followed up: no second turn is opened', async () => {
+  await withRig({ planWaitMs: 4000, askWaitMs: 4000 }, async (rig1) => {
+    const tools = liveTools(rig1, 'running')
+    const plan = tools.submit(GOOD_PLAN, rig1.childExec)
+    await settled()
+    const planRequest = oldestPending('plan', rig1.project.graphDir, 'task-1')
+    assert.ok(planRequest !== undefined)
+    await tools.answer({ request: planRequest.id, verdict: 'revise', text: 'one more step' }, rig1.mainExec)
+    await plan
+    const question = tools.ask({ question: 'And the title?', assumption: 'Keep it.' }, rig1.childExec)
+    await settled()
+    const askRequest = oldestPending('question', rig1.project.graphDir, 'task-1')
+    assert.ok(askRequest !== undefined)
+    await tools.answer({ request: askRequest.id, text: 'keep it' }, rig1.mainExec)
+    await question
+    assert.deepEqual(tools.live.woken.map(entry => entry.how), ['steer', 'steer'])
   })
 })
 

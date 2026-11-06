@@ -475,7 +475,7 @@ worker 与它派出的 agent（派发链里、根是主 Agent、不是主 Agent 
 通过：
 1. harness 以 `harness` 身份改任务正文：把正文里 `## 计划` 开头的一节（没有就追加）换成渲染后的计划（`第 <版本> 版 · 等主 Agent 审 · 摘要 <plan digest>`，每步一行标题、一行路径与验证层级），版本从 1 起，每次通过加一。写正文失败时照样继续（计划的事实源是 worker 会话里这次工具调用的参数），健康表记降级。
 2. 在请求表里登记一个请求 `{id: 'R-<6 位>', kind: 'plan', child, task, version, digest}`，给主 Agent 送一条通知（§3.4.3），正文是渲染后的计划与 `answer_worker` 的用法。
-3. 工具调用不返回，等主 Agent 回应，上限 30 分钟（常量 `PLAN_WAIT_MS`）。等待期间 worker 的回合开着，驱动器不会开下一拍（它等子 agent），主 Agent 由通知唤醒（空闲时 `followup`，运行中 `steer`）。
+3. 工具调用不返回，等主 Agent 回应，上限 30 分钟（常量 `PLAN_WAIT_MS`）。等待期间 worker 的回合开着，驱动器不会开下一拍（它等子 agent），主 Agent 由通知唤醒（空闲时 `followup`，运行中 `steer`）。主 Agent 空闲且 goal 活跃时也用 `followup`，不用唤醒表里那一格的 `inject`：驱动器在等这个 worker，不唤醒的消息等不到下一步（2026-11-06 真实模型运行，§3.4.3）。
 4. 回应或超时之后返回：`{status: 'approved' | 'revise' | 'timeout', version, text?}`。超时时提示 worker：`No review within 30 minutes; hand back with status plan-pending.`（主 Agent 之后可以批这一版并重新派发，新的一次派发直接沿用已批的计划）。
 
 #### 3.3.3 改计划
@@ -512,7 +512,7 @@ worker 之间不直接说话：DSH 已经拒绝；简报里写明「需要别的
 
 #### 3.4.3 harness 发给主 Agent 的消息
 
-都用 `createUserNotice('glm-hourness-execute', 摘要, 正文, {hournessExecute: {...}})`（来源种类非空、其余字段原样保存，`docs/DESIGN.md` §2.4a；来源不是 `user`，所以不会被 `update_goal` 当成人直接说的话，tool-goal:44–52）。主 Agent 运行中用 `steer`，空闲用 `followup`（agent-loop:806–811）。事实字段：`{event: 'plan' | 'question' | 'handback' | 'review' | 'check' | 'advance' | 'stale' | 'drive', task, attempt, childId, request?}`。这些是请求与事实的通知（机制）；「碰到某件事就去做」的提醒是循环板条目的正文（§2.5），来源为 `glm-hourness-loop`。
+都用 `createUserNotice('glm-hourness-execute', 摘要, 正文, {hournessExecute: {...}})`（来源种类非空、其余字段原样保存，`docs/DESIGN.md` §2.4a；来源不是 `user`，所以不会被 `update_goal` 当成人直接说的话，tool-goal:44–52）。主 Agent 运行中用 `steer`，空闲用 `followup`（agent-loop:806–811）；`plan` 与 `question` 两种在主 Agent 空闲且 goal 活跃时同样用 `followup`（`deliver` 的 `wakeIdle`），因为发出它们的 worker 开着调用等回应，驱动器开下一轮前要等这个 worker（goal-round-driver:132，subagent:1296），`inject` 会一直没人读到超时（2026-11-06 真实模型运行查到）。事实字段：`{event: 'plan' | 'question' | 'handback' | 'review' | 'check' | 'advance' | 'stale' | 'drive', task, attempt, childId, request?}`。这些是请求与事实的通知（机制）；「碰到某件事就去做」的提醒是循环板条目的正文（§2.5），来源为 `glm-hourness-loop`。
 
 收件人是当前的主 Agent（评审 N7）：通知、worker 的计划与问题请求，一律送给 M3 `mainAgentOf(userHome, graphDir)` 此刻给出的持有者会话，每次送之前重取，不用派发时记下的 `parent`。`answer_worker` 认的也是当前持有者：调用方 `isMainAgent` 为真，就能回应这个项目登记表里的任何一条请求，包括前任主 Agent 派出的 worker 的。人用 `/wish here` 把主 Agent 移到另一个会话之后：
 

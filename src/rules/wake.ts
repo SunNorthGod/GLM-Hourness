@@ -63,14 +63,22 @@ export type Delivery =
   | { readonly kind: 'unavailable' }
   | { readonly kind: 'failed', readonly why: string }
 
-/** Put a notice in front of the agent of a session. Never throws. */
-export function deliver(ctx: ServiceLookup, sessionId: string, notice: UserNotice): Delivery {
+/**
+ * Put a notice in front of the agent of a session. Never throws. With
+ * `wakeIdle` an idle agent gets a followup whatever its goal, for a notice
+ * the agent has to act on before the goal driver can move: the driver waits
+ * for every progressing child before it reserves a round
+ * (goal-round-driver:132, subagent:1296), so a notice injected into an idle
+ * agent while a child holds its call open for that agent's answer waits for a
+ * step that never comes. A running agent is steered either way.
+ */
+export function deliver(ctx: ServiceLookup, sessionId: string, notice: UserNotice, wakeIdle = false): Delivery {
   const agents = agentsOf(ctx)
   if (agents === undefined) return { kind: 'unavailable' }
   try {
     const agent = agents.get(sessionId)
     if (agent === undefined) return { kind: 'gone' }
-    const how = wayTo(ctx, agent)
+    const how = wakeIdle && agent.status !== 'running' ? 'followup' : wayTo(ctx, agent)
     agent[how](notice)
     return { kind: 'sent', how }
   }

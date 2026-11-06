@@ -186,11 +186,14 @@ function oneLine(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' && !/[\r\n]/.test(value) && value.length <= 2000 ? value.trim() : undefined
 }
 
-/** The notice to the current main agent (§3.4.3): the facts carry the request, the recipient is the holder at this moment. Best effort; a failed delivery is said in the sender's health. */
+/**
+ * The notice to the current main agent (§3.4.3): the facts carry the request, the recipient is the holder at this moment. Best effort; a failed delivery is said in the sender's health.
+ * It always wakes an idle holder (followup), goal or no goal: the worker's call stays open until the holder answers, and the goal driver waits for that worker before it starts a round (goal-round-driver:132), so an inject would sit unread until the wait runs out (§3.3.2 step 3). A running holder is steered.
+ */
 function notifyMain(deps: RequestsDeps, request: ExecuteRequest, event: 'plan' | 'question', summary: string, text: string, sessionId: string | undefined): void {
   const notice: UserNotice = createUserNotice('glm-hourness-execute', summary, text, { hournessExecute: { event, task: request.task, attempt: request.attempt, childId: request.childId, request: request.id } })
   const holder = mainAgentOf(holderHome(deps.lookup), request.graphDir)
-  const way = holder === undefined ? undefined : deliver(deps.lookup, holder.sessionId, notice)
+  const way = holder === undefined ? undefined : deliver(deps.lookup, holder.sessionId, notice, true)
   if (holder === undefined || way === undefined || way.kind !== 'sent') {
     const why = holder === undefined
       ? '项目没有主 Agent 记录'
