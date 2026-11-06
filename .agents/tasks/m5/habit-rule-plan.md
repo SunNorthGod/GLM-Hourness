@@ -75,5 +75,12 @@
 - bb726f1：上面一条的代码、L2 `tests/memory-habit-declined.spec.ts`（12 例：两对真实再问得 `maybe_declined`；五个反例低于 0.25 直接问得出或带 `notSame` 放行并记下；过期的不拦；索引与 `memory_query` 列在期内的）与 M5 设计 §3.8、ORCHESTRATION §8.3/§8.5、HANDOFF 同一提交。指标的提交方加 `memory`（`MetricsBy`、`METRICS_BY`）。build 0、check-lint 0（eslint 73 / knip 18 / jscpd 1）、`npm test` 0（3203/3203）。
 - 两档模型重跑（bb726f1 的构建）：两档模型会话 2 都没有再问，也没有调 `memory_habit`；回复里都说「之前说过不用，不再问」。验收第 2 条成立。记录在 `habit-rule-runs.md` 第二轮。
 
+- bb726f1 之后的探针：运行目录 `2026-11-06T01-20-50-033Z`，426/426（评审第 2 轮 N1：此前只记在图批注 7c13564）。
+- 落地（merge 步骤，`wf_b5171bd117c811ba`，2026-11-06）：评审第 2 轮 APPROVED（65c755b）。四次并入 origin/main：1f212e9（5f1e3f3，冲突 `docs/HANDOFF.md` M5 一行取本分支并补评审与合入、M4/M6 两行取 main；`package.json` `test:2` 取两边并集，`design-metrics`、`memory-habit-rule`、`memory-habit-declined` 各一次）、f4d156e（2886eb7，无冲突）、2b4ca51（ed077e4，只有 `docs/graph`）、adb4d9f（9fb5146，只有 `docs/graph`）。并入后规则总表照实再数：`GUARD_RULES` 11（guard 6、graph 1、loops 2、metrics 1、memory 1），`MAIN_AGENT_RULES` 9，并入的改动没有碰 `src/guard/catalog.ts`、`src/rules/builtin.ts` 与 `src/rules/view-build.ts`，`tests/contracts.spec.ts` 的 11 与 9 在合并后的树上照旧成立，测试与文档不用再改。
+  - 1f212e9：build 0、preflight 0、check-lint 0（eslint 73 / knip 18 / jscpd 1）、`npm test` 0（3241/3241）、`npm run probe` 433/433。
+  - f4d156e：build 0、preflight 0、check-lint 0（73 / 18 / 1）、`npm test` 0（3243/3243）、`npm run probe` 433/433。
+  - 2b4ca51：build 0、preflight 0、check-lint 0；`npm test` 第一次 1 项失败（`tests/glm-metrics.spec.ts`「one event per read started」，同一提交单跑 10 次挂 1 次，main 的 `src/glm-llm/quota.ts` 与该测试本分支都没动，是 main 上已有的时序抖动），重跑 0（3243/3243）。
+  - adb4d9f：build 0、preflight 0、check-lint 0（73 / 18 / 1）、`npm test` 0（3243/3243）。2b4ca51 与 adb4d9f 相对 f4d156e 只多 `docs/graph`，探针沿用 f4d156e 的 433/433。
+
 未做：
-- 合入 main、批次 L4：归落地步骤。没有写 `docs/graph`（编排方要求）。
+- 桌面版：本节点没有改行组合，改了记忆行的运行行为（`memory_habit` 常驻、记忆行注册 `tools/pre-execute`），合入后由 merge 步骤按 DEVELOPMENT.md §1.1 的 L4 行重启人的桌面版核对，结果在该步骤报告。没有写 `docs/graph`（编排方要求）。
