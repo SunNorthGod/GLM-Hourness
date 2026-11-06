@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { basename, delimiter, join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import test from 'node:test'
-import { CHECK_CONCURRENT, commandText, OUTPUT_DEFAULT_BYTES, OUTPUT_MAX_BYTES, resolveProgram, runCommand, runScript, scriptSha256, sweepRunCopies, WORK_TIMEOUT_MAX_MS, WORK_TIMEOUT_MS, type HookEnvelope } from '../src/loops/script.ts'
+import { CHECK_CONCURRENT, commandText, GATE_CONCURRENT, GATE_QUEUE_MAX, GATE_TIMEOUT_MAX_MS, GATE_TIMEOUT_MS, OUTPUT_DEFAULT_BYTES, OUTPUT_MAX_BYTES, resolveProgram, runCommand, runScript, scriptSha256, sweepRunCopies, WORK_TIMEOUT_MAX_MS, WORK_TIMEOUT_MS, type HookEnvelope } from '../src/loops/script.ts'
 
 /** A project that is a real directory; removed after the case. */
 function projectTest(name: string, body: (project: string) => Promise<void>): void {
@@ -329,3 +329,80 @@ projectTest('a check runs in a work tree of the project, two at a time in a lane
     rmSync(worktree, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }, { timeout: 30_000 })
+
+// ----------------------------------------------------------------- gate scripts
+
+/** The envelope of a gating script of the rules board. */
+const gateEnvelope = (project: string, n: number): HookEnvelope => ({ ...envelopeOf(project, `rr-${String(n).padStart(8, '0')}`), board: 'rules', entry: 'r-locale-keys', event: 'gate.tool-call', payload: { tool: 'write' } })
+
+test('the numbers of a gating script are the design\'s (rules board design 0.10 §6.7, loop board design 0.6 §6.6)', () => {
+  assert.equal(GATE_TIMEOUT_MS, 10_000, 'the default is 10 seconds')
+  assert.equal(GATE_TIMEOUT_MAX_MS, 30_000, 'the ceiling is 30 seconds')
+  assert.equal(GATE_CONCURRENT, 4, 'four at a time in a project')
+  assert.equal(GATE_QUEUE_MAX, 16, 'sixteen waiting')
+})
+
+projectTest('a gating script runs like a work script: the approved bytes, the envelope on standard input, the exit code', async project => {
+  const script = seedScript(project, 'r-locale-keys', 'import { readFileSync } from "node:fs"\nconst envelope = JSON.parse(readFileSync(0, "utf8"))\nprocess.stderr.write(envelope.board + " " + envelope.payload.tool)\nprocess.exit(2)\n')
+  const result = await runScript({ project, script, envelope: gateEnvelope(project, 1), purpose: 'gate', timeoutMs: 5_000 })
+  assert.deepEqual([result.kind, result.kind === 'exited' && result.exitCode, result.kind === 'exited' && result.stderr], ['exited', 2, 'rules write'])
+  assert.equal(existsSync(join(project, '.llm', 'loops', 'run', 'rr-00000001.mjs')), false, 'the copy went away')
+  const changed = await runScript({ project, script: { ...script, sha256: digest('other') }, envelope: gateEnvelope(project, 2), purpose: 'gate' })
+  assert.deepEqual([changed.kind, changed.kind === 'refused' && changed.reason], ['refused', 'script-changed'])
+})
+
+projectTest('a gating script past its timeout has its tree ended, and its children with it', async project => {
+  const marker = join(project, 'child.pid')
+  const script = seedScript(project, 'r-locale-keys', `import { spawn } from 'node:child_process'\nimport { writeFileSync } from 'node:fs'\nconst child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })\nwriteFileSync(${JSON.stringify(marker)}, String(child.pid))\nsetInterval(() => {}, 1000)\n`)
+  const startedAt = Date.now()
+  const result = await runScript({ project, script, envelope: gateEnvelope(project, 3), purpose: 'gate', timeoutMs: 1_500 })
+  assert.equal(result.kind, 'timeout')
+  assert.equal(Date.now() - startedAt < 8_000, true, 'the call is not held longer than its timeout, give or take the start of the process')
+  assert.ok(existsSync(marker), 'the script got as far as starting its child')
+  const child = Number(readFileSync(marker, 'utf8'))
+  await new Promise(done => setTimeout(done, 700))
+  assert.throws(() => process.kill(child, 0), /ESRCH/, 'the child of the script is not left running')
+})
+
+projectTest('the fifth gating script of a project waits for a place, and the wait counts into its timeout; it never starts and leaves no copy', async project => {
+  const slow = seedScript(project, 'r-slow', 'setTimeout(() => process.exit(0), 1_800)\n')
+  const marked = seedScript(project, 'r-marked', 'import { writeFileSync } from "node:fs"\nwriteFileSync("marked.txt", "ran")\n')
+  const running = Array.from({ length: GATE_CONCURRENT }, (_, index) => runScript({ project, script: slow, envelope: gateEnvelope(project, 10 + index), purpose: 'gate', timeoutMs: 20_000 }))
+  const startedAt = Date.now()
+  const waiting = await runScript({ project, script: marked, envelope: gateEnvelope(project, 20), purpose: 'gate', timeoutMs: 700 })
+  assert.equal(waiting.kind, 'timeout')
+  const waited = Date.now() - startedAt
+  assert.equal(waited >= 600 && waited < 1_700, true, `it gave up near its own limit, after ${waited} ms`)
+  assert.equal(existsSync(join(project, 'marked.txt')), false, 'it never started')
+  assert.equal(existsSync(join(project, '.llm', 'loops', 'run', 'rr-00000020.mjs')), false, 'its copy was taken away')
+  for (const run of await Promise.all(running)) assert.deepEqual([run.kind, run.kind === 'exited' && run.exitCode], ['exited', 0])
+})
+
+projectTest('past 4 running and 16 waiting a gating script is answered with a timeout at once, and a work script does not take a gate place', async project => {
+  const slow = seedScript(project, 'r-slow', 'setTimeout(() => process.exit(0), 900)\n')
+  const quick = seedScript(project, 'r-quick', 'process.exit(0)\n')
+  const work = runScript({ project, script: slow, envelope: { ...gateEnvelope(project, 30), board: 'loops' }, purpose: 'work' })
+  const queued = Array.from({ length: GATE_CONCURRENT + GATE_QUEUE_MAX }, (_, index) => runScript({ project, script: slow, envelope: gateEnvelope(project, 100 + index), purpose: 'gate', timeoutMs: 30_000 }))
+  const startedAt = Date.now()
+  const over = await runScript({ project, script: quick, envelope: gateEnvelope(project, 40), purpose: 'gate', timeoutMs: 30_000 })
+  assert.deepEqual([over.kind, over.kind === 'timeout' && over.durationMs < 500], ['timeout', true])
+  assert.equal(Date.now() - startedAt < 1_500, true, 'answered at once')
+  const gated = await runScript({ project, script: quick, envelope: gateEnvelope(project, 41), purpose: 'gate', timeoutMs: 30_000 }).catch(() => undefined)
+  assert.equal(gated?.kind, 'timeout', 'still full a moment later')
+  await Promise.all([work, ...queued])
+})
+
+projectTest('a gating script that is called off while it waits is refused as aborted and leaves no copy', async project => {
+  const slow = seedScript(project, 'r-slow', 'setTimeout(() => process.exit(0), 1_500)\n')
+  const quick = seedScript(project, 'r-quick', 'process.exit(0)\n')
+  const running = Array.from({ length: GATE_CONCURRENT }, (_, index) => runScript({ project, script: slow, envelope: gateEnvelope(project, 50 + index), purpose: 'gate', timeoutMs: 20_000 }))
+  const controller = new AbortController()
+  const waiting = runScript({ project, script: quick, envelope: gateEnvelope(project, 60), purpose: 'gate', timeoutMs: 20_000, signal: controller.signal })
+  setTimeout(() => { controller.abort() }, 300)
+  const result = await waiting
+  assert.deepEqual([result.kind, result.kind === 'refused' && result.reason], ['refused', 'aborted'])
+  assert.equal(existsSync(join(project, '.llm', 'loops', 'run', 'rr-00000060.mjs')), false)
+  await Promise.all(running)
+  const early = await runScript({ project, script: quick, envelope: gateEnvelope(project, 61), purpose: 'gate', signal: AbortSignal.abort() })
+  assert.deepEqual([early.kind, early.kind === 'refused' && early.reason], ['refused', 'aborted'], 'a run called off before it starts does not start')
+})

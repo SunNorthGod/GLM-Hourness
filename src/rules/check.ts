@@ -24,15 +24,17 @@
 import { resolve } from 'node:path'
 import { projectOf } from '../data/project-root.ts'
 import { STAGES } from '../graph/schema.ts'
+import { runScript } from '../loops/script.ts'
 import { describeCall } from './call.ts'
 import { denialText, type PeakSetting } from './denial.ts'
 import { gateEvents } from './events.ts'
 import { hostPeak, liveHeartbeats, readHeartbeats, type HostHeartbeat, type HostPeak } from './heartbeat.ts'
-import { judge, judgeInput, type JudgeResult, type Truth } from './judge.ts'
+import { combine, judge, judgeInput, type JudgeResult, type Truth } from './judge.ts'
 import { openTickets, projectSignals, rulesInForce, stateNotes } from './listing.ts'
 import { emitMetric, type MetricExit, type RulesCheckEvent } from './metrics.ts'
-import { effectivePeakMode, effectOf, type Effect, type PeakLevel, type ProjectState } from './model.ts'
+import { approvedScriptRules, effectivePeakMode, effectOf, type Effect, type PeakLevel, type ProjectState } from './model.ts'
 import { readProject } from './repo.ts'
+import { runPendingScripts, type RunScript } from './script-run.ts'
 import { showText } from './show.ts'
 import { GLM_PEAK, effectiveSignal, type SignalReading } from './signals.ts'
 import { rulesPaths } from './store.ts'
@@ -67,6 +69,9 @@ export interface CheckOptions {
   readonly metrics?: MetricExit
   /** The moment of the judgement in milliseconds; only a test sets it. */
   readonly now?: number
+  /** Starts a script a person approved; default the shared executor's 
+unScript (src/loops/script.ts), the one place a process is started. A test gives a stand-in. */
+  readonly runScript?: RunScript
 }
 
 export interface CheckResult {
@@ -82,8 +87,8 @@ export interface CheckResult {
   readonly signals: readonly SignalReading[]
   /** Rules that did not apply because a field they ask about was not given. */
   readonly subjects: JudgeResult['subjects']
-  /** The scripts that were not run. */
-  readonly scripts: ReadonlyArray<{ readonly rule: string, readonly outcome: 'allow' | 'block' | 'queue' | 'failed' | 'timeout' | 'refused', readonly ms?: number }>
+  /** What became of each script of the rules that applied: run (`allow`, `block`, `queue`, or a failure: `failed`, `timeout`, `refused` when the executor would not run it), or not run (`refused`: not approved on this machine, or called from inside a script). */
+  readonly scripts: ReadonlyArray<{ readonly rule: string, readonly file?: string, readonly outcome: 'allow' | 'block' | 'queue' | 'failed' | 'timeout' | 'refused', readonly ms?: number }>
   readonly peakMode: PeakLevel
   readonly notes: readonly string[]
 }
@@ -213,6 +218,7 @@ export async function checkCall(call: { readonly tool: string, readonly args: un
     events: gateEvents({
       at: now.toISOString(),
       project: view.root,
+      cwd: resolve(options.project),
       tool: call.tool,
       args: call.args,
       ...(described.command === undefined ? {} : { command: described.command }),
@@ -227,9 +233,26 @@ export async function checkCall(call: { readonly tool: string, readonly args: un
     stage: options.stage === undefined ? { unknown: '命令行没有会话的焦点，用 --stage 给' } : { stage: options.stage },
     unreadable: { role: spelled('role'), model: spelled('model'), session: spelled('session') },
   })
-  const verdict = judge(input, table)
+  const judged = judge(input, table, { approved: approvedScriptRules(view.state) })
 
   const byId = new Map(table.map(rule => [rule.id, rule]))
+  // A script that calls `checkCall` again (it runs `npm run -s rules -- check`) is told what the rules say of their own actions and runs no script: otherwise a script could call itself without end.
+  const insideScript = process.env.HOURNESS_BOARD === 'rules'
+  const ran = judged.pending.length === 0 || insideScript
+    ? []
+    : await runPendingScripts({
+      pending: judged.pending,
+      info: (id) => {
+        const rule = byId.get(id)
+        return { title: rule?.title ?? id, filtersWrites: rule?.filter?.writes !== undefined }
+      },
+      root: view.root,
+      events: input.events,
+      now,
+      ...(options.session === undefined ? {} : { session: options.session }),
+      run: options.runScript ?? runScript,
+    })
+  const verdict: JudgeResult = ran.length === 0 ? judged : { ...judged, ...combine([...judged.hits, ...ran.flatMap(outcome => outcome.hit ?? [])]) }
   const hitOf = new Map(verdict.hits.map(hit => [hit.rule, hit]))
   const applicable = verdict.evaluated.flatMap(({ rule: id, when }) => {
     const rule = byId.get(id)
@@ -251,9 +274,18 @@ export async function checkCall(call: { readonly tool: string, readonly args: un
     ...(refusal === undefined ? {} : { text: denialText({ attempt: described.attempt, effect: refusal, rules: strongest, peak: { ...peak, ...(until === undefined ? {} : { until }) } }) }),
     signals,
     subjects: verdict.subjects,
-    scripts: verdict.refused.map(script => ({ rule: script.rule, outcome: 'refused' as const })),
+    scripts: [
+      ...verdict.refused.map(script => ({ rule: script.rule, outcome: 'refused' as const })),
+      ...(insideScript ? judged.pending.map(script => ({ rule: script.rule, file: script.script.file, outcome: 'refused' as const })) : []),
+      ...ran.map(outcome => ({ rule: outcome.rule, file: outcome.file, outcome: outcome.outcome, ...(outcome.ms === undefined ? {} : { ms: outcome.ms }) })),
+    ],
     peakMode: peak.level,
-    notes: [...view.notes, ...verdict.refused.map(script => script.reason)],
+    notes: [
+      ...view.notes,
+      ...verdict.refused.map(script => script.reason),
+      ...(insideScript && judged.pending.length > 0 ? ['在脚本里自查，没有再跑脚本'] : []),
+      ...ran.flatMap(outcome => outcome.note ?? []),
+    ],
   }
 
   const event: RulesCheckEvent = {

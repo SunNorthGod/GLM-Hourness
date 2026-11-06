@@ -57,9 +57,9 @@ import { callerOf } from './caller.ts'
 import { describeCall } from './call.ts'
 import { denialText } from './denial.ts'
 import { gateEvents, type GateCall } from './events.ts'
-import { judge, judgeInput, type RuleHit } from './judge.ts'
+import { judge, judgeInput, NOT_RUN_BY_THE_GATE, type RuleHit } from './judge.ts'
 import { emitJudged, type RulesJudgedEvent } from './metrics.ts'
-import { effectivePeakMode, type BuiltinRule, type Rule } from './model.ts'
+import { approvedScriptRules, effectivePeakMode, type BuiltinRule, type Rule } from './model.ts'
 import type { PeakReading, ProjectView } from './peak.ts'
 import { gitOperationIn } from './repo.ts'
 import { projectHealth } from './row-health.ts'
@@ -259,7 +259,7 @@ export function installRulesGate(deps: GateDeps): () => void {
       ...(DISPATCH_TOOL_NAMES.includes(tool) ? { dispatch: dispatchOf(exec.arguments) } : {}),
     })
     const judgedAt = deps.now()
-    const verdict = judge(judgeInput({ now, project: project.root, events, signals: [...readings.values()], unreadable }), table)
+    const verdict = judge(judgeInput({ now, project: project.root, events, signals: [...readings.values()], unreadable }), table, { approved: approvedScriptRules(state), notRunHere: NOT_RUN_BY_THE_GATE })
     const judgedMs = deps.now() - judgedAt
     report(sessionId, basename(project.root), view, reading, project.root)
 
