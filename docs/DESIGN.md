@@ -267,6 +267,9 @@ GLM-Hourness（同仓两包，§2.3）
 | goal-round-driver 的 `agent/pre-step` 预约校验（下游监听器前后各一次）与收件箱竞争判定 | glm-prompt 的步 notice（目标轮上同样追加）；M2.3 的投影注入 | goal-round-driver:249、286–350 | 成立：`next()` 之后追加到决策 `messages` 的 notice 不破坏预约，下一轮照常开始；经收件箱投递会被判为竞争输入 |
 | `update_goal` 的完成授权（直接人类输入或当前目标轮）与收尾消息 `<goal_complete>` | 验证插件（完成门禁） | tool-goal:27、54、72、365 | 成立：经 DeferredToolCall 调用时 `tools/pre-execute` 看到的是 `update_goal`，可以拒绝 `complete` |
 | headless 运行器的退出条件：agent 空闲、`waitForChildren` 为假、会话序号不变 | 探针、标定运行器 | headless:349–351 | 实测：第一次静止空闲就退出，任务回合里建的 goal 一轮都跑不到（探针 `goal-headless`） |
+| 沙盒服务 `sandbox.confine(argv, {mode, workspaceRoot, sessionId?}, signal?)` 返回 `{argv, enforcement, denialSignatures, runnerFailureRules}`；没有可用后端时以 `SANDBOX_UNAVAILABLE` 拒绝，不会不包装就放行（H13） | bootstrap（试跑，`src/bootstrap/trial.ts`；结构类型 `SandboxLike` 在 `src/shared/dsh-min.ts`） | sandbox:281–286；sandbox-local:305–336 | 成立（探针 `bootstrap-trial`，2026-11-06）：Windows 上 `enforcement: 'partial'`，runner 失败签名 `windows-acl-run: ` 且退出 127 |
+| 不带 `sessionId` 的 `workspace-write`：Windows 的 runner 以 `--temp <os.tmpdir()>` 为根，自建并删掉私有临时子目录；工作区在临时目录之下（被包含）时照常授权，只拒绝工作区等于或包含临时根（H14、U1） | bootstrap（试跑目录在系统临时目录下） | sandbox-local:357–366；windows-acl runner.js `assertTempRootOutsideWorkspace` | 成立（探针 `bootstrap-trial`）：试跑目录里的命令照常跑完，目录在一轮之后删掉 |
+| 受限子进程往试跑目录以外写文件被拒，stderr 是 `EPERM: operation not permitted`（U4）；它从脚本里 `git push` 到场景目录的裸仓库没落下任何引用（U7）；它以管道 stdio 起孙进程得到 `spawnSync … EPERM`（U8，windows-acl README「Piped stdio capture is impossible for confined grandchildren」）；三种都判为 `confinement-limited` 并带命中的那一行 | bootstrap（结果判别，`src/bootstrap/trial-plan.ts` 的 `classify`） | windows-acl README :186；探针 `bootstrap-trial` | 成立（2026-11-06，rc.3 Windows ACL）。U2（Linux 与 macOS 的拒绝签名）、U9（大仓库的预热用时）这台机器上测不到，留到对应平台的 L4 |
 
 ### 2.5 行健康〔已实现 2026-10-28，`ROADMAP.md` M1.5〕
 
