@@ -19,12 +19,19 @@
  * git-ignored first (src/data/llm-ignore.ts); when git still sees it,
  * nothing is written.
  *
- * Format: plain UTF-8 text with LF line ends, a four-line header, then one
+ * Format: plain UTF-8 text with LF line ends, a five-line header, then one
  * entry per document: `=== #<seq> <kind> <ISO time>`, the text, an empty
  * line. Lines longer than TRANSCRIPT_LINE_MAX code points continue on the
  * next line, so Read's line window (2000 lines, 2000 characters per line,
  * 50 KB; rc.3 dsh-tool-fs) pages through the file without truncating a
  * line.
+ *
+ * Redaction: the text of every document goes through the secret-shape table
+ * (src/data/secret-shape.ts, the one the memory rows' secret_like check
+ * uses), each matching run becomes `[redacted]`, and the header's fourth
+ * line says how many runs were replaced. When redaction throws, nothing is
+ * written: the export is skipped with the reason, so the summary names no
+ * file and the row health says why.
  *
  * Cleanup: after each write, the other `<id>.txt` files of the same
  * directory whose last write is more than TRANSCRIPT_KEEP_DAYS days old are
@@ -34,6 +41,7 @@ import { mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { ensureLlmIgnored } from './llm-ignore.ts'
 import { projectHomeFor } from './project-home.ts'
+import { REDACTED, redactSecretsCounted } from './secret-shape.ts'
 import type { AgentsService, ServiceLookup, SessionEventDocumentLike, SessionQueryLike } from '../shared/dsh-min.ts'
 
 /** The directory under the project data dir that holds the exports. */
@@ -63,9 +71,9 @@ const KINDS: Readonly<Record<string, string>> = {
   'turn/end': 'turn end',
 }
 
-/** What one export came to, with the cleanup it did after a write. */
+/** What one export came to: the entries written, the runs redacted and the cleanup done after a write. */
 export type ExportResult =
-  | { readonly kind: 'written', readonly path: string, readonly entries: number, readonly cleanup: CleanupResult }
+  | { readonly kind: 'written', readonly path: string, readonly entries: number, readonly redacted: number, readonly cleanup: CleanupResult }
   | { readonly kind: 'skipped', readonly reason: string }
 
 export interface CleanupResult {
@@ -90,20 +98,28 @@ function splitLine(line: string): string[] {
   return pieces
 }
 
-/** The export text of one session's documents, exported at `exportedAt`. */
-export function renderTranscript(sessionId: string, documents: readonly SessionEventDocumentLike[], exportedAt: Date): string {
+/**
+ * The export text of one session's documents, exported at `exportedAt`, with
+ * every credential-like run of a document's text replaced before its lines
+ * are cut, and how many runs were replaced. Throws when the redaction throws
+ * (redactSecretsCounted).
+ */
+export function renderTranscript(sessionId: string, documents: readonly SessionEventDocumentLike[], exportedAt: Date): { readonly text: string, readonly redacted: number } {
+  const entries = documents.map(document => ({ document, body: redactSecretsCounted(document.text) }))
+  const redacted = entries.reduce((sum, entry) => sum + entry.body.replaced, 0)
   const lines = [
     `Transcript of session ${sessionId}, exported ${isoOf(exportedAt.getTime())} when the conversation was compacted.`,
     'Entries are the session\'s messages, tool calls and tool results up to that point, oldest first, as plain text; reasoning and images are left out.',
     `Each entry starts with a line "=== #<seq> <kind> <time>". Lines longer than ${TRANSCRIPT_LINE_MAX} characters continue on the next line.`,
+    `Strings that look like credentials (named key prefixes, Bearer values, private keys, long mixed-case tokens, 32 or more hex digits such as a full commit id) are replaced with ${REDACTED}. Replaced in this export: ${redacted}.`,
     '',
   ]
-  for (const document of documents) {
+  for (const { document, body } of entries) {
     lines.push(`=== #${document.seq} ${KINDS[document.type] ?? document.type} ${isoOf(document.time)}`)
-    for (const line of document.text.split(/\r\n|\r|\n/)) lines.push(...splitLine(line))
+    for (const line of body.text.split(/\r\n|\r|\n/)) lines.push(...splitLine(line))
     lines.push('')
   }
-  return `${lines.join('\n')}\n`
+  return { text: `${lines.join('\n')}\n`, redacted }
 }
 
 /** Delete the export files in `dir` other than `keepName` whose last write is more than TRANSCRIPT_KEEP_DAYS days before `nowMs`. */
@@ -166,12 +182,19 @@ export async function exportTranscript(ctx: ServiceLookup, home: string | undefi
     catch (error) {
       return { kind: 'skipped', reason: `读会话日志失败：${messageOf(error)}` }
     }
+    let rendered: ReturnType<typeof renderTranscript>
+    try {
+      rendered = renderTranscript(sessionId, documents, now)
+    }
+    catch (error) {
+      return { kind: 'skipped', reason: `遮掉像凭证的字符串失败，不写明文：${messageOf(error)}` }
+    }
     const folder = resolve(dir, TRANSCRIPTS_DIR)
     const name = `${sessionId}.txt`
     const path = join(folder, name)
     await mkdir(folder, { recursive: true })
-    await writeFile(path, renderTranscript(sessionId, documents, now), 'utf8')
-    return { kind: 'written', path, entries: documents.length, cleanup: await cleanTranscripts(folder, name, now.getTime()) }
+    await writeFile(path, rendered.text, 'utf8')
+    return { kind: 'written', path, entries: documents.length, redacted: rendered.redacted, cleanup: await cleanTranscripts(folder, name, now.getTime()) }
   }
   catch (error) {
     return { kind: 'skipped', reason: `写导出文件失败：${messageOf(error)}` }

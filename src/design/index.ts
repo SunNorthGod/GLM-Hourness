@@ -46,7 +46,8 @@ import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/healt
 import Schema from '../shared/schemastery.ts'
 import { ATTACH_BOARDS } from './attach.ts'
 import { MAIN_AGENT_IDENTITY, MAIN_AGENT_SECTION } from './identity.ts'
-import { emitMetric } from './metrics.ts'
+import { toMetricsId } from '../shared/metrics.ts'
+import { designMetricSink, emitDesign, holderMoved, type HolderMove } from './metrics.ts'
 import { localTime, mainAgentProjection, modeOf, roleOf, staleRecordKept, wishHandler, type RoleDeps, type RoleReading, type WishDeps } from './mode.ts'
 import { DEFAULT_PERSONA_NAME, PERSONA_NAME_LIMIT, PERSONA_TEXT_LIMIT, readPersona } from './persona.ts'
 import { proposeTool, type DesignToolDeps } from './propose.ts'
@@ -178,6 +179,9 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
     return project
   }
 
+  /** design.holder-moved, filed under the session the record moved for. */
+  const holderMove = (session: SessionLike, move: HolderMove): void => { emitDesign(ctx, { session }, holderMoved(move)) }
+
   const role: RoleDeps = {
     projections: () => projections,
     holder: (session) => {
@@ -186,7 +190,9 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
     },
     release: (session) => {
       const project = projectOfSession(session)
-      return project !== undefined && releaseHolder(project.file, session.id)
+      const released = project !== undefined && releaseHolder(project.file, session.id)
+      if (released) holderMove(session, { how: 'lapsed', from: session.id })
+      return released
     },
     report: (session, state, reason) => { health.report(session.id, state, reason) },
     warn: warnRead,
@@ -245,7 +251,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
     bypasses.push({ at, text: `${label}想${alert.what}，${localTime(new Date(at).toISOString())}` })
     if (bypasses.length > BYPASS_KEPT) bypasses.shift()
     health.reactivate(...status())
-    emitMetric({ event: 'design.bypass-refused', rule: alert.rule, session: alert.kind, goal: alert.goal, node: alert.node, tool: alert.tool })
+    emitDesign(ctx, alert.agent, { k: 'design.bypass-refused', body: { rule: alert.rule, sessionKind: alert.kind, goal: toMetricsId(alert.goal), from: toMetricsId(alert.stageFrom), to: toMetricsId(alert.stageTo) } })
     const holder = session === undefined ? undefined : role.holder(session)
     if (holder?.kind !== 'held') return
     health.report(holder.record.sessionId, 'degraded', bypassNote() ?? '')
@@ -445,6 +451,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
       if (posted.via === 'none') health.report(agent.id, 'degraded', `提示没能送到这个会话：${posted.reason}`)
     },
     now: () => new Date(),
+    moved: holderMove,
   }
 
   try {
@@ -562,7 +569,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
         return said.ok ? { ok: true } : { ok: false, reason: said.reason, offBoundary: said.offBoundary }
       },
       bypass: onBypass,
-      metric: emitMetric,
+      metric: designMetricSink(ctx),
       hiddenTools: HIDDEN_FROM_MAIN_AGENT,
       journal: (record, cwd) => { void journal.violation(record, cwd) },
       report: (agent, state, reason) => { health.report(sessionIdOf(agent), state, reason) },

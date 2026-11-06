@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "会话原文",
-    "description": "GLM 对话压缩时，把会话日志以纯文本写到项目的 .llm/transcripts/，摘要末尾带上文件路径，模型可以用 Read 读原文。别的会话的文件 14 天后清掉。默认关闭。"
+    "description": "GLM 对话压缩时，把会话日志以纯文本写到项目的 .llm/transcripts/，像凭证的字符串换成 [redacted]，摘要末尾带上文件路径，模型可以用 Read 读原文。别的会话的文件 14 天后清掉。默认关闭。"
   }
 }

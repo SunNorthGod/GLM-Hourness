@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Main agent and design loop",
-    "description": "/wish makes one session the main agent of the project: it asks in plain chat, puts plans to you for approval and writes no files itself. The persona setting applies to the main agent's replies to you only and is empty by default. Off by default."
+    "description": "/wish makes one session the main agent of the project: it asks in plain chat, puts plans to you for approval and writes no files itself. The persona setting applies to the main agent's replies to you only and is empty by default. On by default."
   }
 }
