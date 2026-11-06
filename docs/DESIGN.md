@@ -105,7 +105,7 @@ GLM-Hourness（同仓两包，§2.3）
 
 记忆与经验的存储底座〔M5 步骤 A1，设计 `.agents/tasks/m5/design.md` §5，节点 `m5-1`、`lessons-1`〕：关于人本人的记忆在用户级目录，项目事实与全部经验在项目的 `.llm/`（`d-memory-scope`），都用只追加的流水（JSON Lines）。
 
-- `src/data/journal.ts`：`readJournal`、`readJournalSync`（共用按文件大小与修改时间的缓存；坏行记行号与原因；末行没有换行的忽略）和 `appendJournal`（进程内按路径排队；锁用 `src/data/lock.ts`，选项 50 毫秒重试、2 秒等待、30 秒陈旧、开机时刻差 120 秒、陈旧锁改名留着；在锁里重读、由调用方的计划决定写什么、追加前核对锁还是自己的、给崩溃留下的半行补换行、`seq` 取最大加一、`fsync`）。折叠函数由使用者给（记忆与经验各自的模型）。目录被删之后下一次写入重新准备目录。
+- `src/data/journal.ts`：`readJournal`、`readJournalSync`（共用按文件大小与修改时间的缓存；坏行记行号与原因；末行没有换行的忽略）和 `appendJournal`（进程内按路径排队；锁用 `src/data/lock.ts`，选项 50 毫秒重试、2 秒等待、30 秒陈旧、开机时刻差 120 秒、陈旧锁改名留着、读不出内容的锁连续看到 500 毫秒才接手（2026-11-06 加：缺省的立即接手会抢走一个刚 `wx` 建好、还没写内容的活着的写者，两个进程各追加 200 条的测试在负载下因此留下 `.stale-`）；在锁里重读、由调用方的计划决定写什么、追加前核对锁还是自己的、给崩溃留下的半行补换行、`seq` 取最大加一、`fsync`）。折叠函数由使用者给（记忆与经验各自的模型）。目录被删之后下一次写入重新准备目录。
 - `src/data/project-root.ts` 加 `projectDirOf(cwd, home?)`（只返回 `<项目根>/.llm`，不写东西）与 `ensureProjectDir(dir)`（名字是 `.llm` 的目录先 `ensureIgnored` 再建；忽略条目写不进就抛错、不建目录）。
 - 数据目录服务多一个成员 `projectDirOf(cwd)`：行配置 `projectOverride` 非空时对所有会话返回它（探针、标定、测试指向运行目录；`scripts/sandbox.mjs` 的 `dataRows` 设为 `<dir>/home`），否则返回会话所在项目的 `.llm`。服务值可以没有这个成员，调用方这时直接调 `project-root.ts` 的同名函数。env 行每天的压制注释计数（M4 设计 §6.7）也按它取目录（2026-11-05，m4-checks B6：env 行出厂启用后，探针里工作目录在本仓库工作树里的会话按项目取会写进主检出的 `.llm/audit/`），没有数据服务时取 `<项目根>/.llm`。
 - `src/data/secret-shape.ts`（`looksSecret`、`findSecret`、`redactSecrets`、`redactSecretsCounted`：按令牌形状而不是「32 个以上的 base64 字符」判，路径与长标识符放行；后两个把每一段换成 `[redacted]`，`redactSecretsCounted` 另给换了几处，会话原文导出用它，§2.4「会话原文」）与 `src/data/evidence.ts`（证据与出处的写法 `parseRef`、`checkRefs`，提交号不判密钥，`session:`、`call:`、`command:` 的 id 不判 `token`、`hex`；`isGroupKey`、`groupKeysOf`：`learnedFrom` 的键）：纯函数，不用 Node 内置模块。

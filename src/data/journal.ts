@@ -167,7 +167,14 @@ export interface AppendOptions {
 /** M5's lock values (docs/ORCHESTRATION.md §17.6). */
 const LOCK_RETRY_MS = 50
 const LOCK_WAIT_MS = 2_000
-const LOCK_OPTIONS: LockOptions = { retryMs: LOCK_RETRY_MS, waitMs: LOCK_WAIT_MS, staleMs: 30_000, bootToleranceMs: 120_000, keepStale: true }
+/**
+ * A lock file without content may belong to a writer between `open(wx)` and
+ * writing it; taken over at once, that live writer loses its lock (seen with
+ * two processes appending under load). Shorter than the wait, so an empty file
+ * left by a crashed creator is still taken over within one append.
+ */
+const LOCK_UNREADABLE_GRACE_MS = 500
+const LOCK_OPTIONS: LockOptions = { retryMs: LOCK_RETRY_MS, waitMs: LOCK_WAIT_MS, staleMs: 30_000, bootToleranceMs: 120_000, keepStale: true, unreadableGraceMs: LOCK_UNREADABLE_GRACE_MS }
 
 const queues = new Map<string, Promise<unknown>>()
 const prepared = new Set<string>()
