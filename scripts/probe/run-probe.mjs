@@ -2265,6 +2265,44 @@ const bootstrapExisting = designScenario(BOOTSTRAP_EXISTING, 'glm-5.3', ws => [
   { tool: bsRead(ws), line: '/hourness-init status' },
   { text: 'done' },
 ], { wish: true, extra: BOOTSTRAP_ROW, human: { replies: { question: [BS_AGREE] }, maxReplies: 1 } })
+// The trial under rc.3's real sandbox (takeover design 0.6 §6, §15.2; U1, U4, U7, U8, U9): a committed project whose CI lists four
+// commands, so the trial may run them word for word: one writes a file outside the trial directory, one prints whether GITHUB_TOKEN
+// is set (the run sets it), one pushes to a bare repository in the scenario directory from inside its script (inherited stdio), one
+// starts a child with piped stdio. The main agent proposes the anchor and norm-merge-gate with the four commands; the round starts at
+// the next step in the background, the main agent sleeps, then /hourness-init status shows the finished round.
+const BOOTSTRAP_TRIAL = 'bootstrap-trial'
+const bsTrialDir = join(runDir, BOOTSTRAP_TRIAL)
+const bsTrialWs = join(bsTrialDir, 'ws')
+const bsTrialOutside = join(bsTrialDir, 'outside.txt')
+const bsTrialBare = join(bsTrialDir, 'bare.git')
+const BS_TRIAL_COMMANDS = ['node scripts/outside.js', 'node scripts/token.js', 'node scripts/send.js', 'node scripts/pipe.js']
+for (const [path, text] of Object.entries({
+  'README.md': 'probe workspace\n',
+  '.github/workflows/ci.yml': ['name: ci', 'on: push', 'jobs:', '  t:', '    runs-on: windows-latest', '    steps:', ...BS_TRIAL_COMMANDS.map(command => `      - run: ${command}`), ''].join('\n'),
+  'scripts/outside.js': `require('fs').writeFileSync(${JSON.stringify(bsTrialOutside)}, 'x')\nconsole.log('wrote')\n`,
+  'scripts/token.js': `console.log('token:' + (process.env.GITHUB_TOKEN === undefined ? 'absent' : 'present'))\n`,
+  'scripts/send.js': `const r = require('child_process').spawnSync('git', ['push', ${JSON.stringify(bsTrialBare)}, 'HEAD:refs/heads/main'], { stdio: 'inherit' })\nprocess.exit(r.status ?? 1)\n`,
+  'scripts/pipe.js': `const r = require('child_process').spawnSync(process.execPath, ['-e', '0'], { stdio: 'pipe' })\nif (r.error) { console.error(String(r.error)); process.exit(1) }\nprocess.exit(r.status ?? 0)\n`,
+  'src/index.js': 'export const one = 1\n',
+})) {
+  mkdirSync(dirname(join(bsTrialWs, path)), { recursive: true })
+  writeFileSync(join(bsTrialWs, path), text)
+}
+mkdirSync(join(bsTrialWs, 'docs', 'graph'), { recursive: true })
+if (!initRepo(bsTrialWs)) throw new Error(`probe: git init failed in ${bsTrialWs}`)
+if (spawnSync('git', ['init', '-q', '--bare', bsTrialBare]).status !== 0) throw new Error(`probe: git init --bare failed in ${bsTrialBare}`)
+const bsTrialTokenBefore = process.env.GITHUB_TOKEN
+process.env.GITHUB_TOKEN = 'ghp_probe_trial_token'
+const bootstrapTrial = designScenario(BOOTSTRAP_TRIAL, 'glm-5.3', ws => [
+  { tool: bsRead(ws), line: '/hourness-init' },
+  { tool: { name: 'graph_propose', arguments: { node: { type: 'goal', title: '探针项目要做成什么' }, reason: 'probe: the anchor of the takeover' } } },
+  { tool: { name: 'graph_propose', arguments: { node: { type: 'norm', id: 'norm-merge-gate', title: '合入前的检查', parent: 'goal-1', acceptance: BS_TRIAL_COMMANDS.map(command => `\`$ ${command}\``) }, reason: 'probe: the project\'s CI commands' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 60', timeout: 120000 } } },
+  { tool: bsRead(ws), line: '/hourness-init status' },
+  { text: 'done' },
+], { wish: true, extra: BOOTSTRAP_ROW })
+if (bsTrialTokenBefore === undefined) delete process.env.GITHUB_TOKEN
+else process.env.GITHUB_TOKEN = bsTrialTokenBefore
 
 // The interview as a conversation, from the first answer to the confirmed requirement (docs/ORCHESTRATION.md §3.1, §6.9; M3 step 8). The simulated human has the
 // answers and the replies of the calibration task interview-expense-log (tests/calibration/interview-expense-log/task.json), so that task's setting is run here
@@ -3293,7 +3331,21 @@ const bsPutAt = 3
 const bsRecordAt = bsPutAt + bsAsks.length + 1
 const bsStatusStep = bootstrapExisting.steps[bsRecordAt + bsAsks.length]
 const bsExistingReplies = bootstrapExisting.human.filter(entry => entry.kind === 'reply')
+const bsTrialOpen = bsJournal(bootstrapTrial).find(record => record.op === 'takeover-open')
+const bsTrialFile = (() => { try { return JSON.parse(readFileSync(join(bootstrapTrial.ws, '.llm', 'bootstrap', bsTrialOpen?.id ?? 'none', 'trial.json'), 'utf8')) } catch { return undefined } })()
+const bsTrialBy = new Map((bsTrialFile?.results ?? []).map(result => [result.text, result]))
+const bsTrialLog = text => { const log = bsTrialBy.get(text)?.log; try { return log === undefined ? '' : readFileSync(join(bootstrapTrial.ws, ...log.split('/')), 'utf8') } catch { return '' } }
+const bsTrialRecords = bsJournal(bootstrapTrial).filter(record => record.op === 'trial')
+const bsTrialPushed = spawnSync('git', ['--git-dir', bsTrialBare, 'rev-parse', '--verify', '-q', 'refs/heads/main']).status === 0
+const bsTrialStatus = bootstrapTrial.steps.find(step => step.line?.resultText?.includes('试跑'))?.line?.resultText ?? ''
+// The runtime's os.tmpdir() is the scenario's own temporary directory (runScenario), so the trial directory was made there.
+const bsTrialTmp = join(runDir, 'runtime-tmp', BOOTSTRAP_TRIAL)
+const bsTrialLeft = (existsSync(bsTrialTmp) ? readdirSync(bsTrialTmp) : []).filter(name => name.startsWith('hourness-trial-') && name.includes(bsTrialOpen?.id ?? 'none'))
+const bsTrialOutcomes = JSON.stringify(BS_TRIAL_COMMANDS.map(text => [text, bsTrialBy.get(text)?.outcome ?? null, bsTrialBy.get(text)?.matchedLine ?? bsTrialBy.get(text)?.reason ?? null]))
 const bootstrapChecks = [
+  ['bootstrap-trial: once norm-merge-gate is on the graph a round runs every CI command under the real sandbox (enforcement recorded), with one journal trial record each, and the trial directory is gone afterwards', bsTrialFile?.done === true && BS_TRIAL_COMMANDS.every(text => bsTrialBy.has(text) && bsTrialBy.get(text).outcome !== 'not-run') && typeof bsTrialBy.get(BS_TRIAL_COMMANDS[1])?.enforcement === 'string' && bsTrialRecords.length === BS_TRIAL_COMMANDS.length && bsTrialLeft.length === 0 && bsQuiet(bootstrapTrial), `done ${bsTrialFile?.done}; reason ${bsTrialFile?.reason ?? 'none'}; enforcement ${bsTrialBy.get(BS_TRIAL_COMMANDS[1])?.enforcement ?? 'none'}; ${bsTrialRecords.length} record(s); left ${bsTrialLeft.join(', ') || 'none'}; ${bsTrialOutcomes}`],
+  ['bootstrap-trial: the child sees no GITHUB_TOKEN set in the host, a write outside the trial directory leaves no file, a push from inside a script lands nothing (U1, U4, U7)', bsTrialBy.get('node scripts/token.js')?.outcome === 'passed' && bsTrialLog('node scripts/token.js').includes('token:absent') && !existsSync(bsTrialOutside) && bsTrialBy.get('node scripts/outside.js')?.outcome !== 'passed' && !bsTrialPushed, `token ${bsTrialLog('node scripts/token.js').match(/token:\w+/)?.[0] ?? 'no line'}; outside ${existsSync(bsTrialOutside)}; pushed ${bsTrialPushed}; ${bsTrialOutcomes}`],
+  ['bootstrap-trial: on Windows a confined child that starts a grandchild with pipes reads as confinement-limited with the matched line (U8); /hourness-init status shows the finished round', (process.platform !== 'win32' || (bsTrialBy.get('node scripts/pipe.js')?.outcome === 'confinement-limited' && typeof bsTrialBy.get('node scripts/pipe.js')?.matchedLine === 'string')) && bsTrialStatus.includes('试跑第 1 轮跑完'), `pipe ${JSON.stringify([bsTrialBy.get('node scripts/pipe.js')?.outcome ?? null, bsTrialBy.get('node scripts/pipe.js')?.matchedLine ?? null])}; status ${bsTrialStatus.replace(/\n/g, ' ').slice(0, 160)}`],
   ['bootstrap-existing: /hourness-init opens a committed project as existing, the harness writes questions.md, defaults.md and floor.md, and puts the three norms under the anchor goal-1', bsLine(bootstrapExisting.steps[0], 'success', '（已有项目）') && bsExistingOpen?.data?.path === 'existing' && ['questions.md', 'defaults.md', 'floor.md'].every(file => existsSync(join(bootstrapExisting.ws, '.llm', 'bootstrap', bsExistingOpen.id, file))) && ['norm-decision-tiers', 'norm-audit-trail', 'norm-verify-tiers'].every(id => bsExistingGraph.nodes.get(id)?.parent === 'goal-1') && bsQuiet(bootstrapExisting), `line ${(bootstrapExisting.steps[0]?.line?.resultText ?? '').slice(0, 60).replace(/\n/g, ' ')}; open ${bsExistingOpen?.data?.path ?? 'none'}`],
   ['bootstrap-existing: the two drafted questions go through propose_to_human with attach bootstrap:<id>:cost and :touch, each question ends with the takeover\'s attach line, the simulated human agrees once', bsAsks.every((_, index) => bsResultOf(bsPutAt + index)?.attach === `bootstrap:${bsExistingOpen?.id}:${bsAsks[index].which}`) && bsExistingQuestions.every((node, index) => (node?.body ?? '').endsWith(takeoverAttachLine(`bootstrap:${bsExistingOpen?.id}:${bsAsks[index].which}`))) && bsExistingReplies.length === 1, `attach ${JSON.stringify(bsAsks.map((_, index) => bsResultOf(bsPutAt + index)?.attach ?? null))}; ${bsExistingReplies.length} reply(ies)`],
   ['bootstrap-existing: record_human_answer decides both with the human\'s words and hands each back: the takeover journal has asked cost and touch once each, and /hourness-init status says the human agreed', bsExistingQuestions.every(node => node?.status === 'done' && node.history.at(-1)?.relay !== undefined) && bsAsks.every((_, index) => String(bsResultOf(bsRecordAt + index)?.handedBack ?? '').startsWith(`Takeover ${bsExistingOpen?.id}`)) && isDeepStrictEqual(bsExistingAsked, [{ which: 'cost', questionId: 'question-1' }, { which: 'touch', questionId: 'question-2' }]) && bsLine(bsStatusStep, 'success', '花钱或独占：你说了，主 Agent 还没记进规范'), `asked ${JSON.stringify(bsExistingAsked)}; handed back ${JSON.stringify(bsAsks.map((_, index) => String(bsResultOf(bsRecordAt + index)?.handedBack ?? '').slice(0, 40)))}; status ${(bsStatusStep?.line?.resultText ?? '').replace(/\n/g, ' ').slice(0, 120)}`],
