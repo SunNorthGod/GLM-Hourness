@@ -21,7 +21,9 @@ import type { AwaitingEntry } from '../src/graph/live.ts'
 import type { LoadedGraph } from '../src/graph/parse.ts'
 import { planOf } from '../src/graph/plain-view.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
+import type { Board, BoardState } from '../ui/src/graph/boards.ts'
 import { LIGHT_TOKENS, PANEL_CSS } from '../ui/src/graph/styles.ts'
+import { GUIDE_LINE } from '../ui/src/metrics/board.ts'
 import { at } from './execute-helpers.ts'
 import { graphOf, node } from './graph-memory.ts'
 
@@ -74,6 +76,8 @@ interface Views {
   readonly Home: unknown
   readonly NodeRow: unknown
   readonly PlanPage: unknown
+  readonly GuidePage: unknown
+  readonly registerBoard: (board: Board) => void
   readonly ServicesContext: { readonly Provider: unknown }
   readonly NowContext: { readonly Provider: unknown }
   readonly MainChatContext: { readonly Provider: unknown }
@@ -81,11 +85,11 @@ interface Views {
 
 let loaded: Promise<Views> | undefined
 
-/** Home.tsx, common.tsx, Plan.tsx and MainChat.tsx in one ES module bundle over the stand-ins, loaded once. */
+/** Home.tsx, common.tsx, Plan.tsx, MainChat.tsx, Guide.tsx and the board table in one ES module bundle over the stand-ins, loaded once. */
 function views(): Promise<Views> {
   loaded ??= build({
     stdin: {
-      contents: `export { jsx, markup } from 'react'; export { Home } from './Home.tsx'; export { NodeRow, NowContext, ServicesContext } from './common.tsx'; export { PlanPage } from './Plan.tsx'; export { MainChatContext } from './MainChat.tsx'`,
+      contents: `export { jsx, markup } from 'react'; export { Home } from './Home.tsx'; export { NodeRow, NowContext, ServicesContext } from './common.tsx'; export { PlanPage } from './Plan.tsx'; export { MainChatContext } from './MainChat.tsx'; export { GuidePage } from './Guide.tsx'; export { registerBoard } from './boards.ts'`,
       resolveDir: fileURLToPath(new URL('../ui/src/graph/', import.meta.url)),
       loader: 'js',
     },
@@ -114,7 +118,7 @@ function views(): Promise<Views> {
 const NOW = Date.parse(at(10_000))
 
 /** One view inside the panel's contexts: the clock, the services, and the main agent's chat being this one. */
-async function render(view: keyof Pick<Views, 'Home' | 'NodeRow' | 'PlanPage'>, props: Record<string, unknown>): Promise<string> {
+async function render(view: keyof Pick<Views, 'Home' | 'NodeRow' | 'PlanPage' | 'GuidePage'>, props: Record<string, unknown>): Promise<string> {
   const v = await views()
   const inner = v.jsx(v[view], props)
   const chat = v.jsx(v.MainChatContext.Provider, { value: { chat: { kind: 'here' }, open: () => undefined }, children: inner })
@@ -213,6 +217,39 @@ test('list rows carry no type name: the node row with and without its status, an
     for (const name of typeNames) assert.ok(!text.includes(name), `no type name ${name} in: ${text}`)
   }
   assert.ok(pages[2].includes('进行中'), 'a row with its status shows the status')
+})
+
+/** A board whose state per session is fixed by the test (the guide page reads only snapshot). */
+function fixedBoard(id: string, states: Readonly<Record<string, BoardState>>): Board {
+  const none: BoardState = { available: false, homeLine: null, guideLine: null, peakApplies: false }
+  return { id, label: id, subscribe: () => () => undefined, snapshot: sessionId => states[sessionId] ?? none, Page: () => null }
+}
+
+test('the guide page: the metrics board adds its guideLine after the loops block while it is there with a line; otherwise the page is the six blocks as before (guide-metrics-line, metrics design §11 item 19)', async () => {
+  const v = await views()
+  const on: BoardState = { available: true, homeLine: null, guideLine: null, peakApplies: false }
+  const guide = (sessionId: string): Promise<string> => render('GuidePage', { sessionId, onOpenBoard: noop, onDone: noop })
+  v.registerBoard(fixedBoard('rules', { present: on, off: on, silent: on, unregistered: on }))
+  v.registerBoard(fixedBoard('loops', { present: on, off: on, silent: on, unregistered: on }))
+  const six = ['一眼看懂', '你要做的只有回话', '让主 Agent 接手', '规则板', '循环板', '去哪看进度']
+  // Before the metrics board registers: the six blocks only.
+  const before = await guide('unregistered')
+  assert.deepEqual(sections(before), six)
+  v.registerBoard(fixedBoard('metrics', {
+    present: { ...on, guideLine: GUIDE_LINE },
+    off: { available: false, homeLine: null, guideLine: GUIDE_LINE, peakApplies: false },
+    silent: on,
+  }))
+  const present = await guide('present')
+  assert.deepEqual(sections(present), ['一眼看懂', '你要做的只有回话', '让主 Agent 接手', '规则板', '循环板', '指标板', '去哪看进度'], 'the line sits after the loops block')
+  assert.ok(present.includes(`<div class="glmg-meta">${GUIDE_LINE}</div>`), 'the text is the board\'s GUIDE_LINE')
+  assert.ok(present.includes('去看指标板 ›'))
+  assert.equal(present.replace(/<section class="glmg-part"><div class="glmg-section">指标板<\/div>.*?<\/section>/u, ''), before, 'the six blocks and the footer are unchanged')
+  for (const sessionId of ['off', 'silent']) {
+    const absent = await guide(sessionId)
+    assert.equal(absent, before, `${sessionId}: no metrics line`)
+    assert.ok(!absent.includes(GUIDE_LINE) && !absent.includes('去看指标板'))
+  }
 })
 
 /** The relative luminance of an sRGB colour (WCAG 2.1). */

@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1579" height="18978" viewBox="0 0 1579 18978" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="219eba07bea9">
-<title>项目图 · 修订 219eba07bea9 · 267 个节点</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1579" height="18978" viewBox="0 0 1579 18978" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="e70a7c069c8c">
+<title>项目图 · 修订 e70a7c069c8c · 267 个节点</title>
 <defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6b7280"/></marker><marker id="graph-arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7c3aed"/></marker></defs>
 <rect width="1579" height="18978" fill="#ffffff"/>
 <g data-legend="true" transform="translate(20 20)">
 <rect width="596" height="134" rx="8" fill="#f9fafb" stroke="#e5e7eb"/>
-<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 219eba07bea9 · 267 个节点</text>
+<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 e70a7c069c8c · 267 个节点</text>
 <text x="10" y="48.2" font-size="12" fill="#6b7280">状态</text>
 <rect x="54" y="37" width="28" height="14" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="88" y="48.2" font-size="12" fill="#111827">完成</text>
@@ -1588,10 +1588,10 @@ onboarding · 特性 · 进行中</title>
 <text x="1067.5" y="9749.6" text-anchor="middle" font-size="13" fill="#111827">怎样上手</text>
 <text x="1067.5" y="9765.4" text-anchor="middle" font-size="11" fill="#6b7280">onboarding</text>
 </g>
-<g data-id="guide-metrics-line" data-type="task" data-status="doing" data-tone="doing">
+<g data-id="guide-metrics-line" data-type="task" data-status="done" data-tone="done">
 <title>上手页给指标板补上一句介绍
-guide-metrics-line · 任务 · 进行中</title>
-<rect x="1274" y="9710" width="211" height="67" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+guide-metrics-line · 任务 · 完成</title>
+<rect x="1274" y="9710" width="211" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1379.5" y="9731.6" text-anchor="middle" font-size="13" fill="#111827">上手页给指标板补上一句介</text>
 <text x="1379.5" y="9749.6" text-anchor="middle" font-size="13" fill="#111827">绍</text>
 <text x="1379.5" y="9765.4" text-anchor="middle" font-size="11" fill="#6b7280">guide-metrics-line</text>
