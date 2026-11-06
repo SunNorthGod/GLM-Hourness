@@ -31,6 +31,7 @@ import type { UserNotice } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { git, init, journal, rootAgent, takeoverHost as host, transitionAgent } from './bootstrap-host.ts'
 import { designHost, type DesignHost, type FakeAgent } from './design-host.ts'
+import { captureWarnings } from './graph-helpers.ts'
 import { serviceStore } from './fake-rc3.ts'
 
 const kinds = (messages: readonly unknown[]): string[] => messages.map(message => String((message as UserNotice).source.kind))
@@ -436,6 +437,22 @@ test('wants: true while the project has no graph or an open takeover, false for 
   assert.deepEqual(journal(ws).filter(record => record.op === 'takeover-wish').map(record => record.data?.text), ['补一补'])
   assert.equal((await init(made, agent, 'off')).kind, 'success')
   assert.equal(await service.wants(ws), false)
+})
+
+test('wants: a takeover journal that cannot be read does not stop an ordinary /wish: the takeover warns and answers no (§3.1)', async () => {
+  const made = host()
+  const ws = made.workspace('wbroken')
+  existingProject(ws)
+  assert.ok((await openEngine(join(ws, 'docs', 'graph')).apply('human', { op: 'propose', reason: '种子', node: { type: 'goal', title: '目标' } })).ok)
+  mkdirSync(join(ws, '.llm', 'bootstrap', 'journal.jsonl'), { recursive: true })
+  const service = made.services.get(BOOTSTRAP_SERVICE) as { wants(cwd: string): Promise<boolean> }
+  const { result, warnings } = await captureWarnings(() => service.wants(ws))
+  assert.equal(result, false)
+  assert.equal(warnings.filter(warning => warning.includes('cannot be read, /wish goes on without the takeover')).length, 1)
+  const agent = await rootAgent(made, 's-w-broken', 'wbroken', false)
+  const run = await made.execute(agent, '/wish')
+  assert.equal(run?.result.kind, 'success', run?.result.text)
+  assert.ok(!run?.result.text.includes('接管'), 'M3 alone answered')
 })
 
 test('holds: M3\'s stage reminder leaves the interview of a held goal to the takeover and stops the note; a new project and a closed takeover keep it (row #7)', async () => {
