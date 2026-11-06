@@ -380,7 +380,7 @@ export async function runTrial(input: TrialInput): Promise<TrialFile> {
       const reused = input.previous?.results.find(result => result.head === input.head && result.text === command.text && result.envKey === envKey && result.kind === command.kind && !['not-run', 'running', 'sandbox-broken'].includes(result.outcome))
       if (reused !== undefined) {
         await settle(resultOf(command, { ...reused, envKey, reused: true }))
-        if (command.kind === 'setup' && reused.outcome !== 'passed' && reused.outcome !== 'failed') setupFailed = true
+        if (command.kind === 'setup' && reused.outcome !== 'passed') setupFailed = true
         continue
       }
       if (left() <= 0) {

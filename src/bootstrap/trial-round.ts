@@ -141,8 +141,10 @@ export function maybeStartRound(start: RoundStart, deps: RoundDeps): Promise<Tri
   const probes = probesOf(scan, fresh)
   const planKey = planKeyOf(head ?? '', commands, probes)
   const previous = readTrialFile(root, takeover.id)
-  if (previous?.planKey === planKey) return undefined
-  const round = (previous?.round ?? 0) + 1
+  // The same plan runs once; a round of it left unfinished by a host that died is picked up (§9.2): settled results are reused, the rest run.
+  const resumed = previous?.planKey === planKey
+  if (resumed && previous.done) return undefined
+  const round = resumed ? previous.round : (previous?.round ?? 0) + 1
   const minutes = Number.isInteger(deps.trialMinutes) && deps.trialMinutes >= 1 && deps.trialMinutes <= 240 ? deps.trialMinutes : TRIAL_MINUTES_DEFAULT
   const settled = async (result: TrialResult): Promise<void> => {
     await appendTakeover(root, takeover.id, [{

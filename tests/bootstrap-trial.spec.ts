@@ -339,6 +339,31 @@ test('a round starts once the takeover\'s own merge gate is on the graph, writes
   assert.equal(notices.length, 1)
   assert.match(String(notices[0]?.content[0]?.text), /trial finished: \d+ passed, \d+ failed, \d+ not conclusive in isolation, 1 not run/)
   assert.equal(maybeStartRound({ root, takeover, graph, scan, files }, deps), undefined, 'the same plan is not run twice')
+  // A host that died mid-round left the same plan unfinished: the round is picked up, the settled half reused, the rest run, then the notice (§9.2, review B6 F2).
+  assert.ok(!['not-run', 'running', 'sandbox-broken'].includes(file.results[0]?.outcome ?? 'not-run'), `the first command settled: ${String(file.results[0]?.outcome)}`)
+  writeFileSync(join(root, '.llm', 'bootstrap', takeover.id, 'trial.json'), `${JSON.stringify({ ...file, done: false, results: file.results.slice(0, 1) }, null, 2)}\n`)
+  const resumed = maybeStartRound({ root, takeover, graph, scan, files }, deps)
+  assert.ok(resumed !== undefined, 'an unfinished round of the same plan starts again')
+  const finished = await resumed
+  assert.equal(finished.done, true)
+  assert.equal(finished.round, file.round, 'the same round, finished')
+  assert.deepEqual(finished.results.map(result => [result.text, result.reused === true]), [['npm test', true], ['npm run deploy', false]])
+  assert.equal(notices.length, 2, 'the finished notice is sent for the picked-up round')
+  assert.equal(readTrialFile(root, takeover.id)?.done, true)
+})
+
+test('a reused setup result that did not pass marks the commands run after it with afterSetupFailure (§6.3, review B6 F1)', async () => {
+  const { root, head } = fixture()
+  const tmp = mkdtempSync(join(tmpdir(), 'trial-tmp-'))
+  const setup = command('node scripts/shape.js', { kind: 'setup' })
+  const gate = command('node scripts/pass.js')
+  const first = await runTrial({ root, takeoverId: 'tk-setupreu', head, round: 1, commands: [gate], probes: ['node --version'], sandbox: passThrough(), totalMs: 120_000, commandMs: 3_000, tmp })
+  const failedSetup: TrialResult = { commandId: setup.id, text: setup.text, kind: 'setup', cls: setup.cls, node: setup.node, origin: setup.origin, outcome: 'failed', exit: 1, limitMs: 3_000, limitSource: 'ceiling', head, envKey: first.envKey, coldCache: true }
+  const previous: TrialFile = { ...first, results: [failedSetup] }
+  const file = await runTrial({ root, takeoverId: 'tk-setupreu', head, round: 2, commands: [setup, gate], probes: ['node --version'], sandbox: passThrough(), totalMs: 120_000, commandMs: 3_000, tmp, previous })
+  assert.deepEqual([file.results[0]?.outcome, file.results[0]?.reused], ['failed', true], 'the failed setup is reused')
+  assert.equal(file.results[1]?.outcome, 'passed', 'the gate command ran')
+  assert.equal(file.results[1]?.afterSetupFailure, true, 'and carries afterSetupFailure')
 })
 
 test('status lines, the finished notice and the red checkers of a round (§3.2, §5.6 items 4 and 5, paths #4)', () => {
