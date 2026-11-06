@@ -25,7 +25,7 @@ import { LOOP_EVENT_TABLE } from './events.ts'
 import { validateEntry, type LoopEntry, type LoopEntryDefinition } from './model.ts'
 import { DETAILS_MAX_LINES, DETAILS_MAX_WIDTH, type ContributeResult, type Contribution, type ContributionSource } from './service.ts'
 import type { LoopEventDeclaration } from './trigger.ts'
-import type { DetailsRead } from './view.ts'
+import type { DetailsRead, ViewCheck } from './view.ts'
 
 /** Who the loop row is when it hands its own entries over. */
 export const LOOPS_SOURCE: ContributionSource = { plugin: 'dsh-hourness', row: 'glm-hourness/loops' }
@@ -49,6 +49,14 @@ const PARAM_TYPES: readonly unknown[] = ['string', 'number', 'boolean']
 const COMPARES: Readonly<Record<string, string>> = { in: 'string', is: 'boolean', atLeast: 'number', paths: 'strings' }
 /** The package that brings the events of a namespace, for the sentence about an event nobody declares. */
 const EVENT_HOMES: ReadonlyMap<string, string> = new Map([['hourness', 'dsh-hourness'], ['env', 'dsh-hourness'], ['graph', 'dsh-hourness'], ['channel', 'dsh-glm-zcode']])
+/** The most checks a hand-over gives the page of one entry (service.ts `checks`). */
+const PAGE_CHECKS = 10
+/** The outer shape of one check the page lists: a key, a title and a timeout with a positive number; the page checks the rest of the timeout itself (plain-ui 1.3 §8.2). */
+function isViewCheck(value: unknown): value is ViewCheck {
+  if (!isRecord(value) || typeof value.key !== 'string' || typeof value.title !== 'string' || !isRecord(value.timeout)) return false
+  const seconds = value.timeout.seconds
+  return typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0
+}
 
 type Rec = Readonly<Record<string, unknown>>
 
@@ -348,6 +356,15 @@ export interface LoopsRegistry {
   /** The row that declared this event (`<row>` of its hand-over), for the record of what handed an event over; undefined for an event nobody declares. */
   declarerOf(event: string): string | undefined
   /**
+   * The checks the hand-over that brought this entry gives the page for one
+   * project (plain-ui 1.3 §8.2): at most 10 of the page's shape. Undefined
+   * when no held hand-over has the entry, or its `checks` is absent, throws
+   * or hands something that is not a list (the reason is told once); items
+   * of the wrong outer shape are left out and told. The page checks the
+   * inside of each timeout itself.
+   */
+  checksOf(entry: string, project: string): readonly ViewCheck[] | undefined
+  /**
    * What the hand-over that brought this entry gives the page for one project root (design §3.1 `details`):
    * undefined when no held hand-over has the entry or its source gives no details; otherwise the lines, or why
    * the page cannot show them (the call threw, or its answer broke the limits of service.ts). Never throws.
@@ -489,6 +506,32 @@ export function createRegistry(options: RegistryOptions = {}): LoopsRegistry {
         if (typeof source.run !== 'function') return undefined
         // Called through the hand-over, so the row's own `this` is its own object.
         return { run: (action, event) => source.run?.(action, event) ?? Promise.resolve({ outcome: 'failed', reason: 'run 不在了' }), actions: held.check.actions.map(action => action.id) }
+      }
+      return undefined
+    },
+    checksOf(entry, project) {
+      for (const held of holders.values()) {
+        if (!held.check.entries.some(item => item.definition.id === entry)) continue
+        const source = held.contribution
+        if (typeof source.checks !== 'function') return undefined
+        const who = `${held.source.plugin} 的 ${held.source.row} 给「${entry}」的`
+        let checks: unknown
+        try {
+          // Called through the hand-over, so the row's own `this` is its own object.
+          checks = source.checks(entry, project)
+        }
+        catch (error) {
+          say(`${who} checks 抛错：${error instanceof Error ? error.message : String(error)}`)
+          return undefined
+        }
+        if (!Array.isArray(checks)) {
+          say(`${who} checks 不是一列，页面上不列`)
+          return undefined
+        }
+        const first = (checks as readonly unknown[]).slice(0, PAGE_CHECKS)
+        const listed = first.filter(isViewCheck)
+        if (listed.length !== first.length) say(`${who} checks 有读不懂的项，页面上不列那几项`)
+        return listed
       }
       return undefined
     },

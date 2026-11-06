@@ -38,13 +38,14 @@ import { graphService } from '../graph/service.ts'
 import { installContribution, loopsService } from '../loops/service.ts'
 import { installFilesEdited } from './edited.ts'
 import { createEnvService, ENV_SERVICE } from './env-service.ts'
-import { CHECK_LIMIT_DESCRIPTION, CHECK_LIMIT_PARAMETERS, checkLimit } from './limit-tool.ts'
+import { CHECK_LIMIT_DESCRIPTION, CHECK_LIMIT_PARAMETERS, checkLimit, limitsFile, parseLimits } from './limit-tool.ts'
 import { CHECKS_ENTRY_ID, envContribution, ENV_ROW_SOURCE } from './loop-entry.ts'
 import { envNotice } from './notice.ts'
 import { createChecker, readOwnChecks } from './runner.ts'
 import { emitSuppressionCount } from './metrics.ts'
 import { dailySuppressions, type SuppressionRecord } from './suppressions.ts'
-import { envStatusItems } from './status.ts'
+import { checkTimeouts, envStatusItems, envTimeoutItems } from './status.ts'
+import { parseTiming, timingFile } from './timeout.ts'
 
 /** The row's context: the agent lifecycle event, service lookup and provision, the tools service, and cordis inject when the host has it. */
 export interface EnvContext extends ServiceLookup, Partial<ProvideHost> {
@@ -167,26 +168,37 @@ export function apply(ctx: EnvContext, config: EnvConfig = {}): () => void {
     recordRun: (run) => { loopsService(ctx)?.recordRun({ ...run, entry: CHECKS_ENTRY_ID }) },
   })
   const installed = new WeakSet<AgentLike>()
-  // The row's status view (status hub design 0.3 §3.2, §12 M4 row): the one `env/suppressions`
-  // entry, the latest daily count, computed when the collector asks. The session's repository is
-  // the working directory seen at agent creation; a session the row does not know, or one outside
-  // a project, has no entry. A journal that is not there yet is no entry, not an error; one that
-  // cannot be read is, and the collector takes the placeholder.
+  // The row's status view (status hub design 0.3 §3.2, §12 M4 row): the `env/suppressions` entry,
+  // the latest daily count, and the `env/timeouts` entry, the checks' timeouts out of the timing
+  // journal and limits.jsonl the runner writes (the same project directory, projectHomeFor),
+  // computed when the collector asks. The session's repository is the working directory seen at
+  // agent creation; a session the row does not know, or one outside a project, has no entry. A
+  // journal that is not there yet is no entry, not an error; one that cannot be read is, and the
+  // collector takes the placeholder.
   const readFile = config.readFile ?? ((path: string) => readFileSync(path, 'utf8'))
+  /** A journal's text; a journal that is not there yet is empty, any other failure throws for the collector. */
+  const readJournal = (file: string): string => {
+    try {
+      return readFile(file)
+    }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''
+      throw error
+    }
+  }
   const sessions = new Map<string, string>()
   const status = provideRowStatus(ctx, 'env', (sessionId) => {
     const cwd = sessionId === undefined ? undefined : sessions.get(sessionId)
     const root = typeof cwd === 'string' && cwd.length > 0 ? projectOf(cwd)?.root : undefined
     if (root === undefined) return []
     const file = suppressionsPath(dataService(ctx)?.projectDirOf?.(cwd) ?? join(root, '.llm'))
-    let raw: string
-    try {
-      raw = readFile(file)
-    }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
-      throw error
-    }
+    // The checks' journals are where the runner writes them (runner.ts: projectHomeFor with no row home).
+    const home = projectHomeFor(ctx, undefined, cwd)
+    const nowMs = Date.now()
+    const timeouts = home === undefined
+      ? []
+      : envTimeoutItems(checkTimeouts(parseTiming(readJournal(timingFile(home))).lines, parseLimits(readJournal(limitsFile(home))).lines, nowMs), timingFile(home), nowMs)
+    const raw = readJournal(file)
     const records = raw.split('\n').filter(line => line.trim().length > 0).flatMap(line => {
       try {
         const parsed: unknown = JSON.parse(line)
@@ -198,7 +210,7 @@ export function apply(ctx: EnvContext, config: EnvConfig = {}): () => void {
         return []
       }
     })
-    return envStatusItems(records, file)
+    return [...envStatusItems(records, file), ...timeouts]
   })
   disposers.push(() => { status.dispose() })
   disposers.push(ctx.on('agent/created', ({ agent }) => {
@@ -239,7 +251,7 @@ export function apply(ctx: EnvContext, config: EnvConfig = {}): () => void {
     }))
   }
   // The event of changed files and the checker's entry on the loop board (design §6.8): warned once and kept on the activation line when refused.
-  disposers.push(installContribution(ctx, ENV_ROW_SOURCE, () => envContribution(project => checker.details(project)), CHECKS_ENTRY_ID, (message) => {
+  disposers.push(installContribution(ctx, ENV_ROW_SOURCE, () => envContribution(checker), CHECKS_ENTRY_ID, (message) => {
     console.warn(`${name}: ${message}`)
     health.reactivate('degraded', message)
   }))

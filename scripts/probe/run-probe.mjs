@@ -51,7 +51,10 @@
  * journal holds every line in between. In env-checks-ceiling a check held at
  * its ceiling is one line in the root agent's environment notice, which
  * check_limit takes away by raising the ceiling, and a dispatched subagent
- * never hears of it. The loop board's peak scenario
+ * never hears of it; right after the raise the status hub's collector reads
+ * the env row's env/timeouts with the held check and the raised ceiling,
+ * and the env row's hand-over gives the loop board's page the check with
+ * its timeout held at the ceiling and the raise. The loop board's peak scenario
  * (loops-peak) runs on the GLM route at the probe clock inside a peak, with
  * the loop row and the rules row (少做) enabled and no contribution listing
  * execute.resume-drive: the scripted agent becomes the main agent with /wish,
@@ -1191,6 +1194,8 @@ const envCeilingRun = runScenario('env-checks-ceiling', 'deepseek-probe', [
   { tool: { name: 'write', arguments: { file_path: join(envCeilingWs, 't.txt'), content: 'a\n' } } },
   { tool: { name: 'read', arguments: { file_path: join(envCeilingWs, 't.txt') } } },
   { tool: { name: 'check_limit', arguments: { check: 'tool-1/full', seconds: 120, reason: ENV_CEILING_REASON } } },
+  // Asked once check_limit's result is back: the hub step records the env row's entries after the raise, and the tool reads what the env row hands the loop board's page.
+  { tool: { name: 'probe_loop_page', arguments: { entry: 'env.checks-after-edit' } }, hub: true },
   { tool: { name: 'probe_dispatch', arguments: { task: 'T1', prompt: 'Probe task T1: report.', cwd: envCeilingWs, scope: 'allowed', model: 'deepseek-probe' } } },
   { text: 'Waiting for task T1.' },
   { text: 'done' },
@@ -1207,6 +1212,12 @@ const envCeilingChildNotices = envNoticesOf(envCeilingChild)
 const envCeilingLimitResult = (() => { try { return JSON.parse(lastToolResult(envCeilingMain[3])?.text ?? '') } catch { return undefined } })()
 const envCeilingLimitLines = existsSync(envCeilingLimits) ? readFileSync(envCeilingLimits, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
 const envCeilingJournal = jsonl(join(envCeilingWs, '.llm', 'env-checks', 'timing.jsonl'))
+// The status hub's collector right after check_limit (status hub batch 9): the env row's env/timeouts entry.
+const envCeilingHub = envCeilingMain[3]?.hub
+const envCeilingTimeouts = envCeilingHub?.agent?.items.find(item => item.id === 'env/timeouts')
+// What the env row hands the loop board's page right after check_limit (panel done condition 8-1): one detail line per check, the check with its timeout.
+const envCeilingPage = readEnvLog(envCeilingLog).find(record => record.kind === 'page')?.page
+const envCeilingCheck = Array.isArray(envCeilingPage?.checks) ? envCeilingPage.checks[0] : undefined
 
 // Rules board, a rule of the person across the end of a peak (M6 S3, M6
 // design §16 S3, §7.3, docs/ORCHESTRATION.md §16.12). The clone's rules file
@@ -3220,6 +3231,8 @@ const checks = [
   ['env-checks-ceiling: an estimate of 25 s is held at the 60 s ceiling: the value line records the 75 s wanted', envCeilingRun.status === 0 && envCeilingJournal[0]?.kind === 'value' && envCeilingJournal[0].limitMs === 60000 && envCeilingJournal[0].capped?.wantedMs === 75000 && envCeilingJournal[0].cap?.by === 'default', `exit ${envCeilingRun.status}; ${JSON.stringify(envCeilingJournal.slice(0, 2))}`],
   ['env-checks-ceiling: the root agent\'s environment notice gets the held-at-its-ceiling line with the full key, and check_limit is in its tool face', envCeilingMainNotices.some(text => text.split('\n').includes(ENV_CEILING_HELD)) && names(envCeilingMain[0]).has('check_limit'), envCeilingMainNotices.map(text => text.slice(0, 400).replace(/\n/g, ' | ')).join(' || ')],
   ['env-checks-ceiling: check_limit raises the ceiling to 120 s and limits.jsonl has the raise with the reason and the session; the next notice has no held line', envCeilingLimitResult?.outcome === 'raised' && envCeilingLimitResult.capS === 120 && envCeilingLimitResult.previousCapS === 60 && envCeilingLimitLines.length === 1 && envCeilingLimitLines[0].action === 'raise' && envCeilingLimitLines[0].check === 'tool-1/full' && envCeilingLimitLines[0].reason === ENV_CEILING_REASON && envCeilingLimitLines[0].session === envCeilingStarted?.parentId && !(envNoticesOf(envCeilingMain.slice(-1)).at(-1) ?? '').includes('held at its ceiling'), `${JSON.stringify(envCeilingLimitResult ?? lastToolResult(envCeilingMain[3])?.text ?? null)}; ${JSON.stringify(envCeilingLimitLines)}`],
+  ['env-checks-ceiling: right after check_limit the collector reads env/timeouts at the agent audience: tool-1/full held at 60 s, and under it the raise to 120 s with its reason (status hub batch 9)', envCeilingHub?.error === undefined && envCeilingHub?.agent?.rows.every(row => row.outcome !== 'error') === true && envCeilingTimeouts?.audience === 'agent' && envCeilingTimeouts.text.startsWith('- tool-1/full：超时 60 秒（') && envCeilingTimeouts.text.includes('想要 75 秒，被上限截在 60 秒') && (envCeilingTimeouts.detail ?? []).some(line => line.startsWith('  - 上限已由主 Agent 调高到 120 秒 · ') && line.includes(`：${ENV_CEILING_REASON}；要改回，跟主 Agent 说`)), JSON.stringify(envCeilingHub ?? null).slice(0, 1200)],
+  ['env-checks-ceiling: right after check_limit the env row hands the loop board\'s page one detail line for the check (no timeout in it) and the check with its timeout: 60 s from the estimate of 25 s, held by the cap at 75 s, the raise to 120 s with its reason, a history and no timeouts (panel done condition 8-1)', isDeepStrictEqual(envCeilingPage?.details, ['Full：改了 *.txt 之后跑 · node fast.mjs {files}']) && envCeilingPage.checks.length === 1 && envCeilingCheck?.key === 'tool-1/full' && envCeilingCheck.title === 'Full：full' && envCeilingCheck.timeout?.seconds === 60 && envCeilingCheck.timeout.source?.kind === 'agent-estimate' && envCeilingCheck.timeout.source.estimateS === 25 && isDeepStrictEqual(envCeilingCheck.timeout.held, { by: 'cap', wantedS: 75 }) && envCeilingCheck.timeout.capRaised?.capS === 120 && envCeilingCheck.timeout.capRaised.reason === ENV_CEILING_REASON && Array.isArray(envCeilingCheck.timeout.history) && envCeilingCheck.timeout.history.length >= 1 && isDeepStrictEqual(envCeilingCheck.timeout.timeouts, []) && envCeilingCheck.timeout.timeouts7d === 0, JSON.stringify(envCeilingPage ?? null).slice(0, 1200)],
   ['env-checks-ceiling: a subagent\'s environment notice has the checks line and no held line', envCeilingStarted !== undefined && envCeilingChild.length > 0 && envCeilingChildNotices.length > 0 && envCeilingChildNotices.every(text => text.includes('Checks run after each edit (listed on the loop board): full on *.txt.') && !text.includes('held at its ceiling')), `${envCeilingChild.length} child request(s); ${envCeilingChildNotices.map(text => text.slice(0, 300).replace(/\n/g, ' | ')).join(' || ')}`],
   ['env-notice: the row appended .llm/ to the clone\'s .git/info/exclude and check-ignore verifies it', envIgnored === 0 && envExclude.split('\n').filter(line => line.trim() === '.llm/').length === 1, `check-ignore exit ${envIgnored}; exclude lines: ${envExclude.split('\n').filter(line => line.trim() === '.llm/').length}`],
   titleCheck('client-modules (probe-full)', clientModules.steps[0]?.meta, ['glm', 'hourness']),

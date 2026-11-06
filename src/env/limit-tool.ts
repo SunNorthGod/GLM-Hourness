@@ -80,7 +80,8 @@ export function parseLimits(text: string): LimitBook {
   return { lines, bad }
 }
 
-function limitsFile(home: string): string {
+/** The limits file of a project directory, beside the timing journal. */
+export function limitsFile(home: string): string {
   return join(home, 'env-checks', 'limits.jsonl')
 }
 

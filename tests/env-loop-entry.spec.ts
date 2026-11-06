@@ -74,9 +74,12 @@ test('the checker\'s entry: its words, and five own rules built from the constan
   assert.equal(checksOwnRules()[4], '同时最多跑 2 项检查；排队超过 60 秒的这一次不跑，下一次改动再查')
   assert.equal(codePointCount(checksOwnRules()[4] ?? ''), 35)
   assert.ok(checksOwnRules().every(line => codePointCount(line) <= 80))
-  const contribution = envContribution(project => [`lines of ${project}`])
+  const check = { key: 'tool-1/lint', title: 'Lint：lint', timeout: { seconds: 60, source: { kind: 'ceiling' as const } } }
+  const contribution = envContribution({ details: project => [`lines of ${project}`], checks: project => [{ ...check, key: `${check.key}@${project}` }] })
   assert.deepEqual(contribution.details?.('env.checks-after-edit', 'C:/p'), ['lines of C:/p'])
   assert.deepEqual(contribution.details?.('env.other', 'C:/p'), [])
+  assert.deepEqual(contribution.checks?.('env.checks-after-edit', 'C:/p'), [{ ...check, key: 'tool-1/lint@C:/p' }], 'the page gets the checker\'s checks of that project')
+  assert.deepEqual(contribution.checks?.('env.other', 'C:/p'), [])
 })
 
 test('the env row hands the event over when an agent arrives', async () => {

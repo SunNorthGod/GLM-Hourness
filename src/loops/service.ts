@@ -27,6 +27,7 @@
 import type { ServiceLookup } from '../shared/dsh-min.ts'
 import type { LoopEntryDefinition } from './model.ts'
 import type { LoopEventDeclaration } from './trigger.ts'
+import type { ViewCheck } from './view.ts'
 
 export type { LoopEventDeclaration, LoopEventField, LoopEventParam } from './trigger.ts'
 
@@ -109,6 +110,8 @@ export interface Contribution {
    * writes view.json; an answer that throws or does not keep to this is shown as unreadable and told to the row health.
    */
   details?(entry: string, project: string): readonly string[]
+  /** For the page only: the checks the entry runs in the project, each with its timeout in the shape the page words (plain-ui 1.3 §8.2). Synchronous, does not throw, at most 10. */
+  checks?(entry: string, project: string): readonly ViewCheck[]
 }
 
 /** The most lines a hand-over's `details` may give for one entry (loop board design §3.1). */
