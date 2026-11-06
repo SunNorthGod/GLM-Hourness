@@ -378,7 +378,7 @@ function checkLearning(args: unknown, now: Date): LearningRequest | Refusal<'inv
 
 const LEARNING_DESCRIPTION = [
   'Read-only: lists the kinds of correction the person has made to your work, in the last 28 days or since `since`, that happened at least `minCount` times (default 2). Each group has its key, what the key means, how many times it happened, examples, how many memories, lessons, notes and habit questions already settle it (learned), whether the group was already put to the person as a habit question and how that went (asked), how many times it came back after the first of those (recurrences) and the counts of the last four weeks (weekly).',
-  'Call it when the learning digest reminder arrives or the person asks what could be learned. It writes nothing. Settle a group with memory_store or lessons_merge and name the group key in learnedFrom, or with a graph_comment on the node that starts "学自：" and the key. Example key: edit:task.acceptance, "the person changed the acceptance the agent had set on a task".',
+  'Call it when the learning digest reminder arrives or the person asks what could be learned. It writes nothing. Settle a group with memory_store or lessons_merge and name the group key in learnedFrom, or with a graph_comment on the node that starts "学自：" and the key; a rule proposal is put with propose_to_human and rule, and a "学自：" comment on a question settles a group only when the question carries that rule. Example key: edit:task.acceptance, "the person changed the acceptance the agent had set on a task".',
 ].join('\n')
 
 async function signals(env: MemoryEnv, args: unknown, exec: unknown): Promise<unknown> {

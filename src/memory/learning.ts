@@ -18,6 +18,7 @@ import type { Fold, JournalRecord } from '../data/journal.ts'
 import { isObject, listOf } from '../data/refusal.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import { activeLessons, lessonsFold, type LessonsState } from '../lessons/model.ts'
+import { effectOf } from './effect.ts'
 import type { HabitMarker } from './habit.ts'
 import { memoryFold, NOTICE_KEYS_MAX, type LearnNotice, type MemoryState, type Scope } from './model.ts'
 import { recurrences, weeklyCounts, type DepthWrite, type Landing, type SignalEvent } from './signals.ts'
@@ -144,9 +145,14 @@ export function lessonLandings(read: Collected<LessonsState>): Landing[] {
 /** A comment on a node that names the group it settles; the key ends at a space or at punctuation. */
 const NOTE_KEY = /学自：([^\s，。；、]+)/gu
 
-/** The comments of the graph that begin a landing with `学自：<key>`. */
+/**
+ * The comments of the graph that begin a landing with `学自：<key>`. On a
+ * question the comment lands only when the question is a rule proposal with
+ * its expected effect (src/memory/effect.ts): a question without one is not
+ * a rule proposal the harness can check, so it settles nothing.
+ */
 export function noteLandings(nodes: Iterable<GraphNode>): Landing[] {
-  return [...nodes].flatMap(node => node.history.flatMap(entry => entry.op === 'comment'
+  return [...nodes].filter(node => node.type !== 'question' || effectOf(node.body) !== undefined).flatMap(node => node.history.flatMap(entry => entry.op === 'comment'
     ? [...(entry.text ?? '').matchAll(NOTE_KEY)].map(match => ({ key: match[1], at: entry.at }))
     : []))
 }
@@ -251,6 +257,6 @@ export const LEARNING_NOTICE = [
   'Call learning_signals to see the groups.',
   'For each group that has no landing yet, choose one: a preference the person has stated, a lesson, a habit question (memory_habit ask), a rule proposal or a candidate exercise, and record the group key with it (learnedFrom, or a "学自：<key>" comment on the node).',
   'Call memory_habit ask after the propose_to_human calls of the same reply, never before them.',
-  'A rule proposal goes to the person with propose_to_human.',
+  'A rule proposal goes to the person with propose_to_human and rule (its expected effect: which count, which way, after how many days); the harness checks it when the days are up.',
   'This is advice, not a rule.',
 ].join(' ')

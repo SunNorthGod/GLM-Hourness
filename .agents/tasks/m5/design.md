@@ -414,12 +414,43 @@ Learning digest (hourness): in the last 28 days the person corrected the same ki
 | 偏好（`feedback` 带 `relay`） | 人在对话里说过 | 否 | 条目的 `learnedFrom` |
 | 推测（`feedback` 不带 `relay`，会淡忘） | 只能从改动里看出来 | 否；`learning_signals` 列出，人删就撤 | 同上 |
 | 经验 | 某种情况下的坑与解法 | 否 | 经验的 `learnedFrom`（`lessons_merge` 的参数） |
-| 规则提议 | 要 harness 执行，写得成规则板的词汇 | 是：`rules_propose` 在规则板里记提议，主 Agent 用 M3 的 `propose_to_human`（`attach` 指向它）把它作为四行方案交给人，人同意后 `record_human_answer`（规则板 0.10 §9.3）；规则行不在时，主 Agent 用 `propose_to_human` 直接提一张待决（`kind: 'question'`，不带 `attach`；M3 附录 0.5 §3.4：`question` 新提时由它自己提议待决节点，不先 `graph_propose`，R4-05） | 给人看的四行里不加这一项；主 Agent 在对应的提议或待决节点上用 `graph_comment` 记一行 `学自：<键>`，`learning_signals` 从节点历史里读 |
+| 规则提议 | 要 harness 执行，写得成规则板的词汇 | 是：`rules_propose` 在规则板里记提议，主 Agent 用 M3 的 `propose_to_human`（`attach` 指向它）把它作为四行方案交给人，人同意后 `record_human_answer`（规则板 0.10 §9.3）；规则行不在时，主 Agent 用 `propose_to_human` 直接提一张待决（`kind: 'question'`，不带 `attach`；M3 附录 0.5 §3.4：`question` 新提时由它自己提议待决节点，不先 `graph_propose`，R4-05） | 给人看的四行里不加这一项；`propose_to_human` 带 `rule`（预期效果，§3.6.1）；主 Agent 在对应的提议或待决节点上用 `graph_comment` 记一行 `学自：<键>`，`learning_signals` 从节点历史里读，待决上的只有带预期效果时才算 |
 | 候选标定题 | 同类失败两次以上，或人出手救场（M7 §3.14.5） | 否 | 复盘节点的 `候选标定题：` 一栏后加 `学自：<键>`（栏名是 M7 0.6 的固定标签） |
 
 4. 观察：`recurrences(groups, outcomes)` 数「学过之后」同组的新事件，`learning_signals` 每次附前 4 周每周的次数（`docs/CHARTER.md` §8：只看走向）。复发不降的组，主 Agent 在下一次摘要之后换落点（例如经验升为规则提议）；规范阶梯（M7 §3.12.2）的输入是规范节点与违规记录，M5 的组进不了它，M5 不去碰。
 
 这一条不新增给人的待决：只有规则提议到人面前，而那是主 Agent 判断之后提的，经过规则板的提议和 M3 的 `propose_to_human`，四行方案的格式与每次至多三件由它们管。
+
+#### 3.6.1 规则提议的预期效果（`m5-rule-expected-effect`）
+
+人 2026-11-05「那两件也按你说的来」；依据每周阅读 2026-11-05 报告 A5、D3、D10。规则提议交给人时写明预期效果：看哪个数、往哪边变、多久后核对。实现在 `src/memory/effect.ts`（纯函数，校验、图上的固定写法与读回、给人看的一段），设计行的 `propose_to_human` 与 `record_human_answer` 调用它。
+
+形状：`propose_to_human` 的参数 `rule`，只给 `kind: question`、`form: recommend`。带 `rule` 的问题就是规则提议。
+
+| 字段 | 必填 | 内容 |
+| --- | --- | --- |
+| `change` | 是 | `add`（新增或加严）或 `lift`（撤下） |
+| `effect` | 是 | 给人看的一句，至多 60 个码点，一行，不含换词表上的词，不含 `·` |
+| `metric` | 是 | `corrections:<组键>`（组键同 `learning_signals`：`edit:<类型>.<字段>`、`reject:<类型>`、`reopen:<类型>`、`chat:reject`、`chat:add`；`depth:*` 不在图上，不收）或 `denials:<规则 id>`（id 取 `CATALOG`，`src/rules/builtin.ts`） |
+| `direction` | 是 | `down` 或 `up` |
+| `days` | 是 | 同意之后多少天核对，整数 7–56 |
+| `lift` | `lift` 时必填 | 撤下的规则 id（`CATALOG`） |
+| `cover` | `lift` 时与 `ablation` 二选一 | 覆盖同一类调用的替补规则 id（`CATALOG`，不等于 `lift`） |
+| `ablation` | `lift` 时与 `cover` 二选一 | 单层消融的结果原文，1–6000 码点；与 `attach` 互斥 |
+
+任何一项缺或不合格得 `invalid`，`field` 是 `rule` 或 `rule.<字段>`，`hint` 写怎么补；撤规则既没有替补也没附消融时 `field` 是 `rule.cover`，`hint` 说「写替补；没有替补时先只关这一条规则跑一遍，把结果放进 `ablation`」。别的问法带 `rule`、只带 `question` 与 `text` 的再展示带 `rule` 都是 `invalid`。
+
+图上存的：问题节点 `body` 的开头几行（带 `attach` 时在板的原文之前，`body` 仍以板的提议行结尾）：`规则提议：新增` 或 `规则提议：撤下 <lift>`、`预期效果：<effect>`、`核对：<metric> 变少|变多，同意后 <days> 天`；撤下时再一行 `替补：<cover>` 或 `替补：没有，附了单层消融的结果`，后面接消融原文。读回（`effectOf`）只认这几行的精确写法，读回的结果再过一遍同一个校验。
+
+给人看的：问话（与 `choose` 的列表）之后接一段「预期效果：<effect>；同意后 <days> 天核对，没做到会写进晨报。」，撤下时再一行「撤下 <lift>，替补是 <cover>，它也管同一类调用。」或「撤下 <lift>，没有替补，单层消融的结果在下面。」；消融原文在最后，`message` 要求原样放进回复。只带 `question` 与 `text` 的再展示从图上读出同一段。
+
+改稿：带预期效果的问题改稿时必须再带 `rule`（缺了 `invalid`，`field: rule`），新的一段整段替换旧的。
+
+同意：附了消融的撤规则提议，`record_human_answer` 同意前核对最近一次展示之后主 Agent 说的话里有整份消融原文（规整后比较），没有就 `not_shown`，图不变。
+
+学习流水线的落点：问题节点上的 `学自：<键>` 只有在这个问题带预期效果时才算落点；别的类型节点上的照旧算。提醒文字与 `learning_signals` 的说明写明规则提议用 `propose_to_human` 带 `rule`。
+
+不做的事：到期没做到只在晨报里列出，harness 与 agent 都不因此撤、改或加严规则；要撤要改，照旧提给人（`d-rules-human-only`）。规则板的 `rules_propose` 带同一栏、人设规则的 id 进名单，等规则板 R3（`rules-r4d`）。
 
 ### 3.7 汇报细度闭环（m5-5）
 

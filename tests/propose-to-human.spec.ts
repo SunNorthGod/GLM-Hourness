@@ -295,7 +295,7 @@ test('the tool description carries the shapes of a question and the worked examp
   assert.match(tool.description, /^Put one matter to the human: one question they can answer in a few words\. The harness checks it, keeps it on the graph when the human decides it, and returns the text to show\./)
   for (const kind of ['question', 'confirm', 'release']) assert.ok(tool.description.includes(`kind ${kind}:`), kind)
   const properties = (tool.parameters as { properties: Record<string, unknown> }).properties
-  assert.deepEqual(Object.keys(properties), ['kind', 'text', 'form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'sample', 'goal', 'module', 'page', 'parent', 'question', 'sources', 'attach'])
+  assert.deepEqual(Object.keys(properties), ['kind', 'text', 'form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'sample', 'goal', 'module', 'page', 'parent', 'question', 'sources', 'attach', 'rule'])
   assert.deepEqual((tool.parameters as { required: string[] }).required, ['kind', 'text'])
 })
 

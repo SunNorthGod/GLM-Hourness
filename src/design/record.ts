@@ -30,6 +30,7 @@ import { releaseUserPage, renderUserGraph, userGraphOf, type UserPage } from '..
 import { ANSWER_MARKS, DELEGATED, DELEGATIONS_ID, DELEGATION_LIMIT, DELEGATION_REASON, DELEGATION_SUFFIX, answerCallMark, delegationKindOf, type AnswerKind } from '../shared/answer-marks.ts'
 import type { ToolDefinitionLike } from '../shared/dsh-min.ts'
 import { RECORD_HUMAN_ANSWER } from '../shared/tool-names.ts'
+import { effectOf } from '../memory/effect.ts'
 import { askBoard, attachDigest, boardOfBody, piecesNotShown } from './attach.ts'
 import { emitMetric } from './metrics.ts'
 import type { DesignToolDeps } from './propose.ts'
@@ -236,6 +237,7 @@ async function answer(deps: DesignToolDeps, where: Where, graph: LoadedGraph, st
   const shown = state.shown.filter(entry => entry.question === node.id && entry.time >= start)
   const tail = args.answer === 'agree' ? await proof(deps, where.cwd, node, shown.at(-1)) : ''
   if (args.answer === 'agree') sampleSeen(shown)
+  if (args.answer === 'agree') ablationSeen(node, shown.at(-1))
 
   await write(where.dir, graph, node, args, said.ok ? said.relay : '', call, tail)
   const handedBack = args.answer === 'agree' ? await handBack(deps, where, node, said.ok ? said.relay : '') : undefined
@@ -599,6 +601,19 @@ function sampleSeen(shown: readonly Shown[]): void {
   const last = shown.filter(entry => entry.exact !== undefined).at(-1)
   if (last?.exact === undefined) return
   if (!normalizeTalk(last.after).includes(normalizeTalk(last.exact))) refuse('not_shown', 'The human has not seen the whole page or sample they must see before agreeing', SAMPLE_NOT_SHOWN)
+}
+
+/**
+ * A rule proposal that lifts a rule no other rule covers carries the result of
+ * a one-layer ablation (src/memory/effect.ts): the human agrees only after the
+ * whole of it was in what the main agent said after the last showing of the
+ * question. The text is read from the question's body, where the harness kept
+ * it, so a showing with question and text alone counts too.
+ */
+function ablationSeen(node: GraphNode, last: Shown | undefined): void {
+  const ablation = effectOf(node.body)?.ablation
+  if (ablation === undefined) return
+  if (last === undefined || !normalizeTalk(last.after).includes(normalizeTalk(ablation))) refuse('not_shown', 'The human has not seen the whole ablation result they must see before agreeing to take the rule off', SAMPLE_NOT_SHOWN)
 }
 
 /**
