@@ -583,6 +583,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-06 14:18 第五次有工作流写进主检出：package.json 的 test:1 多了 tests/guard-scratch-worker.spec.ts，来自 M7 guard-fix 步（wf_36d1d690c7e1de90，.worktrees/m3 里同样的改动）。已存档 .agents/tasks/zcode-parity/stray/package.json-guard-scratch-worker-1418.patch 并 restore，已告知该步只用工作树绝对路径。任务书提醒挡不住，「工具层挡住写主检出」需要单开一条线（与 M7 的写范围检查同一类）。"
+    },
+    {
+      "at": "2026-11-06T08:49:44.563Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 16:48 Kiro 重启后对账：M7（wf_36d1d690c7e1de90）停在 real-model-run-3、接管（wf_f008ac0c87ec6943）停在 B6 修复，两条已恢复；消融后台队列（pid 60792）仍在跑，高峰 14:00–18:00 不开新格，18:00 后接着跑；M7 第三次真实运行同样只在高峰外跑。主检出已跟踪文件干净，三把锁空闲。"
     }
   ]
 }

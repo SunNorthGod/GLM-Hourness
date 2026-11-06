@@ -390,6 +390,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "接管线（wf_f008ac0c87ec6943）B6 bootstrap-trial 做完，四个提交 ef6f086（源码：trial-env、trial-plan、trial、trial-round，dsh-min 的 sandbox 结构类型，killTree 导出）、4047a30（L2 12/12）、2b4bc95（L3 场景 bootstrap-trial）、aa62ce4（文档）已推 origin/bootstrap。最后的树上 build、preflight、lint、npm test（3277/0）、探针 439/439 绿，棘轮 73/18/1。真实 rc.3 Windows ACL 沙盒上：子进程看不到 GITHUB_TOKEN，写试跑目录外被拒（confinement-limited，EPERM 那一行），脚本里的 git push 没落地，管道起孙进程为 confinement-limited（U1、U4、U7、U8 成立）。行仍默认禁用。下一步 B6 评审；B7 仍等 M7 的 gate-norm.ts、floor.ts 进 main。"
+    },
+    {
+      "at": "2026-11-06T08:49:44.279Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B6 bootstrap-trial 评审 CHANGES_REQUESTED，2 条挡路：F1 复用的失败的准备命令之后的命令没标 afterSetupFailure（trial.ts:381-383）；F2 宿主在一轮中途退出后，同一份计划的轮次再也不跑（trial-round.ts:143-144）。门禁与探针 439/439 绿。循环接着修（第 11 轮）。"
     }
   ]
 }
