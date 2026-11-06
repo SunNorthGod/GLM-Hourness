@@ -2,6 +2,7 @@
   "id": "d-publish-as-is",
   "type": "decision",
   "title": "公开时照现在的形态发，内嵌的逐字文本不另做处理",
+  "why": "公开时不为内嵌的原文改发布形态，省掉另做一套读取办法",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "人就逐字文本与发布形态表态，并要编排方给许可建议",
       "relay": "zcode不开源的嘛。。。你就发就完事了，考虑那么多",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:55.144Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "公开时不为内嵌的原文改发布形态，省掉另做一套读取办法"
+        }
+      }
     }
   ]
 }

@@ -2,6 +2,7 @@
   "id": "norm-review-floor",
   "type": "norm",
   "title": "本仓库必须全审的改动",
+  "why": "碰到拦截、权限、删东西一类的改动一定全审，主 Agent 绕不过去",
   "status": "approved",
   "parent": "hourness",
   "body": "question-38 C：审查深浅由主 Agent 定（全审：更强的模型对照验收逐条看；轻审：只扫改动；不审：只改文档、错字一类），但改动落在下列任一类时由 harness 强制全审，按改动的文件与执行的命令判断，主 Agent 绕不过去。例外：清理已合进主干的分支与工作树不算「删东西」，因为每件活收尾都要做，删除前 harness 先存快照（d-main-agent-shell 的细则）。周报统计降档或不审的活后来返工的次数，哪一类返工多就提议加进清单，人点头才改；放松清单要人同意。",
@@ -52,6 +53,19 @@
             "删东西、推送这类收不回的操作：删文件或分支（清理已合入的除外）、推送、改写提交历史 `deletes` `commands git push, git branch -d, git branch -D, git update-ref -d, git filter-branch, git filter-repo`",
             "改用户配置目录（~/.dsh、~/.zcode 等）或写到项目目录之外 `outside`"
           ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T05:26:38.068Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "碰到拦截、权限、删东西一类的改动一定全审，主 Agent 绕不过去"
         }
       }
     }

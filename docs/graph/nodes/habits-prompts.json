@@ -1,0 +1,100 @@
+{
+  "id": "habits-prompts",
+  "type": "task",
+  "title": "第二次返工先提醒、汇报说清可靠度、规范写意图",
+  "why": "人的工程习惯里不等 M7 的三处先落到框架里，别的项目的模型也照做",
+  "status": "done",
+  "parent": "orch",
+  "kind": "implement",
+  "body": "d-habits-into-framework 的一部分，依据报告 .agents/tasks/habits-framework/report.md 3.1。三处：节点第二次从做完重开时，graph_status 的结果带一句「这是第二次修，先找出原因写进节点再改」（src/graph/reopen.ts、tools.ts）；主 Agent 身份段的 TALK_GUIDE 加一句汇报可靠度，身份段上限 3000 抬到 3200（m7 分支同一断言合入时取 3200）；graph_propose 的工具说明对规范节点加一句写意图、不穷举。CHARTER.md §9 与 ORCHESTRATION.md §2.4、主 Agent 对话一节同批改写。",
+  "acceptance": [
+    "第二次把做完的节点重开时，工具结果多一句先找原因写进节点再改；第一次没有，第三次只有原来那条问人的提示",
+    "主 Agent 身份段有一句：每个结论说清读过、跑过还是推断，先前的结论被推翻、检查没过放在最前面说；身份段不超过 3200 字符，抬上限的理由写在断言旁",
+    "提规范节点时，提议工具的说明写明正文写意图与判断依据，不列哪些算哪些不算，能量的检查写成检查行或门禁行",
+    "CHARTER.md §9 与 ORCHESTRATION.md 同批改写；L2 钉住，门禁全绿，改动在 main 上，桌面版重启后没有新错误"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "4598fa7",
+      "note": "第二次返工先提醒、汇报说清可靠度、规范写意图，CHARTER §9 与 ORCHESTRATION 同批"
+    },
+    {
+      "kind": "commit",
+      "ref": "51af510",
+      "note": "合入 main，两个远端一致"
+    },
+    {
+      "kind": "test",
+      "ref": "build、preflight、npm test、check-lint、npm run -s probe on the merged tree",
+      "exit": 0
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-05T13:48:48.685Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "d-habits-into-framework 里现在就能在 main 上做、不碰 M7 的三处（报告 3.1 的 H4a、H6/H7、H9）加 CHARTER §9 改写；编排方派 habits-prompts（wf_7bd410e5bb88654f）。",
+      "relay": "其余是\n哦，ide那条也加进去吧",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-05T13:48:49.329Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 habits-prompts（wf_7bd410e5bb88654f）开工，工作树 .worktrees/habits-prompts，基点 cf0ed57",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-05T16:08:34.624Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "habits-prompts（wf_7bd410e5bb88654f）code 步完成：提交 4598fa7 推到 origin/habits-prompts，build、preflight、npm test、check-lint（eslint 73 / knip 18 / jscpd 1）、探针 420/420 全部退出 0；报告 .agents/tasks/habits-prompts/code-report.md。下一步评审。"
+    },
+    {
+      "at": "2026-11-05T16:34:29.732Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "评审（wf_7bd410e5bb88654f review）APPROVED，没有挡路项，记录 .agents/tasks/habits-prompts/review.md。不挡路 2 条：一是主 Agent 对话一段的上限 1800 抬到 2000、graph_propose 说明的上限 700 抬到 900，超出 Q3 原话只说的整段 3200，两处都是加句子所需，理由写在断言旁，提交说明写明；二是与本节点无关的 tests/loops-run.spec.ts 第 12 项修复放在了功能提交里（AGENTS.md 第 7 条一件事一个提交）。编排方保留现状：这项修复是那条偶发失败的根因修法，也正挡着 compact-recall-redact 的合入；提交已推，拆开要改写已推的历史。合入步在跑。"
+    },
+    {
+      "at": "2026-11-05T18:25:37.607Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入步（wf_7bd410e5bb88654f land）报告：5b42f28 合入 main（51af510），origin 与 github 一致，门禁绿，工作树与分支已删。桌面版没有重启成功：01:28 与 02:03 两次启动都报 desktop welcome: Web authentication failed，与本节点代码无关（失败在桌面壳里，插件还没应答）。记录 .agents/tasks/habits-prompts/desktop-start-failure.md。桌面重启后的核对等 cookie 清理之后补做。"
+    },
+    {
+      "at": "2026-11-05T18:29:31.006Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人同意清 cookie（原话见 d-desktop-cdp-only 2026-11-06 的编辑）。编排方告知合入步（wf_7bd410e5bb88654f land）：桌面版不在运行时备份 %APPDATA%\\@deepseek-ai\\dsh-desktop\\Network\\Cookies 与 Cookies-journal 到 .agents/tasks/habits-prompts/，删掉 host_key='127.0.0.1' 且 name 以 dsh-auth- 开头的行，再按 9333 启动，核对没有新的崩溃报告、两个包的启用行都在运行、dist 等于 main HEAD。结果记在 desktop-start-failure.md。"
+    },
+    {
+      "at": "2026-11-05T18:37:42.293Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "habits-prompts（wf_7bd410e5bb88654f）完成：评审 APPROVED，没有挡路项；合入 main 51af510，origin 与 github 经 ls-remote 一致，合入树门禁全绿，棘轮 eslint 73 / knip 18 / jscpd 1；主检出 dist 按 main 重建；桌面版在删掉 71 个过期 dsh-auth cookie（已备份）之后启动，没有新的崩溃日志，9333 应答，启用的行都在运行，控制台没有本项目包的错误。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "4598fa7",
+          "note": "第二次返工先提醒、汇报说清可靠度、规范写意图，CHARTER §9 与 ORCHESTRATION 同批"
+        },
+        {
+          "kind": "commit",
+          "ref": "51af510",
+          "note": "合入 main，两个远端一致"
+        },
+        {
+          "kind": "test",
+          "ref": "build、preflight、npm test、check-lint、npm run -s probe on the merged tree",
+          "exit": 0
+        }
+      ]
+    }
+  ]
+}

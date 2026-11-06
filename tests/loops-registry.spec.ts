@@ -12,16 +12,18 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { CHANNEL_EVENTS } from '../src/loops/channel.ts'
+import { CHANNEL_EVENTS, CHANNEL_LOGIN_REJECTED, CHANNEL_PEAK_CHANGED, CHANNEL_QUOTA_LOW, channelEntries, loginRejectedKey, quotaLowKey } from '../src/loops/channel.ts'
 import { LOOP_ACTIONS, LOOP_DEFAULTS, DEPENDENCY_FILES } from '../src/loops/defaults.ts'
 import { fileChangedKey, hostRestartedKey, LOOP_EVENT_TABLE, LOOP_EVENTS, waitingOnHumanKey } from '../src/loops/events.ts'
 import { apply, inject, name, type LoopsContext } from '../src/loops/index.ts'
-import type { LoopEntryDefinition } from '../src/loops/model.ts'
-import { createRegistry, validateContribution, type LoopsRegistry } from '../src/loops/registry.ts'
+import { validateEntry, type LoopEntryDefinition } from '../src/loops/model.ts'
+import { createRegistry, LOOPS_SOURCE, validateContribution, type LoopsRegistry } from '../src/loops/registry.ts'
 import { LOOPS_SERVICE, loopsService, type Contribution, type ContributionSource, type LoopEventDeclaration, type LoopEventField, type LoopEventParam, type LoopEventRecord, type LoopsService } from '../src/loops/service.ts'
 import { validateWhen } from '../src/loops/trigger.ts'
 import { collectHealth, healthServiceName } from '../src/shared/health.ts'
 import { plainWordsIn } from '../src/graph/plain-question.ts'
+import { GLM_LOOP_DEFAULTS } from '../src/glm-llm/loop-defaults.ts'
+import type { UsagePricing } from '../src/shared/pricing.ts'
 import { fakeInjector, serviceStore } from './fake-rc3.ts'
 
 const NOW = new Date('2026-11-02T01:00:00Z')
@@ -638,6 +640,34 @@ test('runOfAction hands the run of the row that listed an action, and the loop r
   assert.deepEqual(await own('loops.peak-end', record), { outcome: 'skipped', reason: 'the specs do not run it' }, 'the run is the one the hand-over brought')
 })
 
+test('checksOf hands the page the checks the hand-over that brought an entry gives for one project: at most 10 of the page\'s shape; a member that is absent, throws or is not a list gives none and is told once', () => {
+  const { registry, reports } = registryWith()
+  const weekly = (id: string): LoopEntryDefinition => ({ id, title: id, why: '每周一提醒一次', when: { kind: 'cron', expression: '0 9 * * 1' }, action: { kind: 'tell-main', text: 'Monday.', wake: true } })
+  const check = (key: string): unknown => ({ key, title: `Lint：${key}`, timeout: { seconds: 60, source: { kind: 'ceiling' } } })
+  const asked: Array<[string, string]> = []
+  registry.contribute(ENV, {
+    entries: [weekly('env.checks'), weekly('env.quiet')],
+    checks: (entry, project) => { asked.push([entry, project]); return (entry === 'env.checks' ? [...Array.from({ length: 11 }, (_, index) => check(`tool-1/c${index}`)), { key: 'odd' }] : []) as never },
+  })
+  const checks = registry.checksOf('env.checks', 'C:/p')
+  assert.deepEqual(asked, [['env.checks', 'C:/p']], 'called for that entry and project')
+  assert.deepEqual([checks?.length, checks?.[0]], [10, check('tool-1/c0')])
+  assert.deepEqual(registry.checksOf('env.quiet', 'C:/p'), [])
+  assert.equal(registry.checksOf('nobody.entry', 'C:/p'), undefined, 'an entry nobody hands over has none')
+  assert.deepEqual(reports, [], 'the eleventh check is past the limit, not unreadable')
+  registry.contribute(EXECUTE, { entries: [weekly('execute.weekly')], checks: () => { throw new Error('boom') } })
+  assert.equal(registry.checksOf('execute.weekly', 'C:/p'), undefined)
+  registry.checksOf('execute.weekly', 'C:/p')
+  registry.contribute(OPERATE, { entries: [weekly('operate.weekly')], checks: () => 'one check' as never })
+  assert.equal(registry.checksOf('operate.weekly', 'C:/p'), undefined)
+  assert.deepEqual(reports, ['dsh-hourness 的 glm-hourness/execute 给「execute.weekly」的 checks 抛错：boom', 'dsh-hourness 的 glm-hourness/operate 给「operate.weekly」的 checks 不是一列，页面上不列'], 'told once each')
+  registry.contribute(OPERATE, { entries: [weekly('operate.weekly')], checks: () => [check('tool-2/a'), { key: 'tool-2/b', title: 'B', timeout: { seconds: 0 } }] as never })
+  assert.deepEqual(registry.checksOf('operate.weekly', 'C:/p'), [check('tool-2/a')])
+  assert.equal(reports.at(-1), 'dsh-hourness 的 glm-hourness/operate 给「operate.weekly」的 checks 有读不懂的项，页面上不列那几项')
+  registry.contribute(OPERATE, { entries: [weekly('operate.weekly')] })
+  assert.equal(registry.checksOf('operate.weekly', 'C:/p'), undefined, 'a hand-over without checks gives none')
+})
+
 // ---------------------------------------------------------------- the row skeleton
 
 /** Capture what the row warns about while `body` runs. */
@@ -734,18 +764,96 @@ test('the row ships enabled in the orchestration patch (no disabled key), is reg
 
 // ------------------------------------------------------------ what src/loops/ is not
 
-test('src/loops/ holds no other row\'s table and no channel file: nothing imports the execution, operation, env or GLM rows, or the channel contract', () => {
+test('src/loops/ holds no other row\'s table: nothing imports the execution, operation, env or GLM rows but index.ts the env row\'s seam file, and only channel.ts reads the channel contract', () => {
   const directory = new URL('../src/loops/', import.meta.url)
   const files = readdirSync(directory).filter(file => file.endsWith('.ts'))
   assert.ok(files.includes('registry.ts') && files.includes('defaults.ts'))
-  // channel.ts declares the one channel event the loop row derives itself; the two account-level ones wait for M6 Q1 and Q2.
-  assert.deepEqual(CHANNEL_EVENTS.map(declared => declared.id), ['channel.peak-changed'])
+  // channel.ts declares the three channel events and is the one place the channel's loopDefaults become entries (design §3.4).
+  assert.deepEqual(CHANNEL_EVENTS.map(declared => declared.id), ['channel.peak-changed', 'channel.quota-low', 'channel.login-rejected'])
   for (const file of files) {
     const text = readFileSync(new URL(file, directory), 'utf8')
     const specifiers = [...text.matchAll(/(?:^|\n)\s*(?:import|export)\s[^;]*?\sfrom\s+['"]([^'"]+)['"]/g)].map(match => match[1] ?? '')
-    for (const specifier of specifiers) assert.doesNotMatch(specifier, /(?:^|\/)(execute|operate|env|glm-llm|channel-loop)(?:\/|\.|$)/, `${file} imports ${specifier}`)
+    // The board's check entries read the env row through the one file m4 design §6.1.2 names for it, wired in index.ts (checksSeam).
+    const seam = (specifier: string): boolean => file === 'index.ts' && specifier === '../env/env-service.ts'
+    for (const specifier of specifiers.filter(found => !seam(found))) assert.doesNotMatch(specifier, /(?:^|\/)(execute|operate|env|glm-llm)(?:\/|\.|$)/, `${file} imports ${specifier}`)
+    if (file !== 'channel.ts') for (const specifier of specifiers) assert.doesNotMatch(specifier, /(?:^|\/)channel-loop(?:\.|$)/, `${file} imports ${specifier}`)
     // The one id of another row the board may name is the execute row's resume-drive, which design §6.9 item 4 row 3 (with §17 M7 item 6) makes the board call by id; peak.ts is the only file that names it.
     const withoutResume = text.replace(/['"`]execute\.resume-drive['"`]/g, '')
     assert.doesNotMatch(withoutResume, /['"`](?:execute|operate|env)\.[a-z]/, `${file} writes an id of another row`)
   }
+})
+
+// ------------------------------------------------------------ the channel's entries (design §3.4, §4.3)
+
+const glmPricing = (loopDefaults: unknown): UsagePricing => ({ basis: 'probe', plan: 'GLM Coding Plan', charged: () => undefined, peak: () => false, loopDefaults } as unknown as UsagePricing)
+
+test('the three channel events: the account-level two declare the fields and params of design §4.3, nobody picks them, and their keys name one occurrence', () => {
+  const byId = new Map(CHANNEL_EVENTS.map(declared => [declared.id, declared]))
+  const quota = byId.get(CHANNEL_QUOTA_LOW)
+  assert.deepEqual(quota?.fields.map(field => [field.name, field.type]), [['window', 'string'], ['usedPercent', 'number'], ['resetAt', 'string'], ['line', 'string']])
+  assert.deepEqual(quota?.params?.map(param => [param.name, param.required, param.min, param.max]), [['usedPercent', true, 1, 100], ['exhaustsWithinMinutes', true, 1, 1440], ['afterUsageMinutes', true, 1, 1440]])
+  const login = byId.get(CHANNEL_LOGIN_REJECTED)
+  assert.deepEqual(login?.fields.map(field => [field.name, field.type]), [['since', 'string'], ['path', 'string'], ['line', 'string']])
+  assert.ok(CHANNEL_EVENTS.every(declared => !declared.personSelectable))
+  assert.equal(quotaLowKey('five-hour', '2026-11-04T13:30:00.000Z'), 'quota-low:five-hour:2026-11-04T13:30:00.000Z')
+  assert.equal(loginRejectedKey('', '2026-11-04T09:40:00.000Z'), 'login-rejected:glm:2026-11-04T09:40:00.000Z')
+  assert.equal(loginRejectedKey('mint', '2026-11-04T09:40:00.000Z'), 'login-rejected:mint:2026-11-04T09:40:00.000Z')
+  for (const declared of CHANNEL_EVENTS) assert.deepEqual(plainWordsIn([declared.title, ...declared.fields.map(field => field.title), ...(declared.params ?? []).map(param => param.title)].join('\n')), [], declared.id)
+})
+
+test('channelEntries turns the GLM channel\'s four defaults into entries by design §3.4: two it does itself, two the board tells the main agent, for the machine', () => {
+  const entries = channelEntries(glmPricing(GLM_LOOP_DEFAULTS))
+  assert.deepEqual(entries.map(entry => entry.id), ['glm:peak-reminder', 'glm:quota-on-command', 'glm:quota-low', 'glm:login-rejected'])
+  const [peak, command, quota, login] = entries
+  assert.deepEqual([peak?.when, peak?.filter, peak?.action, peak?.scope], [{ kind: 'event', events: [CHANNEL_PEAK_CHANGED] }, { edge: { in: ['start'] } }, { kind: 'self', does: 'GLM 高峰开始时提醒模型', by: 'dsh-glm-zcode' }, undefined])
+  assert.deepEqual([command?.when, command?.action.kind], [{ kind: 'command', names: ['glm-status', 'hourness'] }, 'self'])
+  assert.deepEqual(quota?.when, { kind: 'event', events: [CHANNEL_QUOTA_LOW], params: { usedPercent: 80, exhaustsWithinMinutes: 60, afterUsageMinutes: 15 } })
+  assert.deepEqual([quota?.action.kind, quota?.action.kind === 'tell-main' && quota.action.wake, quota?.scope], ['tell-main', false, 'machine'])
+  assert.ok(quota?.action.kind === 'tell-main' && quota.action.text.includes('"{line}"'))
+  assert.deepEqual([login?.when, login?.action.kind, login?.scope], [{ kind: 'event', events: [CHANNEL_LOGIN_REJECTED] }, 'tell-main', 'machine'])
+  // Every one is a sound plugin entry against the table the channel events are in.
+  const table = new Map([...LOOP_EVENT_TABLE, ...CHANNEL_EVENTS.map(declared => [declared.id, declared] as const)])
+  for (const entry of entries) assert.deepEqual(validateEntry(entry, 'plugin', { table, now: NOW }), [], entry.id)
+})
+
+test('channelEntries drops a runBy that does not go with its when, and what the contract itself drops, each told once', () => {
+  const told: string[] = []
+  const entries = channelEntries(glmPricing([
+    { id: 'glm:low-self', title: '额度快用完', why: '通道自己做的额度提醒，这种搭配循环板不认', when: { kind: 'quota-low', usedPercent: 80, exhaustsWithinMinutes: 60, afterUsageMinutes: 15 }, runBy: 'channel' },
+    { id: 'glm:peak-board', title: '高峰开始', why: '循环板做的高峰提醒，这种搭配循环板不认', when: { kind: 'peak-start' }, runBy: 'loop-board', tell: 'x' },
+    { id: 'glm:later', title: '以后的', why: '通道以后加的触发', when: { kind: 'hourly' }, runBy: 'channel' },
+    GLM_LOOP_DEFAULTS[3],
+  ]), text => { told.push(text) })
+  assert.deepEqual(entries.map(entry => entry.id), ['glm:login-rejected'])
+  assert.equal(told.length, 3)
+  assert.ok(told[0]?.includes('"glm:later"'), 'the contract drops a when it does not know')
+  assert.ok(told.some(text => text.includes('glm:low-self') && text.includes('quota-low')))
+  assert.ok(told.some(text => text.includes('glm:peak-board') && text.includes('peak-start')))
+  assert.deepEqual(channelEntries(glmPricing(undefined)), [])
+})
+
+test('the registry lists the channel\'s entries after the hand-overs, from the glm-login row, active; an unsound one is dropped and told once; a hand-over still cannot bring a machine scope', () => {
+  const told: string[] = []
+  let defaults: readonly LoopEntryDefinition[] = channelEntries(glmPricing(GLM_LOOP_DEFAULTS))
+  const registry = createRegistry({ now: () => NOW, report: (text) => { told.push(text) }, channel: () => CHANNEL_EVENTS, channelEntries: () => defaults })
+  registry.contribute(LOOPS_SOURCE, { entries: LOOP_DEFAULTS, actions: LOOP_ACTIONS, run: () => Promise.resolve({ outcome: 'done' }) })
+  const listed = registry.entries()
+  assert.deepEqual(listed.slice(-4).map(item => [item.entry.id, item.state, item.entry.source.plugin, item.entry.source.row]), [
+    ['glm:peak-reminder', 'active', 'dsh-glm-zcode', 'glm-hourness/glm-login'],
+    ['glm:quota-on-command', 'active', 'dsh-glm-zcode', 'glm-hourness/glm-login'],
+    ['glm:quota-low', 'active', 'dsh-glm-zcode', 'glm-hourness/glm-login'],
+    ['glm:login-rejected', 'active', 'dsh-glm-zcode', 'glm-hourness/glm-login'],
+  ])
+  assert.match(listed.at(-1)?.entry.rev ?? '', /^[0-9a-f]{12}$/)
+  assert.equal(told.length, 0, told.join('；'))
+  // A tell that names a field the event does not declare: dropped, told once however often the board reads.
+  defaults = defaults.map(entry => entry.id === 'glm:login-rejected' && entry.action.kind === 'tell-main' ? { ...entry, action: { ...entry.action, text: 'Say {nothing}.' } } : entry)
+  registry.entries()
+  assert.equal(registry.entries().some(item => item.entry.id === 'glm:login-rejected'), false)
+  assert.equal(told.filter(text => text.startsWith('dsh-glm-zcode 的 glm-hourness/glm-login 交来的 glm:login-rejected 读不懂')).length, 1)
+  // Without the pricing service the channel has nothing on the board.
+  defaults = []
+  assert.equal(registry.entries().some(item => item.entry.source.plugin === 'dsh-glm-zcode'), false)
+  const handed = registry.contribute(EXECUTE, { entries: [{ id: 'execute.machine', title: '整台机器一件', why: '交来的条目不能是机器一级的', when: { kind: 'event', events: ['loops.host-restarted'] }, action: { kind: 'tell-main', text: 'x', wake: false }, scope: 'machine' }] })
+  assert.ok(handed.ok && handed.dropped.some(item => item.id === 'execute.machine' && item.reason.includes('scope')))
 })

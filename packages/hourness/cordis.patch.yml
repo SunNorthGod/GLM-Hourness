@@ -182,13 +182,24 @@
       # node and its tool children), the checks that run after edits, and the
       # scratch area for one-off scripts (.llm/scratch/). Before the first
       # notice for a repository it appends .llm/ to the clone's
-      # .git/info/exclude and verifies with git check-ignore. The check
-      # runner and the suppression count join with their tasks (m4-checks,
-      # m4-suppressions). Ships disabled until the L3 probe (scenario
-      # env-notice) and the first desktop pass (docs/DEVELOPMENT.md §3,
-      # AGENTS.md).
+      # .git/info/exclude and verifies with git check-ignore; once a day per
+      # repository it counts suppression comments (m4-suppressions). For the
+      # loop board it provides glmHournessEnv (the command of an approved
+      # check line, for the board's check entries) and hands over the event
+      # env.files-edited, emitted after each step that changed files
+      # (m4-checks). With the loop board on, the same step runs M4's own
+      # checks (the check lines with `when` of the approved tool nodes)
+      # through the shared executor and hands the agent the results before
+      # its next step; the board lists them as env.checks-after-edit. A
+      # check held at its ceiling is a line in the main agent's environment
+      # notice, and the tool check_limit (the reason it injects tools) raises
+      # or resets that ceiling. Ships enabled since the m4-checks enablement
+      # (2026-11-05): the L3 probe scenarios (env-notice, env-check-command,
+      # env-checks, env-checks-timeout, env-checks-timeout-run,
+      # env-checks-ceiling) passed; the first desktop pass
+      # (docs/DEVELOPMENT.md §3, AGENTS.md, M4 design §13.4) is still owed.
       name: dsh-hourness/env
-      disabled: true
+      inject: [tools]
       config: {}
     - id: glm-hourness/transcript
       # Session transcript (docs/DESIGN.md §2.4, §5.6): when a GLM compaction

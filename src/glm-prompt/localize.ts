@@ -104,6 +104,8 @@ export const MEMORY_Z2_LOCAL = 'You have a persistent memory that the harness ke
 export const MEMORY_Z6_LOCAL = 'The memory index is loaded into context each session \u2014 one line per memory (name, type, description); read a memory in full with memory_query.'
 /** ⑧ Memory section, L1: preferences carry the person's own words (`relay`); a project memory points at its source. */
 export const MEMORY_L1 = 'When the user tells you how to work, pass their own words in relay. A project memory names where the fact lives in source (a project graph node id, a doc section, a commit or a URL); that source stays the authority.'
+/** ⑧ Memory section, L3 (m5-habit-rule): a guessed habit is asked with memory_habit, which the memory row registers with the three memory tools, and never on a question card (rule habit-ask-first). */
+export const MEMORY_L3 = 'A habit you only guessed from how the user works is asked with memory_habit (ask, then confirm or decline on their words), never on a question card; after a no, the same habit is not asked again for 28 days.'
 /** ⑧ Memory section, L2: pitfalls and their fixes belong to the lessons board; only said when the request has `lessons_query`. */
 export const MEMORY_L2 = 'Pitfalls you hit and how you fixed them go on the lessons board; look them up with lessons_query.'
 /** ⑧ Memory section: the body line of the frontmatter block is a tool argument, `body`. */
@@ -130,7 +132,8 @@ export function buildMemorySectionDsh(withLessons: boolean): string {
     ZCODE_KINDS, '',
     MEMORY_Z6_LOCAL, '',
     MEMORY_SAVING_DSH, '',
-    MEMORY_L1,
+    MEMORY_L1, '',
+    MEMORY_L3,
     ...withLessons ? ['', MEMORY_L2] : [],
   ].join('\n')
 }

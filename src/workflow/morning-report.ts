@@ -14,11 +14,15 @@
  * the end instead of silently shaping the numbers.
  */
 import { auditPaths, type DecisionRecord, type UsageRecord } from '../memory/audit.ts'
-import { classifyRecord, type GuardRecord, type LiftRecord } from '../guard/records.ts'
-import { liftStatesOf } from '../guard/lift.ts'
-import { ruleStats } from '../guard/measure.ts'
+import { effectCheckLines, effectChecks, type EffectCheck, type JournalRead } from '../memory/effect.ts'
+import { classifyRecord, journalEarliest, type GuardRecord, type LiftRecord } from '../guard/records.ts'
+import { liftRecordPath } from '../guard/lift.ts'
+import { liftLines, renderStamp, ruleLines, type LiftsInput } from '../guard/status.ts'
+import { checkTimeouts, suppressionLineOf, timeoutLines } from '../env/status.ts'
 import { runGit } from '../data/git-process.ts'
 import type { SuppressionRecord } from '../env/suppressions.ts'
+import { parseLimits, type LimitLine } from '../env/limit-tool.ts'
+import { parseTiming, type TimingLine } from '../env/timeout.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { listOpenItems } from '../graph/projection.ts'
 import type { HistoryEntry } from '../graph/schema.ts'
@@ -66,20 +70,16 @@ export interface ReportInput {
   readonly offsetMinutes?: number | undefined
   /** The lift record of the project, over the WHOLE journal and the file (m4-gate G3, design §3.10) — not period-bounded; absent when the caller read nothing. */
   readonly lifts?: LiftsInput | undefined
+  /** The whole timing journal of the project's checks (m4-checks, design §6.3.1); its section counts the seven days before `now`. */
+  readonly timing?: readonly TimingLine[] | undefined
+  /** The readable lines of the project's limits.jsonl: a check's last line says whether the main agent raised its ceiling (design §6.3.1, P13-01). */
+  readonly limits?: readonly LimitLine[] | undefined
+  /** The moment the report is made, epoch milliseconds: the seven days of the checks section end here. */
+  readonly now?: number | undefined
   /** The metrics journal's facts and its 记录 coverage line, ready-made lines; absent when the caller passed no project. */
   readonly metrics?: readonly string[]
-}
-
-/** What the lift side of the report reads: the whole journal's lift records, the journal's earliest instant (gap records count their `since`), and the record file's text or read error. */
-export interface LiftsInput {
-  /** Every `kind: 'lift'` line of the whole violations journal. */
-  readonly records: readonly LiftRecord[]
-  /** The earliest instant any journal record (any class) carries; a gap record counts its `since`. Absent when the journal is empty. */
-  readonly earliest?: string | undefined
-  /** The record file's text, when the report knows the project root; absent without a root, and the report then derives the lifts from the journal alone. */
-  readonly file?: { readonly text: string } | { readonly error: string }
-  /** Whether git sees uncommitted changes to the record file (the caller ran `git status`, 5 seconds, failure absent). */
-  readonly uncommitted?: boolean | undefined
+  /** The checks of the rule proposals whose days fell due in the last seven days (src/memory/effect.ts); absent or empty when there are none. */
+  readonly effects?: readonly EffectCheck[]
 }
 
 /** The local calendar day of an instant, as 2026-10-27. */
@@ -141,20 +141,6 @@ const GAP_CLASS_LABELS: Readonly<Record<string, string>> = {
   deferral: '排队',
 }
 
-/** The suppression-comment line, or undefined when the period holds no count. */
-export function suppressionLineOf(records: readonly SuppressionRecord[]): string | undefined {
-  if (records.length === 0) return undefined
-  const total = records[records.length - 1].total
-  let up = 0
-  let down = 0
-  for (let index = 1; index < records.length; index++) {
-    const delta = records[index].total - records[index - 1].total
-    if (delta > 0) up += delta
-    else down -= delta
-  }
-  return up === 0 && down === 0 ? `压制注释 ${total} 处` : `压制注释 ${total} 处（本期 +${up} / −${down}）`
-}
-
 /** One violation line: the rule, the routes the dialect did not claim counted apart, the count. */
 function violationLines(records: readonly { rule: string, scope?: unknown }[]): string[] {
   const byRule = new Map<string, number>()
@@ -197,14 +183,16 @@ function requestLineOf(records: readonly { ref: string, outcome: string }[], gra
   return `- 申报 ${asked.size} 次：放行 ${approved}（已用 ${grants}、作废 ${voids}）、不放行 ${declined}、没答 ${unanswered}`
 }
 
-/** A journal timestamp as the report writes clock times: `MM-DD HH:mm` in the display zone. */
-function renderStamp(at: number, offsetMinutes: number): string {
-  const shifted = new Date(at + offsetMinutes * 60_000)
-  const month = `${shifted.getUTCMonth() + 1}`.padStart(2, '0')
-  const day = `${shifted.getUTCDate()}`.padStart(2, '0')
-  const hour = `${shifted.getUTCHours()}`.padStart(2, '0')
-  const minute = `${shifted.getUTCMinutes()}`.padStart(2, '0')
-  return `${month}-${day} ${hour}:${minute}`
+/**
+ * The section of the checks' timeouts (design §6.3.1, §3.10): the env
+ * module's facts and lines (src/env/status.ts `checkTimeouts`,
+ * `timeoutLines`), the same computation the status entry `env/timeouts`
+ * hands (status hub design 0.3 §12 M4 row). Empty when the journal has no
+ * value line.
+ */
+function timingSection(timing: readonly TimingLine[], limits: readonly LimitLine[], now: number, offsetMinutes: number): string[] {
+  const lines = timeoutLines(checkTimeouts(timing, limits, now), offsetMinutes)
+  return lines.length === 0 ? [] : ['', '## 检查的超时', ...lines]
 }
 
 /** The section of the asks: what waits for the person, who settled the rest, and how many dispatch calls were made. */
@@ -224,121 +212,6 @@ function askLines(asks: AskSummary | GraphUnreadable, dispatches: number): strin
 function isDispatch(record: DecisionRecord): boolean {
   // The journal is read from disk without a schema: a line without a text kind is not a dispatch.
   return typeof record.kind === 'string' && (record.kind === 'dispatch' || record.kind.startsWith('dispatch:'))
-}
-
-/**
- * One line per rule the journal denied in the period, and the right-path
- * summary (m4-gate G2, design §3.10), over the same statistics reader the
- * command line and the rules page use. The denominator of a ratio holds
- * right-path, verbatim retries and everything else; the follow-ups that
- * settled as no next call are counted apart, because stopping for the human
- * is the right path for several corrections (design §3.3). A rule whose
- * denials all sit outside the period has no line of its own; a rule the
- * journal only holds follow-ups for still enters the summary.
- */
-function ruleLines(records: readonly GuardRecord[], offsetMinutes: number): string[] {
-  const stats = ruleStats(records, {})
-  const lines: string[] = []
-  const ratios: string[] = []
-  let stopped = 0
-  for (const [rule, stat] of stats.rules) {
-    // The stops count for every rule the journal holds, also for one whose denials sit outside the period.
-    stopped += stat.followups.none
-    const denominator = stat.followups['right-path'] + stat.followups.repeat + stat.followups.other
-    if (denominator > 0) ratios.push(`${rule} ${stat.followups['right-path']}/${denominator}`)
-    const denials = stat.denials.dialect + stat.denials.other
-    if (denials === 0) continue
-    const last = stat.last
-    const at = last === undefined || Number.isNaN(Date.parse(last.at)) ? '' : ` · ${renderStamp(Date.parse(last.at), offsetMinutes)}`
-    const look = last === undefined ? '' : `（最近一次：${last.tool}${last.subject === undefined ? '' : ` ${last.subject}`}${at}）`
-    lines.push(`- 拦下 ${rule} × ${denials}${look}${denominator > 0 ? ` · 拦截后下一步走对 ${stat.followups['right-path']}/${denominator}` : ''}${stat.followups.repeat > 0 ? ` · 原样重试 ${stat.followups.repeat} 次` : ''}`)
-  }
-  if (ratios.length === 0 && stopped === 0) return lines
-  const pairs = ratios.length === 0 ? '无' : ratios.join('，')
-  lines.push(`- 拦截后下一步走对：${pairs}${stopped > 0 ? `（另有 ${stopped} 次停下来交给人或上级）` : ''}`)
-  return lines
-}
-
-/**
- * The lift lines of the 例外 section (m4-gate G3, design §3.10): which rules
- * stand lifted right now, and whether the record file and the journal agree.
- * The input is not period-bounded — a lift is a decision of the project, its
- * day does not matter (review finish2 round 2 F16). Without a record file
- * the report derives the lifted rules from the journal alone and reconciles
- * nothing; an unreadable file says so and reconciles nothing. A mismatch
- * never changes a rule's state (the gate reads the file), the line only
- * names it.
- */
-function liftLines(lifts: LiftsInput, offsetMinutes: number): string[] {
-  const lines: string[] = []
-  const journalOf = (rule: string): LiftRecord | undefined =>
-    [...lifts.records].filter(record => record.rule === rule).sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1)
-  const journalStateOf = (rule: string): 'lift' | 'restore' | undefined => {
-    const last = journalOf(rule)
-    return last === undefined ? undefined : last.action
-  }
-  const file = lifts.file
-  const fileStates = file !== undefined && 'text' in file ? liftStatesOf(file.text) : undefined
-  const liftedRules = fileStates !== undefined
-    ? [...fileStates.states].filter(([, action]) => action === 'lift').map(([rule]) => rule)
-    : [...new Set(lifts.records.filter(record => record.action === 'lift').map(record => record.rule))].filter(rule => journalStateOf(rule) === 'lift')
-  // - 撤下的规则：one line, every rule now lifted, with the last lift record's moment and words (design §3.10).
-  if (liftedRules.length > 0) {
-    const parts = liftedRules.map((rule) => {
-      const last = journalOf(rule)
-      if (last === undefined) return rule
-      const at = Number.isNaN(Date.parse(last.at)) ? '' : `${renderStamp(Date.parse(last.at), offsetMinutes)}，`
-      const via = last.via === 'chat' ? `经对话，原话「${last.words}」` : `经规则板，写命令原文「${last.words}」`
-      return `${rule}（${at}${via}）`
-    })
-    lines.push(`- 撤下的规则：${parts.join('、')}`)
-  }
-  if (file !== undefined && 'error' in file) {
-    lines.push(`- lifts.jsonl 读不出（${file.error}），这一次没有对账`)
-    return lines
-  }
-  if (fileStates === undefined) return lines
-  // The reconciliation (review finish2 round F15): terminal state per rule,
-  // then the lines each side holds and the other lacks, keyed at+rule+action.
-  const earliestMs = lifts.earliest === undefined || Number.isNaN(Date.parse(lifts.earliest)) ? undefined : Date.parse(lifts.earliest)
-  const journalKeys = new Set(lifts.records.map(record => `${record.at}|${record.rule}|${record.action}`))
-  const preJournal = (at: string): boolean => earliestMs !== undefined && !Number.isNaN(Date.parse(at)) && Date.parse(at) < earliestMs
-  const say = (state: 'lift' | 'restore' | undefined, side: '文件' | '流水'): string =>
-    state === undefined ? (side === '文件' ? '文件里没有这条规则的行' : '流水里没有这条规则的记录') : `${side === '文件' ? '文件里最后一行是' : '流水里最后一条是'}${state === 'lift' ? '撤下' : '恢复'}`
-  const mismatched = new Set<string>()
-  const carried = new Set<string>()
-  for (const rule of [...new Set([...fileStates.states.keys(), ...lifts.records.map(record => record.rule)])]) {
-    const fileLines = fileStates.lines.filter(line => line.rule === rule)
-    const freshFileLines = fileLines.filter(line => !preJournal(line.at))
-    const journalRecords = lifts.records.filter(record => record.rule === rule)
-    // A rule the file lifts only before the journal's first record, with no
-    // journal record of its own, belongs to the new-machine row: its lines
-    // cannot be repopulated, so per-rule rows would never clear (review
-    // finish2 round 2 N29).
-    if (freshFileLines.length === 0 && journalRecords.length === 0) {
-      if (fileLines.length > 0) carried.add(rule)
-      continue
-    }
-    const fileState = fileStates.states.get(rule)
-    const journalState = journalStateOf(rule)
-    if (fileState !== journalState) {
-      mismatched.add(rule)
-      lines.push(`- lifts.jsonl 与流水对不上：${rule}，${say(fileState, '文件')}，${say(journalState, '流水')}`)
-      continue
-    }
-    const extraFile = freshFileLines.filter(line => !journalKeys.has(`${line.at}|${line.rule}|${line.action}`)).length
-    const extraJournal = journalRecords.filter(record => !fileStates.lines.some(line => line.at === record.at && line.action === record.action)).length
-    if (extraFile > 0 || extraJournal > 0) {
-      mismatched.add(rule)
-      lines.push(`- lifts.jsonl 与流水对不上：${rule}，文件里有 ${extraFile} 行流水没有的，流水里有 ${extraJournal} 条文件没有的`)
-    }
-  }
-  if (carried.size > 0) {
-    const names = [...carried].slice(0, 5).join('、')
-    lines.push(`- 流水里没有这些撤下记录（换了电脑？）：lifts.jsonl 里有 ${carried.size} 条规则的撤下或恢复早于本机流水：${names}${carried.size > 5 ? '等' : ''}`)
-  }
-  if (lifts.uncommitted === true) lines.push('- lifts.jsonl 有未提交的撤下，随下一次提交带上')
-  return lines
 }
 
 /** Render the morning report for one period. */
@@ -385,6 +258,8 @@ export function morningReport(input: ReportInput): string {
   // rises and falls counted apart, so a net-zero period with churn still shows.
   const suppressionLine = suppressionLineOf(input.suppressions ?? [])
   if (suppressionLine !== undefined) lines.push(suppressionLine)
+  lines.push(...timingSection(input.timing ?? [], input.limits ?? [], input.now ?? Date.now(), offsetMinutes))
+  lines.push(...effectCheckLines(input.effects ?? [], offsetMinutes))
 
   lines.push('')
   lines.push('## 等你定的事')
@@ -437,10 +312,10 @@ export interface ReportOptions {
 /** Reads the project graph of the session that asked for the report; rejects with the reason when it cannot. */
 export type GraphReader = () => Promise<LoadedGraph>
 
-/** The asks of the graph `read` gives, or why it could not be read: the report names the reason and goes on. */
-async function readAsks(read: GraphReader, since: string | undefined): Promise<AskSummary | GraphUnreadable> {
+/** The graph `read` gives, or why it could not be read; read once per report, the asks and the checks of the rule proposals share it. */
+async function readOnce(read: GraphReader): Promise<{ readonly graph: LoadedGraph } | GraphUnreadable> {
   try {
-    return askSummary(await read(), since)
+    return { graph: await read() }
   }
   catch (error) {
     return { unreadable: error instanceof Error ? error.message : String(error) }
@@ -458,6 +333,16 @@ async function readAsks(read: GraphReader, since: string | undefined): Promise<A
  * the gaps that period meets.
  */
 export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: string, graph: GraphReader, since?: string, options: ReportOptions = {}): Promise<string> {
+  // A reader may throw before it returns a promise: both ways of failing read as an empty file.
+  const readText = async (path: string | undefined): Promise<string> => {
+    if (path === undefined) return ''
+    try {
+      return await fs.readFile(path)
+    }
+    catch {
+      return ''
+    }
+  }
   const readJsonl = async <T>(path: string | undefined): Promise<T[]> => {
     if (path === undefined) return []
     try {
@@ -490,36 +375,33 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
   // The lift side reads the WHOLE journal, not the period (design §3.10, review finish2 round 2 F16): a lift is the project's decision, whatever day it fell on.
   const wholeViolations = await readJsonl<GuardRecord>(paths.violations)
   const liftRecords = wholeViolations.flatMap((record): LiftRecord[] => classifyRecord(record as unknown as Readonly<Record<string, unknown>>) === 'lift' ? [record as unknown as LiftRecord] : [])
-  let earliest: string | undefined
-  for (const record of wholeViolations) {
-    // A gap record counts its `since` too: the first lost record is earlier than any line the journal holds (design §3.10).
-    // A gap record counts its `since` too: the first lost record is earlier than any line the journal holds (design §3.10).
-    const gap = record as unknown as { readonly kind?: unknown, readonly since?: unknown }
-    for (const at of gap.kind === 'gap' && typeof gap.since === 'string' ? [record.at, gap.since] : [record.at]) {
-      if (typeof at !== 'string' || Number.isNaN(Date.parse(at))) continue
-      if (earliest === undefined || Date.parse(at) < Date.parse(earliest)) earliest = at
-    }
-  }
+  const earliest = journalEarliest(wholeViolations)
   const root = options.root
   const file = root === undefined
     ? undefined
-    : await fs.readFile(`${root.replaceAll('\\', '/')}/docs/guard/lifts.jsonl`).then(
+    : await fs.readFile(liftRecordPath(root)).then(
       text => ({ text }),
       error => ({ error: (error as NodeJS.ErrnoException).code ?? 'error' }),
     )
   const uncommitted = root === undefined || file === undefined || 'error' in file
     ? undefined
     : await runGit(root, ['status', '--porcelain', '--', 'docs/guard/lifts.jsonl']).then(run => run.code === 0 && run.out.trim().length > 0, () => undefined)
+  const loaded = await readOnce(graph)
   return morningReport({
     decisions: inPeriod(await readJsonl<DecisionRecord>(paths.decisions)),
     violations: inPeriod(wholeViolations),
     usage: inPeriod(await readJsonl<UsageRecord>(paths.usage)),
     suppressions: inPeriod(await readJsonl<SuppressionRecord>(paths.suppressions)),
+    // The checks' journal is read whole: its section counts its own seven days (design §6.3.1).
+    timing: parseTiming(await readText(paths.timing)).lines,
+    // A limits.jsonl that cannot be read is no setting (design §6.3.1).
+    limits: parseLimits(await readText(paths.limits)).lines,
+    now: options.now,
     period,
     pricing: options.pricing,
     problem: options.problem,
     usageScope: gapLines(parseGaps(gapRaw), nowAt, zone, periodStart),
-    asks: await readAsks(graph, since),
+    asks: 'unreadable' in loaded ? loaded : askSummary(loaded.graph, since),
     offsetMinutes: options.offsetMinutes,
     lifts: {
       records: liftRecords,
@@ -528,7 +410,25 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
       ...(uncommitted === undefined ? {} : { uncommitted }),
     },
     ...(metricsLinesOut === undefined ? {} : { metrics: metricsLinesOut }),
+    effects: 'unreadable' in loaded ? [] : await readEffects(loaded.graph, options.metrics, nowAt),
   })
+}
+
+/**
+ * The checks of the rule proposals whose days are up (M5 design §3.6.1): the
+ * graph gives the agreed proposals and the corrections, the metrics journal
+ * of the session's project the denials. The caller gives no checks for a
+ * graph that cannot be read (the section of asks already names why); a
+ * journal that cannot be read makes the denial checks unchecked, with the
+ * reason.
+ */
+async function readEffects(loaded: LoadedGraph, metrics: ReportOptions['metrics'], nowMs: number): Promise<EffectCheck[]> {
+  const journal: JournalRead = metrics === undefined
+    ? { unreadable: '这次调用没有给出项目' }
+    : !('root' in metrics)
+        ? { unreadable: metrics.reason }
+        : await readLog(metrics.root).then(read => ({ events: read.events }), (error: unknown) => ({ unreadable: error instanceof Error ? error.message : String(error) }))
+  return effectChecks(loaded.nodes.values(), journal, nowMs)
 }
 
 /** The facts groups the conversation-facing report carries (§7.3): the task, interception, lift, timeout, stall and report groups, no scores, no burden numbers, no coverage group. */

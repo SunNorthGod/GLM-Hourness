@@ -2,6 +2,7 @@
   "id": "norm-verify-tiers",
   "type": "norm",
   "title": "验证按风险分级：L4 攒批，只评审高风险代码",
+  "why": "按风险决定验到哪一层，真机核对攒成一批做，省人力又不漏",
   "status": "approved",
   "parent": "orch",
   "body": "DEVELOPMENT.md §1.1。L1、L2 每次改动都跑；碰到 DSH 运行时的改动跑 L3，合入 main 前一次。L4 桌面版攒到批次点（里程碑收尾任务，或一批互相依赖的改动都合入后）一起做；验收只能在真机上看的节点合入后保持进行中、批注「待 L4」。凭证与签名的真实网络验证随改动做。独立评审只给凭证、签名与认证、guard 规则、图引擎的权限与审计。worker 规格清楚的任务用高档推理，调研与设计用最高档。背景：用户嫌慢，问工程量是否很大；时间主要花在验证、查证与排队，不在写代码。",
@@ -13,6 +14,103 @@
       "reason": "用户在提速的三个方案里选了 B（按风险分级）：A 维持现状，B 按风险分级，C 连探针也攒批",
       "relay": "b吧那就",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T02:55:33.989Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-05 探针锁事故：land-m4-checks 删了自己的 .llm/probe-lock 后续写没有停，把随后建锁的 land-panel-2 的 owner.txt 改写成自己，panel-2 以为锁归别人、准备让出。DEVELOPMENT.md §1.1 改两处：L3 行写明探针按 .llm/probe-lock、.llm/probe-lock-2 两个目录轮流用，规则同桌面锁；L4 行的锁规则加「每次重写 owner.txt 前先核对文件里写的仍是自己，用完先停续写再删锁」。§7 加事故行。编排方已分别告诉两条 lane。"
+    },
+    {
+      "at": "2026-11-05T05:26:38.729Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "按风险决定验到哪一层，真机核对攒成一批做，省人力又不漏"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T07:37:39.245Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4（l4-batch-2026-11-05，wf_be2ff3a8b7d83155）的发现：15:08 与 15:10 两次经 CDP 发 Browser.close，人的桌面版 60 秒内都没有退出；该步按 §1.1 的 L4 行在 15:15 停下，没有杀进程、没有重建。约 15:20:52 桌面版自己退出，userData 锁文件已释放，没有新的崩溃日志。之后该步在 main 2d4600d（含 rules-board-page 3b24f1e 与 status-hub-2）上 build，用人自己的 userData 带 --remote-debugging-port=9333 重新启动，继续核对。关闭要几分钟才生效这一点记进 .agents/tasks/l4-batch-2026-11-05/l4.md 的发现；60 秒的等待上限要不要放宽，等该记录出来后再定。"
+    },
+    {
+      "at": "2026-11-05T11:57:26.891Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4 的记录已出（.agents/tasks/l4-batch-2026-11-05/l4.md，B3）：两次 Browser.close 都没有回应，桌面版约 12 分钟后（15:20:52）才自己退出，没有崩溃日志；这一步没有杀进程，等它退出后才 build 与重启。60 秒的等待上限对人的实例不够，要不要放宽、放到多少由编排方定。它也让指标行自查报「1 个进程没有正常退出」。"
+    },
+    {
+      "at": "2026-11-05T12:41:08.980Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4（wf_be2ff3a8b7d83155）完成，记录 .agents/tasks/l4-batch-2026-11-05/l4.md（d22057f，origin 与 github 一致）；挡路 1 条（B1，m4-checks 第 5 条），已派 m4-checks-loop-details 修。B3 的处理由编排方定：经 CDP 发 Browser.close 之后每 30 秒看一次，至多等 15 分钟，仍不杀进程，15 分钟还没退出就停下报告；DEVELOPMENT.md §1.1 的 L4 行由 m4-checks-loop-details 同批改。另记：本批的步骤自己在主检出写了十个节点的批注（违反任务书「不改 docs/graph」），这些改动被编排方的提交 40e014f 一并带进 main；内容与 l4.md 一致，保留不回退。"
+    },
+    {
+      "at": "2026-11-05T13:16:32.454Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B3 新数据：wf_d964b9e854bc29a0 合入步 20:23 发 Browser.close，49 分钟后主进程 72104 仍在、CDP 仍应答。批次 L4 那次是 12 分钟后退出，这次是请求没被处理，不是慢。15 分钟上限、不杀进程、到时停下报告的做法照旧。没生效的原因未查，派只读调查 desktop-close-2026-11-05 查桌面版的退出路径和可靠的重启办法。"
+    },
+    {
+      "at": "2026-11-05T13:56:36.297Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面核对 glm-context-window-desktop-check（wf_f773f9cedc7b4708）发现：人的桌面版加载的是主检出的 dist，build-info 为 3a835b7（11-05 15:38）；之后合入 main 的 c452b17、cf0ed57 等都没有在主检出重建，所以没装到人的桌面版上。原因：通用规矩写「主检出只放锁目录」，合入步只做 git merge --ff-only 与推送，没有一步重建主检出的 dist；3a835b7 之后各线的「重启桌面版、无新错误」若有，看的都是旧代码。编排方定：合入步在快进 main 之后、重启桌面版之前，在主检出跑 npm run build（git status 前后都干净，build-info 等于 main HEAD），这是主检出除锁目录外唯一允许的写入；本次由桌面核对一步先补做一次。以后的任务书照此写。"
+    },
+    {
+      "at": "2026-11-05T15:21:40.031Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "只读调查 desktop-close-2026-11-05（wf_6074e6f111fdb70b）完成，报告 .agents/tasks/desktop-close-2026-11-05/report.md。结论推翻编排方 21:1x 那条批注里「这次是请求没被处理，不是慢」：两次是同一个原因。Electron 44.7.0 把 Browser.close 当 app.quit()，不回应；DSH 桌面 0.2.1-rc.3 的 before-quit 先问宿主，宿主把空闲会话收件箱里没取走的消息也算作运行中的任务，壳弹没有父窗口的原生确认框「退出 DeepSeek Harness？」等人点，CDP 看不到也点不到。两次排着的都是本项目的包注入的不叫醒消息（/wish off 的提示、循环板提醒）；宿主关停记号 15:20:52、21:22:24 就是有人点了「退出」的时刻（推断：确认框本身没看到，依据是会话日志的关停记号与壳的标准错误）。所以「每 30 秒看一次、至多等 15 分钟」作废，改成：关之前本任务的临时会话不留没取走的注入；发一次 Browser.close，不等回应、不重发；每 5 秒只读查主进程、userData 的 lockfile 与主进程的顶层窗口，见到标题 DeepSeek Harness、类名 #32770 的确认框就停下请人点，不代点、不杀进程；没有确认框而 2 分钟仍未退出也停下报告。文档派 desktop-close-docs（wf_674d79b3e6a53992）写进 DEVELOPMENT.md §1.1、§7 与 FACTS.md §3，连同合入后在主检出重建 dist 一条；原定由 m4-checks-loop-details 同批写的 B3 文档改由这条线做。包里的根因另建 inject-via-prestep。上游一侧（rc.3 把排队的输入当作正在运行的任务）可作为反馈交 DSH，不挡本项目。"
+    },
+    {
+      "at": "2026-11-05T18:05:02.631Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "glm-context-window 的核对 B 改在 headless 沙盒里做并通过（wf_4f1c79fb27ec66d5）：只验宿主行行为的核对用沙盒即可，不必开隔离的桌面实例。隔离实例两次在启动后几分钟内自己退出，推断是欢迎窗口弹到人的屏幕上被关掉，未证实。人的桌面版 39012 于 01:15:25 由 habits-prompts 合入步在桌面锁下关闭，用于重启加载新构建。"
+    },
+    {
+      "at": "2026-11-05T18:08:58.197Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 02:0x 人截图：桌面版启动失败的原生错误框「DeepSeek Harness is unavailable / desktop welcome: Web authentication failed」，按钮 Exit、Restart、Disable third-party plugins, back up profile patch, and restart。userData logs 下两份启动期崩溃：crash-2026-11-05T17-28-43-544Z-host.log（01:28:43）与 crash-2026-11-05T18-03-27-746Z-host.log（02:03:27），phase startup，错误在 app.asar lib/main.js:8886 的 connectDesktopWelcome；两次都在 habits-prompts 合入步（wf_7bd410e5bb88654f land）持桌面锁期间。原因未查。编排方已告知该步：查明原因前不再启动桌面版；只读查两份崩溃日志、各次启动的输出、旧实例与隔离实例的残留进程、lockfile、启动时的环境变量（尤其隔离实例 launch.ps1 可能留下的 DSH_HOME）、connectDesktopWelcome 的源码；不杀进程、不点错误框、不按「Disable third-party plugins」（会改人的 profile）；结论与拟用的启动命令交编排方转人之后再启动。"
+    },
+    {
+      "at": "2026-11-05T18:25:37.872Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面版启动失败的原因已查明（.agents/tasks/habits-prompts/desktop-start-failure.md，源码实读加本机实测）：宿主每次启动在 127.0.0.1 的随机端口上发一个 dsh-auth-<端口哈希> cookie，有效 30 天；cookie 不分端口，全存在桌面 userData 的 Network\\Cookies 里，从不提前删。欢迎页经 Electron 会话的 net.fetch 带上全部 127.0.0.1 cookie，到 71 个、约 16 KB 时超过 node:http 默认请求头上限 16384 字节，宿主回 431，启动失败。30 天内约 70 次启动就会复发，本项目的 L4 与合入重启频繁，是主要来源。排除了残留进程、DSH_HOME 等环境变量、代理与本次合入的代码。修法要改人的桌面 userData（不是 ~/.dsh）：先备份 Cookies 与 Cookies-journal，再删 host_key=127.0.0.1 且名为 dsh-auth-* 的行，然后不带 DSH_HOME 启动；编排方已转人，等人同意。后续：写进 FACTS.md，向 DSH 上游反馈；L4 规程要考虑重启次数。"
+    },
+    {
+      "at": "2026-11-05T18:29:31.324Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面版启动失败「desktop welcome: Web authentication failed」的原因（habits-prompts 合入步只读调查，.agents/tasks/habits-prompts/desktop-start-failure.md）：每次宿主启动按端口发一个 30 天的 dsh-auth-<sha256(127.0.0.1:端口)> cookie，cookie 不分端口，connectDesktopWelcome 用 net.fetch credentials:'include' 把 127.0.0.1 下的全部带上；累计 71 个约 16 KB，超过 node:http 默认 16384 字节的请求头上限，宿主回 431。人同意清除。另交 desktop-close-docs（wf_674d79b3e6a53992）同批写进 DEVELOPMENT.md §1.1 的重启规程（启动前数这类 cookie，超过 50 个就备份后删除）、FACTS.md §3 一行与 §7 事故一行；可作为反馈交 DSH 上游。"
+    },
+    {
+      "at": "2026-11-05T18:37:42.605Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面版启动失败（desktop welcome: Web authentication failed）已修：habits-prompts 合入步备份 %APPDATA%\\@deepseek-ai\\dsh-desktop\\Network\\Cookies 后删掉 host 127.0.0.1 的 71 个 dsh-auth-* cookie，桌面版随即正常启动，没有新的崩溃日志。原因见 .agents/tasks/habits-prompts/desktop-start-failure.md：每次启动宿主按随机端口发一个 30 天有效的 cookie，cookie 不分端口，约 70 次启动后 Cookie 请求头超过 node:http 的 16384 字节上限，宿主回 431。之后的任务书已写明遇到同一报错照此处理。FACTS.md 一行与上游反馈待记。"
+    },
+    {
+      "at": "2026-11-05T19:01:21.573Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "desktop-close-docs（wf_674d79b3e6a53992）合入 main 5b577d9，origin 与 github 经 ls-remote 一致。3068772：DEVELOPMENT.md §1.1 L4 一行的关闭与重启规程（关闭前不留没取走的注入消息；Browser.close 发一次不等回应；每 5 秒查主进程、lockfile 与顶层窗口，见 #32770 退出确认框就停下请人点；没有框而 2 分钟未退出也停下报告；托盘里也算在运行），合入步快进 main 后在主检出重建 dist 的规则，§7 两行事故，FACTS 六行。cb1d2f3：启动前清掉 127.0.0.1 的 dsh-auth-* cookie（先备份），人允许改桌面版 userData 与 ~/.dsh，§7 一行 2026-11-06 事故，FACTS 一行 cookie 上限。合入树门禁：build 0、preflight 0、npm test 0（3180/3180）、check-lint 0（73/18/1）。工作树与分支已删。记录 .agents/tasks/desktop-close-2026-11-05/docs-step.md。原定「每 30 秒看一次、至多等 15 分钟」作废。"
+    },
+    {
+      "at": "2026-11-06T00:17:36.775Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "guide-metrics-line 的桌面步按新规程关桌面版：发 Browser.close 后没有 #32770 确认框，约 21 秒退出（m4-checks-loop-details 那次 6 秒）。inject-via-prestep 合入之前，空闲会话里没有排队消息时关闭请求已能直接生效。"
     }
   ]
 }

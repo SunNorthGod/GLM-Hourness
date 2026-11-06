@@ -2,6 +2,7 @@
   "id": "compact-recall",
   "type": "task",
   "title": "压缩后能查原文：照 ZCode 3.17.1 的续接原句加明文会话文件",
+  "why": "会话压缩之后模型还能翻回原文，不会因为摘要丢了细节而重做或做错",
   "status": "doing",
   "parent": "bottom",
   "body": "GLM 会话压缩时，在摘要末尾追加 ZCode 3.17.1 续接文本里 transcriptPath 那一句的原文（reference/zcode-3.17.1/zcode.cjs，Bxt 的 transcriptPath 分支），路径指向把当前会话导出的明文文件；文件放在项目 .llm/ 下，不进 git，有清理规则；模型用 Read 分页读。不另造工具，不读其他会话。新行默认 disabled: true，L3 沙盒验证后再定是否启用；L4 随下一批桌面验收。调查报告：.agents/tasks/compaction-recall/report.md（§6 选项 C、§7 拍板前要答的问题、§8 未核实项）。",
@@ -51,6 +52,49 @@
       "actor": "llm",
       "op": "comment",
       "text": "已合入 main：main = origin = github = c0676b6（cd6e383、347b296、c0676b6）。合入树门禁 build 0、preflight 0、npm test 0（2955 / 0 失败）、探针 0（382/382）。桌面经 CDP 关闭后重启：dsh-glm-zcode 5/5 运行；dsh-hourness 12 个运行、3 个停用（lessons、env、transcript），transcript 行按设计停用；无新 crash log，控制台只有已知的 ingest 噪声。分支已删，工作树已注销；空目录 .worktrees/compact-recall 仍被某个进程占着，留待之后清理。workflow compaction-recall-zcode-transcript（wf_9e0ca88a3e82813a）完成。节点保持进行中，待 L4：桌面上打开 transcript 行、跑一次压缩，核对摘要结尾的句子与 Read 读导出文件；之后由人定是否默认启用。"
+    },
+    {
+      "at": "2026-11-05T05:25:25.129Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "会话压缩之后模型还能翻回原文，不会因为摘要丢了细节而重做或做错"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T10:37:20.911Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "每周阅读 2026-11-05（.agents/tasks/reading-digest/2026-11-05.md 结论 2）给「是否默认启用」的两条：一、arXiv 2609.20804 的对照实验说「被省略的内容做成可恢复」模型很少用、准确率不涨；L4 与之后的运行里记 GLM 压缩后是否真的 Read 了导出文件、读了几次。二、导出文件是整份日志的纯文本，会带上会话里出现过的凭证字符串，是否在导出时遮盖由人定（推断，没有查过实际导出的内容）。"
+    },
+    {
+      "at": "2026-11-05T10:44:20.998Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05 同意编排方的建议（原话「那两件也按你说的来」）：导出文件遮掉凭证，建 compact-recall-redact。是否默认启用仍等批次 L4 的结论再交人。"
+    },
+    {
+      "at": "2026-11-05T11:57:26.265Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4（wf_be2ff3a8b7d83155）没有做这一项：transcript 行出厂停用，要改人的 profile 补丁打开它再跑一次压缩；main 上 11-05 刚开了 compact-recall-redact（导出要先遮掉凭证），在它合入之前不在人的 profile 上打开这一行。L4 顺延到 compact-recall-redact 之后。"
+    },
+    {
+      "at": "2026-11-05T12:41:09.724Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面批次 L4 没做本节点的真机核对：transcript 行出厂停用，要改人的 profile 才能打开；compact-recall-redact（导出遮掉凭证）合入之前也不在人的 profile 上打开这一行。L4 顺延到 compact-recall-redact 合入之后，届时在隔离实例里做，不改人的 profile。"
+    },
+    {
+      "at": "2026-11-05T23:15:04.736Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "compact-recall-redact 已合入 main（3aa7e8e），导出文件遮掉像凭证的片段。本节点的 L4 按 2026-11-05 的批注照旧顺延：在隔离实例里做，不改人的 profile；是否默认启用 transcript 行另交人定。"
     }
   ]
 }

@@ -1,0 +1,62 @@
+{
+  "id": "inject-via-prestep",
+  "type": "task",
+  "title": "插件的提示不再排在会话收件箱里，桌面版能直接关掉",
+  "why": "空闲会话里排着的提示让桌面版以为有任务在跑，关闭时要人点确认；改走步前提示后收件箱是空的，模型看到提示的时机不变",
+  "status": "doing",
+  "parent": "orch",
+  "kind": "implement",
+  "body": "依据 .agents/tasks/desktop-close-2026-11-05/report.md Q2、Q3 与「后续建议」第 1 条。本项目的包用 inject（不叫醒，排进 next-step）送的提示：src/design/mode.ts 的 /wish off、主 Agent 在别处、不带话的 /wish；src/loops/deliver.ts wake 为假时的投递；src/design/index.ts 与 src/graph/run-control.ts 的注入点。改走 agent/pre-step 的步前提示（先例 src/rules/reminder.ts 的规则板提醒），模型仍在下一步之前看到同样的文字；叫醒的投递不动。先按设计评审：逐处列出现在的注入、改后的送法、宿主关停时排着的提示今天被丢掉这一点是否要补。",
+  "acceptance": [
+    "包里不叫醒的提示不再写进会话收件箱，模型在下一步之前照旧看到同样的文字；叫醒的投递不变",
+    "桌面版有空闲会话（最后一次操作是 /wish off 或循环板提醒）时，经 CDP 发 Browser.close 直接退出，不弹确认框，L4 核对",
+    "DESIGN.md 或 ORCHESTRATION.md 同批改；L2 钉住，L3 探针通过，改动在 main 上"
+  ],
+  "history": [
+    {
+      "at": "2026-11-05T15:21:40.550Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "desktop-close-2026-11-05 调查报告「后续建议」第 1 条：本项目的包在空闲会话里注入不叫醒的消息，消息一直排在收件箱里，桌面版因此认为有任务在跑，退出要人点确认；宿主关停时这些消息被丢掉（canceled），模型最终也没读到。修在根上：改走包里已有的步前提示。agent 定，等有并行位开工。",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-05T18:36:57.777Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 inject-via-prestep（wf_d93b6a094e3f5503）开工：先写设计短文并评审，再把不叫醒的注入改走 agent/pre-step，收件箱保持为空；合入后在桌面版核对 /wish off 之后 Browser.close 不弹退出确认框",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-05T21:29:39.856Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "inject-via-prestep（wf_d93b6a094e3f5503）设计稿写好：.agents/tasks/inject-via-prestep/design.md，七处调用点、每行一个步前信箱（在 agent/pre-step 交出，对应的 user/message 追加后清掉）、会话不再有下一步与宿主重启两种情形、失败表、L2/L3 计划、文档章节与 m7 的重叠。下一步设计评审。"
+    },
+    {
+      "at": "2026-11-05T21:50:37.765Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "设计 .agents/tasks/inject-via-prestep/design.md 评审 APPROVED，8 条 NIT，没有挡路项（design-review.md）。下一步写代码。"
+    },
+    {
+      "at": "2026-11-06T02:19:35.183Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "code 步：e5dda02 把不叫醒的提示从 agent.inject 改走 src/shared/step-mailbox.ts（下一步之前递给模型），合入 origin/main 83c3385，npm test、build、lint 绿；L3 场景 glm-design-wish-off-idle 已加未跑。该步在分支上写了 docs/graph（39d5d2a），之后已由 3860fad 撤回，图只由编排方写。代码评审 CHANGES_REQUESTED 2 条挡路：缺 report.md（含与 m7 的重叠与门禁记录）；合入后的 HEAD 上没跑探针、没有门禁记录。循环第 2 轮接着做。"
+    },
+    {
+      "at": "2026-11-06T02:46:45.022Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "与 M7 的重叠（编排方 2026-11-06）：M7 真实模型运行查出子 agent 的计划与提问通知因不叫醒的 inject 造成死锁，M7 改为对空闲持有者用 followup 叫醒。本线把不叫醒的提示挪进 step-mailbox 时，这两类通知不能进 mailbox；后合入的一方处理冲突并在报告里写明。"
+    },
+    {
+      "at": "2026-11-06T03:48:16.859Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "inject-via-prestep（wf_d93b6a094e3f5503）第 2 轮 code 步处理了评审两条挡路：report.md 写好（含与 M7 的重叠与门禁记录）；a6ab5c8 上 build、preflight、npm test（3235/0）、探针 432/432（glm-design-wish-off-idle 三项全过）、棘轮 73/18/1 全绿，分支推到 origin d69aa5b。复审 APPROVED，没有挡路项。下一步合入与桌面核对；与 M7 死锁修法（requests.ts 叫醒空闲持有者）相邻，后合入的一方处理冲突。"
+    }
+  ]
+}

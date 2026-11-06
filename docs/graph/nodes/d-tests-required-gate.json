@@ -2,6 +2,7 @@
   "id": "d-tests-required-gate",
   "type": "decision",
   "title": "插件带出去的项目：模块的测试命令必须在已同意的检查里，没有就挡住合入",
+  "why": "模块的测试一定在合入之前跑过，不靠模型自觉",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "人同意给插件带出去的项目加一条缺省的测试门",
       "relay": "可以",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:26:03.449Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "模块的测试一定在合入之前跑过，不靠模型自觉"
+        }
+      }
     }
   ]
 }

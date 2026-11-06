@@ -44,6 +44,7 @@
  * file tools resolve them.
  */
 import { randomBytes } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import { stat, mkdir, copyFile, writeFile } from 'node:fs/promises'
 import { MAIN_AGENT_KEY } from '../graph/main-agent.ts'
@@ -54,7 +55,7 @@ import { installRuleGate, cwdOf } from './gate.ts'
 import { DECLARATION_SECTION } from './sections.ts'
 import { takeCorrection, workspaceFallback } from './fallback.ts'
 import { originOf } from './origin.ts'
-import { guardLift, liftedRules, liftedRulesOf } from './lift.ts'
+import { guardLift, liftedRules, liftedRulesOf, liftRecordPath } from './lift.ts'
 import { LIFT_SERVICE, liftServiceOver } from './lift-service.ts'
 import { checkerConfigOnly } from './checker-config.ts'
 import { prepareContext, type RuleContext } from './context.ts'
@@ -63,16 +64,19 @@ import { scratchOnly } from './scratch.ts'
 import { suppressionOnly } from './suppression.ts'
 import { dispatchRoot } from './design-release.ts'
 import { metricEventOf } from './metrics.ts'
-import type { GuardRecord } from './records.ts'
 import { REQUESTABLE, REQUEST_DESCRIPTION, signatureOf, exceptionOf, GrantBook, RefusalBook, type RefusalVia } from './request.ts'
 import { REQUESTS_SERVICE, createRequestDesk, type RequestDesk, type RequestDeskFs } from './request-service.ts'
-import { projectJournal, type AuditFs } from '../memory/audit.ts'
+import { guardStatusItems } from './status.ts'
+import { classifyRecord, journalEarliest, journalRecords, type GuardRecord, type LiftRecord } from './records.ts'
+import { projectJournal, auditPaths, type AuditFs } from '../memory/audit.ts'
 import { ensureLlmIgnored, type LlmIgnoreOutcome } from '../data/llm-ignore.ts'
 import { projectHomeFor, projectRootOf } from '../data/project-home.ts'
 import { dialectNames, dialectService, dialectWarner, type DialectProblem } from '../shared/dialect.ts'
 import { LOOPS_DECLARATION } from '../loops/service.ts'
+import { HABIT_ASK_FIRST, HABIT_RULE_DECLARATION } from '../memory/habit-rule.ts'
 import { rulesService } from '../rules/service.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
+import { provideRowStatus } from '../shared/status-host.ts'
 import { assemblyRoute, sessionRoute } from '../shared/route.ts'
 import { createUserNotice, type AgentsService, type ToolExecutionContext } from '../shared/dsh-min.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
@@ -98,6 +102,10 @@ export interface GuardConfig {
   readonly home?: string | undefined
   /** Injected filesystem override for tests. */
   readonly fs?: AuditFs | undefined
+  /** Reads one file's text for the status entries' journals (the status view is synchronous); tests inject it, the host reads from disk. */
+  readonly readFile?: ((path: string) => string) | undefined
+  /** The clock the entries' asOf are stamped with; default the wall clock. */
+  readonly now?: (() => Date) | undefined
 }
 
 /**
@@ -348,6 +356,51 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
   })
   disposers.push(() => desk.dispose())
 
+  // The row's status view (status hub design 0.3 §3.2, §12 M4 row): the per-rule denial counts and
+  // the lift status as the entries `rules/denials` and `rules/lifts`, computed when the collector
+  // asks over the WHOLE journal — a lift is the project's decision whose day does not matter (M4
+  // design §3.10, review finish2 round 2 F16). The session's project is the working directory the
+  // row saw at agent creation; a session the row does not know, or one outside a project, has no
+  // entries. A journal that is not there yet is no entry, not an error; one that cannot be read
+  // is, and the collector takes the placeholder. The entries name no uncommitted-file line: that
+  // needs a git call and the view is synchronous (the report keeps computing it).
+  const readFile = config.readFile ?? ((path: string) => readFileSync(path, 'utf8'))
+  const clock = config.now ?? (() => new Date())
+  const sessions = new Map<string, string>()
+  const status = provideRowStatus(ctx, 'guard', (sessionId) => {
+    const cwd = sessionId === undefined ? undefined : sessions.get(sessionId)
+    const root = projectRootOf(cwd)
+    const home = projectHomeFor(ctx, config.home, cwd)
+    if (cwd === undefined || root === undefined || home === undefined) return []
+    const violationsPath = auditPaths({ projectHome: home }).violations
+    if (violationsPath === undefined) return []
+    let raw: string
+    try {
+      raw = readFile(violationsPath)
+    }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') raw = ''
+      else throw error
+    }
+    const violations = journalRecords(raw)
+    const liftRecords = violations.flatMap(record => classifyRecord(record as unknown as Readonly<Record<string, unknown>>) === 'lift' ? [record as unknown as LiftRecord] : [])
+    const earliest = journalEarliest(violations)
+    let file: { readonly text: string } | { readonly error: string }
+    try {
+      file = { text: readFile(liftRecordPath(root)) }
+    }
+    catch (error) {
+      file = { error: (error as NodeJS.ErrnoException).code ?? 'error' }
+    }
+    return guardStatusItems({
+      violations,
+      lifts: { records: liftRecords, ...(earliest === undefined ? {} : { earliest }), file },
+      source: violationsPath,
+      liftsSource: liftRecordPath(root),
+    }, clock().getTime())
+  })
+  disposers.push(() => { status.dispose() })
+
   disposers.push(installRuleGate(ctx, {
     row: 'guard',
     prepend: false,
@@ -489,6 +542,10 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
     if (installed.has(agent)) return
     installed.add(agent)
     const isRoot = agent.session?.header.origin !== 'subagent'
+    // The status view resolves the session's project through the directory seen here (the view is synchronous; the gate's per-call payload cannot serve it).
+    const seenSession = sessionIdOf(agent)
+    const seenCwd = agent.session?.header.cwd
+    if (seenSession !== undefined && typeof seenCwd === 'string' && seenCwd.length > 0) sessions.set(seenSession, seenCwd)
     try {
       // Prepend, like the dialect row: post-`next()` sees the route the
       // model selection injected, which picks the tool names. Every route
@@ -509,7 +566,10 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
         // The loop board's gate is in every host process, while its service is only in the one that can reach a session (loops design §6.1), so the line follows the row, not the service.
         const loops = activationState(ctx, 'loops')
         const graphDeclares = graphService(ctx) !== undefined && lifted?.has('graph-files-only') !== true
-        const others = [...(graphDeclares ? [GRAPH_FILES_DECLARATION] : []), ...(board === undefined ? [] : [board.declaration]), ...(loops === 'absent' || loops === 'inactive' ? [] : [LOOPS_DECLARATION])]
+        // The memory row's habit-ask-first follows the row like the loop board's gate: its gate is installed with the memory tools.
+        const memory = activationState(ctx, 'memory')
+        const habitDeclares = memory !== 'absent' && memory !== 'inactive' && lifted?.has(HABIT_ASK_FIRST) !== true
+        const others = [...(graphDeclares ? [GRAPH_FILES_DECLARATION] : []), ...(board === undefined ? [] : [board.declaration]), ...(loops === 'absent' || loops === 'inactive' ? [] : [LOOPS_DECLARATION]), ...(habitDeclares ? [HABIT_RULE_DECLARATION] : [])]
         const face = dialectNames(dialectService(ctx, warn), agent, route, warn) ?? NATIVE_FACE
         return { ...assembled, sections: [...assembled.sections, declarationSection(declared, others, face, isRoot)] }
       }, { prepend: true }))

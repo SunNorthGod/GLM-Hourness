@@ -2,6 +2,7 @@
   "id": "d-panel-released",
   "type": "decision",
   "title": "面板与新手引导放行：设计 1.3、一页稿与 17 条做完条件由人定下",
+  "why": "面板与新手引导照设计开工；17 条做完条件定下之后，改要人出手",
   "status": "approved",
   "parent": "m8",
   "verification": "unverified",
@@ -38,6 +39,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "阻断①修复（f3324be，2026-11-04）：根因实证推翻走查假设——非快照读触发 store 更新（sessions.list 的 getSnapshot 跨调用恒等，官方 dsh-client-ui-subagent 同款派生选择），而是 hooks 顺序违规：goalTitle 的 useCallback 在无图早退分支之后，无图提交 27 个 hook、切有图走到第 28 个即抛 React 18.3.1 的 #310（Rendered more hooks than during the previous render）。修复：goalTitle 改普通闭包（唯一消费者无 memo，useCallback 本无用），双向切换 hook 数恒定。L2 回归：真 Panel.tsx 编进 hook 数守恒的 react shim，修复前红（抛 #310 原文与桌面栈同形）修复后绿。桌面复验：跨工作区切换 8 轮 + 重载首挂路径，控制台零 React 报错。门禁全绿（probe 326/326、棘轮 217/19/1）。阻断②（visibilityState 换源）仍待人定；C/D 验收随设计定后修复批关闭。"
+    },
+    {
+      "at": "2026-11-05T05:25:52.154Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "面板与新手引导照设计开工；17 条做完条件定下之后，改要人出手"
+        }
+      }
     }
   ]
 }

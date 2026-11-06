@@ -2,6 +2,7 @@
   "id": "d-recommend-last",
   "type": "decision",
   "title": "每组选项照旧给一个推荐，推荐永远放在最后",
+  "why": "人先读完其余选项再看到推荐，少一点跟着 agent 走",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "用户定的人机交互规则：推荐照给，但永远放在最后一个选项",
       "relay": "你是claudeopus5.5，大部分时候的直觉都很好，所以我大部分时间都是认同而不是想着自己很牛逼。但是这样吧，以后每个选项依旧推荐一个但是推荐的放到最后一个选项，靠这种方式强制人读完吧。",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:55.768Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "人先读完其余选项再看到推荐，少一点跟着 agent 走"
+        }
+      }
     }
   ]
 }

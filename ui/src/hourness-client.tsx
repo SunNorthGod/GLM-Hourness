@@ -5,8 +5,9 @@
  * agent's session (./flow/FlowBar.tsx) and the /wish entry, the card on the
  * opening screen and the button under the composer (./wish/), and the
  * boards of the panel, registered on the board table
- * ui/src/graph/boards.ts: the loop board (./loops/), the memory and
- * lessons board (./lessons/) and the metrics board (./metrics/).
+ * ui/src/graph/boards.ts: the rules board (./rules/), the loop board
+ * (./loops/), the memory and lessons board (./lessons/) and the metrics
+ * board (./metrics/).
  * scripts/build-ui.mjs bundles this
  * entry into packages/hourness/ui/client.js
  * for window.__ModuleLoader__; React and ui-primitives come from the DSH
@@ -19,6 +20,7 @@ import { installNoGraphCard } from './guide/NoGraphCard.tsx'
 import { installLessonsBoard } from './lessons/LessonsPage.tsx'
 import { installLoopsBoard } from './loops/LoopsPage.tsx'
 import { installMetricsBoard } from './metrics/board.tsx'
+import { installRulesBoard } from './rules/RulesPage.tsx'
 import { installWishCard } from './wish/WishCard.tsx'
 import { installWishPill } from './wish/WishPill.tsx'
 /**
@@ -36,6 +38,7 @@ export function apply(ctx: ClientContext): void {
   installWishCard(ctx, () => { ctx.sidebarRight.openTab(GRAPH_TAB_KIND) })
   installWishPill(ctx)
   installNoGraphCard(ctx)
+  ctx.effect(() => installRulesBoard(ctx), 'glm-hourness-ui: rules board')
   ctx.effect(() => installLoopsBoard(ctx), 'glm-hourness-ui: loop board')
   ctx.effect(() => installLessonsBoard(ctx), 'glm-hourness-ui: lessons board')
   ctx.effect(() => installMetricsBoard(ctx), 'glm-hourness-ui: metrics board')

@@ -2,6 +2,7 @@
   "id": "d-npm-after-done",
   "type": "decision",
   "title": "npm 等整体彻底做完再发版，由人执行",
+  "why": "装上的人拿到的是完整的版本；发版用人自己的账号",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "人定 npm 等整体彻底做完再发",
       "relay": "同意。npm等彻底做好了再发吧",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:50.957Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "装上的人拿到的是完整的版本；发版用人自己的账号"
+        }
+      }
     }
   ]
 }

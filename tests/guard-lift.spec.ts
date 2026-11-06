@@ -24,7 +24,8 @@ import { LIFT_SERVICE, liftService, liftServiceOver, resolveLiftRule } from '../
 import { liftFilesOnly } from '../src/guard/lift-files.ts'
 import { liftStatesOf } from '../src/guard/lift.ts'
 import { NATIVE_FACE, type GuardRule, type ToolCall } from '../src/guard/rules.ts'
-import { morningReport, type LiftsInput } from '../src/workflow/morning-report.ts'
+import { morningReport } from '../src/workflow/morning-report.ts'
+import type { LiftsInput } from '../src/guard/status.ts'
 import type { AgentLike, DerivedMessage } from '../src/shared/dsh-min.ts'
 import type { LiftRecord } from '../src/guard/records.ts'
 

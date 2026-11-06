@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { StoreFs } from '../src/glm-llm/auth/store.ts'
 import { QuotaJournal, type QuotaFs } from '../src/glm-llm/quota-journal.ts'
+import type { ZcodeAdapter } from '../src/glm-llm/zcode.ts'
 
 /** An in-memory credential store; `files` is its content. */
 export function memoryStore(): { fs: StoreFs, files: Map<string, string> } {
@@ -58,6 +59,13 @@ export function memoryJournal(home = 'C:/ws/.llm'): QuotaJournal {
     readTail: (path, bytes) => Promise.resolve(Buffer.from(files.get(path) ?? '').subarray(-bytes).toString('utf8')),
   }
   return new QuotaJournal({ home, fs: quotaFs })
+}
+
+/** One short model request of `sessionId` through the adapter, read to its end: the error the stream ends with, or undefined. */
+export function modelRequest(adapter: ZcodeAdapter, sessionId = 's1'): Promise<unknown> {
+  return (async () => {
+    for await (const chunk of adapter.stream({ provider: 'glm-zcode', model: 'glm-5.3', sessionId, messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }], system: 'be brief' } as never)) void chunk
+  })().then(() => undefined, (error: unknown) => error)
 }
 
 /**

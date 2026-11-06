@@ -1,13 +1,16 @@
 /**
  * Shared fixtures of the rules board's pure specs (rules-model, rules-judge,
- * rules-builtin): a moment inside GLM's peak hours, a call, the readings a
- * judgement is given, and a rule in the 0.9 shape.
+ * rules-builtin, rules-view, rules-panel-model): a moment inside GLM's peak
+ * hours, a call, the readings a judgement is given, a rule in the 0.9 shape,
+ * and what the rules row passes the page's data builder.
  */
 import { gateEvents, type GateCall } from '../src/rules/events.ts'
 import { judgeInput, type JudgeInput } from '../src/rules/judge.ts'
 import type { ScriptRef } from '../src/loops/trigger.ts'
-import type { RepoRules, Rule, RuleContext, SignalType } from '../src/rules/model.ts'
+import { emptyState, type ProjectState, type RepoRules, type Rule, type RuleContext, type SignalType } from '../src/rules/model.ts'
+import type { ProjectRead } from '../src/rules/repo.ts'
 import type { SignalReading } from '../src/rules/signals.ts'
+import type { RulesViewInput } from '../src/rules/view-build.ts'
 
 /** Wednesday 15:00 in UTC+8, inside GLM's peak hours. */
 export const NOW = new Date('2026-11-04T07:00:00.000Z')
@@ -48,6 +51,16 @@ export function ruleOf(over: Partial<Rule> = {}): Rule {
   }
 }
 
+/** The rule of M6 design §7.3 that defers the runs that spend GLM credit while glm-peak is true. */
+export const OFFPEAK_CREDIT_RUNS = ruleOf({
+  id: 'r-offpeak-credit-runs',
+  title: '高峰时积分重活排到高峰结束以后',
+  filter: { command: { matches: String.raw`^\s*npm\s+run\s+(calibrate|smoke:authorized)\b|^\s*node\s+scripts[\\/](calibrate[\\/]run-calibrate|smoke-zcode-authorized)\.mjs\b` } },
+  condition: { signal: 'glm-peak', is: true },
+  action: { kind: 'queue' },
+  reason: '（人写）高峰时 GLM 按全价计积分，练习题、对照实验与真网冒烟等到高峰结束',
+})
+
 /** A rule as a person writes it, before the engine adds origin and status; a plain record so a spec can add a field the type refuses. */
 export function draftOf(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -84,6 +97,33 @@ export const SHA_OTHER = 'b'.repeat(64)
 /** The reference a script entry holds: its file under the rules directory, the hash of the bytes, the language. */
 export function scriptRef(id: string, sha256 = SHA): ScriptRef {
   return { file: `docs/rules/scripts/${id}.mjs`, sha256, lang: 'node' }
+}
+
+/** The end of the peak the page's data is built in: Wednesday 2026-10-28 18:00 in UTC+8. */
+export const VIEW_PEAK_END = '2026-10-28T10:00:00.000Z'
+
+/** The project's state as the row reads it: from the snapshot, the rules file in the repository in sync. */
+export function projectReadOf(state: ProjectState, over: Partial<ProjectRead> = {}): ProjectRead {
+  return { state, load: { state, source: 'snapshot', reasons: [], nextSeq: state.seq + 1, fresh: false }, repo: { kind: 'in-sync' }, ...over }
+}
+
+/** What the rules row passes buildRulesView for an empty project in a GLM peak that ends at VIEW_PEAK_END; a spec overrides the rest. */
+export function viewInputOf(over: Partial<RulesViewInput> = {}): RulesViewInput {
+  return {
+    root: PROJECT,
+    read: projectReadOf(emptyState()),
+    reading: { peak: true, until: VIEW_PEAK_END },
+    hoursZh: '工作日 14:00–18:00',
+    rows: {},
+    records: [],
+    lifted: [],
+    liveHosts: [],
+    missingScripts: new Set(),
+    items: [],
+    statusProblems: [],
+    host: { pid: 4242 },
+    ...over,
+  }
 }
 
 /**

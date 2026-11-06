@@ -1,8 +1,9 @@
 {
   "id": "m6-rules-text",
   "type": "task",
-  "title": "M6 S1：规则板的排队、提醒与唤醒文字写出高峰结束的时刻",
-  "status": "doing",
+  "title": "排队、提醒与唤醒的文字写出高峰几点结束",
+  "why": "被排队的活知道要等到几点，人和模型都不用猜",
+  "status": "done",
   "parent": "m6",
   "kind": "implement",
   "tier": "standard",
@@ -21,6 +22,30 @@
       "to": "rules"
     }
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "965bf5b",
+      "note": "S1 m6-rules-text：规则板的排队、提醒与唤醒文字写出高峰结束的时刻"
+    },
+    {
+      "kind": "commit",
+      "ref": "e95df6e",
+      "note": "main 快进到含 m6-followups 的合入树，origin 与 github 一致"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0,
+      "note": "合入树 2983 个，2982 通过 / 0 失败 / 1 跳过"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run -s probe",
+      "exit": 0,
+      "note": "合入树探针 388/388"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-31T07:01:04.147Z",
@@ -36,6 +61,61 @@
       "reason": "运行 m6-followups-s1-s3 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-04T22:05:23.252Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "实现提交 965bf5b（origin/m6-followups），门禁 0/0/0/0（npm test 2950 / 0 失败，探针 376/376），评审 APPROVED（.llm/m6f/review-s1.json）。合入 main 交给 land-m6-followups（wf_4b9841cada0119dd）；合入后带证据标完成。"
+    },
+    {
+      "at": "2026-11-04T22:33:07.484Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "S1 已合入 main（e95df6e，land-m6-followups），评审 APPROVED，合入树门禁全绿。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "965bf5b",
+          "note": "S1 m6-rules-text：规则板的排队、提醒与唤醒文字写出高峰结束的时刻"
+        },
+        {
+          "kind": "commit",
+          "ref": "e95df6e",
+          "note": "main 快进到含 m6-followups 的合入树，origin 与 github 一致"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0,
+          "note": "合入树 2983 个，2982 通过 / 0 失败 / 1 跳过"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run -s probe",
+          "exit": 0,
+          "note": "合入树探针 388/388"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-05T05:26:25.257Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "M6 S1：规则板的排队、提醒与唤醒文字写出高峰结束的时刻",
+          "to": "排队、提醒与唤醒的文字写出高峰几点结束"
+        },
+        "why": {
+          "from": null,
+          "to": "被排队的活知道要等到几点，人和模型都不用猜"
+        }
+      }
     }
   ]
 }

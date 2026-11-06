@@ -10,12 +10,14 @@
  */
 import type { AgentLike, DerivedMessage, SessionLike, UserNotice } from './dsh-min.ts'
 
-/** What a builder may read besides the history: the messages this step admits, the agent's session, and the step number within the turn. */
+/** What a builder may read besides the history: the messages this step admits, the agent's session, and the step and turn numbers. */
 interface StepInput {
   readonly admitted: readonly DerivedMessage[]
   readonly session: SessionLike
   /** 1 is the turn's first step (the request channel's still-waits reminder rides it, m4-request-card §5.5). */
   readonly step: number
+  /** The turn the step belongs to; absent when the host's payload has none (the env row keys its events by turn and step, m4 design §6.2). */
+  readonly turn?: number
 }
 
 type StepNoticeBuilder = (history: readonly DerivedMessage[], step: StepInput) => UserNotice | undefined | Promise<UserNotice | undefined>
@@ -33,12 +35,15 @@ export function installStepNotice(agent: AgentLike, what: string, eligible: () =
     console.warn(`dsh-glm-hourness/${row}: ${what} not installed for agent ${agent.id}: no session history`)
     return undefined
   }
-  return agent.ctx.on('agent/pre-step', async ({ messages, signal, step }, next) => {
+  return agent.ctx.on('agent/pre-step', async (payload, next) => {
+    const { messages, signal, step } = payload
     const decision = await next()
     if (decision.kind === 'reject' || signal.aborted || !eligible()) return decision
     // installModelSelection's guard: an empty decision never turns into a step.
     if (decision.messages.length === 0 && (step === 1 || messages.length > 0)) return decision
-    const notice = await build(session.deriveMessages() as readonly DerivedMessage[], { admitted: decision.messages as readonly DerivedMessage[], session, step })
+    // The payload type says the turn is there; another host version may not carry it.
+    const turn: unknown = (payload as { readonly turn?: unknown }).turn
+    const notice = await build(session.deriveMessages() as readonly DerivedMessage[], { admitted: decision.messages as readonly DerivedMessage[], session, step, ...(typeof turn === 'number' ? { turn } : {}) })
     return notice === undefined ? decision : { ...decision, messages: [...decision.messages, notice] }
   })
 }

@@ -1,7 +1,8 @@
 {
   "id": "d-status-hub",
   "type": "decision",
-  "title": "状态统一成一份来源：面板、晨报、周报与主 Agent 的回答都从它取，每条注明给谁看",
+  "title": "状态只交一次：面板、晨报、周报与主 Agent 都从这里读",
+  "why": "同一件事在各处说的数一致，每一条写明给谁看",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,23 @@
       "reason": "人提出统一状态板块，同意编排方「统一数据来源、按给谁看分开」的做法并同意现在就做",
       "relay": "要不要统一一个状态板块，把什么周报啊晨报啊高峰之类的所有全部移进去，UI能看Agent也能说？……可以",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:26:02.288Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "状态统一成一份来源：面板、晨报、周报与主 Agent 的回答都从它取，每条注明给谁看",
+          "to": "状态只交一次：面板、晨报、周报与主 Agent 都从这里读"
+        },
+        "why": {
+          "from": null,
+          "to": "同一件事在各处说的数一致，每一条写明给谁看"
+        }
+      }
     }
   ]
 }

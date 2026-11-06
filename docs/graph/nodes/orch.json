@@ -2,6 +2,7 @@
   "id": "orch",
   "type": "feature",
   "title": "编排层：LLM 之上的工作流",
+  "why": "决定模型怎么干活，以及人怎样看见并管住它",
   "status": "approved",
   "parent": "hourness",
   "slope": "uphill",
@@ -443,6 +444,139 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-04 23:06 问「还有子代理在控制我的鼠标吗？」。核对：唯一在操作桌面版的是 merge-loops-runner-l4 的 l4-accept 步（桌面版 23:05:58 以 --remote-debugging-port=9333 重启，持 .llm/desktop-lock）；编排方已暂停这条运行。其余运行此刻都不在桌面步骤：metrics-reason-codes-and-merge 在写代码、merge-user-graph-l4 在跑门禁、视频在改样式、m7 在修评审发现；它们的桌面步骤要先拿桌面锁，锁仍由暂停的 L4 持有，所以都会等。此刻没有找到驱动鼠标或键盘的脚本进程；在跑的 playwright-mcp 是编排方会话自带的浏览器工具服务，不是子代理。桌面操作方式待人定（人此前说「桌面版随便用」）。"
+    },
+    {
+      "at": "2026-11-05T05:26:40.001Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "决定模型怎么干活，以及人怎样看见并管住它"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T05:38:29.790Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "心跳：5 分钟的心跳 wf_9460cdc54c33e519 发满 96 次后按计划结束，编排方换上按实际经过时间卡间隔（两次至少隔 280 秒）的 heartbeat-d wf_db9c27fb76263cc3。人 2026-11-05 说「心跳一个就行了」，编排方停掉 7 分钟的 heartbeat-c wf_4205184038b445ad，只留 heartbeat-d。"
+    },
+    {
+      "at": "2026-11-05T05:48:40.271Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05 问「你作为主Agent在自己做什么呢？还有能不能把能开的线都开起来？」。编排方核对：今天 m4-checks、m5-rest、panel-2 合入后空出的并行位没有补线，只剩 M7（wf_36d1d690c7e1de90）、rules-board-page 合入（wf_a34e9ff57206a017）、bootstrap（wf_f008ac0c87ec6943）三条在做。当即补开六条：m6-metrics-events（wf_2bf0ad146e8238b2）、lessons-4-first-batch（wf_cc148081d07c2798）、ablation-calibration（wf_5f5345b05e5c4e89）、l4-batch-2026-11-05（wf_be2ff3a8b7d83155，桌面批次 L4，覆盖 m4-checks、m8-plain-language、onboarding、m5、lessons-3、m5-1、m5-4、compact-recall、metrics、schedules，规则板与状态板块等 rules-board-page 合入后做）、investigate-reading-digest-1105（wf_f8a7db34778f087b）、investigate-graph-reconcile-1105（wf_fe96517713b134d8，只读对账 approved 与 doing 的 46 个节点：哪些可关、哪些只差 L4、哪些等线或等人、哪些能开线、哪些过时；报告 .agents/tasks/graph-reconcile-2026-11-05/report.md）。对账结果出来后按 (e) 类继续补线。"
+    },
+    {
+      "at": "2026-11-05T06:04:26.066Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05：「那就先停掉心跳吧，每次喊你起来的时候你顺手检查一遍就行」。编排方停掉 heartbeat-d（wf_db9c27fb76263cc3），不再留心跳。之后每次被通知或被人叫起时，顺手检查所有在跑的运行，把被限流暂停的恢复。在跑的九条：M7（wf_36d1d690c7e1de90）、rules-board-page 合入（wf_a34e9ff57206a017）、bootstrap（wf_f008ac0c87ec6943）、m6-metrics-events（wf_2bf0ad146e8238b2）、lessons-4-first-batch（wf_cc148081d07c2798）、ablation-calibration（wf_5f5345b05e5c4e89）、l4-batch-2026-11-05（wf_be2ff3a8b7d83155）、investigate-reading-digest-1105（wf_f8a7db34778f087b）、investigate-graph-reconcile-1105（wf_fe96517713b134d8）。代价：没有通知进来时，被限流暂停的运行要等到下一次有人叫醒编排方才恢复。"
+    },
+    {
+      "at": "2026-11-05T08:11:40.645Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05 问之前的偏好（修根因、不留冗余之类）有没有融进去，后又澄清：「具体的全文应该在zcode的全局配置里。我的意思也只是想把这些习惯融进框架，不是说kiro配置或者项目配置的事」。编排方此前只对照了本仓库的宪章与 AGENTS.md，理解偏了：人要的是 Hourness 编排框架本身（主 Agent 提示词、派活任务书、审查、规则板与循环板、经验与记忆）带上这些习惯，让任何项目里的模型都照做。派 investigate-habits-into-framework（wf_502bec1b9882532c，只读）：先从人的 ZCode 全局配置读出习惯全文（不摘凭证），逐条对照框架各层，分成已融进框架、只在本仓库文档、框架完全没有三类，给融入方案（规范阶梯哪一级、改哪个模块、怎样验证）与要人定的问题；与 d-failure-plans、d-code-rules-enforce、d-rules-human-only、d-freeze-until-dogfood 冲突处单列。报告 .agents/tasks/habits-framework/report.md。编排方此前提的「审查要不要挡只修了症状的提交」并入这份报告，随报告交人定。"
+    },
+    {
+      "at": "2026-11-05T08:35:28.684Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "项目图对账 investigate-graph-reconcile-1105（wf_fe96517713b134d8）被上游错误截断（upstream truncated response without stop reason），没有写出报告。编排方拆成两半重派，都要求先建报告、每查完一个节点就追加一行，中途断了也留得下已查的部分：A 半 investigate-graph-reconcile-1105-a（wf_354a8b952020a5fa），查 M3、M4、M5、M6、lessons、metrics、rules、schedules、compact-recall 及名单外的未关节点，报告 .agents/tasks/graph-reconcile-2026-11-05/report-a.md；B 半 investigate-graph-reconcile-1105-b（wf_32fe351dc919a679），查 M7 十个子任务（写明各自在 m7 分支上做到哪一步）、M8、onboarding、status-hub、user-graph、bootstrap、dogfood、field-trial、ablation、reading-digest、glm-context-window，报告 report-b.md。两半都只读。"
+    },
+    {
+      "at": "2026-11-05T09:27:21.295Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-05 两条只读调查（graph-reconcile wf_fe96517713b134d8、reading-digest wf_f8a7db34778f087b）都因上游错误中断（一次回复被截断，一次额度用尽），运行状态却显示完成，报告文件不存在。编排方从此在每条运行完成时先核对它该交的文件在不在，不在就按失败处理、重派；重派的任务书要求边做边写进报告。"
+    },
+    {
+      "at": "2026-11-05T09:49:41.005Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "对账 B 半（investigate-graph-reconcile-1105-b，wf_32fe351dc919a679）完成，报告 .agents/tasks/graph-reconcile-2026-11-05/report-b.md。22 个节点（M7 与十个子任务、m8、m8-plain-language、onboarding、status-hub、user-graph、bootstrap、dogfood、field-trial、orch、ablation、reading-digest、glm-context-window）今天都关不了，也没有现在就能开的新线，几乎都卡在 M7 运行 wf_36d1d690c7e1de90 合入 main。M7 合入之后建议的开线先后：P2（m7-6、m7-8、m7-9 的主体）→ P1 加 P6（m7-2 的补位提醒与简报读经验服务）→ user-graph 延后项 → 面板第 17 条接 derivedStage → P3（m7-7、状态板块第 6 批、hourness_report）→ bootstrap B7、B9、B10。M7 合入后 m7-4 在 main 上探针 glm-exec-review 绿即可关，m7-1 再等第一批 L4。编排方处理：一、ablation 运行的 plan 步被上游错误（No available accounts）截断，plan.md 不存在，code 步照样在跑、分支没有新提交；已告诉该 code 步计划缺失。二、bootstrap-impl 没有合入 main 的步骤：照 m4-checks、panel-2、m5-rest 的做法，运行结束后另派 land-bootstrap。三、几处图上文字与现状不符，已分别批注到 m8-plain-language、status-hub、dogfood、m7、m7-5、glm-context-window。要人定的两件已交给人：宣传视频的去向；P2 在 Kiro 这边做还是留给自举做第一件活。今天第三次上游错误截断运行（对账、阅读之后是 ablation 的计划步）。"
+    },
+    {
+      "at": "2026-11-05T10:05:02.781Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "项目图对账 A 半完成（.agents/tasks/graph-reconcile-2026-11-05/report-a.md，wf_354a8b952020a5fa）：22 个节点，可关 9（m3-1 到 m3-5、m4-rules、m5-1 已由编排方带证据关闭；m4-gate 等人改验收第 6 条一句；m3 等子决定 d-interview-cards 被取代），只差批次 L4 4（m4-checks、metrics、compact-recall、lessons-3），等别的线 7，等人 2（m5、m5-4，11-04 两问）。图上没有节点、现在就能开的活：M3 指标事件接线（src/design/metrics.ts 的 emitMetric 仍是空函数，指标流水已在 main）、四行设置页说明仍写「默认关闭」。结构问题：approved 的决定子节点挡着特性关闭，全图 67 个已采纳决定里只有 d-option-card 转过 done，决定怎样关没有成例。另有排期冲突要人定：d-freeze-until-dogfood（自举之后再改已放行的设计）与 d-finish-then-bootstrap（在这边彻底做完再进自举）在 R4d 一路上方向相反（规则板 §9.3 改稿 → R3 提议路 → R4d → m6-script-gate 第 24 条）。"
+    },
+    {
+      "at": "2026-11-05T10:32:40.468Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05 对编排方交的四件答「都按你说的来」：一、记忆两问按建议（m5-4 关，m5-habit-rule 建）；二、m4-gate 验收第 6 条按建议改字后带证据关闭，M7 那半句挪进 m7 的验收；三、d-interview-cards 由 d-main-agent-no-ask-card 替掉；四、d-freeze-until-dogfood 与 d-finish-then-bootstrap 冲突处按后者办，规则板一路建 rules-r4d。"
+    },
+    {
+      "at": "2026-11-05T10:40:48.243Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "习惯融进框架的调查重派 investigate-habits-into-framework-retry（wf_6ff0de9e869c0de0）：上一次 wf_502bec1b9882532c 被上游返回截断，没有留下报告。这次要求边查边写，报告 .agents/tasks/habits-framework/report.md。另开 m5-habit-rule（wf_b5171bd117c811ba）与 m4-reanchor-violations（wf_b007fba3eafafeec）；m7-handback-path-check 等 M7 合入 main 后开。"
+    },
+    {
+      "at": "2026-11-05T11:33:01.873Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "习惯融进框架的调查完成（investigate-habits-into-framework-retry，wf_6ff0de9e869c0de0；首次运行 wf_502bec1b9882532c 被上游截断未留报告），报告 .agents/tasks/habits-framework/report.md。习惯全文在 ~/.zcode/AGENTS.md 第四、五节（另有同文一份 ~/.dsh/AGENTS.md，DSH 的 dsh-agent-instructions 把它送进本机每个会话，靠的是人的用户级配置，别人装插件拿不到）。录 9 条：已在框架里 5 条（规则重读、第三次修交人、汇报粒度、如实汇报的门禁一半、干净区，其中 3 条只有一部分）；只在本仓库 4 条（不长 IDE 目录、不留死代码、条款整条重写、写规则说意图）；框架完全没有 1 条：遇到问题查根因、修在根上。方案：修根因挂在重开过的节点上（框架认不出修 bug，认得出重开）——任务书加一句并附上次重开理由，交回加 cause 字段、没写由交回门禁拦下，审查看到只修表现记不挡路的发现，第二次重开时先提醒一次；不留死代码与条款整条重写合成任务书里常驻一句，接管默认表按 ORCHESTRATION §7.5 补回 knip、jscpd、vulture。任务书、交回、审查的改动在 m7 分支，等 M7 合入后另开一件小活；第二次重开的提醒、重锚补规范摘要、接管默认表现在就能做。四件交人定：Q1 工程习惯进插件（宪章 §9 与 hourness 目标的非目标要改写），Q2 没写原因由交回门禁挡、只修了表现不挡路，Q3 主 Agent 身份段上限 3000 抬到 3200 放一句汇报可靠度，Q4 IDE 目录这条不进框架；四件都推荐可以。"
+    },
+    {
+      "at": "2026-11-05T15:32:41.885Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-05 答编排方「全开照旧，还是先停消融与状态页两条中等的线让小活先收」：原话「先全开吧，你盯着点就行，任务也是做完一点就落盘一点」。照此：十三条线都不停，编排方每次被叫醒时查一遍、恢复被限流暂停的运行；编排方已逐条通知在跑的步骤，每做完一块就提交并推到自己的分支、报告边做边写，上游 503 打断时不丢已做的部分。"
+    },
+    {
+      "at": "2026-11-05T16:44:29.370Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 00:45 巡检：13 条线。上游限流把 bootstrap（wf_f008ac0c87ec6943）、m4-reanchor-violations（wf_b007fba3eafafeec）、status-hub-3（wf_992ec82f32e990c0）、m5-rule-expected-effect（wf_24a77ef57c68c12c）四条暂停，编排方已全部恢复。按人的「做完一点就落盘一点」，各线阶段提交照常推到自己的分支：bootstrap 56f578a（B5 第 2 部分 L2）、m4-checks-loop-details e667fe8、m3-metrics-wiring cb4c442。ablation 第 3 轮 code 步在跑（加的 3 轮里的第 1 轮）。"
+    },
+    {
+      "at": "2026-11-05T17:13:46.855Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 01:11 巡检：13 条运行全部因上游限流（Model service error 5xx）暂停在当前步，编排方逐条恢复（M7、bootstrap、ablation、status-hub-3、m3-metrics-wiring、m5-habit-rule、m5-rule-expected-effect、m4-reanchor-violations、m4-checks-loop-details、habits-prompts 合入步、glm-context-window-check-b、desktop-close-docs）；恢复后 habits-prompts 与 M7 已确认重新在跑。暂停期间各分支已推的阶段提交都在 origin，没有丢失。compact-recall-redact 仍等 habits-prompts 合入后重派合入步。"
+    },
+    {
+      "at": "2026-11-05T18:04:29.492Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 约 02:00 人重启了 Kiro，在跑的运行都被暂停（Interrupted by agent restart）。编排方逐条恢复：habits-prompts、M7、m4-checks-loop-details、glm-context-window-check-b、desktop-close-docs 及其余在跑的线，各步保留自己的会话从断点接着做；分支上已推的提交不受影响。"
+    },
+    {
+      "at": "2026-11-05T18:36:58.101Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 02:35 人问在跑几条、能开的是否都开了。编排方对过图上可开工的清单：除刚开的 inject-via-prestep 外，m7-1、m7-2、m7-4、m7-6..m7-9、m7-habits、m7-handback-path-check、rules-r4d 都等 M7 合入 main；m4-reanchor-norms 等 m4-reanchor-violations 合入（评审已 APPROVED，合入步在跑）；m4-request-card 的验收第 10 条要人的原话，还没问。在跑 14 条：M7、bootstrap、ablation、status-hub-3、m3-metrics-wiring、m5-habit-rule、m5-rule-expected-effect、m4-reanchor-violations（合入）、m4-checks-loop-details（合入）、habits-prompts（清 cookie 后重启桌面版）、desktop-close-docs、guide-metrics-line、compact-recall-redact-land、inject-via-prestep。"
+    },
+    {
+      "at": "2026-11-05T19:17:01.155Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 03:1x：主检出出现别的线写进来的已跟踪改动（knip.js、package.json、src/design/propose.ts、ui/src/loops/LoopsPage.tsx）与未跟踪 src/memory/effect.ts，挡住了 m4-checks-loop-details 的快进合入。像是 ablation、m5-rule-expected-effect、status-hub-3 的步骤违反了「主检出只放锁目录」，具体哪一步写的没查。处理：收进主检出的 stash，不还原、不丢；已向 ablation、m5-rule-expected-effect 的 code 步重申只在工作树改。另记 status-hub-3 code 步完成（4c16928、65e1324、b6eab12、7ba29e0 已推；门禁绿，探针 422/422），下一步评审。"
+    },
+    {
+      "at": "2026-11-06T01:31:03.492Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "主检出第三次被别的线写进草稿（前两次：m4-checks-loop-details 合入时四个文件、m4-reanchor-norms 合入时 package.json）：这次是 docs/DESIGN.md，08:58，内容是损坏的编辑，几个工作树的 DESIGN.md 修改时刻里 bootstrap（08:59:39）最接近，来源未核实。已存档还原。写主检出的源头还没堵上：各线任务书都写了只在自己的工作树改，仍有步骤写进主检出。后续要查是哪类步骤（推断：用绝对路径的编辑工具把主检出路径当成工作树路径）并在任务书模板与规则上修根因，不再逐次清理。"
+    },
+    {
+      "at": "2026-11-06T02:07:39.009Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "10:06 巡检：上游限流又暂停了 inject-via-prestep、ablation、m5-rule-expected-effect、bootstrap 四条运行，编排方已恢复。在跑：M7 真实模型运行一步（wf_36d1d690c7e1de90 real-model-run）、m5-habit-rule 第 2 轮评审、status-hub-3 合入后 L4、probe-run-dir-outside-repo 合入（主检出已干净，已告知接着做）。主检出已跟踪文件干净，两把探针锁空闲。"
+    },
+    {
+      "at": "2026-11-06T02:56:29.431Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "主检出第四次被别的线写进东西：10:26:36 出现未跟踪的 src/memory/effect.ts（14168 字节，与 .worktrees/m5-rule-expected-effect 里 10:27:01 写入的同名文件同源），probe-run-dir-outside-repo 合入步在主检出 build 时 tsc 报错（exit 2），已把它挪到 .agents/tasks/probe-run-dir-outside-repo/stray/src-memory-effect.ts-1026.txt 存档（没删），重建通过。前三次：m4-checks-loop-details 合入时的四个文件（stash@{0}）、inject-via-prestep 的 package.json、DESIGN.md 的坏草稿。推断原因：步骤用相对路径或默认 cwd 调文件工具与命令，落到 Kiro 工作区根即主检出。编排方已告知 m5-rule-expected-effect 一律用工作树绝对路径并在交回前核对主检出 status；以后派活的任务书都写这一条。"
     }
   ]
 }

@@ -2,6 +2,7 @@
   "id": "d-inertia-breaker",
   "type": "decision",
   "title": "连续跟随推荐多了，harness 自动换一种问法",
+  "why": "人连着照推荐选得太多时，系统换一种问法，让人先想自己的答案",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -32,6 +33,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-plain-language 设计 0.5：面板的先想后看（打乱顺序、数字标号、折起推荐、跟随率窗口与历史字段 asked、shown）整节删去，因为 d-chat-not-cards 之后面板不出选项；跟随惯性按 d-chat-not-cards 第一点改为「要紧的事先问人怎么想再给方案」，落在 M3 的说话规矩里。"
+    },
+    {
+      "at": "2026-11-05T05:25:43.916Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "人连着照推荐选得太多时，系统换一种问法，让人先想自己的答案"
+        }
+      }
     }
   ]
 }

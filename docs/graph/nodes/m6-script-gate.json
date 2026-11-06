@@ -1,7 +1,8 @@
 {
   "id": "m6-script-gate",
   "type": "task",
-  "title": "M6 S2：仓库脚本启动前按项目规则与高峰模式自查，拦下要留带规则 id 的记录",
+  "title": "仓库脚本启动前按项目规则与高峰模式自查",
+  "why": "重活脚本在高峰前自己停下，拦下时留下带规则名的记录，事后查得到",
   "status": "doing",
   "parent": "m6",
   "kind": "implement",
@@ -43,6 +44,41 @@
       "reason": "运行 m6-followups-s1-s3 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-04T22:05:23.744Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "实现提交 e72a25e（origin/m6-followups），门禁 0/0/0/0（npm test 2982 / 0 失败，探针 388/388），评审 APPROVED（.llm/m6f/review-s2.json）。设计第 24 条里真实 checkCall 执行已批准脚本的用例未做，等规则板 R4d（要规则的批准路径 R3-proposal 与 M7 E7 的 trunkAdvanceFor），所以合入 main 后本节点仍保持进行中。合入交给 land-m6-followups（wf_4b9841cada0119dd）。"
+    },
+    {
+      "at": "2026-11-04T22:33:08.112Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "S2 已随 m6-followups 合入 main（e95df6e，合入树门禁全绿：npm test 2982 通过 / 0 失败，探针 388/388；行组合未变，没有重启桌面版）。设计第 24 条里真实 checkCall 执行已批准脚本的用例仍等规则板 R4d，本节点保持进行中。"
+    },
+    {
+      "at": "2026-11-05T05:26:25.851Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "M6 S2：仓库脚本启动前按项目规则与高峰模式自查，拦下要留带规则 id 的记录",
+          "to": "仓库脚本启动前按项目规则与高峰模式自查"
+        },
+        "why": {
+          "from": null,
+          "to": "重活脚本在高峰前自己停下，拦下时留下带规则名的记录，事后查得到"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T10:32:39.964Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "等的 R4d 不再排在自举之后：人 2026-11-05 定提到自举之前，由 rules-r4d 做；R4d 里接 M7 E7 trunkAdvanceFor 的一段仍等 M7 合入 main。"
     }
   ]
 }

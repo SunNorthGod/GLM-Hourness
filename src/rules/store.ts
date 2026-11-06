@@ -38,6 +38,8 @@ export interface RulesPaths {
   readonly journal: string
   readonly lock: string
   readonly repoWritten: string
+  /** `<runtimeDir>/view.json`: the rules page's data (view.ts), written by the row, read by the panel. */
+  readonly view: string
   /** `<rulesDir>/rules.json`: what the person decided, exported for git. */
   readonly rulesFile: string
 }
@@ -55,6 +57,7 @@ export function rulesPaths(projectRoot: string, rulesDir: string = DEFAULT_RULES
     journal: join(runtimeDir, 'journal.jsonl'),
     lock: join(runtimeDir, 'rules.lock'),
     repoWritten: join(runtimeDir, 'repo-written.json'),
+    view: join(runtimeDir, 'view.json'),
     rulesFile: join(rules, 'rules.json'),
   }
 }

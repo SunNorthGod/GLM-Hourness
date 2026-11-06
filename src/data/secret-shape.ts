@@ -2,6 +2,9 @@
  * Text that looks like a secret (M5 design §5.6): the check that keeps
  * tokens out of memory entries, lessons and the evidence beside them, which
  * reach briefs, handbacks and, through a fallback comment, a pushed graph.
+ * The same table redacts the loop board's script output
+ * (src/loops/run.ts) and the session transcript export
+ * (src/data/transcript.ts, docs/DESIGN.md §2.4).
  *
  * Pure functions, no Node built-ins: the orchestration package's handback
  * code imports them too. The classes are judged in the order of
@@ -52,7 +55,8 @@ const SECRET_CLASSES: readonly ClassSpec[] = [
   },
   {
     name: 'pem',
-    pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/g,
+    // The header, and the key body up to its END line when the text has one (RFC 7468), so redaction hides the body too; the body's base64 lines are cut by `/` into runs the token class can miss.
+    pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----)?/g,
     message: () => looksLike('pem: PEM header'),
   },
   {
@@ -107,12 +111,30 @@ export function secretRefusal(fields: ReadonlyArray<readonly [string, unknown]>)
   return undefined
 }
 
-/** `text` with every run that matches a class (not in `skip`) replaced by `[redacted]`. */
-export function redactSecrets(text: string, skip: readonly SecretClass[] = []): string {
+/** What takes the place of a run that matches a class. */
+export const REDACTED = '[redacted]'
+
+/**
+ * `text` with every run that matches a class (not in `skip`) replaced by
+ * REDACTED, and how many runs were replaced. Throws what the pattern engine
+ * throws: on Node 22 a single run of several million token characters
+ * overflows V8's regular-expression backtrack stack (RangeError).
+ */
+export function redactSecretsCounted(text: string, skip: readonly SecretClass[] = []): { readonly text: string, readonly replaced: number } {
   let result = text
+  let replaced = 0
   for (const spec of SECRET_CLASSES) {
     if (skip.includes(spec.name)) continue
-    result = result.replace(spec.pattern, match => (spec.accepts?.(match) ?? true) ? '[redacted]' : match)
+    result = result.replace(spec.pattern, (match) => {
+      if (!(spec.accepts?.(match) ?? true)) return match
+      replaced += 1
+      return REDACTED
+    })
   }
-  return result
+  return { text: result, replaced }
+}
+
+/** `text` with every run that matches a class (not in `skip`) replaced by `[redacted]`. */
+export function redactSecrets(text: string, skip: readonly SecretClass[] = []): string {
+  return redactSecretsCounted(text, skip).text
 }

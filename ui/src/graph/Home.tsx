@@ -5,7 +5,8 @@
  * opens the second-layer page. A goal with a user graph leads 效果是 with
  * its flow progress (user-view.ts). Everything else is computed by plain-view.ts
  * from the current graph and the session's live views; the boards' lines
- * come from the registration table. The panel only looks.
+ * come from the registration table. A graph without any node shows only
+ * 效果是 with the way to start (§4.10). The panel only looks.
  */
 import type { ReactElement } from 'react'
 import { useSyncExternalStore, useContext } from 'react'
@@ -18,7 +19,8 @@ import {
 } from '../../../src/graph/plain-view.ts'
 import { boards, checkedBoardState, type Board } from './boards.ts'
 import type { AgentLive } from './agents.ts'
-import { NowContext, Part, When, useServices } from './common.tsx'
+import { NowContext, Options, Part, When, useServices } from './common.tsx'
+import { CopyWish } from './Guide.tsx'
 import { MainChatLine } from './MainChat.tsx'
 import { headlineGoals, statusText } from './model.ts'
 import { homeFlowLine } from './user-view.ts'
@@ -41,7 +43,12 @@ function GoalRow({ graph, goal, awaiting, onModules, onUser }: { readonly graph:
   )
 }
 
-/** One need: the first shows its full ask, the rest their titles; the answer is in the main agent's chat. */
+/**
+ * One need (done conditions 1 and 6): the first is shown whole — a
+ * question's ask and the lines of its way of asking (common.tsx Options) —
+ * the rest show their title and ask; a matter only the main agent's chat
+ * holds shows its text. The answer is in the main agent's chat.
+ */
 function NeedCard({ need, first }: { readonly need: NeedEntry, readonly first: boolean }): ReactElement {
   const { open } = useServices()
   const node = need.node
@@ -53,10 +60,13 @@ function NeedCard({ need, first }: { readonly need: NeedEntry, readonly first: b
       </div>
     )
   }
+  const question = node.type === 'question'
   return (
     <div className="glmg-card wait">
       <h3 className="glmg-card-title"><button type="button" className="glmg-card-link" onClick={() => { open(node.id) }}>{node.title}</button></h3>
       <div className="glmg-meta"><span>{statusText(node)}</span><When at={need.since} /></div>
+      {question && first ? <Options node={node} /> : null}
+      {question && !first && node.ask !== undefined ? <p className="glmg-text">{node.ask}</p> : null}
       {first ? <MainChatLine /> : null}
     </div>
   )
@@ -94,6 +104,18 @@ export interface HomeProps {
 /** The home page's body. */
 export function Home({ graph, agents, awaiting, since, quiet, sessionId, mainHere, onPlan, onChanges, onLive, onNeeds, onModules, onUser, onBoard }: HomeProps): ReactElement {
   const now = useContext(NowContext)
+  // An empty graph (no node at all; closed goals are not empty) shows only 效果是 and the way to start (§4.10).
+  if (graph.nodes.size === 0) {
+    return (
+      <div className="glmg-view">
+        <Part title="效果是">
+          <div className="glmg-meta">这张图还是空的</div>
+          <div className="glmg-text">在输入框打 /wish，后面跟一句你想做的</div>
+          <CopyWish />
+        </Part>
+      </div>
+    )
+  }
   const goals = headlineGoals(graph)
   const needs = needsOf(graph, awaiting)
   const plan = planOf(graph, now, agents.find(agent => agent.main && agent.running)?.view?.focus ?? undefined)

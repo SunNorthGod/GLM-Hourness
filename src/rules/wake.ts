@@ -16,7 +16,7 @@ import { localClock } from './denial.ts'
 import type { Resume } from './goal.ts'
 import { ended, judgeInput } from './judge.ts'
 import type { ProjectState, Ticket } from './model.ts'
-import type { SignalReading } from './signals.ts'
+import { GLM_PEAK, type SignalReading } from './signals.ts'
 import { signalsRead } from './table.ts'
 
 /** Source kind of every wake message, and of the notice of a ticket that was expired under a live host. */
@@ -138,15 +138,16 @@ export function heartbeatLostText(ticket: Ticket): string {
   return `[rules board] Ticket ${ticket.id} was expired after a heartbeat timeout of this host; ${ticket.rules.length === 1 ? 'rule' : 'rules'} ${ticket.rules.join(', ')} may still hold. Running ${callOf(ticket)} again queues it again if it does.`
 }
 
-function signalNow(name: string, reading: SignalReading | undefined, state: ProjectState): string {
+function signalNow(name: string, reading: SignalReading | undefined, state: ProjectState, peakEnd: string | undefined): string {
   if (reading === undefined) return `${name} cannot be read now`
   if (reading.value === undefined) return reading.unknown
+  if (name === GLM_PEAK && reading.value === false && peakEnd !== undefined) return `${name} ended at ${localClock(peakEnd)}`
   const value = typeof reading.value === 'boolean' ? (reading.value ? 'on' : 'off') : String(reading.value)
   const at = reading.source === 'manual' ? state.signals?.[name]?.manual?.at : undefined
   return `${name} is ${value} now${at === undefined ? '' : ` (set by the human at ${localClock(at)})`}`
 }
 
-function whyEnded(id: string, state: ProjectState, readings: ReadonlyMap<string, SignalReading>, now: Date): string {
+function whyEnded(id: string, state: ProjectState, readings: ReadonlyMap<string, SignalReading>, now: Date, peakEnd: string | undefined): string {
   // An entry of the code is not in the state: it ends with the peak or with the level the person chose.
   if (id.startsWith('builtin:')) return PEAK_OVER
   const rule = state.rules !== undefined && Object.hasOwn(state.rules, id) ? state.rules[id] : undefined
@@ -154,16 +155,19 @@ function whyEnded(id: string, state: ProjectState, readings: ReadonlyMap<string,
   if (rule.status === 'lifted') return `rule ${id} was lifted by the human`
   if (rule.status === 'expired' || ended(rule, judgeInput({ now, project: '', events: [], signals: [...readings.values()] }))) return `rule ${id} has expired`
   const names = signalsRead(rule)
-  return names.length === 0 ? `the condition of rule ${id} no longer holds` : names.map(name => signalNow(name, readings.get(name), state)).join(', ')
+  return names.length === 0 ? `the condition of rule ${id} no longer holds` : names.map(name => signalNow(name, readings.get(name), state, peakEnd)).join(', ')
 }
 
 /**
  * Why a ticket stopped waiting: what the rules that held it say now. A rule
  * that is lifted, deleted or out of time says so; one whose condition no
  * longer holds names the signals it reads, with their value and who set it. A
- * stronger rule that blocks the call now is named instead.
+ * stronger rule that blocks the call now is named instead. `peakEnd` is the
+ * end of the peak the ticket was opened in (`peakEndAfter`, worked out at the
+ * wake, not kept on the ticket): a `glm-peak` that is off now says when that
+ * peak ended (M6 design §7.2).
  */
-export function clearedBecause(ticket: Ticket, state: ProjectState, readings: ReadonlyMap<string, SignalReading>, now: Date, blocking: readonly string[]): string {
+export function clearedBecause(ticket: Ticket, state: ProjectState, readings: ReadonlyMap<string, SignalReading>, now: Date, blocking: readonly string[], peakEnd?: string): string {
   if (blocking.length > 0) return `${blocking.length === 1 ? 'rule' : 'rules'} ${blocking.join(', ')} ${blocking.length === 1 ? 'blocks' : 'block'} the call now`
-  return [...new Set(ticket.rules.map(id => whyEnded(id, state, readings, now)))].join('; ')
+  return [...new Set(ticket.rules.map(id => whyEnded(id, state, readings, now, peakEnd)))].join('; ')
 }

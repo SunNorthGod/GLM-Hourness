@@ -133,7 +133,8 @@ export interface RuntimeState {
   /** The last run of each entry, for the page. */
   last: Record<string, { run: string, at: string, outcome: string, reason?: string }>
   /** What the host last left: the restart event is derived from it (design §6.8). */
-  host?: { pid: number, boot: number, startedAt: string, cleanExit?: boolean, appStamp?: string }
+  /** The last start of this project's runner; `aliveAt` is its last beat, or its clean exit, which the next start's `downMinutes` counts from. */
+  host?: { pid: number, boot: number, startedAt: string, aliveAt?: string, cleanExit?: boolean, appStamp?: string }
   /** The states the file watch settled on, so a change made while the host was down is found once. */
   files: Record<string, { size: number | 'gone', mtimeMs: number }>
   /** The peak reading the last beat saw, for the boundary a stopped host missed. */

@@ -2,6 +2,7 @@
   "id": "risk-signing",
   "type": "risk",
   "title": "1.5 倍用量取决于请求与 ZCode 一致，用量上看不出",
+  "why": "签名没成功时看不出用量有没有按 1.5 倍算，可能多花积分",
   "status": "approved",
   "parent": "bottom",
   "body": "签名握手对当前凭证失败，按设计无签发送；对 ZCode 渠道 1.5 倍用量的影响未验证，签名状态不可见（HANDOFF.md §5 第 5 条）。",
@@ -42,6 +43,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "用户 2026-10-28：额度与扣减看不出加成，按代码级别与 ZCode 3.16.3 一致来保证（m1-parity）。这条风险随 m1-parity 完成而降为「已按 ZCode 做齐，无法观测」。"
+    },
+    {
+      "at": "2026-11-05T05:26:44.951Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "签名没成功时看不出用量有没有按 1.5 倍算，可能多花积分"
+        }
+      }
     }
   ]
 }

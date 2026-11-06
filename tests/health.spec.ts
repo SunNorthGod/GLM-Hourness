@@ -119,6 +119,20 @@ test('notes compose on a session without a report yet, cap at four, cut at 80 co
   health.note('', 'k', 'x')
 })
 
+test('a remark (degrades false) adds its text and leaves the state; with a degrading note the state is degraded (env check timeouts, M4 design §6.3.1)', () => {
+  const store = serviceStore()
+  const health = provideRowHealth(store, 'env', 'active', '已加载')
+  health.report('s1', 'active', '环境提醒读图 g')
+  health.note('s1', 'checks-timeout', 'tool-1/lint 没跑完：上限 60 秒，跑了 60.0 秒', false)
+  assert.deepEqual(inSession(store, 'env', 's1'), { state: 'active', reason: '环境提醒读图 g；tool-1/lint 没跑完：上限 60 秒，跑了 60.0 秒' })
+  health.note('s1', 'checks-failed', 'tool-1/tsc 没跑成：找不到 node')
+  assert.deepEqual(inSession(store, 'env', 's1'), { state: 'degraded', reason: '环境提醒读图 g；tool-1/lint 没跑完：上限 60 秒，跑了 60.0 秒；tool-1/tsc 没跑成：找不到 node' })
+  health.note('s1', 'checks-failed', undefined)
+  assert.equal(inSession(store, 'env', 's1')?.state, 'active', 'withdrawing the degrading note leaves the remark and the state it had')
+  health.note('s2', 'checks-timeout', 'x', false)
+  assert.deepEqual(inSession(store, 'env', 's2'), { state: 'active', reason: '已加载；x' }, 'a remark on the activation status before any report')
+})
+
 
 test('a second instance of a row or a context without provide never fails activation', () => {
   const store = serviceStore()
@@ -248,12 +262,46 @@ async function withMissingDshHome<T>(run: (dshHome: string) => T | Promise<T>): 
 test('glm-llm: the registered route and the credential directory at activation; without a home the user-level directory', async () => {
   const store = serviceStore()
   llmApply({ registerAdapter: () => () => {}, ...store }, { home: 'C:/ws/.llm' })
-  assert.deepEqual(activation(store, 'glm-llm'), { state: 'active', reason: '已注册路由 glm-zcode（套餐 coding-plan，凭证目录 C:/ws/.llm）' })
+  assert.deepEqual(activation(store, 'glm-llm'), { state: 'active', reason: '已注册路由 glm-zcode（套餐 coding-plan，凭证目录 C:/ws/.llm，上下文窗口 512000）' })
   await withMissingDshHome(dshHome => {
     const bare = serviceStore()
     llmApply({ registerAdapter: () => () => {}, ...bare }, {})
-    assert.deepEqual(activation(bare, 'glm-llm'), { state: 'active', reason: `已注册路由 glm-zcode（套餐 coding-plan，凭证目录 ${join(dshHome, 'glm-hourness')}）` })
+    assert.deepEqual(activation(bare, 'glm-llm'), { state: 'active', reason: `已注册路由 glm-zcode（套餐 coding-plan，凭证目录 ${join(dshHome, 'glm-hourness')}，上下文窗口 512000）` })
   })
+})
+
+test('glm-llm: a configured context window is declared to DSH and named in the activation', async () => {
+  const store = serviceStore()
+  const adapters: Array<{ resolveModel(provider: string, model: string): Promise<{ context?: { contextWindow: number } }> }> = []
+  llmApply({ registerAdapter: (_providers, adapter) => { adapters.push(adapter); return () => {} }, ...store }, { home: 'C:/ws/.llm', contextWindow: 600_000 })
+  assert.deepEqual(activation(store, 'glm-llm'), { state: 'active', reason: '已注册路由 glm-zcode（套餐 coding-plan，凭证目录 C:/ws/.llm，上下文窗口 600000）' })
+  assert.equal((await adapters[0].resolveModel('glm-zcode', 'glm-5.3')).context?.contextWindow, 600_000)
+})
+
+test('glm-llm: a context window outside 128000..1000000 or not an integer falls back to 512000, degrades the row and warns once', async () => {
+  const refused = (shown: string): string => `上下文窗口配置 ${shown} 不是 128000 到 1000000 之间的整数，按缺省 512000`
+  for (const [value, shown] of [[127_999, '127999'], [1_000_001, '1000001'], [600_000.5, '600000.5'], ['512k', '"512k"'], [true, 'boolean']] as const) {
+    const store = serviceStore()
+    const adapters: Array<{ resolveModel(provider: string, model: string): Promise<{ context?: { contextWindow: number } }> }> = []
+    const warnings: string[] = []
+    const warn = console.warn
+    console.warn = (message: string) => { warnings.push(message) }
+    try {
+      llmApply({ registerAdapter: (_providers, adapter) => { adapters.push(adapter); return () => {} }, ...store }, { home: 'C:/ws/.llm', contextWindow: value })
+    }
+    finally {
+      console.warn = warn
+    }
+    assert.deepEqual(activation(store, 'glm-llm'), { state: 'degraded', reason: `已注册路由 glm-zcode（套餐 coding-plan，凭证目录 C:/ws/.llm，上下文窗口 512000）；${refused(shown)}` }, String(value))
+    assert.deepEqual(warnings, [`dsh-glm-hourness/glm-llm: ${refused(shown)}`])
+    assert.equal((await adapters[0].resolveModel('glm-zcode', 'glm-5.3')).context?.contextWindow, 512_000)
+  }
+  // A session's report carries the refusal: a failed request stays inactive with it.
+  const store = serviceStore()
+  const adapters: Array<{ stream(options: unknown): AsyncIterable<unknown> }> = []
+  quietly(() => llmApply({ registerAdapter: (_providers, adapter) => { adapters.push(adapter); return () => {} }, ...store }, { home: 'C:/definitely-missing-glm-hourness-health-home', contextWindow: 'x' }))
+  await assert.rejects(async () => { for await (const chunk of adapters[0].stream({ provider: 'glm-zcode', model: 'glm-5.3', sessionId: 's1', messages: [] })) void chunk }, /\/glm-login/)
+  assert.deepEqual(inSession(store, 'glm-llm', 's1'), { state: 'inactive', reason: `未登录：凭证为空，运行 /glm-login；${refused('"x"')}` })
 })
 
 test('glm-llm: a request without a credential reports the session inactive with the login instruction', async () => {

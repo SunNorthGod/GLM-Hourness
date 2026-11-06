@@ -1,10 +1,11 @@
 {
   "id": "d-interview-cards",
   "type": "decision",
-  "title": "访谈里的选择题由 harness 出卡，主 Agent 不带 ask_user_question",
-  "status": "approved",
+  "title": "访谈里的选择题由系统出卡，不用 DSH 原生的问答工具",
+  "why": "原生问答工具把推荐放第一并预选，和推荐放最后的规矩冲突，所以自己出卡",
+  "status": "superseded",
   "parent": "m3",
-  "verification": "unverified",
+  "verification": "superseded",
   "body": "主 Agent 访谈里给人的选择题不再走 DSH 原生 ask_user_question：DSH 的工具说明要模型把推荐放第一并加 (Recommended)（tool-ask-user lib/index.js:94、250），客户端认出后缀会预选第一项（client-ui-user-questions client.js:672–687、788–791），与 d-recommend-last 相反。改为 harness 出卡：主 Agent 调卡片工具（decision_card 的一种模式或新工具 interview_choice），参数是选项与 recommend，由 src/design/cards.ts 经 userQuestions.ask 按表格版规则写出（推荐在最后、不加后缀、不预选）；主 Agent 的工具面在组装时按角色去掉 ask_user_question，做法同 question-26 C；不带选项的追问也经 userQuestions.ask。M3 标定的模拟人改为：待决卡按图上的 recommend 选，访谈题选最后一项。M3 设计第 86、241、752、972、1050 行随之改写（plain-ui 设计评审 P3-02，评审里记作 A）。没选的做法：保留 ask_user_question，靠身份文本约束并统计违反次数。",
   "history": [
     {
@@ -20,6 +21,33 @@
       "actor": "llm",
       "op": "comment",
       "text": "m8-plain-language 设计 0.4 §3.8.4 与 §12 M3 第 1 条的落法：decision_card 与访谈选择题都经 src/design/cards.ts 与 userQuestions.ask 出卡，detail 依次是背景、单向门提示、取决于与结论行，按钮「A · label」，说明「得到：…；代价：…」，推荐在最后、不加 (Recommended)、不预选；访谈卡片工具推荐不在最后时 invalid（与引擎 recommend-last 同一句提示），不替模型重排；主 Agent 的工具面在组装时去掉 ask_user_question（M3 设计第 226 行那个监听器）；访谈题不进图、不算跟随率、没有先想后看；模拟人在待决卡上按 recommend 选、访谈卡片选最后一项，收到带 (Recommended) 的卡记一次违反。DSH 问题卡的两处宿主限制记下：按钮 aria-label 只是说法（client-ui-user-questions client.js:1096），说法字重 500。"
+    },
+    {
+      "at": "2026-11-05T05:25:44.479Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "访谈里的选择题由 harness 出卡，主 Agent 不带 ask_user_question",
+          "to": "访谈里的选择题由系统出卡，不用 DSH 原生的问答工具"
+        },
+        "why": {
+          "from": null,
+          "to": "原生问答工具把推荐放第一并预选，和推荐放最后的规矩冲突，所以自己出卡"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T10:33:57.196Z",
+      "actor": "llm",
+      "op": "supersede",
+      "reason": "d-interview-cards 定的「harness 出卡」已被 d-chat-not-cards 与 d-ask-three-gates 取代，只剩主 Agent 不带 ask_user_question 一半在用（.agents/tasks/graph-reconcile-2026-11-05/report-a.md (f)）；写下现在的做法替掉它",
+      "relay": "都按你说的来",
+      "from": "approved",
+      "to": "superseded",
+      "by": "d-main-agent-no-ask-card"
     }
   ]
 }

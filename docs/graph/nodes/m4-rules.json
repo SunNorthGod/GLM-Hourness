@@ -2,13 +2,37 @@
   "id": "m4-rules",
   "type": "task",
   "title": "三条规划规矩",
-  "status": "doing",
+  "why": "跳过检查不写理由、改检查工具的配置、在草稿区外放脚本，三种做法一启用就拦",
+  "status": "done",
   "parent": "m4",
   "body": "M4 设计 0.6 的一件活。做完条件由人 2026-11-01 定下，见本节点验收（人话版 .agents/tasks/m4/onepage-done.md）。",
   "acceptance": [
     "第 1 条：三条新规则一启用就拦，各留一条拒绝记录：新写的跳过检查的注释没写理由、也没挂图上的节点；改检查工具的配置或基线文件；在草稿区以外新建一次性脚本。相邻的正常情形放行、不记录（注释带了「-- 理由 节点」、改普通源文件、在已有同类文件的目录里新建）。后两条的拒绝带一个申请编号（见第三件）。读登录密钥文件放行、也不记录，没有这条规则。",
     "第 2 条：同一件活被从「做完」改回「在做」第 3 次（第 3 次返工要开始）时，这个节点下出现一张给人的待决：题目带前因后果，再加推荐、疑问、不做各一行，不带任何选项；题目、四行和正文里不出现你没学过的内部词；疑问那一行写出一个「一变方案就要换」的事实；节点标题里有你没学过的词、编号或文件名时，题目写「这件活要修第 3 次了」、把标题移进「附」。主 Agent 把它放进下一批交给你的事（一次至多三件），只问「先停下查原因，可以吗？」。你同意、补充、否掉或说不用定，都有记法。这张待决没关掉之前，再返工不再加。装了循环板时，它的页面列出这一项，每提一次报一次。",
     "第 3 条：规范文档里那张规划规矩表的每一行，都写明在哪一行实现、什么状态。"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "8010dd8",
+      "note": "G3：suppression-reason、checker-config、scratch-only 三条规则"
+    },
+    {
+      "kind": "commit",
+      "ref": "e4ef64d",
+      "note": "R1：第三次返工先问人，循环板条目 graph.third-rework"
+    },
+    {
+      "kind": "commit",
+      "ref": "4da6f93",
+      "note": "规则板流水按项目写（评审 MINOR），随 m4-checks 进 main"
+    },
+    {
+      "kind": "test",
+      "ref": "tests/guard-new-rules.spec.ts",
+      "exit": 0,
+      "note": "另 tests/graph-reopen.spec.ts、tests/rules-gate.spec.ts；验证层到 L2、L3"
+    }
   ],
   "history": [
     {
@@ -38,6 +62,50 @@
       "reason": "运行 m4-checks-and-rules 开工（2026-11-04，人：「桌面版随便用，尽可能开多线」）",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-05T05:26:21.148Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "跳过检查不写理由、改检查工具的配置、在草稿区外放脚本，三种做法一启用就拦"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T10:05:48.877Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "项目图对账 A 半（.agents/tasks/graph-reconcile-2026-11-05/report-a.md，investigate-graph-reconcile-1105-a，wf_354a8b952020a5fa）核实：验收逐条有证据，提交都在 origin/main（merge-base --is-ancestor 退出码 0），验证层不要求 L4 或 L4 已做过",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "8010dd8",
+          "note": "G3：suppression-reason、checker-config、scratch-only 三条规则"
+        },
+        {
+          "kind": "commit",
+          "ref": "e4ef64d",
+          "note": "R1：第三次返工先问人，循环板条目 graph.third-rework"
+        },
+        {
+          "kind": "commit",
+          "ref": "4da6f93",
+          "note": "规则板流水按项目写（评审 MINOR），随 m4-checks 进 main"
+        },
+        {
+          "kind": "test",
+          "ref": "tests/guard-new-rules.spec.ts",
+          "exit": 0,
+          "note": "另 tests/graph-reopen.spec.ts、tests/rules-gate.spec.ts；验证层到 L2、L3"
+        }
+      ]
     }
   ]
 }

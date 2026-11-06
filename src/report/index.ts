@@ -42,7 +42,7 @@ import { provideRowStatus } from '../shared/status-host.ts'
 import { projectOf } from '../data/project-root.ts'
 import { metricsOf, type MetricsCoverage } from '../shared/metrics.ts'
 import { pricingService, quotaOf, type UsagePricing } from '../shared/pricing.ts'
-import type { MomentZone } from '../shared/quota.ts'
+import type { MomentZone, QuotaAsker } from '../shared/quota.ts'
 import type { StatusItem } from '../shared/status.ts'
 import type { CommandDefinitionLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
@@ -211,9 +211,11 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
   const clock = config.now ?? (() => new Date())
   const zone = config.offsetMinutes === undefined ? undefined : { offsetMinutes: config.offsetMinutes }
   let quotaCache: { readonly at: number, readonly lines: readonly string[] } | undefined
-  const refreshQuota = async (pricing: UsagePricing): Promise<void> => {
+  /** Read the quota for the cache; the read is the command's, in the session it ran in (the channel files its metric event there). */
+  const refreshQuota = async (pricing: UsagePricing, sessionId: string | undefined): Promise<void> => {
     const at = clock().getTime()
-    quotaCache = { at, lines: await quotaSection(pricing, at, zone, problem) }
+    const asker: QuotaAsker = { kind: 'command', ...(sessionId === undefined ? {} : { sessionId }) }
+    quotaCache = { at, lines: await quotaSection(pricing, at, zone, problem, asker) }
   }
   const status = provideRowStatus(ctx, 'hourness', () => {
     const items: StatusItem[] = []
@@ -254,7 +256,7 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
       const pricing = pricingService(ctx, problem)
       // The quota member is judged again where it is read, which reports a wrong shape; the status only says whether it is there.
       health.report(sessionIdOf(invocation.agent), ...hournessHealth(homes, pricing !== undefined, pricing !== undefined && quotaOf(pricing) !== undefined))
-      if (pricing !== undefined) await refreshQuota(pricing)
+      if (pricing !== undefined) await refreshQuota(pricing, sessionIdOf(invocation.agent))
       try {
         // The lift record lives in the project root of the session's working directory (design §3.10); without one there is no reconciliation, by the same reading the journal home takes.
         const headerCwd = invocation.agent?.session?.header?.cwd

@@ -2,6 +2,7 @@
   "id": "d-peak-mode",
   "type": "decision",
   "title": "高峰继续提醒模型，另加人选的高峰模式：无影响、少做、不做",
+  "why": "高峰时 GLM 更费积分，人可以选高峰里少做或不做，默认少做",
   "status": "approved",
   "parent": "rules",
   "verification": "sandbox",
@@ -49,6 +50,19 @@
           "exit": 0
         }
       ]
+    },
+    {
+      "at": "2026-11-05T05:25:53.309Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "高峰时 GLM 更费积分，人可以选高峰里少做或不做，默认少做"
+        }
+      }
     }
   ]
 }

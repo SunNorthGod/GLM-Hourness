@@ -21,12 +21,14 @@
  * The declarations of events (`LoopEventDeclaration` and the types in it) are
  * defined in trigger.ts, which both boards share, and are exported here under
  * their own names, so a row imports all it needs to hand something over from
- * this file.
+ * this file, together with the one way of handing it over
+ * (`installContribution`), which the graph row and the env row share.
  */
 import type { ServiceLookup } from '../shared/dsh-min.ts'
 import type { HarnessResult, LoopEventRecord } from '../shared/loop-records.ts'
 import type { LoopEntryDefinition } from './model.ts'
 import type { LoopEventDeclaration } from './trigger.ts'
+import type { ViewCheck } from './view.ts'
 
 export type { LoopEventDeclaration, LoopEventField, LoopEventParam } from './trigger.ts'
 /** The record a harness action gets and the result it gives; shared with the execute row's service (src/shared/loop-records.ts). */
@@ -87,9 +89,20 @@ export interface Contribution {
   readonly actions?: readonly { readonly id: string, readonly title: string }[]
   /** The board calls it to run a harness action. It does not throw: a failure is in the result. Required when `actions` is not empty. */
   run?(action: string, event: LoopEventRecord): Promise<HarnessResult>
-  /** For the page only: the lines shown when an entry is opened. Synchronous, does not throw, at most 20 lines of 160 code points. */
+  /**
+   * For the page only: the lines shown when an entry is opened, for the project root given. Synchronous, does not
+   * throw, at most `DETAILS_MAX_LINES` lines of `DETAILS_MAX_WIDTH` code points. The board calls it each time it
+   * writes view.json; an answer that throws or does not keep to this is shown as unreadable and told to the row health.
+   */
   details?(entry: string, project: string): readonly string[]
+  /** For the page only: the checks the entry runs in the project, each with its timeout in the shape the page words (plain-ui 1.3 §8.2). Synchronous, does not throw, at most 10. */
+  checks?(entry: string, project: string): readonly ViewCheck[]
 }
+
+/** The most lines a hand-over's `details` may give for one entry (loop board design §3.1). */
+export const DETAILS_MAX_LINES = 20
+/** The most code points of one line of `details`. */
+export const DETAILS_MAX_WIDTH = 160
 
 export type ContributeResult =
   | { readonly ok: true, readonly dispose: () => void, readonly accepted: readonly string[], readonly dropped: readonly { readonly id: string, readonly reason: string }[] }
@@ -122,6 +135,51 @@ export interface LoopsService {
   listens(event: string, cwd: string): boolean
   /** One run of a `self` entry, reported by the row that ran it; the id of an entry that is not a listed one is dropped. Does not throw. */
   recordRun(run: ListedRun): void
+}
+
+/** What a contributing row's context needs for `installContribution`. */
+export interface ContributionHost extends ServiceLookup {
+  /** cordis inject when the host has it; a package-provided service is reached by name. */
+  inject?(names: readonly string[], callback: (sub: ServiceLookup) => (() => void) | void): unknown
+  /** Awaited serially at agent creation; without inject the hand-over rides it. */
+  on(event: 'agent/created', listener: () => Promise<void> | void): () => void
+}
+
+/**
+ * How a row hands its contribution to the board (loop board design 0.6 §3.1, m4 design §6.8): through `inject` when the
+ * host has it, so the board arriving later or restarting gets it again and the board's leaving withdraws it; otherwise
+ * once per `agent/created`, where the same source handing over again replaces its earlier hand-over. A refused
+ * hand-over and every dropped piece reach `report` once per message, named after `label` and the piece, so a
+ * restarting board does not churn the row's health line. Never throws.
+ */
+export function installContribution(ctx: ContributionHost, source: ContributionSource, contribution: () => Contribution, label: string, report: (message: string) => void): () => void {
+  const told = new Set<string>()
+  const once = (message: string): void => {
+    if (told.has(message)) return
+    told.add(message)
+    report(message)
+  }
+  const handOver = (sub: ServiceLookup): (() => void) | undefined => {
+    const service = loopsService(sub, once)
+    if (service === undefined) return undefined
+    const result = service.contribute(source, contribution())
+    if (!result.ok) {
+      once(`交给循环板的 ${label} 没被收下：${result.reason}`)
+      return undefined
+    }
+    for (const dropped of result.dropped) once(`交给循环板的 ${dropped.id} 没被收下：${dropped.reason}`)
+    return () => { result.dispose() }
+  }
+  if (typeof ctx.inject === 'function') {
+    try {
+      ctx.inject([LOOPS_SERVICE], handOver)
+    }
+    catch (error) {
+      once(`交给循环板的 ${label} 没有交上：${error instanceof Error ? error.message : String(error)}`)
+    }
+    return () => {}
+  }
+  return ctx.on('agent/created', () => { handOver(ctx) })
 }
 
 /** Read the service; undefined while the loop row is off, or when a member has the wrong type (reported to `problem`). */

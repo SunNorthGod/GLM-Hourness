@@ -6,7 +6,9 @@
  * piece; the boards only contribute their one guideLine (blocks 4 and 5
  * exist only while their board is registered), and the peak sentences of
  * block 4 and the second sentence of block 6 appear only when the rules
- * board says peakApplies. The panel only looks: the page's one action is
+ * board says peakApplies. After block 5 the metrics board, while it is there
+ * and hands a guideLine, adds its one line with the link to it (metrics
+ * design §11 item 19). The panel only looks: the page's one action is
  * 去首页, which records the visit and returns (跳过也是点它).
  */
 import { writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -52,8 +54,23 @@ function LoopsBlock({ state, onOpenBoard }: { readonly state: BoardState, readon
   )
 }
 
-/** The 复制 /wish button of block 3 (§6.4): the result written beside it. */
-function CopyWish(): ReactElement {
+/**
+ * The metrics board's line (metrics design §7.6.3, §11 item 19): after the
+ * loops block, only the board's own guideLine and the link to the board; no
+ * words of the guide's own, so the six blocks stay as they are. Absent when
+ * the board is not there or hands no guideLine.
+ */
+function MetricsLine({ guideLine, onOpenBoard }: { readonly guideLine: string, readonly onOpenBoard: (id: string) => void }): ReactElement {
+  return (
+    <Part title="指标板">
+      <div className="glmg-meta">{guideLine}</div>
+      <div className="glmg-actions"><button type="button" className="glmg-more" onClick={() => { onOpenBoard('metrics') }}>去看指标板 ›</button></div>
+    </Part>
+  )
+}
+
+/** The 复制 /wish button of block 3 (§6.4) and of the empty graph's home (§4.10): the result written beside it. */
+export function CopyWish(): ReactElement {
   const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle')
   const copy = (): void => {
     void writeClipboard('/wish').then(ok => { setCopied(ok ? 'copied' : 'failed') })
@@ -66,10 +83,11 @@ function CopyWish(): ReactElement {
   )
 }
 
-/** The guide page's body (§6.4): the six blocks and the one button. */
+/** The guide page's body (§6.4): the six blocks, the metrics board's line, and the one button. */
 export function GuidePage({ sessionId, onOpenBoard, onDone }: GuideProps): ReactElement {
   const rules = useBoard(boards().find(board => board.id === 'rules'), sessionId)
   const loops = useBoard(boards().find(board => board.id === 'loops'), sessionId)
+  const metrics = useBoard(boards().find(board => board.id === 'metrics'), sessionId)
   const done = (): void => {
     writeStamp(window.localStorage, GUIDE_KEY, new Date().toISOString())
     onDone()
@@ -91,6 +109,7 @@ export function GuidePage({ sessionId, onOpenBoard, onDone }: GuideProps): React
       </Part>
       {rules.available ? <PeakBlock state={rules} onOpenBoard={onOpenBoard} /> : null}
       {loops.available ? <LoopsBlock state={loops} onOpenBoard={onOpenBoard} /> : null}
+      {metrics.available && metrics.guideLine !== null ? <MetricsLine guideLine={metrics.guideLine} onOpenBoard={onOpenBoard} /> : null}
       <Part title="去哪看进度">
         <div className="glmg-text">这块面板；主 Agent 对话里输入框上方的流程条；晨报和周报在主 Agent 的对话里，到点由系统提醒它写给你。每做完一块（一个模块或一个里程碑），主 Agent 用一两句告诉你；你不在时这些汇报先攒着，你回来时一起给你；整个目标做完时再给一句，带整体审查的结论。</div>
         {rules.available && rules.peakApplies ? <div className="glmg-text">额度用完时推进会停住，主 Agent 会告诉你，额度重置后自己接上，不用你开口。</div> : null}

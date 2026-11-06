@@ -23,14 +23,16 @@ import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
 import { ProjectAccessTokenClient, projectTokenFingerprint, projectTokenRequest, type ProjectKeyLocationStore, type ResolvedProjectToken } from './auth/project-token.ts'
 import { mintRejectionOf, upstreamLimitOf } from './account-signals.ts'
 import { loginFingerprintOf, nodeQuotaFs, QuotaJournal } from './quota-journal.ts'
+import { metricsWhere, type GlmMetricEvent, type GlmMetricSink } from './metrics.ts'
 import { BIGMODEL_API_ORIGIN } from './zcode-wire.ts'
 import { encodeRequest, decodeMessage, decodeSse, metadataUserId, splitSystemPrompt, type WireShape } from './anthropic.ts'
 import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
-import { GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities, zcodeModelRule, zcodeWireModelId } from './models.ts'
+import { GLM_CONTEXT_WINDOW, GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities, zcodeModelRule, zcodeWireModelId } from './models.ts'
 import { maxOutputTokensFor } from './token-budget.ts'
 import { messageText, type AttachmentsLike, type GenerateOptionsLike } from '../shared/lm-min.ts'
 import type { HealthState } from '../shared/health.ts'
+import type { MetricsWhere } from '../shared/metrics.ts'
 import type {
   GenerateOptions,
   LlmAdapter,
@@ -96,8 +98,12 @@ export interface ZcodeAdapterOptions {
   readonly sessionHeader?: (sessionId: string) => SessionHeaderLike | undefined
   /** The quota journal that takes the upstream-limit and login-rejected records; default the journal under `home`. */
   readonly journal?: QuotaJournal
+  /** Where each of those records also goes as a metric event (src/glm-llm/metrics.ts); without it none is made. */
+  readonly metric?: GlmMetricSink
   /** The clock of those records, epoch milliseconds; default `Date.now`. */
   readonly now?: () => number
+  /** The context window declared to DSH and capping each step's output budget (the glm-llm row's `contextWindow`); default 512000 (docs/DESIGN.md §4.6). */
+  readonly contextWindow?: number
 }
 
 const storeFsDefault: StoreFs = {
@@ -263,7 +269,7 @@ export class ZcodeAdapter {
    * message; a login that changed while the token was minted invalidates
    * the result. Throws an Error whose message is the 3.16.3 code or text.
    */
-  private projectToken(credential: Credential, rejectedFingerprint?: string): Promise<ResolvedProjectToken> {
+  private projectToken(credential: Credential, where: MetricsWhere, rejectedFingerprint?: string): Promise<ResolvedProjectToken> {
     const missing = missingAccountCredential(credential)
     if (missing !== undefined) return Promise.reject(new Error(missing))
     const oauth = credential.oauthAccessToken?.trim() ?? ''
@@ -280,8 +286,9 @@ export class ZcodeAdapter {
         ...(rejectedFingerprint === undefined ? {} : { rejectedFingerprint }),
       }).catch(async (error: unknown) => {
         // A refused login is noted for the quota view (docs/DESIGN.md §4.9); the error goes on unchanged.
+        // A load callers share is filed under the caller that started it.
         const rejection = mintRejectionOf(error instanceof Error ? error.message : '')
-        if (rejection !== undefined) await this.noteLoginRejected('mint', oauth, rejection)
+        if (rejection !== undefined) await this.noteLoginRejected('mint', oauth, rejection, where)
         throw error
       })
       const current = await this.loadCredential().catch(() => undefined)
@@ -301,9 +308,11 @@ export class ZcodeAdapter {
   /**
    * Note in the quota journal that the server refused the login (docs/DESIGN.md
    * §4.9): once per path and per login in ten minutes, with the fingerprint of
-   * the login token and never the token. The journal never throws.
+   * the login token and never the token. The journal never throws. Each
+   * record written is one `glm.login-rejected` (M6 design §14.2) for `where`:
+   * the path and the status or code, no fingerprint.
    */
-  private async noteLoginRejected(path: 'model' | 'mint', loginToken: string, detail: { readonly status: 401 | 403 } | { readonly code: string }): Promise<void> {
+  private async noteLoginRejected(path: 'model' | 'mint', loginToken: string, detail: { readonly status: 401 | 403 } | { readonly code: string }, where: MetricsWhere): Promise<void> {
     const now = this.clock()
     const login = loginToken.trim().length === 0 ? undefined : loginFingerprintOf(loginToken)
     const key = `${path}:${login ?? ''}`
@@ -311,14 +320,26 @@ export class ZcodeAdapter {
     if (last !== undefined && now - last < REJECTION_RECORD_INTERVAL_MS) return
     this.rejectionRecords.set(key, now)
     await this.journal.append({ at: new Date(now).toISOString(), kind: 'login-rejected', path, ...detail, ...(login === undefined ? {} : { login }) })
+    this.metric({ k: 'glm.login-rejected', body: { path, ...detail } }, where)
   }
 
-  /** Note in the quota journal that a 429 body announces a spent quota (docs/DESIGN.md §4.6). */
-  private async noteUpstreamLimit(body: string): Promise<void> {
+  /** Note in the quota journal that a 429 body announces a spent quota (docs/DESIGN.md §4.6), and hand one `glm.upstream-limit` for the record. */
+  private async noteUpstreamLimit(body: string, where: MetricsWhere): Promise<void> {
     const now = this.clock()
     const limit = upstreamLimitOf(body, now)
     if (limit === undefined) return
     await this.journal.append({ at: new Date(now).toISOString(), kind: 'upstream-limit', code: limit.code, ...(limit.until === undefined ? {} : { until: new Date(limit.until).toISOString() }) })
+    this.metric({ k: 'glm.upstream-limit', body: { code: limit.code, hasReset: limit.until !== undefined } }, where)
+  }
+
+  /** Hand one event to the metrics sink; nothing without one, and a sink that throws changes no request. */
+  private metric(event: GlmMetricEvent, where: MetricsWhere): void {
+    try {
+      this.options.metric?.(event, where)
+    }
+    catch {
+      // The sink never throws; the record in the quota journal is the fact.
+    }
   }
 
   /**
@@ -329,13 +350,14 @@ export class ZcodeAdapter {
    * five-hour or weekly quota, so it throws `start-plan` before the
    * credential is read and nothing is sent; no login throws `not-logged-in`;
    * a token that cannot be minted throws its `zcode-wire.ts`
-   * PROJECT_TOKEN_CODES code or the 3.16.3 credential message.
+   * PROJECT_TOKEN_CODES code or the 3.16.3 credential message. `where` is
+   * the read's asker, for a refused login the mint meets.
    */
-  async usageAuthorization(): Promise<string> {
+  async usageAuthorization(where: MetricsWhere = {}): Promise<string> {
     if ((this.options.plan ?? 'coding-plan') === 'start-plan') throw new Error('start-plan')
     const credential = await this.loadCredential().catch(() => undefined)
     if (credential === undefined) throw new Error('not-logged-in')
-    return (await this.projectToken(credential)).token
+    return (await this.projectToken(credential, where)).token
   }
 
   /**
@@ -426,7 +448,7 @@ export class ZcodeAdapter {
       name: model,
       // A text-only declaration makes DSH project images to text before stream().
       inputModalities: [...glmInputModalities(model)],
-      context: { contextWindow: 512_000 },
+      context: { contextWindow: this.contextWindow() },
       defaultMaxTokens: GLM_DEFAULT_MAX_TOKENS,
       // No `systemPromptUpdate`: Anthropic has no mid-conversation system
       // role, so a changed prompt must rewrite the leading system message
@@ -437,6 +459,11 @@ export class ZcodeAdapter {
 
   private credentialPath(): string {
     return `${this.options.home.replace(/[\\/]+$/, '')}/credentials.json`
+  }
+
+  /** The context window this adapter declares to DSH; the row hands in a validated value. */
+  private contextWindow(): number {
+    return this.options.contextWindow ?? GLM_CONTEXT_WINDOW.default
   }
 
   /** The stored login, migrated to the version-2 record on first read (auth/store.ts `loadStoredCredential`). */
@@ -491,7 +518,9 @@ export class ZcodeAdapter {
     // coding-plan: the project access token is the request credential; 3.16.3
     // account mode sends nothing without it (ModelRequestAuthMissing), so the
     // stream fails before any request leaves.
-    let projectToken = plan === 'coding-plan' ? await this.projectToken(credential).catch((error: unknown) => failClosed(report, error)) : undefined
+    // A refused login or a spent quota this request meets is filed under its session (metrics design §3.5).
+    const where = metricsWhere(request.sessionId)
+    let projectToken = plan === 'coding-plan' ? await this.projectToken(credential, where).catch((error: unknown) => failClosed(report, error)) : undefined
     // start-plan: the plan JWT is the request credential (3.16.3 `resolveCurrent`, `requireApiKey(zcodeJwtToken)`).
     const startPlanJwt = credential.jwt ?? ''
     if (plan === 'start-plan' && startPlanJwt.length === 0) {
@@ -523,7 +552,7 @@ export class ZcodeAdapter {
     const attribution: Omit<TraceContext, 'requestId'> = plan === 'coding-plan'
       ? this.attribution.attribute({ sessionId: request.sessionId, purpose: request.purpose, reasoningEffort: options.reasoningEffort, tools: options.tools, messages: options.messages })
       : { sessionId: upstreamSessionId(request.sessionId), sessionType: request.purpose === undefined ? 'main' : 'other', traceId: randomUUID() }
-    const wire = plan === 'coding-plan' ? codingPlanWire(options, request.purpose, this.attribution.stepEffortOf(request.sessionId)) : undefined
+    const wire = plan === 'coding-plan' ? codingPlanWire(options, request.purpose, this.attribution.stepEffortOf(request.sessionId), this.contextWindow()) : undefined
     const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(device.value, attribution.sessionId), wire))
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
 
@@ -563,15 +592,15 @@ export class ZcodeAdapter {
       // cancel its body before the retry so nothing stays buffered or
       // open, as 3.16.3 drains discarded bodies (`DQr` @3843990).
       await response.body?.cancel().catch(() => { /* already closed */ })
-      projectToken = await this.projectToken(credential, await projectTokenFingerprint(projectToken.token)).catch((error: unknown) => failClosed(report, error))
+      projectToken = await this.projectToken(credential, where, await projectTokenFingerprint(projectToken.token)).catch((error: unknown) => failClosed(report, error))
       response = await attempt(projectToken)
       // A token that was just minted and is refused again: the login itself is no longer accepted.
-      if (await isProjectTokenRejection(response)) await this.noteLoginRejected('model', credential.oauthAccessToken ?? '', { status: 401 })
+      if (await isProjectTokenRejection(response)) await this.noteLoginRejected('model', credential.oauthAccessToken ?? '', { status: 401 }, where)
     }
     if (!response.ok) {
       report('inactive', `上游返回 ${response.status}`)
       const detail = await response.text()
-      if (response.status === 429) await this.noteUpstreamLimit(detail)
+      if (response.status === 429) await this.noteUpstreamLimit(detail, where)
       throw new Error(`glm-zcode ${response.status}: ${detail.slice(0, 400)}`)
     }
     if (wire?.stream === false) {
@@ -600,16 +629,20 @@ export class ZcodeAdapter {
  * compacts with the session's selection (`c3a` @13387356), and the
  * request's own effort before the session's first step.
  */
-function codingPlanWire(options: GenerateOptionsLike, purpose: GenerateOptions['purpose'], sessionEffort: string | undefined): WireShape {
+function codingPlanWire(options: GenerateOptionsLike, purpose: GenerateOptions['purpose'], sessionEffort: string | undefined, declaredWindow: number): WireShape {
   const rule = zcodeModelRule(options.model)
   const requested = purpose === 'compaction' ? sessionEffort ?? options.reasoningEffort : options.reasoningEffort
   const level = rule === undefined ? undefined : purpose === 'session-title' ? rule.reasoningLevels[0] : requested !== undefined && rule.reasoningLevels.includes(requested) ? requested : 'high'
   // max_tokens as 3.16.3 picks it (token-budget.ts); DSH's maxTokens is not
-  // used for catalog models. Outside the catalog the DSH value stays.
+  // used for catalog models. Outside the catalog the DSH value stays. The
+  // step's window is the smaller of the window declared to DSH and the
+  // catalog's (a deviation from 3.16.3/3.17.1, which take the catalog's;
+  // docs/DESIGN.md §4.6): the output budget and DSH's compaction then count
+  // against the same window.
   const kind = purpose === 'session-title' ? 'auxiliary' : purpose === 'compaction' ? 'compaction' : 'step'
   return {
     model: zcodeWireModelId(options.model),
-    maxTokens: rule === undefined ? options.maxTokens ?? GLM_DEFAULT_MAX_TOKENS : maxOutputTokensFor(kind, rule.maxOutputTokens, rule.contextWindow, options.messages),
+    maxTokens: rule === undefined ? options.maxTokens ?? GLM_DEFAULT_MAX_TOKENS : maxOutputTokensFor(kind, rule.maxOutputTokens, Math.min(declaredWindow, rule.contextWindow), options.messages),
     // 3.16.3 sends the session title through `generateText` (`v4a` @13066475), every other request through `streamText`.
     stream: purpose !== 'session-title',
     optionPatch: rule === undefined || level === undefined ? undefined : rule.optionPatch(level),

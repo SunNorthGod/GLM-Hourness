@@ -9,10 +9,10 @@ import type { GraphNode } from '../src/graph/schema.ts'
 import { absoluteTime, byCreation, decidedBy, dotTone, graphRevisionOf, headlineGoals, historyText, liveGroups, nobodyRunningText, placeText, presenceText, progressOf, progressText, revisionOfBytes, statusText, tokensText, visibleGraph } from '../ui/src/graph/model.ts'
 import { holderRecordOf } from '../src/shared/holder-record.ts'
 import { firstVisit, graphHasHumanActorHistory, GUIDE_KEY, noGraphKey, readStamp, writeStamp } from '../ui/src/guide/state.ts'
-import { cwdKeyOf, mainChatOf } from '../ui/src/graph/main-chat.ts'
+import { cwdKeyOf, mainChatOf, openerOf, recordReads } from '../ui/src/graph/main-chat.ts'
 import { GraphSource } from '../ui/src/graph/source.ts'
 import type { RemoteRoot } from '../ui/src/dsh.ts'
-import { initialSeen, nextSeen, seenKeyOf, seenRecordOf, writeSeenRecord } from '../ui/src/graph/seen.ts'
+import { initialSeen, nextSeen, seenKeyOf, seenRecordOf, watchVisibility, writeSeenRecord, type VisibilityHost } from '../ui/src/graph/seen.ts'
 import { fakeRemote, fixtureTest, seedAsHuman, until } from './graph-helpers.ts'
 
 /** The table card of the seeded questions (ORCHESTRATION.md §2.6). */
@@ -155,7 +155,7 @@ test('token counts and times read like DSH\'s: 282K tok, tooltips with the local
 test('status lines say what a node waits for', () => {
   const base = { history: [], options: [{ key: 'A', label: '甲案', consequence: '快' }, { key: 'B', label: '乙案', consequence: '稳' }], recommend: 'A' }
   const question = (fields: Partial<GraphNode>): GraphNode => ({ id: 'q', type: 'question', title: 'q', status: 'approved', parent: 'g', ...base, ...fields })
-  assert.equal(statusText(question({})), '等你拍板')
+  assert.equal(statusText(question({})), '等你回话', 'the same words as statusPhrase and the flow bar')
   assert.equal(statusText(question({ decider: 'agent' })), 'agent 来定')
   assert.equal(statusText(question({ status: 'done', decision: 'B' })), '选了 B 乙案')
   assert.equal(statusText(question({ status: 'proposed' })), '等你批准')
@@ -212,6 +212,8 @@ test('the source reads the graph, goes live on ready, and follows a write throug
     const first = await until(source, snapshot => snapshot.status === 'ready')
     assert.equal(first.status === 'ready' && first.graph.revision, (await loadGraph(graphDir)).revision)
     assert.deepEqual(first.status === 'ready' && first.items.questions.map(entry => entry.id), ['question-1'])
+    // The local record's key (seen.ts) comes from a node file's absolute path, never from stat on the directory (the host refuses it).
+    assert.equal(source.nodesDirAbsolute(), join(graphDir, 'nodes'))
     push({ kind: 'ready' })
     await until(source, snapshot => snapshot.status === 'ready' && snapshot.live)
 
@@ -306,6 +308,8 @@ test('the panel sources carry no write path: no commands.execute and no apply im
     const text = await readFile(new URL(name, dir), 'utf8')
     assert.doesNotMatch(text, /commands\.execute/, name)
     assert.doesNotMatch(text, /from '\.\/apply\.ts'/, name)
+    // The desktop host keeps visibilityState at hidden (docs/FACTS.md §3): the panel's visibility never reads it (2026-11-05).
+    assert.doesNotMatch(text, /visibilityState\s*[!=]==|'visibilitychange'/, name)
   }
 })
 
@@ -347,6 +351,114 @@ test('上次看之后 (seen.ts): the local record reads, writes and fails quietl
   assert.equal(seenRecordOf(broken, 'x'), undefined, 'a broken read is no record')
   writeSeenRecord(broken, 'x', 1_000)
   assert.equal(backing.size, 1, 'a broken write stays quiet')
+})
+
+/** A host for watchVisibility the test drives: the focus it reports, a focus change, an observer answer. */
+function visibilityHost(observer: boolean): { readonly host: VisibilityHost, focus: (value: boolean) => void, see: (value: boolean) => void, readonly listeners: () => number } {
+  let focused = true
+  const focusListeners = new Set<() => void>()
+  const seeListeners = new Set<(value: boolean) => void>()
+  return {
+    host: {
+      hasFocus: () => focused,
+      onFocusChange: listener => {
+        focusListeners.add(listener)
+        return () => { focusListeners.delete(listener) }
+      },
+      ...(observer ? { observe: (listener: (value: boolean) => void) => { seeListeners.add(listener); return () => { seeListeners.delete(listener) } } } : {}),
+    },
+    focus: value => {
+      focused = value
+      for (const listener of [...focusListeners]) listener()
+    },
+    see: value => { for (const listener of [...seeListeners]) listener(value) },
+    listeners: () => focusListeners.size + seeListeners.size,
+  }
+}
+
+test('上次看之后 (seen.ts watchVisibility): visible is the window focus; the observer only vetoes; only changes are told, nothing after stop', () => {
+  const told: boolean[] = []
+  const fake = visibilityHost(true)
+  const stop = watchVisibility(fake.host, value => { told.push(value) })
+  assert.deepEqual(told, [true], 'the start tells the value at once; an observer that has not answered (the desktop host) does not veto')
+  fake.see(true)
+  assert.deepEqual(told, [true], 'the same value is not told again')
+  fake.focus(false)
+  fake.focus(true)
+  assert.deepEqual(told, [true, false, true], 'window blur and focus')
+  fake.see(false)
+  fake.focus(true)
+  assert.deepEqual(told, [true, false, true, false], 'the body off screen vetoes while focused')
+  fake.see(true)
+  stop()
+  fake.focus(false)
+  assert.deepEqual(told, [true, false, true, false, true], 'nothing after stop')
+  assert.equal(fake.listeners(), 0, 'stop unsubscribes')
+  const plain = visibilityHost(false)
+  plain.focus(false)
+  const second: boolean[] = []
+  watchVisibility(plain.host, value => { second.push(value) })()
+  assert.deepEqual(second, [false], 'without an observer and without focus: not visible')
+})
+
+test('上次看之后 (seen.ts): the mount is the arrival that reads the record, so the first stretch of a visit knows the last departure', () => {
+  const left = 1_000_000
+  const mounted = nextSeen(initialSeen, 'mount', left + 60_000, left).state
+  const shown = nextSeen(mounted, 'visible', left + 60_001, left).state
+  assert.equal(shown.since, left, 'the changes start at the last departure, not at 最近一天')
+  assert.equal(nextSeen(initialSeen, 'visible', left + 60_001, left).state.since, undefined, 'without the mount the record is never read (the bug the panel had)')
+  const away = nextSeen(shown, 'unmount', left + 70_001, undefined)
+  assert.equal(away.departure, left + 70_001, 'ten visible seconds, then the unmount: a departure')
+})
+
+test('主 Agent 的对话 (main-chat.ts recordReads): one read at the start, visible or not; a turn to visible reads and polls every 30 s; hidden stops the polling', () => {
+  let reads = 0
+  const timers: Array<{ ms: number, task: () => void, live: boolean }> = []
+  const every = (ms: number, task: () => void): (() => void) => {
+    const timer = { ms, task, live: true }
+    timers.push(timer)
+    return () => { timer.live = false }
+  }
+  const tick = (): void => { for (const timer of timers.filter(entry => entry.live)) timer.task() }
+  const hidden = recordReads(() => { reads += 1 }, false, every)
+  assert.equal(reads, 1, 'the mount reads once even while hidden')
+  assert.equal(timers.length, 0, 'no polling while hidden')
+  hidden.setVisible(true)
+  assert.deepEqual([reads, timers.length, timers[0]?.ms], [2, 1, 30_000], 'turning visible reads and starts the 30-second poll')
+  tick()
+  assert.equal(reads, 3)
+  hidden.setVisible(true)
+  assert.deepEqual([reads, timers.length], [3, 1], 'visible again changes nothing')
+  hidden.setVisible(false)
+  tick()
+  assert.equal(reads, 3, 'hidden: the poll stopped')
+  hidden.stop()
+  hidden.setVisible(true)
+  assert.equal(reads, 3, 'nothing after stop')
+  reads = 0
+  const visible = recordReads(() => { reads += 1 }, true, every)
+  assert.deepEqual([reads, timers.filter(entry => entry.live).length], [1, 1], 'a visible mount reads once and polls, no second read')
+  visible.stop()
+  assert.equal(timers.filter(entry => entry.live).length, 0, 'stop ends the poll')
+})
+
+test('主 Agent 的对话 (main-chat.ts openerOf): the jump calls openSession on the service, so a method that reads this still works; no service, no jump', () => {
+  class Workspace {
+    readonly lifetime = { signal: 'alive' }
+    opened: string[] = []
+    openSession(target: string): void {
+      // The desktop's uiWorkspace reads this.lifetime.signal here; a detached call would throw.
+      void this.lifetime.signal
+      this.opened.push(target)
+    }
+  }
+  const workspace = new Workspace()
+  const open = openerOf(workspace)
+  assert.ok(open !== undefined)
+  open('session-2')
+  assert.deepEqual(workspace.opened, ['session-2'])
+  assert.equal(openerOf(undefined), undefined)
+  assert.equal(openerOf({}), undefined)
 })
 
 test('主 Agent 的对话 (MainChat): a readable record decides by itself, an absent one says so, an unreadable one falls back', () => {

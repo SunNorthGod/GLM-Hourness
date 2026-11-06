@@ -11,12 +11,51 @@
  * cannot be computed inside the patch. JSON values are valid YAML.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, lstatSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PACKAGES } from './packages.mjs'
 
 export const repo = resolve(fileURLToPath(new URL('..', import.meta.url)))
+
+/** The name of every probe run directory starts with this; removeRunDir deletes nothing else. */
+const RUN_PREFIX = 'glm-hourness-probe-'
+const sameDir = (a, b) => process.platform === 'win32' ? resolve(a).toLowerCase() === resolve(b).toLowerCase() : resolve(a) === resolve(b)
+
+/**
+ * Make the directory of one probe run: a new directory directly under the
+ * temporary root `tmp` (the system's by default), named after `stamp`. The
+ * run directory used to be `<checkout>/.llm/probe-runs/<stamp>/`; inside the
+ * repository tree a file a few milliseconds old is held by a process outside
+ * DSH often enough that DSH's ReplaceFileW publish of an edit fails with
+ * Win32 1175 in about one run in twenty (docs/FACTS.md §3); under the
+ * temporary directory it does not.
+ */
+export const openRunDir = (stamp, tmp = tmpdir()) => mkdtempSync(join(tmp, `${RUN_PREFIX}${stamp}-`))
+
+/** Unlink every symbolic link and junction under `dir` without following it. */
+function unlinkLinks(dir) {
+  for (const name of readdirSync(dir)) {
+    const path = join(dir, name)
+    const entry = lstatSync(path)
+    if (entry.isSymbolicLink()) unlinkSync(path)
+    else if (entry.isDirectory()) unlinkLinks(path)
+  }
+}
+
+/**
+ * Delete a run directory openRunDir made under `tmp`: every link in it is
+ * unlinked first, so the deletion cannot reach the checkout through a
+ * junction (DEVELOPMENT.md §7, 2026-11-04). Throws, deleting nothing, when
+ * `dir` is not a direct child of `tmp` named with the run prefix, and when a
+ * link or file cannot be removed.
+ */
+export function removeRunDir(dir, tmp = tmpdir()) {
+  if (!sameDir(dirname(dir), tmp) || !basename(dir).startsWith(RUN_PREFIX)) throw new Error(`${dir} is not a probe run directory under ${tmp}`)
+  unlinkLinks(dir)
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+}
 const desktop = process.env.DSH_DESKTOP_DIR ?? join(process.env.LOCALAPPDATA ?? '', 'Programs', 'DeepSeek Harness')
 const exe = join(desktop, 'DeepSeek Harness.exe')
 const bin = join(desktop, 'resources', 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
@@ -114,10 +153,10 @@ export const slash = path => path.replaceAll('\\', '/')
 /**
  * Overlay rows that keep a run's data inside `dir`: the project directory
  * `<dir>/home` (memory, workflow, hourness and the journaling rows guard,
- * graph, loops and design get it as their row home, as the user's profile
+ * graph, loops, design and rules get it as their row home, as the user's profile
  * patch does; projectHomeFor takes the row home before the session's project
- * root, and a run's working directories sit in this repository, whose
- * project root would otherwise take the journals) and the DSH home
+ * root, and the project root of a run's working directory would otherwise
+ * take the journals) and the DSH home
  * `<dir>/dsh-home`, so the user-level directory is
  * `<dir>/dsh-home/glm-hourness`. The data row's `projectOverride` is the
  * same project directory: the memory and lessons rows put their project
@@ -126,7 +165,7 @@ export const slash = path => path.replaceAll('\\', '/')
 export function dataRows(dir) {
   const home = JSON.stringify(slash(join(dir, 'home')))
   return [
-    ...['memory', 'workflow', 'hourness', 'guard', 'graph', 'loops', 'design'].flatMap(row => [`- id: glm-hourness/${row}`, `  config: { home: ${home} }`]),
+    ...['memory', 'workflow', 'hourness', 'guard', 'graph', 'loops', 'design', 'rules'].flatMap(row => [`- id: glm-hourness/${row}`, `  config: { home: ${home} }`]),
     '- id: glm-hourness/data',
     `  config: { dshHome: ${JSON.stringify(slash(join(dir, 'dsh-home')))}, projectHome: ${home}, projectOverride: ${home} }`,
   ]
@@ -169,8 +208,32 @@ export const designRows = (config, rowConfig) => [
   `      config: ${JSON.stringify(config)}`,
 ]
 
-/** Make `dir` a git repository with one commit of its current files; whether every git step succeeded. */
+/** Make `dir` a git repository with one commit of its current files (an empty commit for an empty directory); whether every git step succeeded. */
 export function initRepo(dir) {
   const git = args => spawnSync('git', ['-c', 'user.name=glm-hourness', '-c', 'user.email=glm-hourness@localhost', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, encoding: 'utf8' })
-  return [['init', '-q'], ['add', '.'], ['commit', '-q', '-m', 'init']].every(args => git(args).status === 0)
+  return [['init', '-q'], ['add', '.'], ['commit', '-q', '--allow-empty', '-m', 'init']].every(args => git(args).status === 0)
+}
+
+/**
+ * The working directory of a probe scenario's sessions: a git repository of
+ * the scenario's own (loop board design 0.6 §9.1). The project root is the
+ * nearest repository above the working directory, and a work tree's is its
+ * main checkout's (docs/ORCHESTRATION.md §18.9), so a scenario that ran in
+ * this checkout, or in a plain directory under the run directory, had the
+ * rows that keep project state (`.llm/loops`, `.llm/rules`, `.llm/metrics`)
+ * write into the main checkout. A scenario that names no directory, or names
+ * this checkout, runs in its own scenario directory `dir`; a directory that is
+ * not a repository yet is made one with its files committed. A directory that
+ * already is one is used as it is. Throws when git cannot make the repository:
+ * the scenario would otherwise write outside its run directory.
+ * @param {string} dir the scenario directory under the run directory
+ * @param {string} cwd the directory the scenario names, or this checkout
+ * @returns {string} the directory the sessions run in
+ */
+export function scenarioWorkspace(dir, cwd) {
+  const workspace = resolve(cwd) === repo ? dir : cwd
+  if (existsSync(join(workspace, '.git'))) return workspace
+  mkdirSync(workspace, { recursive: true })
+  if (!initRepo(workspace)) throw new Error(`probe: git init failed in ${workspace}`)
+  return workspace
 }

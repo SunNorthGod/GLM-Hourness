@@ -196,7 +196,7 @@ test('textUnits counts Han, kana, Hangul and fullwidth characters, one per ASCII
 })
 
 test('the submitter list and the id shapes hold', () => {
-  assert.deepEqual([...METRICS_BY], ['host', 'graph', 'guard', 'rules', 'loops', 'execute', 'operate', 'glm', 'design', 'bootstrap', 'env'])
+  assert.deepEqual([...METRICS_BY], ['host', 'graph', 'guard', 'rules', 'loops', 'execute', 'operate', 'glm', 'design', 'bootstrap', 'env', 'memory'])
   assert.ok(WRITER_ID_PATTERN.test('0123abcd'))
   assert.ok(WRITER_ID_PATTERN.test('bf-0123abc'))
   assert.ok(!WRITER_ID_PATTERN.test('0123abc'))

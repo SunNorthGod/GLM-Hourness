@@ -124,7 +124,8 @@ function lastDecidedByHuman(node: GraphNode): boolean {
   return last !== undefined && (last.actor === 'human' || last.relay !== undefined)
 }
 
-const CARD_LABELS = ['需求', '问题', '给谁', '约束', '用户流程']
+/** The labels of a goal's requirement card (M3 interview); plain-view.ts reads the 问题 section with them. */
+export const CARD_LABELS = ['需求', '问题', '给谁', '约束', '用户流程']
 
 /**
  * The 9 items of the requirement card (§4.2), read from the goal and its

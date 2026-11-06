@@ -1,7 +1,8 @@
 {
   "id": "d-dispatch",
   "type": "decision",
-  "title": "不设队友角色：主 Agent 把任务节点派给后台子 agent",
+  "title": "不设队友角色：主 Agent 把活派给后台子 agent",
+  "why": "每件活写清楚要什么、能改哪些文件，子 agent 在后台做，主 Agent 只管编排",
   "status": "approved",
   "parent": "orch",
   "verification": "sandbox",
@@ -53,6 +54,23 @@
           "note": "L3 探针 69/69，新增 12 项；glm-dispatch：startActivation 后台派发，父 agent 的步继续，完成通知带结构化结果，范围外的写入以工具错误拒绝（运行 2026-10-27T23-38-41-366Z）"
         }
       ]
+    },
+    {
+      "at": "2026-11-05T05:25:35.661Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "不设队友角色：主 Agent 把任务节点派给后台子 agent",
+          "to": "不设队友角色：主 Agent 把活派给后台子 agent"
+        },
+        "why": {
+          "from": null,
+          "to": "每件活写清楚要什么、能改哪些文件，子 agent 在后台做，主 Agent 只管编排"
+        }
+      }
     }
   ]
 }

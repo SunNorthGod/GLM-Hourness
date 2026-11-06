@@ -2,6 +2,7 @@
   "id": "d-user-graph-released",
   "type": "decision",
   "title": "用户图设计 0.4.1 放行：每个新项目都画、每条流程走通才算做完",
+  "why": "每个新项目都画用户怎么用，每条流程真走通才算做完",
   "status": "approved",
   "parent": "user-graph",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "人放行用户图设计 0.4.1 并按建议定下三件",
       "relay": "没问题",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:26:06.370Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "每个新项目都画用户怎么用，每条流程真走通才算做完"
+        }
+      }
     }
   ]
 }

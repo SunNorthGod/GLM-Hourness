@@ -26,6 +26,14 @@ import { appendEvents } from '../src/metrics/library.ts'
 import type { EmittedEvent } from '../src/shared/metrics.ts'
 import { entryFileOf, NOW, quickIo, recordsOf, scriptEntry, SCRIPT_TEXT, seedAgreed, tellEntry, writeFiles } from './loops-helpers.ts'
 import { withLoopsRow, type LoopsFixture } from './loops-host.ts'
+import { GLM_LOOP_DEFAULTS } from '../src/glm-llm/loop-defaults.ts'
+import { CHANNEL_LOGIN_REJECTED, loginRejectedKey } from '../src/loops/channel.ts'
+import { machinePaths } from '../src/loops/machine.ts'
+import { PRICING_SERVICE } from '../src/shared/pricing.ts'
+import type { QuotaRequest, QuotaView } from '../src/shared/quota.ts'
+import { checksOwnRules, CHECKS_ENTRY_ID, envContribution, ENV_ROW_SOURCE } from '../src/env/loop-entry.ts'
+import { GRAPH_ROW_SOURCE, graphContribution, thirdReworkRule } from '../src/graph/loop-entry.ts'
+import { buildLoopsPage } from '../ui/src/loops/model.ts'
 
 const A = 'u-0a1b2c3d'
 const B = 'u-4e5f6a7b'
@@ -262,6 +270,39 @@ rowTest('after every beat of a project it runs the row writes view.json again, s
   assert.deepEqual((await viewOf(fixture.root)).recent, [{ at: '2026-11-02T00:30:00.000Z', title: '每周五看一眼没合入的分支', text: '已交给主 Agent' }])
 })
 
+rowTest('a hand-over whose details throw or break the board\'s limits: that entry says its details cannot be read, its own rules stay, the page still builds, and the row health says why until they read again', async (fixture) => {
+  const service = loopsService(fixture.runtime.ctx)!
+  const handOver = (details: () => readonly string[]): void => {
+    assert.ok(service.contribute(ENV_ROW_SOURCE, { ...envContribution(), details }).ok)
+  }
+  handOver(() => { throw new Error('boom') })
+  assert.ok(service.contribute(GRAPH_ROW_SOURCE, graphContribution()).ok)
+  await fixture.runtime.create()
+  const view = await viewOf(fixture.root)
+  const checks = view.entries.find(entry => entry.id === CHECKS_ENTRY_ID)
+  assert.deepEqual([checks?.details, checks?.ownRules], [['项目编排没给出明细，这一项的明细读不到'], checksOwnRules()])
+  const page = buildLoopsPage(view)
+  assert.deepEqual(page.events.rows.find(row => row.id === CHECKS_ENTRY_ID)?.details.slice(0, 3), ['为什么有它：改完文件马上知道有没有新问题', '项目编排没给出明细，这一项的明细读不到', '它自己的规矩：'])
+  assert.ok(page.events.rows.find(row => row.id === 'graph.third-rework')?.details.includes(`· ${thirdReworkRule()}`), 'the other entries are as they are')
+  assert.equal(fixture.health().status, 'degraded')
+  assert.match(fixture.health().reason, /「改完文件就跑检查」的明细读不到：抛错：boom/)
+
+  handOver(() => Array.from({ length: 21 }, (_, index) => `第 ${index + 1} 行`))
+  await fixture.runtime.create()
+  assert.match(fixture.health().reason, /「改完文件就跑检查」的明细读不到：给了 21 行，至多 20 行/)
+  handOver(() => ['一'.repeat(161)])
+  await fixture.runtime.create()
+  assert.match(fixture.health().reason, /「改完文件就跑检查」的明细读不到：第 1 行不是 1 到 160 个字的一行/)
+
+  handOver(() => ['Lint：改了 *.ts 之后跑 · npx eslint {files}'])
+  await fixture.runtime.create()
+  assert.equal(fixture.health().status, 'active', 'details that read again take the line off the health')
+  // The fixed clock holds the rewrite for its 2 seconds.
+  fixture.delayed.find(entry => entry.ms === 2_000)?.run()
+  await new Promise(resolve => setTimeout(resolve, 100))
+  assert.deepEqual((await viewOf(fixture.root)).entries.find(entry => entry.id === CHECKS_ENTRY_ID)?.details, ['Lint：改了 *.ts 之后跑 · npx eslint {files}'])
+})
+
 // ---------------------------------------------------------------- health
 
 rowTest('the row\'s health says what is wrong with a project\'s entries as long as it is: a file changed outside, a file that cannot be read, a record line that cannot be read', async (fixture) => {
@@ -365,4 +406,51 @@ rowTest('the main agent walking a step leaves the two notes of the walk, and a s
   const plain = await runtime.preStep(step)
   assert.equal(plain.messages.length, step.messages.length)
   assert.equal(JSON.stringify(plain.messages).includes(LOOP_STEP_SOURCE), false)
+})
+
+rowTest('with the GLM channel\'s pricing service the row lists its four entries and runs the machine-level runner first in a beat: a rejected login lands in the inbox of the project the main agent walked in', async ({ root, runtime, beats, run }) => {
+  const since = NOW - 60_000
+  const calls: QuotaRequest[] = []
+  runtime.services.set(PRICING_SERVICE, {
+    basis: 'probe',
+    plan: 'GLM Coding Plan',
+    charged: () => undefined,
+    peak: () => false,
+    loopDefaults: GLM_LOOP_DEFAULTS,
+    quota: (request?: QuotaRequest): Promise<QuotaView> => {
+      calls.push(request ?? {})
+      return Promise.resolve({ login: { state: 'rejected', since }, pending: false })
+    },
+  })
+  // This project has a main agent, and it was the last to walk (the step note of design §6.1).
+  const holder = holderFileOf(join(root, 'user'), join(root, 'docs', 'graph'))
+  await mkdir(dirname(holder), { recursive: true })
+  await writeFile(holder, `${JSON.stringify({ version: 1, sessionId: runtime.agent.id, graphDir: join(root, 'docs', 'graph'), since: new Date(NOW - 3_600_000).toISOString(), commandId: 'command-1' })}\n`)
+  const paths = machinePaths(join(root, 'user'))
+  await mkdir(dirname(paths.lastStep), { recursive: true })
+  await writeFile(paths.lastStep, `${JSON.stringify({ session: runtime.agent.id, at: new Date(NOW).toISOString(), projectKey: projectKey(root), project: root })}\n`)
+  beats[0]?.run()
+  const events = join(root, '.llm', 'loops', 'events.jsonl')
+  const started = Date.now()
+  let text = ''
+  while (!text.includes(CHANNEL_LOGIN_REJECTED) && Date.now() - started < 5_000) {
+    await new Promise(resolve => setTimeout(resolve, 25))
+    text = await readFile(events, 'utf8').catch(() => '')
+  }
+  const line = text.split('\n').filter(item => item !== '').map(item => JSON.parse(item) as { event: string, key: string }).find(item => item.event === CHANNEL_LOGIN_REJECTED)
+  assert.equal(line?.key, loginRejectedKey('', new Date(since).toISOString()))
+  // The inbox is written first and told.json at the end of the beat: wait for it.
+  let told: { login?: { key: string } } = {}
+  while (told.login === undefined && Date.now() - started < 5_000) {
+    told = JSON.parse(await readFile(paths.told, 'utf8').catch(() => '{}')) as { login?: { key: string } }
+    if (told.login === undefined) await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  assert.equal(told.login?.key, line?.key)
+  assert.ok(calls.length > 0 && calls.every(call => call.read === false), 'the login is looked at without a request')
+  // /loops lists what the board lists: the loop row's own four and the channel's four (design §3.4 M6-L1).
+  const listed = await run('')
+  assert.equal(listed.kind, 'success')
+  const words = listed.text
+  assert.match(words, /插件带来的（8 项，只能看）/)
+  for (const entry of GLM_LOOP_DEFAULTS) assert.ok(words.includes(entry.title), `${entry.id} is listed`)
 })

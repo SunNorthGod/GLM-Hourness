@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { openEngine } from '../src/graph/engine.ts'
 import { loadGraph } from '../src/graph/store.ts'
+import { isGateListener } from '../src/guard/gate.ts'
 import { apply, INDEX_SOURCE, inject, MEMORY_PROJECTION, name, type MemoryContext } from '../src/memory/index.ts'
 import { journalFile } from '../src/memory/storage.ts'
 import { MEMORY_STORE_EXAMPLE } from '../src/memory/tools.ts'
@@ -46,14 +47,15 @@ const refused = async (promise: Promise<unknown>): Promise<{ code: string, messa
   return assert.fail('expected a refusal')
 }
 
-test('the row is a cordis plugin that needs the tools service; it registers the three memory tools and the learning tool, gates no tool call and listens to nothing else than agent creation and model calls', { skip }, async () => {
+test('the row is a cordis plugin that needs the tools service; it registers the three memory tools and the learning tool, gates tool calls only through its one rule (the gate\'s listener) and listens to agent creation and model calls', { skip }, async () => {
   await withRow((row) => {
     assert.equal(name, 'dsh-glm-hourness/memory')
     assert.deepEqual(inject, ['tools'])
     assert.deepEqual(row.runtime.scoped.map(tool => tool.name), [...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES])
     const events = new Set(row.runtime.listeners.map(entry => entry.event))
-    assert.deepEqual([...events].sort(), ['agent/created', 'agent/pre-step', 'llm/stream'])
-    assert.ok(!events.has('tools/pre-execute'), 'the memory row blocks no tool call (d-code-rules-enforce: it registers no rule)')
+    assert.deepEqual([...events].sort(), ['agent/created', 'agent/pre-step', 'llm/stream', 'session/disposed', 'session/event', 'tools/pre-execute'])
+    const gates = row.runtime.listeners.filter(entry => entry.event === 'tools/pre-execute')
+    assert.ok(gates.length === 1 && isGateListener(gates[0]?.listener), 'one pre-execute listener, installed by the gate (habit-ask-first, d-code-rules-enforce)')
     assert.ok(!events.has('tools/post-execute'))
     assert.ok(row.commands.has('memory') && row.projections.length === 1 && row.runtime.services.has(MEMORY_SERVICE))
   })
@@ -174,6 +176,9 @@ test('/memory forget works as the person on a preference without any words, and 
     assert.deepEqual(lines[1]?.by, { session: 'agent-1', agent: 'agent-1', commandId: 'cmd-1' })
     assert.equal((await row.run('forget lead-with-the-answer')).kind, 'error', 'it is forgotten already')
     assert.equal((await row.run('restore lead-with-the-answer all')).text, '已找回「lead-with-the-answer」（关于你的（所有项目））。')
+    const written = readFileSync(journalFile(row.userDir), 'utf8').trim().split('\n').map(line => JSON.parse(line) as { op: string, data?: Record<string, unknown> })
+    assert.deepEqual(written.map(line => line.op), ['store', 'forget', 'restore'])
+    assert.ok(written.every(line => line.data === undefined || !('forgottenAt' in line.data)), 'the time of the forget stays in the fold; no record carries it, the restore snapshot of the forgotten entry included')
     assert.equal((await row.run('restore lead-with-the-answer')).kind, 'error', 'it is not forgotten any more')
     assert.deepEqual(((await row.tool('memory_query', { name: 'lead-with-the-answer' })).matches as Array<{ name: string }>).map(match => match.name), ['lead-with-the-answer'])
   })

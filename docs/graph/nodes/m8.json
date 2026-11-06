@@ -1,8 +1,9 @@
 {
   "id": "m8",
   "type": "feature",
-  "title": "M8 呈现",
-  "status": "approved",
+  "title": "界面呈现",
+  "why": "设置页、按钮与面板用同一套组件和样式，按截图改到人满意",
+  "status": "doing",
   "parent": "orch",
   "body": "按 ORCHESTRATION.md §13 实现 UI；核实 ui-primitives 可用性；替换现有设置页与 pill；按截图迭代，用户终审（ROADMAP.md M8）。项目图的 DSH 右侧栏面板已提前到 M2（m2-7），M8 沿用它的组件与样式。",
   "history": [
@@ -45,6 +46,31 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面批次 L4 实测尺寸（2890e19，2026-11-04）：glmh-pill 61×22px/字号 12/圆角 8，与原生 dock 邻居同排同量级；wish 流程条卡片 353×72/13px/圆角 12/半透明底，与原生卡片语言一致。B 项过。"
+    },
+    {
+      "at": "2026-11-05T05:26:35.029Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "M8 呈现",
+          "to": "界面呈现"
+        },
+        "why": {
+          "from": null,
+          "to": "设置页、按钮与面板用同一套组件和样式，按截图改到人满意"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T09:50:07.035Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "子节点 m8-plain-language 与 onboarding 都在进行中，父特性随之改为进行中（项目图对账 B 半 investigate-graph-reconcile-1105-b，report-b.md (f)）",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

@@ -38,10 +38,10 @@ import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, 
 import { basename, delimiter, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { constants, setPriority } from 'node:os'
 import { cachedWorktrees } from '../data/project-root.ts'
+import { commandText, INTERPRETERS, SCRIPT_MAX_BYTES, WORK_TIMEOUT_MS } from './command-text.ts'
 import type { ScriptLang, ScriptRef } from './trigger.ts'
 
-/** The timeout a work script gets when its entry names none (design §6.6). */
-export const WORK_TIMEOUT_MS = 60_000
+export { commandText, WORK_TIMEOUT_MS } from './command-text.ts'
 /** The most a work script may run (design §6.6; a person's entry allows 5 to 1800 whole seconds). */
 export const WORK_TIMEOUT_MAX_MS = 1_800_000
 /** How many of a project's person-added checks run at once (design §6.6, review F50). */
@@ -50,19 +50,8 @@ export const CHECK_CONCURRENT = 2
 export const OUTPUT_DEFAULT_BYTES = 1_048_576
 /** The most output kept per stream (design §6.6). */
 export const OUTPUT_MAX_BYTES = 4_194_304
-/** A script longer than this is not read at all (design §6.6: `refused`, `too-large`). */
-const SCRIPT_MAX_BYTES = 65_536
-
 /** The suffix of the script file of each language (`src/loops/model.ts` spells the same for validation). */
 const SCRIPT_SUFFIX: Readonly<Record<ScriptLang, string>> = { pwsh: 'ps1', node: 'mjs', python: 'py', bash: 'sh' }
-
-/** The interpreter of each language, without a shell (design §6.6). */
-const INTERPRETERS: Readonly<Record<ScriptLang, { readonly program: string, readonly before: readonly string[] }>> = {
-  pwsh: { program: 'pwsh', before: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass'] },
-  node: { program: 'node', before: [] },
-  python: { program: 'python', before: [] },
-  bash: { program: 'bash', before: [] },
-}
 
 /** The environment a process gets (design §6.6: this list, and nothing else of the host's). */
 const ENV_NAMES: readonly string[] = ['PATH', 'PATHEXT', 'SystemRoot', 'TEMP', 'TMP', 'USERPROFILE', 'HOME', 'APPDATA', 'LOCALAPPDATA']
@@ -148,24 +137,6 @@ const message = (error: unknown): string => error instanceof Error ? error.messa
 /** Digest of the bytes a person agreed to; the same value rides in the entry (`ScriptRef.sha256`). */
 export function scriptSha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex')
-}
-
-/** One item of a command line, quoted by the Windows rules: quotes around whitespace, doubled backslashes before a quote and at the end. */
-function quoted(item: string): string {
-  if (item.length > 0 && !/[\s"]/.test(item)) return item
-  return `"${item.replace(/(\\*)(")/g, (_, back: string) => `${back}${back}\\"`).replace(/\\+$/, found => `${found}${found}`)}"`
-}
-
-/**
- * The command line a person reads (design §6.6): the interpreter's line for a
- * script — with the path in the repository, not the private copy — or the
- * argument vector of a check. The log's first line and the rules board's
- * `checkCall` command both take it; it goes to no shell.
- */
-export function commandText(target: ScriptRef | readonly string[]): string {
-  if (!('lang' in target)) return target.map(quoted).join(' ')
-  const spec = INTERPRETERS[target.lang]
-  return [spec.program, ...spec.before, target.file].map(quoted).join(' ')
 }
 
 /** Case-folded on Windows, so `C:\Work` and `c:\work` are one directory. */

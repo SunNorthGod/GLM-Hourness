@@ -28,7 +28,9 @@ import type { AgentLike, ServiceLookup, ToolDefinitionLike } from '../shared/dsh
 import type { HealthState } from '../shared/health.ts'
 import { PROPOSE_TO_HUMAN, type ShownProposal } from '../shared/tool-names.ts'
 import { askBoard, attachBody, boardOfBody, resolveAttach, type AttachBoard, type AttachDetail, type Attachment } from './attach.ts'
-import { emitMetric } from './metrics.ts'
+import { bodyWithEffect, effectOf, effectShown, ruleEffectOf, type RuleEffect } from '../memory/effect.ts'
+import { toMetricsId } from '../shared/metrics.ts'
+import { emitDesign, optionalId, type DesignMetricEvent } from './metrics.ts'
 import { TALK_SHAPES, type TalkState } from './talk.ts'
 import { confirmGate, isRecord, mainAgentCall, moduleOfGoal, openGoal, readGraph, refuse, refuseWith, releasePage, releaseReady, toolShell } from './tool-support.ts'
 
@@ -78,6 +80,22 @@ const PARAMETERS = {
     question: { type: 'string', description: 'kind question: the id of a question you already put, to revise it after the human added to it or turned it down (with form, title and the record), or to show it once more (with text alone).' },
     sources: { type: 'array', items: { type: 'string' }, description: 'kind question, new: nodes it exists because of.' },
     attach: { type: 'string', description: 'kind question, recommend: a proposal another component recorded (rules:p-… or loops:lp-…) that the human agrees to with this question.' },
+    rule: {
+      type: 'object',
+      description: 'kind question, recommend: makes the question a rule proposal and gives its expected effect; required for every rule you put to the human, and again with each revision of one.',
+      properties: {
+        change: { type: 'string', enum: ['add', 'lift'], description: 'add: a new or stricter rule; lift: take a rule off.' },
+        effect: { type: 'string', description: 'One line for the human, plain words, at most 60 characters: which count should move and which way.' },
+        metric: { type: 'string', description: 'The count the harness checks: corrections:<group key as learning_signals shows it> or denials:<rule id>.' },
+        direction: { type: 'string', enum: ['down', 'up'] },
+        days: { type: 'integer', description: 'Days after the human agrees when the harness checks the count, 7 to 56; a miss is listed in the morning report.' },
+        lift: { type: 'string', description: 'change lift: the id of the rule taken off.' },
+        cover: { type: 'string', description: 'change lift: the rule that covers the same kind of calls.' },
+        ablation: { type: 'string', description: 'change lift, when no rule covers the same calls: the result of a run with only this rule switched off; the harness shows it under your question and the human must see it whole before agreeing.' },
+      },
+      required: ['change', 'effect', 'metric', 'direction', 'days'],
+      additionalProperties: false,
+    },
   },
   required: ['kind', 'text'],
   additionalProperties: false,
@@ -124,7 +142,7 @@ function userPageField(page: UserPage): { readonly userPage?: UserPage } {
 }
 
 const CONFIRM_PAGE_LABEL = `用户怎么用的样稿放得下一页（不超过 ${USER_LIMITS.appended.toLocaleString('en-US')} 字）`
-const CALL_FIELDS = new Set(['kind', 'text', 'form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'sample', 'goal', 'module', 'page', 'parent', 'question', 'sources', 'attach'])
+const CALL_FIELDS = new Set(['kind', 'text', 'form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'sample', 'goal', 'module', 'page', 'parent', 'question', 'sources', 'attach', 'rule'])
 const RECORD_FIELDS = ['form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken'] as const
 
 interface Args {
@@ -141,17 +159,22 @@ interface Args {
   readonly question?: string
   readonly sources: readonly string[]
   readonly attach?: string
+  /** The expected effect of a rule proposal (src/memory/effect.ts). */
+  readonly rule?: RuleEffect
 }
 
 /** Why a call was refused, for the metrics: the reason code of design.proposal-refused. */
 class Refused extends Error {
   reasonCode: string
   field: string | undefined
+  /** For not-in-text: where the record had to be, the question sentence (ask) or the whole text. */
+  within: string | undefined
 
-  constructor(message: string, reasonCode: string, field?: string) {
+  constructor(message: string, reasonCode: string, field?: string, within?: string) {
     super(message)
     this.reasonCode = reasonCode
     this.field = field
+    this.within = within
   }
 }
 
@@ -172,7 +195,7 @@ interface GoalArgs {
 }
 
 /** The fields of a call that belong to kind question: refused for kind confirm and kind release. */
-const QUESTION_FIELDS = ['form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'parent', 'question', 'sources', 'attach'] as const
+const QUESTION_FIELDS = ['form', 'title', 'proposal', 'reason', 'cost', 'ways', 'notTaken', 'parent', 'question', 'sources', 'attach', 'rule'] as const
 
 /** The arguments of a call of kind confirm or release, shape-checked: the goal and the words, and only the original text besides (for a release also the module and the page). */
 function parseGoalCall(raw: Record<string, unknown>, kind: 'confirm' | 'release'): GoalArgs {
@@ -238,6 +261,11 @@ function parseArgs(raw: Record<string, unknown>): Args {
   if (attach !== undefined && form !== undefined && form !== 'recommend') refuse('invalid', 'attach is taken only by form recommend', 'the human agrees to the one proposal a board recorded, not to a choice between ways', 'attach')
   if (question !== undefined && !recordGiven && attach !== undefined) refuse('invalid', 'attach is not taken when a question is shown once more', 'show it again with question and text alone', 'attach')
   if (question === undefined && sample !== undefined && form !== 'look') refuse('invalid', 'sample is taken by form look', 'put the sketch in a look question; other questions show their words only', 'sample')
+  const rule = raw.rule === undefined ? undefined : ruleEffectOf(raw.rule)
+  if (rule !== undefined && 'hint' in rule) refuse('invalid', rule.message, rule.hint, rule.field)
+  if (rule !== undefined && question !== undefined && !recordGiven) refuse('invalid', 'rule is not taken when a question is shown once more', 'show it again with question and text alone; the expected effect on the graph is shown with it', 'rule')
+  if (rule !== undefined && form !== 'recommend') refuse('invalid', 'rule is taken only by form recommend', 'put a rule to the human as one recommendation they agree to or not', 'rule')
+  if (rule?.ablation !== undefined && attach !== undefined) refuse('invalid', 'rule.ablation and attach exclude each other', 'a proposal of a board brings its own original text', 'rule.ablation')
   return {
     text,
     ...form === undefined ? {} : { form: form as AskForm },
@@ -252,6 +280,7 @@ function parseArgs(raw: Record<string, unknown>): Args {
     ...question === undefined ? {} : { question },
     sources: (sources as string[] | undefined) ?? [],
     ...attach === undefined ? {} : { attach },
+    ...rule === undefined ? {} : { rule },
   }
 }
 
@@ -277,7 +306,7 @@ function checkWords(form: AskForm, args: Args, record: Parameters<typeof proposa
   if (bad !== undefined) throw new Refused(JSON.stringify({ code: 'invalid', message: bad.message, field: bad.field, hint: bad.hint }), 'record', bad.field)
   const missing = textCoversRecord(args.text, record, form)
   if (missing !== undefined) {
-    throw new Refused(JSON.stringify({ code: 'invalid', message: `${missing.field} is not in text word for word`, field: 'text', hint: `put the ${missing.field} of the record word for word ${missing.within === 'ask' ? 'in the sentence that ends with the question mark' : 'in text'}: what the human agrees to must be what is kept` }), 'not-in-text', 'text')
+    throw new Refused(JSON.stringify({ code: 'invalid', message: `${missing.field} is not in text word for word`, field: 'text', hint: `put the ${missing.field} of the record word for word ${missing.within === 'ask' ? 'in the sentence that ends with the question mark' : 'in text'}: what the human agrees to must be what is kept` }), 'not-in-text', missing.field, missing.within)
   }
 }
 
@@ -299,18 +328,18 @@ function talkRead(deps: DesignToolDeps, agent: AgentLike): TalkState | undefined
 }
 
 /** What a call of kind confirm or release checks before it looks at the goal: the graph, the words (the limits of a recommend, the plain words) and the number of this question in the reply. */
-async function beforeGoalCall(deps: DesignToolDeps, agent: AgentLike, where: Where, args: GoalArgs): Promise<{ readonly graph: LoadedGraph, readonly number: 1 | 2 | 3 }> {
+async function beforeGoalCall(deps: DesignToolDeps, agent: AgentLike, where: Where, args: GoalArgs): Promise<{ readonly graph: LoadedGraph, readonly number: 1 | 2 | 3, readonly state: TalkState | undefined }> {
   const state = talkRead(deps, agent)
   const graph = await readGraph(where.dir)
   checkLimits('recommend', args.text)
   checkPlain('text', args.text)
-  return { graph, number: numberOf(state) }
+  return { graph, number: numberOf(state), state }
 }
 
 /** The error a call of kind confirm or release throws: a refusal of the harness is counted for the metrics and thrown as the message the model reads; any other error as it is. */
-function refusedCall(kind: Kind, error: unknown): Error {
+function refusedCall(deps: DesignToolDeps, agent: AgentLike, kind: Kind, error: unknown): Error {
   if (!(error instanceof Refused)) return error instanceof Error ? error : new Error(String(error))
-  emitMetric({ event: 'design.proposal-refused', kind, reason: error.reasonCode, field: error.field })
+  emitDesign(deps.lookup, agent, refusedEvent(kind, undefined, error, undefined))
   return new Error(error.message, { cause: error })
 }
 
@@ -323,7 +352,7 @@ function refusedCall(kind: Kind, error: unknown): Error {
  */
 async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where, args: GoalArgs): Promise<Record<string, unknown>> {
   try {
-    const { graph, number } = await beforeGoalCall(deps, agent, where, args)
+    const { graph, number, state } = await beforeGoalCall(deps, agent, where, args)
     const goal = confirmGate(graph, openGoal(graph, args.goal))
     // The sample of the user graph is not cut: one too big for a page is refused, like the release page (user graph design 0.4.1 §5.1, flows:page).
     const page = renderUserGraph(userGraphOf(graph, goal), 'confirm')
@@ -331,7 +360,7 @@ async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
       refuse('gate_unmet', `the requirement of "${goal.id}" is not complete; missing: ${CONFIRM_PAGE_LABEL}`, `${CONFIRM_PAGE_LABEL}: the user graph is too big for one page: split the goal, or shorten flow and step titles`)
     }
     const text = withUserPage(renderAsk(args.text, number, undefined, args.sample, false), page)
-    emitMetric({ event: 'design.proposal-shown', kind: 'confirm', number, goal: goal.id, codePoints: codePointCount(args.text), points: codePointCount(text), sample: args.sample !== undefined })
+    emitDesign(deps.lookup, agent, { k: 'design.proposal-shown', body: { kind: 'confirm', number, goal: toMetricsId(goal.id), pending: toMetricsId(goal.id), units: codePointCount(args.text), points: codePointCount(text), sample: args.sample !== undefined, again: shownBefore(state, 'confirm', goal.id, undefined) } })
     return {
       tool: PROPOSE_TO_HUMAN,
       kind: 'confirm',
@@ -343,7 +372,7 @@ async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
     }
   }
   catch (error) {
-    throw refusedCall('confirm', error)
+    throw refusedCall(deps, agent, 'confirm', error)
   }
 }
 
@@ -359,7 +388,7 @@ async function confirmCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
  */
 async function releaseCall(deps: DesignToolDeps, agent: AgentLike, where: Where, args: GoalArgs): Promise<Record<string, unknown>> {
   try {
-    const { graph, number } = await beforeGoalCall(deps, agent, where, args)
+    const { graph, number, state } = await beforeGoalCall(deps, agent, where, args)
     const goal = openGoal(graph, args.goal)
     const module = args.module === undefined ? undefined : moduleOfGoal(graph, goal, args.module)
     const ready = releaseReady(graph, goal, module)
@@ -368,7 +397,7 @@ async function releaseCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
     // After the page the harness appends the user page (user graph design 0.4.1 §5.2, §5.3); its size is the release gate's flows:page.
     const userPage = releaseUserPage(userGraphOf(graph, goal), module)
     const text = withUserPage(renderAsk(args.text, number, undefined, exact, false), userPage)
-    emitMetric({ event: 'design.proposal-shown', kind: 'release', number, goal: goal.id, module: module?.id, codePoints: codePointCount(args.text), points: codePointCount(text), sample: args.sample !== undefined, page: args.page !== undefined })
+    emitDesign(deps.lookup, agent, { k: 'design.proposal-shown', body: { kind: 'release', number, goal: toMetricsId(goal.id), ...optionalId('module', module?.id), pending: toMetricsId(module?.id ?? goal.id), units: codePointCount(args.text), points: codePointCount(text), sample: args.sample !== undefined, again: shownBefore(state, 'release', goal.id, module?.id) } })
     return {
       tool: PROPOSE_TO_HUMAN,
       kind: 'release',
@@ -382,8 +411,18 @@ async function releaseCall(deps: DesignToolDeps, agent: AgentLike, where: Where,
     }
   }
   catch (error) {
-    throw refusedCall('release', error)
+    throw refusedCall(deps, agent, 'release', error)
   }
+}
+
+/** design.proposal-refused for a refusal of the harness: the reason code, the field and where the record had to be, the prefix of attach. */
+function refusedEvent(kind: Kind, form: string | undefined, error: Refused, attach: string | undefined): DesignMetricEvent {
+  return { k: 'design.proposal-refused', body: { kind, ...optionalId('form', form), code: toMetricsId(error.reasonCode), ...optionalId('field', error.field), ...optionalId('within', error.within), ...optionalId('attach', attach?.split(':')[0]) } }
+}
+
+/** Whether this confirm or release (the goal, or the module) was put to the human before in this session. */
+function shownBefore(state: TalkState | undefined, kind: 'confirm' | 'release', goal: string, module: string | undefined): boolean {
+  return state?.shown.some(entry => entry.kind === kind && entry.goal === goal && entry.module === module) ?? false
 }
 
 /** A question in the proposal shape that still waits for the human, found by its id. */
@@ -401,6 +440,15 @@ interface Shown {
   readonly detail?: AttachDetail
   readonly attach?: string
   readonly sample?: string
+  /** The expected effect of a rule proposal, as the question's body keeps it. */
+  readonly effect?: RuleEffect
+}
+
+/** The original text the human must see after the question: the expected effect of a rule proposal first, then the ablation result or a board's original text. */
+function exactOfShown(shown: Shown): { readonly lines?: string, readonly exact: boolean } {
+  const exact = shown.effect?.ablation ?? shown.detail?.markdown ?? shown.sample
+  const lines = [shown.effect === undefined ? undefined : effectShown(shown.effect), exact].filter((part): part is string => part !== undefined)
+  return { ...lines.length === 0 ? {} : { lines: lines.join('\n\n') }, exact: exact !== undefined }
 }
 
 export function proposeTool(deps: DesignToolDeps): ToolDefinitionLike {
@@ -434,9 +482,9 @@ export function proposeTool(deps: DesignToolDeps): ToolDefinitionLike {
           ? await showAgain(deps, node, where.cwd, args, form)
           : node === undefined ? await putNew(deps, engine, graph, where, args, record, call) : await revise(deps, engine, where, args, record, call)
         const goal = goalOf(await readGraph(where.dir), shown.question.id)?.id
-        const exact = shown.detail?.markdown ?? shown.sample
-        const text = renderAsk(args.text, number, shown.question.form === 'choose' ? shown.question.ways : undefined, exact, shown.sample !== undefined)
-        emitMetric({ event: 'design.proposal-shown', kind: 'question', form, number, goal, question: shown.question.id, attach: shown.attach?.split(':')[0], codePoints: codePointCount(args.text), points: codePointCount(text), sample: shown.sample !== undefined, again })
+        const { lines, exact } = exactOfShown(shown)
+        const text = renderAsk(args.text, number, shown.question.form === 'choose' ? shown.question.ways : undefined, lines, shown.sample !== undefined)
+        emitDesign(deps.lookup, agent, { k: 'design.proposal-shown', body: { kind: 'question', form, number, goal: toMetricsId(goal), pending: toMetricsId(shown.question.id), ...optionalId('attach', shown.attach?.split(':')[0]), units: codePointCount(args.text), points: codePointCount(text), sample: shown.sample !== undefined, again } })
         return {
           tool: PROPOSE_TO_HUMAN,
           kind: 'question',
@@ -446,12 +494,12 @@ export function proposeTool(deps: DesignToolDeps): ToolDefinitionLike {
           number,
           text,
           ...shown.attach === undefined ? {} : { attach: shown.attach },
-          message: exact === undefined ? showMessage('question') : `${showMessage('question')} ${DETAIL_MESSAGE}`,
+          message: exact ? `${showMessage('question')} ${DETAIL_MESSAGE}` : showMessage('question'),
         }
       }
       catch (error) {
         if (error instanceof Refused) {
-          emitMetric({ event: 'design.proposal-refused', kind: 'question', form: args.form, reason: error.reasonCode, field: error.field, attach: args.attach?.split(':')[0] })
+          emitDesign(deps.lookup, agent, refusedEvent('question', args.form, error, args.attach))
           throw new Error(error.message, { cause: error })
         }
         throw error
@@ -486,12 +534,20 @@ function recordOf(args: Args, form: AskForm): Parameters<typeof proposalRecordRe
 /** What a call put to the human, with the original text and the name of the proposal of a board when the call carried them. */
 function shownOf(question: GraphNode, attachment: Attachment | undefined, attach: string | undefined, sample: string | undefined): Shown {
   const attached = attachment?.ok === true && attach !== undefined
+  const effect = effectOf(question.body)
   return {
     question,
     ...attached && attachment.detail !== undefined ? { detail: attachment.detail } : {},
     ...attached ? { attach } : {},
     ...sample === undefined ? {} : { sample },
+    ...effect === undefined ? {} : { effect },
   }
+}
+
+/** The body a new or revised question is written with: the expected effect of a rule proposal first, then a board's original text and its line; undefined when it carries neither. */
+function bodyOf(rule: RuleEffect | undefined, attachment: Attachment | undefined): string | undefined {
+  const attached = attachment?.ok === true ? attachBody(attachment) : undefined
+  return rule === undefined ? attached : bodyWithEffect(rule, attached)
 }
 
 /** The record of a question already on the graph: what the words of a second showing are held to. */
@@ -517,6 +573,7 @@ async function putNew(deps: DesignToolDeps, engine: ReturnType<typeof openEngine
   if (!OPEN_STATUSES.has(parent.status)) refuse('invalid', `"${parentId}" is ${parent.status}, so a question cannot hang under it`, 'hang the question under an open node', 'parent')
   const attachment = args.attach === undefined ? undefined : await resolveAttach(deps.boards, deps.lookup, args.attach, where.cwd)
   if (attachment !== undefined && !attachment.ok) refuse('invalid', attachment.message, 'record the proposal with its board first, or leave attach out', 'attach')
+  const body = bodyOf(args.rule, attachment)
   const result = await applied(engine.apply('llm', {
     op: 'propose',
     reason: REASON('把这件事交给人', call),
@@ -524,7 +581,7 @@ async function putNew(deps: DesignToolDeps, engine: ReturnType<typeof openEngine
       type: 'question',
       parent: parentId,
       ...record,
-      ...attachment === undefined ? {} : { body: attachBody(attachment) },
+      ...body === undefined ? {} : { body },
       ...args.sources.length === 0 ? {} : { edges: args.sources.map(to => ({ type: 'source', to })) },
     },
   }))
@@ -541,10 +598,15 @@ async function revise(deps: DesignToolDeps, engine: ReturnType<typeof openEngine
     if (attempt === 0 && boardOfBody(deps.boards, node.body) !== undefined && args.attach === undefined) {
       refuse('invalid', `"${node.id}" carries a proposal of ${boardOfBody(deps.boards, node.body)!.board.board}`, 'record the revised proposal with the board first and pass its new attach', 'attach')
     }
+    // A rule proposal is revised together with its expected effect, so that what the human agrees to is what the harness checks.
+    if (attempt === 0 && effectOf(node.body) !== undefined && args.rule === undefined) {
+      refuse('invalid', `"${node.id}" is a rule proposal and carries an expected effect`, 'pass rule again with the revision: change, effect, metric, direction and days, as they stand now', 'rule')
+    }
     if (attempt === 0 && args.attach !== undefined) {
       attachment = await resolveAttach(deps.boards, deps.lookup, args.attach, where.cwd)
       if (!attachment.ok) refuse('invalid', attachment.message, 'record the proposal with its board first, or leave attach out', 'attach')
     }
+    const body = bodyOf(args.rule, attachment)
     latest = await engine.apply('llm', {
       op: 'edit',
       id: node.id,
@@ -558,7 +620,7 @@ async function revise(deps: DesignToolDeps, engine: ReturnType<typeof openEngine
         cost: record.cost ?? null,
         ways: record.ways ?? null,
         notTaken: record.notTaken ?? null,
-        ...attachment?.ok === true ? { body: attachBody(attachment) } : {},
+        ...body === undefined ? {} : { body },
       },
     })
     if (latest.ok || latest.error.code !== 'stale_revision') break
@@ -571,11 +633,13 @@ async function revise(deps: DesignToolDeps, engine: ReturnType<typeof openEngine
 async function showAgain(deps: DesignToolDeps, node: GraphNode, cwd: string | undefined, args: Args, form: AskForm): Promise<Shown> {
   // The words may differ from the first time; they were held to the same limits and to the record on the graph.
   if (args.sample !== undefined && form !== 'look') refuse('invalid', 'sample is taken by form look', 'only a look question carries a sketch', 'sample')
+  const effect = effectOf(node.body)
+  const withEffect = effect === undefined ? {} : { effect }
   const found = boardOfBody(deps.boards, node.body)
-  if (found === undefined) return { question: node, ...args.sample === undefined ? {} : { sample: args.sample } }
+  if (found === undefined) return { question: node, ...args.sample === undefined ? {} : { sample: args.sample }, ...withEffect }
   const service = found.board.service(deps.lookup)
   if (service === undefined) refuse('invalid', `${found.board.board} is not running here`, 'tell the human; the proposal cannot be shown without its original text', 'attach')
   const answer = await askBoard(service, cwd, found.id)
   if (!answer.ok) refuse('invalid', `${found.board.board} refused it: ${answer.message}`, 'tell the human', 'attach')
-  return { question: node, ...answer.detail === undefined ? {} : { detail: answer.detail }, attach: `${found.board.prefix}${found.id}` }
+  return { question: node, ...answer.detail === undefined ? {} : { detail: answer.detail }, attach: `${found.board.prefix}${found.id}`, ...withEffect }
 }

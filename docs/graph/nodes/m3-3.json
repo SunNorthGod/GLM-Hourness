@@ -1,8 +1,9 @@
 {
   "id": "m3-3",
   "type": "task",
-  "title": "3.3 方案五栏与设计门禁",
-  "status": "doing",
+  "title": "方案五栏与放行前的检查",
+  "why": "方案缺了哪一栏就交不到人面前，人看到的方案总是完整的",
+  "status": "done",
   "parent": "m3",
   "kind": "implement",
   "body": "ORCHESTRATION.md §4.3。",
@@ -11,6 +12,29 @@
     "主 Agent 焦点所在的目标在 release 之前（含主 Agent 没有焦点、焦点链上没有目标），主 Agent 派出的子 agent 及其再派出的各层 agent 写文件被拒，与「最大递归深度」的设置无关；放行之后照常",
     "放行把提议时列出的提议全部转为已批准，阶段为 release，历史带人的原话；带 supersedes 连线的提议不能这样放行",
     "分了模块的目标：大循环放行一次批准框架、模块清单和方向清单，之后每个模块各放行一次，人看一页放行稿并在对话里同意；模块放行之前，派出去的 agent 不能写这个模块的任何东西；主 Agent 能把一个模块退回设计，人的原话才能把目标退回大循环"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "e48fc70",
+      "note": "M3 第 5 步：方案五栏"
+    },
+    {
+      "kind": "commit",
+      "ref": "e58d1ae",
+      "note": "M3 第 9 步：放行前的检查，语义评审 APPROVED"
+    },
+    {
+      "kind": "commit",
+      "ref": "2bf2b16",
+      "note": "m3 合入 main"
+    },
+    {
+      "kind": "test",
+      "ref": "tests/design-guard.spec.ts",
+      "exit": 0,
+      "note": "design-before-release 各例与按模块五例；L3 glm-design-stage、glm-design-release、glm-design-modules"
+    }
   ],
   "history": [
     {
@@ -93,6 +117,54 @@
           ]
         }
       }
+    },
+    {
+      "at": "2026-11-05T05:26:17.045Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "3.3 方案五栏与设计门禁",
+          "to": "方案五栏与放行前的检查"
+        },
+        "why": {
+          "from": null,
+          "to": "方案缺了哪一栏就交不到人面前，人看到的方案总是完整的"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T10:05:48.025Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "项目图对账 A 半（.agents/tasks/graph-reconcile-2026-11-05/report-a.md，investigate-graph-reconcile-1105-a，wf_354a8b952020a5fa）核实：验收逐条有证据，提交都在 origin/main（merge-base --is-ancestor 退出码 0），验证层不要求 L4 或 L4 已做过",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "e48fc70",
+          "note": "M3 第 5 步：方案五栏"
+        },
+        {
+          "kind": "commit",
+          "ref": "e58d1ae",
+          "note": "M3 第 9 步：放行前的检查，语义评审 APPROVED"
+        },
+        {
+          "kind": "commit",
+          "ref": "2bf2b16",
+          "note": "m3 合入 main"
+        },
+        {
+          "kind": "test",
+          "ref": "tests/design-guard.spec.ts",
+          "exit": 0,
+          "note": "design-before-release 各例与按模块五例；L3 glm-design-stage、glm-design-release、glm-design-modules"
+        }
+      ]
     }
   ]
 }

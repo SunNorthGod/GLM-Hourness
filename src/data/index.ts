@@ -22,9 +22,10 @@ export interface DataConfig {
   readonly projectHome?: string
   /**
    * An absolute directory that stands for the project directory of every
-   * session (memory and lessons): the probe, the calibration and tests point
-   * it at their run directory so they never touch a repository's `.llm` or
-   * the real user directory. Empty counts as unset.
+   * session (memory, lessons and the env row's suppression count): the
+   * probe, the calibration and tests point it at their run directory so they
+   * never touch a repository's `.llm` or the real user directory. Empty
+   * counts as unset.
    */
   readonly projectOverride?: string
 }

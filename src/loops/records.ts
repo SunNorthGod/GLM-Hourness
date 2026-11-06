@@ -168,7 +168,20 @@ export interface TaskDeleteRecord {
   readonly deleted: boolean
 }
 
-export type LoopRecord = FiredRecord | DoneRecord | DuplicateRecord | HandoverRecord | DriftRecord | HolderRecord | TaskDeleteRecord
+/** The machine-level runner read the quota once for a channel entry (design §6.10, M6-L5); it goes into the project the event would go to. */
+export interface ReadRecord {
+  readonly kind: 'loop-read'
+  readonly at: string
+  readonly project: string
+  readonly entry: string
+  /** The read gave a reading, no failure, and was not still running. */
+  readonly ok: boolean
+  readonly ms: number
+  /** A window was low by the entry's rule. */
+  readonly hit: boolean
+}
+
+export type LoopRecord = FiredRecord | DoneRecord | DuplicateRecord | HandoverRecord | DriftRecord | HolderRecord | TaskDeleteRecord | ReadRecord
 
 /** `run-<12 hex digits>`: one run of one entry, named in both of its records and in the message the main agent gets. */
 export function runId(): string {

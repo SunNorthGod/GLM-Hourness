@@ -2,6 +2,7 @@
   "id": "d-desktop-direct-use",
   "type": "decision",
   "title": "验证时可以直接用 DSH 桌面版，包括重启，不必先问人",
+  "why": "验证不用等人点头，桌面版直接用、直接重启，进度不卡在问人上",
   "status": "approved",
   "parent": "orch",
   "verification": "unverified",
@@ -14,6 +15,19 @@
       "reason": "人允许直接用桌面版验证，不必先问",
       "relay": "桌面版你直接用就行",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T05:25:34.491Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "why": {
+          "from": null,
+          "to": "验证不用等人点头，桌面版直接用、直接重启，进度不卡在问人上"
+        }
+      }
     }
   ]
 }

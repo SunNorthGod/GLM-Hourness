@@ -23,7 +23,8 @@ import type { RepoRules } from '../src/rules/model.ts'
 import { loadState, rulesPaths } from '../src/rules/store.ts'
 import type { AgentLike } from '../src/shared/dsh-min.ts'
 import { collectHealth } from '../src/shared/health.ts'
-import { ruleOf } from './rules-fixtures.ts'
+import { PRICING_SERVICE } from '../src/shared/pricing.ts'
+import { OFFPEAK_CREDIT_RUNS, ruleOf } from './rules-fixtures.ts'
 import { fakeClock, journalOf, MINUTE, quickIo, type FakeClock } from './rules-helpers.ts'
 import { health, rowTest, subagentOf, textOf, type Fixture, type Options } from './rules-host.ts'
 
@@ -868,6 +869,44 @@ stopTest('a stop ticket of another host is left alone on unload', async (fixture
   await fixture.dispose()
   assert.deepEqual(fixture.live.log, ['goal:pause'])
 })
+
+// ------------------------------------------------------ the end of the peak
+//
+// A rule of the person that defers a call while glm-peak is true says until
+// when, and the wake says when that peak ended (M6 design §7.2): the end of
+// the peak the ticket was opened in, worked out at the wake. The clock starts
+// at 15:00 UTC+8 on a Wednesday, in the peak.
+
+const PEAK_HOLD_FILE: RepoRules = { version: 2, rules: { [OFFPEAK_CREDIT_RUNS.id]: OFFPEAK_CREDIT_RUNS } }
+const CALIBRATE = 'npm run calibrate'
+const CALIBRATE_AGAIN = 'You may run the deferred call again: pwsh "npm run calibrate".'
+
+ticketTest('a rule of the person on glm-peak true defers the call until the end of the peak, and the wake says when the peak ended', async (fixture, clock) => {
+  const refused = reasonOf(await fixture.exec('pwsh', shell(CALIBRATE)))
+  assert.ok(refused.includes(`\nBoundary: Deferred as ticket q-1. Rule r-offpeak-credit-runs "${OFFPEAK_CREDIT_RUNS.title}" (`), refused)
+  assert.ok(refused.includes(` defers it while glm-peak is true until ${clockHm(PEAK_END)}.\nRight path: `), refused)
+  await pass(fixture, clock, MINUTE)
+  assert.equal(ticketOf(fixture, 'q-1').state, 'deferred', 'the peak is still on')
+  await pass(fixture, clock, 3 * HOUR)
+  assert.equal(ticketOf(fixture, 'q-1').state, 'cleared')
+  assert.deepEqual(fixture.live.woken.map(entry => entry.text), [`[rules board] Ticket q-1 cleared: glm-peak ended at ${clockHm(PEAK_END)}. ${CALIBRATE_AGAIN}`])
+}, { rules: PEAK_HOLD_FILE })
+
+/** A pricing service in which it is never peak. */
+const NEVER_PEAK = { basis: 'test', plan: 'test', charged: () => undefined, peak: () => false }
+const NO_TIME: ReadonlyArray<readonly [string, (fixture: Fixture) => void, string]> = [
+  ['there is no pricing service', (fixture) => { fixture.runtime.services.delete(PRICING_SERVICE) }, '没有计价服务（GLM 通道包未装，或它的 glm-login 行未启用）'],
+  ['the pricing service does not put the opening of the ticket in a peak', (fixture) => { fixture.runtime.services.set(PRICING_SERVICE, NEVER_PEAK) }, 'glm-peak is off now'],
+]
+for (const [title, change, because] of NO_TIME) {
+  ticketTest(`the wake has no time in it when ${title}`, async (fixture) => {
+    await fixture.exec('pwsh', shell(CALIBRATE))
+    change(fixture)
+    await fixture.pass()
+    assert.equal(ticketOf(fixture, 'q-1').state, 'cleared')
+    assert.deepEqual(fixture.live.woken.map(entry => entry.text), [`[rules board] Ticket q-1 cleared: ${because}. ${CALIBRATE_AGAIN}`])
+  }, { rules: PEAK_HOLD_FILE })
+}
 
 // ------------------------------------------------------------- teardown
 

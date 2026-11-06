@@ -14,7 +14,12 @@
  * health table); a step marked `live` records the graph panel's live view
  * of the session (the graphLive projection, src/graph/live.ts); a step
  * marked `peakMode` records the rules row's glmHournessPeakMode state and
- * hold for the session; a step
+ * hold for the session; a step marked `hub` records what the status hub's
+ * collector reads for the session after the step's command, at the agent
+ * and the all audience (status hub design 0.3 §11 L3); a step marked
+ * `rulesView` records the text of the rules page's data file
+ * (`<cwd>/.llm/rules/view.json`) of the request's session after the step's
+ * command; a step
  * marked `modules` records the package ids of the client-modules graph; a
  * step marked `meta` records, for each project row of the Loader, the
  * display information the settings page's plugin inventory shows for it. A
@@ -50,7 +55,8 @@
  * scripts/probe/run-probe.mjs generates for each run.
  */
 import { randomUUID } from 'node:crypto'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { GLM_MODELS, glmInputModalities } from '../../packages/glm/dist/glm-llm/models.js'
 import { asAttachments, glmImageRequestTarget, prepareRequestImages } from '../../packages/glm/dist/glm-llm/images.js'
@@ -58,6 +64,7 @@ import { encodeRequest, splitSystemPrompt } from '../../packages/glm/dist/glm-ll
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
 import { oldestPending } from '../../packages/hourness/dist/execute/requests.js'
 import { latestDispatch, registeredDispatches } from '../../packages/hourness/dist/execute/attempts.js'
+import { collectStatus } from '../../packages/hourness/dist/report/status.js'
 
 export const name = 'glm-hourness-probe/llm'
 export const inject = ['llm']
@@ -568,6 +575,28 @@ class ProbeAdapter {
         peakMode = { error: error instanceof Error ? error.message : String(error) }
       }
     }
+    // A step marked `hub` records what the status hub's collector
+    // (src/report/status.ts) reads for the request's session once the step's
+    // command ran: the entries and per-row outcomes at both audiences.
+    let hub
+    if (step.hub === true) {
+      try {
+        const now = Date.now()
+        hub = { agent: collectStatus(this.ctx, request.sessionId, 'agent', now), all: collectStatus(this.ctx, request.sessionId, 'all', now) }
+      }
+      catch (error) {
+        hub = { error: error instanceof Error ? error.message : String(error) }
+      }
+    }
+    // A step marked `rulesView` records the rules page's data the rules row
+    // wrote for the session's project once the step's command ran: the text
+    // of `<cwd>/.llm/rules/view.json`, null when there is none.
+    let rulesView
+    if (step.rulesView === true) {
+      const cwd = this.ctx.get('agents')?.get(request.sessionId)?.session.header.cwd
+      const file = typeof cwd === 'string' ? join(cwd, '.llm', 'rules', 'view.json') : undefined
+      rulesView = file !== undefined && existsSync(file) ? readFileSync(file, 'utf8') : null
+    }
     // A step marked `modules` records the client packages the client-modules
     // service composed (when the overlay mounts it).
     let modules
@@ -620,6 +649,8 @@ class ProbeAdapter {
         ...(tell === undefined ? {} : { tell }),
         ...(spawn === undefined ? {} : { spawn }),
         ...(peakMode === undefined ? {} : { peakMode }),
+        ...(hub === undefined ? {} : { hub }),
+        ...(rulesView === undefined ? {} : { rulesView }),
         ...(live === undefined ? {} : { live }),
         ...(modules === undefined ? {} : { modules }),
         ...(meta === undefined ? {} : { meta }),

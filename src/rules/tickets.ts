@@ -44,7 +44,7 @@ import type { HeartbeatWriter } from './heartbeat.ts'
 import { judge, judgeInput, type JudgeParts, type RuleHit } from './judge.ts'
 import { openTickets } from './listing.ts'
 import { canonicalJson, effectivePeakMode, type BuiltinRule, type ProjectState, type Rule, type Ticket } from './model.ts'
-import type { PeakReading, ProjectView } from './peak.ts'
+import { peakEndAfter, type PeakReading, type ProjectView } from './peak.ts'
 import type { HostRef } from './request.ts'
 import type { StoreIo } from './store.ts'
 import { clockReadings, tableOf } from './table.ts'
@@ -248,7 +248,7 @@ export function createTicketDesk(deps: DeskDeps): TicketDesk {
     const verdict = judge(judgeInput({ now, project: hold.root, events: hold.events, signals: [...readings.values()], unreadable: hold.unreadable }), table)
     const queued = verdict.effect === 'queue' ? verdict.strongest.map(hit => hit.rule) : []
     const blocking = verdict.effect === 'block' ? verdict.strongest.map(hit => hit.rule) : []
-    return { queued, because: clearedBecause(ticket, state, readings, now, blocking) }
+    return { queued, because: clearedBecause(ticket, state, readings, now, blocking, peakEndAfter(deps.ctx, Date.parse(ticket.since))) }
   }
 
   // --------------------------------------------------------------- the gate

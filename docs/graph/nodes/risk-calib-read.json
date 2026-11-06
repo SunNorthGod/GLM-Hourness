@@ -1,7 +1,8 @@
 {
   "id": "risk-calib-read",
   "type": "risk",
-  "title": "标定时被测模型读得到验收脚本与前几次的解",
+  "title": "做练习题时，被测的模型读得到答案和前几次的解",
+  "why": "被测的模型能偷看答案时，练习题的结果就不可信",
   "status": "approved",
   "parent": "m7",
   "body": "scripts/calibrate/run-calibrate.mjs 把运行目录建在仓库的 .llm/calibration-runs/ 下，权限默认 danger-full-access，guard 只拦写不拦读，被测模型能读到 tests/calibration/<任务>/check.mjs 与同批前几次运行的解。编排方 2026-10-29 复核了已有的 5 批运行（38 个会话、368 次工具调用）：没有一次调用的路径在自己的 ws 目录之外（脚本 .agents/tasks/reading-2026-10-29/calib-leak-check.mjs），所以已有基线没有被污染；风险本身还在，M3 起标定任务变多变难，被测模型越强越可能去翻。处理方向见阅读摘要 §7 第 1 条：运行目录移到仓库外的临时目录、验收脚本不进被测模型可达的路径，标定会话的读取加圈禁。",
@@ -18,6 +19,29 @@
       "actor": "llm",
       "op": "comment",
       "text": "M5 设计 0.5 §8.7：标定与消融运行不读真实的经验与记忆。M5 的 A1 给 scripts/sandbox.mjs 的 dataRows 加 projectOverride，标定会话的项目目录与用户级目录都指向运行目录；否则同一道练习题会随经验的积累得到不同的上下文，回归对比失去意义。读标定的人注意：记忆行同时写用量流水，消融不能靠禁用记忆行来关索引。"
+    },
+    {
+      "at": "2026-11-05T05:26:41.926Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "标定时被测模型读得到验收脚本与前几次的解",
+          "to": "做练习题时，被测的模型读得到答案和前几次的解"
+        },
+        "why": {
+          "from": null,
+          "to": "被测的模型能偷看答案时，练习题的结果就不可信"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T09:59:14.741Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "ablation 的 code 步核对（2026-11-05）：本风险修了一半。M3 第 8 步起标定运行已放在 %TEMP% 下的批次目录（scripts/calibrate/run-dir.mjs，3fbc1e9），被测会话读不到前几次的解；但验收脚本 check.mjs 仍在仓库里，标定 profile 又链接主检出，被测模型仍够得着验收脚本。剩下的这一半由 ablation-calibration（wf_5f5345b05e5c4e89）先修。"
     }
   ]
 }

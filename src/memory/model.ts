@@ -78,6 +78,8 @@ export interface MemoryEntry {
   readonly reviews: number
   readonly origin: MemoryOrigin
   readonly status: 'active' | 'forgotten'
+  /** When the `forget` record took the entry back; a `restore` removes it. Only in the fold, never written to the journal. */
+  readonly forgottenAt?: string
 }
 
 /** The last learning digest reminder (§3.6): when it was sent and the keys of the groups it listed. */
@@ -390,8 +392,8 @@ export interface Writer {
   readonly by?: NonNullable<NewRecord['by']>
 }
 
-/** The JSON form of an entry, the same in a snapshot and in a base. */
-const snapshot = (entry: MemoryEntry): JsonValue => JSON.parse(JSON.stringify(entry)) as JsonValue
+/** The JSON form of an entry, the same in a snapshot and in a base; `forgottenAt` stays in the fold (a `restore` snapshots a forgotten entry). */
+const snapshot = ({ forgottenAt: _forgottenAt, ...entry }: MemoryEntry): JsonValue => JSON.parse(JSON.stringify(entry)) as JsonValue
 
 /** A `store` record. `relayChecked` is false when the words were not checked against the person's messages, true when they were, absent when nothing was to be checked. `ask` names the open habit question the record settles (§3.8.2). */
 export function storeRecord(request: StoreRequest, writer: Writer & { readonly relayChecked?: boolean, readonly ask?: string }): NewRecord<'store'> {
@@ -652,7 +654,10 @@ function applyRevoke(state: MemoryState, record: JournalRecord, op: 'forget' | '
   }
   const refusal = entry === undefined ? undefined : revokeRefusal(entry, whoOf(record), op)
   if (refusal !== undefined) return { bad: refusal.hint ?? refusal.message }
-  return withEntries(state, entry === undefined ? [] : [{ ...entry, status: op === 'forget' ? 'forgotten' : 'active' }])
+  if (entry === undefined) return withEntries(state, [])
+  if (op === 'forget') return withEntries(state, [{ ...entry, status: 'forgotten', forgottenAt: record.at }])
+  const { forgottenAt: _forgottenAt, ...kept } = entry
+  return withEntries(state, [{ ...kept, status: 'active' }])
 }
 
 /** The most group keys one learning digest reminder records; the reminder lists no more. */
@@ -667,9 +672,14 @@ export const learnNotifiedRecord = (keys: readonly string[], by: NonNullable<New
   data: { keys: [...keys] },
 })
 
-/** An open habit question (§3.8.1): the content the `store` of a confirm must repeat word for word. */
-export function askRecord(fields: HabitFields, by: NonNullable<NewRecord['by']>): NewRecord<'ask'> {
-  return { actor: 'llm', by, op: 'ask', id: memoryId(fields.scope, fields.name), data: { ...fields } }
+/**
+ * An open habit question (§3.8.1): the content the `store` of a confirm must
+ * repeat word for word. `notSame` lists the ids of the live noes the model
+ * set aside (memory_habit `notSame: true` after `maybe_declined`), so an
+ * override can be counted from the journal.
+ */
+export function askRecord(fields: HabitFields, by: NonNullable<NewRecord['by']>, notSame: readonly string[] = []): NewRecord<'ask'> {
+  return { actor: 'llm', by, op: 'ask', id: memoryId(fields.scope, fields.name), data: { ...fields, ...(notSame.length === 0 ? {} : { notSame: [...notSame] }) } }
 }
 
 /** The person's no to a habit question (§3.8.4): their words and the content the question carried. */

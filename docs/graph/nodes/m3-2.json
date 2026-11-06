@@ -1,8 +1,9 @@
 {
   "id": "m3-2",
   "type": "task",
-  "title": "3.2 许愿访谈八步与需求卡",
-  "status": "doing",
+  "title": "许愿访谈八步与需求卡",
+  "why": "人说一句愿望，主 Agent 一步步问清楚，图随问随长",
+  "status": "done",
   "parent": "m3",
   "kind": "implement",
   "body": "访谈过程中图实时生长（ORCHESTRATION.md §4.2）。",
@@ -10,6 +11,29 @@
     "访谈中每答一题，图上对应的字段或节点出现",
     "需求卡缺项时 propose_to_human 拒绝并列出缺项，人看不到提议；人在对话里同意之后，目标由提议变为已批准、阶段为 design，历史带人的原话",
     "标定任务 interview-expense-log 在 GLM-5.3 上三次里至少一次完整通过验收脚本；模拟人在对话里回话：开放的问题按任务写好的事实答，提议按任务写好的话答（需求同意一次，方案先补充一次再同意）；两档模型的结果都记作基线"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "3fbc1e9",
+      "note": "M3 第 8 步：访谈八步与需求卡"
+    },
+    {
+      "kind": "commit",
+      "ref": "88c1d69",
+      "note": "标定修复后 GLM-5.3 三次 2/3 全过（.llm/calibration-runs/2026-11-03T05-48-55-107Z/）"
+    },
+    {
+      "kind": "commit",
+      "ref": "2bf2b16",
+      "note": "m3 合入 main"
+    },
+    {
+      "kind": "test",
+      "ref": "tests/propose-to-human.spec.ts",
+      "exit": 0,
+      "note": "访谈与需求卡；另 record-human-answer.spec.ts、design-talk.spec.ts"
+    }
   ],
   "history": [
     {
@@ -130,6 +154,54 @@
           ]
         }
       }
+    },
+    {
+      "at": "2026-11-05T05:26:16.466Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "3.2 许愿访谈八步与需求卡",
+          "to": "许愿访谈八步与需求卡"
+        },
+        "why": {
+          "from": null,
+          "to": "人说一句愿望，主 Agent 一步步问清楚，图随问随长"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T10:05:47.528Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "项目图对账 A 半（.agents/tasks/graph-reconcile-2026-11-05/report-a.md，investigate-graph-reconcile-1105-a，wf_354a8b952020a5fa）核实：验收逐条有证据，提交都在 origin/main（merge-base --is-ancestor 退出码 0），验证层不要求 L4 或 L4 已做过",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "3fbc1e9",
+          "note": "M3 第 8 步：访谈八步与需求卡"
+        },
+        {
+          "kind": "commit",
+          "ref": "88c1d69",
+          "note": "标定修复后 GLM-5.3 三次 2/3 全过（.llm/calibration-runs/2026-11-03T05-48-55-107Z/）"
+        },
+        {
+          "kind": "commit",
+          "ref": "2bf2b16",
+          "note": "m3 合入 main"
+        },
+        {
+          "kind": "test",
+          "ref": "tests/propose-to-human.spec.ts",
+          "exit": 0,
+          "note": "访谈与需求卡；另 record-human-answer.spec.ts、design-talk.spec.ts"
+        }
+      ]
     }
   ]
 }

@@ -152,7 +152,7 @@ graphTest('propose holds a question the human decides to the table card, naming 
     [card({ dimension: { name: '新增依赖', values: { A: '0 个', B: '个'.repeat(21) } } }), 'node.dimension.values.B', /at most 20/],
     [card({ dimension: { name: '工期', values: { A: '1 天', B: '1 天' } } }), 'node.dimension.values', /same 工期 .*leave dimension out/],
     [card({ dimension: [{ name: '工期', values: { A: '1 天', B: '2 天' } }, { name: '依赖', values: { A: '0 个', B: '1 个' } }] }), 'node.dimension', /must be a JSON object/],
-    [card({ why: '不新增解析器' }), 'node.why', /cannot be set by propose/],
+    [card({ why: '不新增解析器' }), 'node.why', /a question carries no why/],
     [card({ counter: '正文更好读' }), 'node.counter', /cannot be set by propose/],
   ]
   for (const [node, field, pattern] of cases) {
@@ -367,7 +367,7 @@ graphTest('edit of options or recommend keeps the recommended option last; a que
     history: [{ at: '2026-10-28T07:00:00.000Z', actor: 'llm', op: 'propose', reason: '规则之前', to: 'approved' }],
   }
   await writeFile(join(g.dir, 'nodes', 'question-old.json'), serializeNode(old))
-  assert.deepEqual((await loadGraph(g.dir)).issues, [], 'the rule is not a file rule')
+  assert.deepEqual((await loadGraph(g.dir)).issues.filter(issue => issue.rule === undefined), [], 'the rule is not a file rule (the writing check\'s notices aside)')
   must(await g.act('human', { op: 'edit', id: 'question-old', reason: '改标题', set: { title: '旧待决（改名）' } }))
   must(await g.act('llm', { op: 'edit', id: 'question-old', reason: '交给人', set: { decider: 'human' } }))
   refused(await g.act('human', { op: 'edit', id: 'question-old', reason: '改说法', set: { options: [{ ...old.options![0], label: 'MD' }, old.options![1]] } }), 'invalid', 'set.options')
@@ -409,7 +409,7 @@ graphTest('edits of card fields keep the table card whole; a question from befor
   }
   for (const node of [open, done]) await writeFile(join(g.dir, 'nodes', `${node.id}.json`), serializeNode(node))
   const graph = await loadGraph(g.dir)
-  assert.deepEqual(graph.issues, [], 'the card rules are not file rules')
+  assert.deepEqual(graph.issues.filter(issue => issue.rule === undefined), [], 'the card rules are not file rules (the writing check\'s notices aside)')
   const rendered = renderGraph(graph)
   assert.ok(rendered.ok && rendered.svg.includes('拍板：A 把正文写成多行字符串放进 JSON 文件里'), 'a decided question from before the card renders with its choice')
   assert.equal(must(await g.act('human', { op: 'decide', id: 'question-done', option: 'B', reason: '推翻' })).node.decision, 'B')
@@ -896,4 +896,54 @@ modulesTest('nothing else is let through without the human: a module still in de
   await g.run('human', { op: 'status', id: 'module-b', rev: await g.rev('module-b'), to: 'done', evidence: [{ kind: 'commit', ref: 'abc1234' }], reason: '做完了' })
   refused(await send('module-b', { stage: 'design' }), 'forbidden', 'set.stage')
   assert.deepEqual([(await g.node('module-a')).stage, (await g.node('module-b')).stage, (await g.node('goal-1')).stage], ['design', 'release', 'release'])
+})
+// The writing check (src/graph/plain.ts, plain-ui 1.3 §5.3): llm and harness writes, warnings in the first phase, refusals in the second.
+
+graphTest('first phase: an llm or harness proposal whose title breaks a rule is written, with warnings; the human\'s is not checked; a relayed one is', async g => {
+  for (const actor of ['llm', 'harness'] as const) {
+    const written = must(await g.engine.apply(actor, { op: 'propose', reason: '拆', node: { type: 'task', title: 'M3 记一条', why: '调 graph_focus 之后', parent: 'task-1' } }))
+    assert.equal(written.node.title, 'M3 记一条')
+    assert.deepEqual(written.warnings?.map(line => line.split(':')[0]), ['code in node.title', 'identifier in node.why'], actor)
+    assert.match(written.warnings?.[0] ?? '', /say what it is in plain words/)
+  }
+  assert.equal((await g.run('human', { op: 'propose', reason: '拆', node: { type: 'task', title: 'M3 人写的', parent: 'task-1' } })).warnings, undefined)
+  const relayed = must(await g.engine.apply('llm', { op: 'propose', reason: '人要的', relay: '加一个 M3 的特性', node: { type: 'feature', title: 'M3 特性', parent: 'goal-1' } }))
+  assert.deepEqual(relayed.warnings?.map(line => line.split(':')[0]), ['code in node.title'])
+  assert.equal((await g.run('llm', { op: 'propose', reason: '拆', node: { type: 'task', title: '渲染', why: '面板能画出整张图', parent: 'task-1' } })).warnings, undefined, 'clean words carry no warnings')
+})
+
+graphTest('first phase: an edit is checked on the fields it changes; a new body or acceptance under the same title and why gets a reminder', async g => {
+  await g.run('human', { op: 'edit', id: 'task-2', rev: await g.rev('task-2'), set: { title: 'M3 旧标题' }, reason: '人改的' })
+  const body = must(await g.act('llm', { op: 'edit', id: 'task-2', set: { body: '换一种做法' }, reason: '改正文' }))
+  assert.deepEqual(body.warnings, ['the body or acceptance changed and title and why did not: do title and why still say it? If not, edit set.title or set.why'], 'the old title is not checked, the reminder is there')
+  const why = must(await g.act('llm', { op: 'edit', id: 'task-2', set: { why: '跟 task-1 一起做', body: '再换一种' }, reason: '补一句' }))
+  assert.deepEqual(why.warnings?.map(line => line.split(':')[0]), ['id in set.why'])
+  assert.equal(must(await g.act('llm', { op: 'edit', id: 'task-2', set: { title: '存储之后再做' }, reason: '改标题' })).warnings, undefined)
+  assert.equal((await g.node('task-2')).why, '跟 task-1 一起做', 'the warned write went through')
+})
+
+graphTest('second phase: the first rule broken refuses the write with its field path; the reminder and a conclusion only warn', async g => {
+  const strict = openEngine(g.dir, { plainPhase: 2, now: () => new Date(Date.UTC(2026, 9, 28, 9)) })
+  const proposed = await strict.apply('llm', { op: 'propose', reason: '拆', node: { type: 'task', title: 'M3 记一条', parent: 'task-1' } })
+  refused(proposed, 'invalid', 'node.title')
+  assert.match(proposed.ok ? '' : proposed.error.message, /^node\.title breaks the writing rule code/)
+  assert.match(proposed.ok ? '' : proposed.error.hint, /the human reads node\.title/)
+  assert.equal((await loadGraph(g.dir)).nodes.has('task-3'), false, 'nothing was written')
+  refused(await strict.apply('harness', { op: 'edit', id: 'task-2', rev: await g.rev('task-2'), set: { why: '读 graphLive' }, reason: '补' }), 'invalid', 'set.why')
+  const reminded = must(await strict.apply('llm', { op: 'edit', id: 'task-2', rev: await g.rev('task-2'), set: { body: '新做法' }, reason: '改正文' }))
+  assert.equal(reminded.warnings?.length, 1)
+  assert.equal(must(await strict.apply('human', { op: 'propose', reason: '拆', node: { type: 'task', title: 'M3 人写的', parent: 'task-1' } })).warnings, undefined)
+  must(await g.run('human', { op: 'propose', reason: '问', node: { type: 'question', title: '借书押金', parent: 'feature-1', ask: '借书要不要收押金？', form: 'want', proposal: '先不收' } }))
+  const id = 'question-1'
+  const decided = must(await strict.apply('llm', { op: 'decide', id, rev: await g.rev(id), conclusion: '按验收走', reason: '人同意了', relay: '就按验收走' }))
+  assert.equal(decided.node.conclusion, '按验收走')
+  assert.deepEqual(decided.warnings?.map(line => line.split(':')[0]), ['jargon in conclusion'], 'the human\'s decision is recorded, the wording warned')
+})
+
+graphTest('why: the llm writes it on any node but an adopted goal; the goal\'s takes the human\'s words; a question carries none', async g => {
+  assert.equal(must(await g.act('llm', { op: 'edit', id: 'feature-1', set: { why: '人和 agent 用同一套规则写图' }, reason: '补一句' })).node.why, '人和 agent 用同一套规则写图')
+  refused(await g.act('llm', { op: 'edit', id: 'goal-1', set: { why: '人能看懂项目在做什么' }, reason: '补一句' }), 'forbidden')
+  assert.equal(must(await g.act('llm', { op: 'edit', id: 'goal-1', set: { why: '人能看懂项目在做什么' }, reason: '补一句', relay: '目标加一句：人能看懂项目在做什么' })).node.why, '人能看懂项目在做什么')
+  refused(await g.engine.apply('llm', { op: 'propose', reason: '问', node: { ...QUESTION, why: '想问' } }), 'invalid', 'node.why')
+  refused(await g.act('llm', { op: 'edit', id: 'task-1', set: { why: '理'.repeat(81) }, reason: '太长' }), 'invalid', 'set.why')
 })

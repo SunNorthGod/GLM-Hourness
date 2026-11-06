@@ -10,9 +10,8 @@
  * re-hands the same source, which replaces wholesale. A refused hand-over is
  * warned once, kept on the row health, and asking goes on either way.
  */
-import type { ServiceLookup } from '../shared/dsh-min.ts'
 import { REOPEN_LIMIT } from './reopen.ts'
-import { LOOPS_SERVICE, loopsService, type Contribution, type ContributeResult, type ContributionSource, type LoopEventDeclaration } from '../loops/service.ts'
+import { installContribution, type Contribution, type ContributionHost, type ContributionSource, type LoopEventDeclaration } from '../loops/service.ts'
 import type { LoopEntryDefinition } from '../loops/model.ts'
 
 /** The source line of the graph row's hand-over (design §6.8's table). */
@@ -49,53 +48,16 @@ export function graphContribution(): Contribution {
   return { events: [THIRD_REOPEN_EVENT], entries: [thirdReworkEntry()] }
 }
 
-/** Hand the contribution over through the loops service read from `ctx`; undefined when the board is not here. Refusals and drops go to `report`. */
-function handOverLoops(ctx: ServiceLookup, report: (message: string) => void): (() => void) | undefined {
-  const service = loopsService(ctx, report)
-  if (service === undefined) return undefined
-  const result = service.contribute(GRAPH_ROW_SOURCE, graphContribution())
-  reportProblems(result, report)
-  return result.ok ? () => { result.dispose() } : undefined
-}
-
-/** A refused hand-over and every dropped piece get one line each, with the board's reason. */
-function reportProblems(result: ContributeResult, report: (message: string) => void): void {
-  if (!result.ok) {
-    report(`交给循环板的 graph.third-rework 没被收下：${result.reason}`)
-    return
-  }
-  for (const dropped of result.dropped) report(`交给循环板的 ${dropped.id} 没被收下：${dropped.reason}`)
-}
-
 /** What the wiring needs of the row's context. */
-export interface LoopEntryHost extends ServiceLookup {
-  /** cordis inject when the host has it; a package-provided service is reached by name. */
-  inject?(names: readonly string[], callback: (sub: ServiceLookup) => (() => void) | void): unknown
-  /** Awaited serially at agent creation; without inject the hand-over rides it. */
-  on(event: 'agent/created', listener: () => Promise<void> | void): () => void
-}
+export type LoopEntryHost = ContributionHost
 
 /**
- * Install the hand-over: through inject when the host has it (the board's
- * disposer withdraws it when the loops service leaves), otherwise once per
- * agent/created. Problems reach `report` at most once per message, so a
- * restarting board does not churn the health line.
+ * Install the hand-over (src/loops/service.ts `installContribution`):
+ * through inject when the host has it (the board's disposer withdraws it
+ * when the loops service leaves), otherwise once per agent/created. Problems
+ * reach `report` at most once per message, so a restarting board does not
+ * churn the health line.
  */
-export function installLoopEntry(ctx: LoopEntryHost, report: (message: string, sessionId?: string) => void): () => void {
-  const told = new Set<string>()
-  const once = (message: string, sessionId?: string): void => {
-    if (told.has(message)) return
-    told.add(message)
-    report(message, sessionId)
-  }
-  if (typeof ctx.inject === 'function') {
-    try {
-      ctx.inject([LOOPS_SERVICE], sub => handOverLoops(sub, once))
-    }
-    catch (error) {
-      once(`交给循环板的 graph.third-rework 没有交上：${error instanceof Error ? error.message : String(error)}`)
-    }
-    return () => {}
-  }
-  return ctx.on('agent/created', () => { handOverLoops(ctx, once) })
+export function installLoopEntry(ctx: LoopEntryHost, report: (message: string) => void): () => void {
+  return installContribution(ctx, GRAPH_ROW_SOURCE, graphContribution, 'graph.third-rework', report)
 }

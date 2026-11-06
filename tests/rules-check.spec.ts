@@ -20,7 +20,7 @@ import test from 'node:test'
 import { builtinRulesFor, GLM_PEAK_REDUCE } from '../src/rules/builtin.ts'
 import { checkCall, HOST_SIGNALS, RulesCheckError, type CheckOptions, type CheckResult } from '../src/rules/check.ts'
 import { runCli } from '../src/rules/cli.ts'
-import { denialText } from '../src/rules/denial.ts'
+import { conditionPhrase, denialText } from '../src/rules/denial.ts'
 import { gateEvents } from '../src/rules/events.ts'
 import { HEARTBEAT_FRESH_MS, hostPeak, liveHeartbeats, type HostHeartbeat } from '../src/rules/heartbeat.ts'
 import { judge, judgeInput } from '../src/rules/judge.ts'
@@ -332,6 +332,56 @@ clockedTest('a queue by checkCall reads as the gate\'s with the ticket sentences
   assert.equal(result.text, asCheck)
   assert.match(result.text ?? '', /defers it while glm-peak is on\./)
 }, { start: START })
+
+// ------------------------------------------- the end of the peak (M6 design §7.2)
+
+const PEAK_UNTIL = '2026-11-04T10:00:00.000Z'
+const untilWords = (iso: string): RegExp => new RegExp(`defers it while glm-peak is true until ${localHm(iso)}\\.`)
+
+clockedTest('a queue on glm-peak true says until when the peak lasts, from the peakUntil the caller gives or from the heartbeat of a live host', async (project) => {
+  await startFrom(project, { version: 2, rules: { 'r-peak-queue': PEAK_QUEUE } })
+  const given = await run(project, DEPLOY, { signals: { 'glm-peak': true }, peakUntil: PEAK_UNTIL })
+  assert.equal(given.result.exitCode, 5)
+  assert.match(given.result.text ?? '', untilWords(PEAK_UNTIL))
+  await beat(project, HOST_A, 5_000, { value: true, nextChangeAt: PEAK_UNTIL })
+  const heard = await run(project)
+  assert.equal(heard.result.exitCode, 5)
+  assert.match(heard.result.text ?? '', untilWords(PEAK_UNTIL))
+}, { start: START })
+
+clockedTest('a block on glm-peak true says until when the peak lasts', async (project) => {
+  const block = ruleOf({ id: 'r-peak-block', title: 'No deploy in the GLM peak', filter: { command: { matches: 'deploy' } }, condition: { signal: 'glm-peak', is: true }, action: { kind: 'block' } })
+  await startFrom(project, { version: 2, rules: { 'r-peak-block': block } })
+  const { result } = await run(project, DEPLOY, { signals: { 'glm-peak': true }, peakUntil: PEAK_UNTIL })
+  assert.equal(result.exitCode, 4)
+  assert.match(result.text ?? '', new RegExp(`blocks it now: glm-peak is true until ${localHm(PEAK_UNTIL)}\\.`))
+}, { start: START })
+
+clockedTest('glm-peak true inside all says until when, beside the other items as they are', async (project) => {
+  const both = ruleOf({ id: 'r-peak-freeze', title: 'Hold deploys in the peak of a freeze', filter: { command: { matches: 'deploy' } }, condition: { all: [{ signal: 'glm-peak', is: true }, { signal: 'code-freeze', is: true }] }, action: { kind: 'queue' } })
+  await startFrom(project, { version: 2, rules: { 'r-peak-freeze': both }, signals: { 'code-freeze': { type: { kind: 'boolean' } } } })
+  assert.ok((await project.board.apply('human', { op: 'signal-manual', name: 'code-freeze', value: true })).ok)
+  const { result } = await run(project, DEPLOY, { signals: { 'glm-peak': true }, peakUntil: PEAK_UNTIL })
+  assert.equal(result.exitCode, 5)
+  assert.ok((result.text ?? '').includes(`defers it while (glm-peak is true until ${localHm(PEAK_UNTIL)}) and (code-freeze is on).`), result.text)
+}, { start: START })
+
+clockedTest('when glm-peak cannot be read the words have no time in them', async (project) => {
+  await startFrom(project, { version: 2, rules: { 'r-peak-queue': { ...PEAK_QUEUE, onUnknown: 'apply' } } })
+  const { result } = await run(project)
+  assert.equal(result.exitCode, 5)
+  assert.match(result.text ?? '', /defers it while glm-peak is on\./)
+  assert.doesNotMatch(result.text ?? '', /glm-peak is true until/)
+}, { start: START })
+
+test('conditionPhrase writes the end of the peak only for glm-peak true outside a not', () => {
+  assert.equal(conditionPhrase({ signal: 'glm-peak', is: true }, PEAK_UNTIL), `glm-peak is true until ${localHm(PEAK_UNTIL)}`)
+  assert.equal(conditionPhrase({ signal: 'glm-peak', is: true }), 'glm-peak is on')
+  assert.equal(conditionPhrase({ signal: 'glm-peak', is: false }, PEAK_UNTIL), 'glm-peak is off')
+  assert.equal(conditionPhrase({ not: { signal: 'glm-peak', is: true } }, PEAK_UNTIL), 'it is not so that glm-peak is on')
+  assert.equal(conditionPhrase({ signal: 'code-freeze', is: true }, PEAK_UNTIL), 'code-freeze is on')
+  assert.equal(conditionPhrase({ any: [{ signal: 'glm-peak', is: true }, { signal: 'code-freeze', is: true }] }, PEAK_UNTIL), `(glm-peak is true until ${localHm(PEAK_UNTIL)}) or (code-freeze is on)`)
+})
 
 clockedTest('a block says what was tried, which rule, who set it, and how to change it', async (project) => {
   const rule = ruleOf({ id: 'r-no-push', title: 'No push at night', filter: { command: { matches: '^git push' } }, condition: { not: { clock: { from: '09:00', to: '21:00', tz: '+08:00' } } }, action: { kind: 'block' }, origin: { actor: 'human', at: '2026-11-01T01:05:00.000Z' } })

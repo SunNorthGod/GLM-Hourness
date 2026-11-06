@@ -15,6 +15,9 @@ import { isUserNode } from '../src/graph/user-graph.ts'
 import { progressOf } from '../ui/src/graph/model.ts'
 import { libraryGraph, libraryNodes, loaded } from './graph-user-helpers.ts'
 
+/** The issues about a file's shape: fixture titles are often ids, and the writing check's notices (they carry a rule) are tested in tests/graph-plain.spec.ts. */
+const shapeIssues = (graph: { readonly issues: readonly GraphIssue[] }): GraphIssue[] => graph.issues.filter(issue => issue.rule === undefined)
+
 const AT = '2026-10-28T08:00:00.000Z'
 const born: HistoryEntry = { at: AT, actor: 'human', op: 'propose', reason: '建图', to: 'approved' }
 
@@ -232,7 +235,7 @@ test('a canonical graph round-trips byte-identical through load and write', asyn
   const dir = await graphWith({ 'task-0': task('task-0'), 'task-1': FULL_TASK, 'question-1': question(), 'question-2': table })
   try {
     const graph = await loadGraph(dir)
-    assert.deepEqual(graph.issues, [])
+    assert.deepEqual(shapeIssues(graph), [])
     assert.deepEqual([...graph.nodes.keys()], ['feature-1', 'goal-1', 'question-1', 'question-2', 'task-0', 'task-1'])
     const written = JSON.parse(await readFile(join(dir, 'nodes', 'question-2.json'), 'utf8')) as { options: object[], dimension: { values: object } }
     assert.deepEqual(Object.keys(written).slice(5, 11), ['options', 'dimension', 'recommend', 'crux', 'verdict', 'weight'])
@@ -267,7 +270,7 @@ test('a hand-written file that is valid but not canonical loads with a notice on
   try {
     const graph = await loadGraph(dir)
     assert.equal(hasErrors(graph), false)
-    assert.deepEqual(graph.issues.map(issue => [issue.severity, issue.file]), [['notice', 'nodes/task-1.json']])
+    assert.deepEqual(shapeIssues(graph).map(issue => [issue.severity, issue.file]), [['notice', 'nodes/task-1.json']])
     assert.ok(graph.nodes.has('task-1'))
   }
   finally {
@@ -390,7 +393,7 @@ test('the valid goal, feature, decision and question fixtures load without issue
   })
   try {
     const graph = await loadGraph(dir)
-    assert.deepEqual(graph.issues, [])
+    assert.deepEqual(shapeIssues(graph), [])
   }
   finally {
     await rm(dir, { recursive: true, force: true })

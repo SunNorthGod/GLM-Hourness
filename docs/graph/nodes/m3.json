@@ -1,7 +1,8 @@
 {
   "id": "m3",
   "type": "feature",
-  "title": "M3 设计循环最小闭环",
+  "title": "设计循环：从许愿到放行的最小一圈",
+  "why": "人说一句愿望，主 Agent 访谈、出方案、交人放行，这一圈能走通",
   "status": "doing",
   "parent": "orch",
   "body": "设计循环见 ORCHESTRATION.md §4（ROADMAP.md M3）。",
@@ -584,6 +585,35 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计行桌面冒烟（L4 批次，2026-11-04）：/wish 收下（inbox splice 通知 + 流程条「主 Agent · 还没有目标」+ 档位强提醒，全程无 ask 卡），/wish off 干净退出——m3 欠的桌面过补上。同批两条装机发现：出厂桌面 overlay 用旧键 persona（已改名 reportingDepth，降级告警）；data 行桌面形态缺 projectHome 配置，guard 违规不落盘（测试 overlay 补同形覆盖后转全生效）——装机批次需给用户 profile patch 补 data 行覆盖并更新键名。"
+    },
+    {
+      "at": "2026-11-05T05:26:18.753Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "按人同意的对照表 .agents/tasks/panel/title-rewrite.md 改标题、加一句为什么做（plain-ui 1.3 §5.5）",
+      "relay": "就按你上面说的来，心跳一个就行了",
+      "changes": {
+        "title": {
+          "from": "M3 设计循环最小闭环",
+          "to": "设计循环：从许愿到放行的最小一圈"
+        },
+        "why": {
+          "from": null,
+          "to": "人说一句愿望，主 Agent 访谈、出方案、交人放行，这一圈能走通"
+        }
+      }
+    },
+    {
+      "at": "2026-11-05T10:05:02.084Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "对账 A 半（.agents/tasks/graph-reconcile-2026-11-05/report-a.md）：子任务 m3-1 到 m3-5 已带证据关闭；唯一验收与 m3-2 第 3 条同证据。m3 还挡在子决定 d-interview-cards 上：它定的「harness 出卡」已被 d-chat-not-cards 与 d-ask-three-gates 取代，只剩「主 Agent 不带 ask_user_question」一半还在用。处理办法是提一个带 supersedes 连线的新决定写现在的做法，由人批。另记：M3 设计 §9.3 批次 L4 的 DeepSeek 一半没跑过，验收不要求，非 GLM 路由由 L3 non-glm-design-* 覆盖。"
+    },
+    {
+      "at": "2026-11-05T10:32:40.215Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "子决定 d-interview-cards 由 d-main-agent-no-ask-card 替掉（人 2026-11-05「都按你说的来」），新决定的做法已在 main、带证据关闭。m3 还剩 m3-metrics-wiring 在做。"
     }
   ]
 }
