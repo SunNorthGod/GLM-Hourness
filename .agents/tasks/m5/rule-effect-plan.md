@@ -73,5 +73,5 @@
 
 - [x] 第一批
 - [x] 第二批
-- [ ] L3
-- [ ] 推送 origin
+- [x] L3：`npm run probe` 在 `ac3438e` 上 420/420 通过（2026-11-06，`.llm/probe-lock`）
+- [x] 推送 origin：`c92a93b`、`ac3438e`
