@@ -3,7 +3,7 @@
   "type": "task",
   "title": "规则提议写明预期效果，到期核对",
   "why": "每条新规则有没有用能对上账；撤规则时写明谁顶上，旧的保护不会悄悄没了",
-  "status": "doing",
+  "status": "done",
   "parent": "m5",
   "kind": "implement",
   "body": "M5 学习流水线给人的规则提议加一栏「预期效果」：看哪个数、往哪个方向变、多久后核对。到期由 harness 读指标流水核对，没达到就在晨报里列出。撤下规则的提议写明哪条规则覆盖同一类调用；没有替补时，要人看过单层消融的结果再撤。核对时连旧规则的数一起看。依据：每周阅读 2026-11-05 报告 A5（每次编辑附预测、下一轮核对）、D3（重叠的保护被删时看不出来）、D10。",
@@ -11,6 +11,24 @@
     "主 Agent 交给人的规则提议带「预期效果」一栏（数、方向、核对时间），缺这一栏的提议被拒并写明怎么补",
     "到期时 harness 按指标流水核对，没达到的在晨报里列出；撤规则的提议写明替补规则，没有替补时附单层消融结果",
     "M5 设计与 ORCHESTRATION.md 同批改；L2 钉住，改动在 main 上"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "801a999",
+      "note": "earliest-instant spread became a loop; 400k-event L2"
+    },
+    {
+      "kind": "commit",
+      "ref": "8bd0550",
+      "note": "合入 main，两个远端经 ls-remote 一致"
+    },
+    {
+      "kind": "test",
+      "ref": "build、preflight、npm test、check-lint、npm run -s probe on 8bd0550",
+      "exit": 0,
+      "note": "test 3258/3258，探针 433/433，棘轮 73/18/1；L4 桌面重启无新错误"
+    }
   ],
   "history": [
     {
@@ -58,6 +76,32 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 2 轮挡路 F1（countsOf 的 Math.min(...times) 在约 13 万条流水时栈溢出）在 801a999 修好：改成逐个比较，L2 加 40 万条事件一例；build、preflight、棘轮 73/18/1 绿，npm test 一项失败是 loops-run 的旧竞态（main 的 4598fa7 已修，本分支还没合入）。第 3 轮评审 APPROVED。合入前要解 HANDOFF.md、ORCHESTRATION.md、package.json、src/design/propose.ts 的合并冲突，并在合并结果上重跑门禁与 L3。"
+    },
+    {
+      "at": "2026-11-06T05:07:04.199Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "m5-rule-expected-effect（wf_24a77ef57c68c12c）完成：两批实现，第 3 轮评审 APPROVED（第 2 轮挡路的 Math.min 栈溢出在 801a999 改成逐个比较，L2 钉住 40 万条事件）；合入 main 8bd0550，解开 HANDOFF.md、ORCHESTRATION.md、package.json、propose.ts 的冲突后在合并结果上重跑门禁；origin 与 github 一致；桌面版经 CDP 重启到 8bd0550，没有新错误。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "801a999",
+          "note": "earliest-instant spread became a loop; 400k-event L2"
+        },
+        {
+          "kind": "commit",
+          "ref": "8bd0550",
+          "note": "合入 main，两个远端经 ls-remote 一致"
+        },
+        {
+          "kind": "test",
+          "ref": "build、preflight、npm test、check-lint、npm run -s probe on 8bd0550",
+          "exit": 0,
+          "note": "test 3258/3258，探针 433/433，棘轮 73/18/1；L4 桌面重启无新错误"
+        }
+      ]
     }
   ]
 }
