@@ -39,6 +39,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "设计 .agents/tasks/inject-via-prestep/design.md 评审 APPROVED，8 条 NIT，没有挡路项（design-review.md）。下一步写代码。"
+    },
+    {
+      "at": "2026-11-06T02:08:51.191Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "inject-via-prestep?wf_d93b6a094e3f5503?????? inject-via-prestep?e5dda02 ???83c3385 ?? origin/main b001609???? origin????????? src/shared/step-mailbox.ts?agent/pre-step ???user/message ??????????????? inject ????????? /wish?/wish off?? Agent ???glm-design-bypass?glm-git-snapshot?graph-panel ????????? wake ??????src/ ? agent.inject ??????????????????????L2?? tests/step-mailbox.spec.ts?design-mode/design-guard/design-graph-rules/design-stage-notice/graph-run/loops-deliver ???????npm test ???????glm-metrics ? 7 ????????10 ??????????????build?lint ???L3 ?? glm-design-wish-off-idle ??? run-probe.mjs????????DESIGN.md?ORCHESTRATION.md?FACTS.md ???????L3 ????? main?L4 ????? Browser.close ?????"
+    },
+    {
+      "at": "2026-11-06T02:09:36.628Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "（上一条批注在 PowerShell 管道里编码坏了，以这条为准）inject-via-prestep（wf_d93b6a094e3f5503）代码在分支 inject-via-prestep（e5dda02 实现，83c3385 合入 origin/main b001609），已推 origin。不叫醒的提示改走 src/shared/step-mailbox.ts（agent/pre-step 交出、user/message 追加后清掉，装不上监听器时退回 inject 并告警）：设计行的 /wish、/wish off、主 Agent 移走、glm-design-bypass、glm-git-snapshot，graph-panel 的暂停说明，循环板 wake 为假的投递；src/ 里 agent.inject 只剩信箱的退路与循环板给正在跑的会话的结果。L2：新 tests/step-mailbox.spec.ts，design-mode、design-guard、design-graph-rules、design-stage-notice、graph-run、loops-deliver 改为看下一步，npm test 在合并上全过（glm-metrics 第 7 条一次偶发失败，10 次重跑全过，与本改动无关）；build、lint 干净。L3 场景 glm-design-wish-off-idle 已加进 run-probe.mjs，还没跑。文档 DESIGN.md、ORCHESTRATION.md、FACTS.md 同批改。剩下：L3 探针、合入 main、L4 桌面版核对 Browser.close 不弹确认。"
     }
   ]
 }
