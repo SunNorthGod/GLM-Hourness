@@ -315,9 +315,11 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
   // Every scenario's sessions run in a repository of its own, so no row keeps project state in this checkout's project.
   const workspace = scenarioWorkspace(dir, cwd)
   // rc.3's workspace-write sandbox lets writes through under the workspace and the runtime's os.tmpdir();
-  // the run directory is under the system temporary directory, so the runtime gets one of the scenario's
-  // own, and a target elsewhere in the run directory stays outside both.
-  const temp = join(dir, 'tmp')
+  // the run directory is under the system temporary directory, so the runtime gets a temporary directory
+  // of the scenario's own and a target elsewhere in the run directory stays outside both. It sits beside
+  // the scenario directories, not in one: the Windows ACL sandbox refuses a temp root inside the workspace,
+  // and a scenario that names no directory works in its scenario directory.
+  const temp = join(runDir, 'runtime-tmp', name)
   mkdirSync(temp, { recursive: true })
   const started = Date.now()
   const result = spawnSync(exe, args, { cwd: workspace, encoding: 'utf8', timeout: 180_000, env: { ...env, TEMP: temp, TMP: temp } })
