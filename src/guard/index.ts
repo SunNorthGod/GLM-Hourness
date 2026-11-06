@@ -73,6 +73,7 @@ import { ensureLlmIgnored, type LlmIgnoreOutcome } from '../data/llm-ignore.ts'
 import { projectHomeFor, projectRootOf } from '../data/project-home.ts'
 import { dialectNames, dialectService, dialectWarner, type DialectProblem } from '../shared/dialect.ts'
 import { LOOPS_DECLARATION } from '../loops/service.ts'
+import { HABIT_ASK_FIRST, HABIT_RULE_DECLARATION } from '../memory/habit-rule.ts'
 import { rulesService } from '../rules/service.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
@@ -565,7 +566,10 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
         // The loop board's gate is in every host process, while its service is only in the one that can reach a session (loops design §6.1), so the line follows the row, not the service.
         const loops = activationState(ctx, 'loops')
         const graphDeclares = graphService(ctx) !== undefined && lifted?.has('graph-files-only') !== true
-        const others = [...(graphDeclares ? [GRAPH_FILES_DECLARATION] : []), ...(board === undefined ? [] : [board.declaration]), ...(loops === 'absent' || loops === 'inactive' ? [] : [LOOPS_DECLARATION])]
+        // The memory row's habit-ask-first follows the row like the loop board's gate: its gate is installed with the memory tools.
+        const memory = activationState(ctx, 'memory')
+        const habitDeclares = memory !== 'absent' && memory !== 'inactive' && lifted?.has(HABIT_ASK_FIRST) !== true
+        const others = [...(graphDeclares ? [GRAPH_FILES_DECLARATION] : []), ...(board === undefined ? [] : [board.declaration]), ...(loops === 'absent' || loops === 'inactive' ? [] : [LOOPS_DECLARATION]), ...(habitDeclares ? [HABIT_RULE_DECLARATION] : [])]
         const face = dialectNames(dialectService(ctx, warn), agent, route, warn) ?? NATIVE_FACE
         return { ...assembled, sections: [...assembled.sections, declarationSection(declared, others, face, isRoot)] }
       }, { prepend: true }))

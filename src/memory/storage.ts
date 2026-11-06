@@ -23,6 +23,7 @@ import type { ParsedRef } from '../data/evidence.ts'
 import { appendJournal, readJournal, type AppendOptions, type AppendResult, type JournalRecord, type NewRecord } from '../data/journal.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import type { SessionLike } from '../shared/dsh-min.ts'
+import type { EmittedEvent, MetricsWhere } from '../shared/metrics.ts'
 import type { TalkView } from './answers.ts'
 import { baseRecord, convertLegacy, memoryFold, type MemoryEntry, type MemoryState, type Scope } from './model.ts'
 
@@ -66,6 +67,8 @@ export interface MemoryEnv {
   note(sessionId: string | undefined, key: NoteKey, text: string | undefined): void
   /** The lock environment and the flush a test replaces. */
   readonly append?: Pick<AppendOptions, 'lock' | 'sync'>
+  /** Hand one event to the metrics journal (src/shared/metrics.ts `emitMetric`); absent or failing, nothing changes: the memory journal is the fact. */
+  readonly emit?: (event: EmittedEvent, where: MetricsWhere) => void
 }
 
 // --- Reading ---------------------------------------------------------------

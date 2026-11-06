@@ -113,10 +113,15 @@ export const MEMORY_TOOL_NAMES: readonly string[] = ['memory_store', 'memory_que
  */
 const LEARNING_SIGNALS = 'learning_signals'
 
-/** The memory row's habit question tool (M5 design §3.8, deferred like the learning tool): ask before a guessed habit is stored, confirm or decline on the person's words. */
+/**
+ * The memory row's habit question tool (M5 design §3.8): ask before a
+ * guessed habit is stored, confirm or decline on the person's words.
+ * Resident on the GLM route (m5-habit-rule): the rule habit-ask-first sends
+ * the model to it, so it is in the face from the first step.
+ */
 export const MEMORY_HABIT = 'memory_habit'
 
-/** The memory row's deferred tools: the learning digest and the habit questions, both the main agent's only. */
+/** The memory row's main-agent tools beside the three that save and recall: the learning digest (deferred) and the habit questions (resident). */
 export const LEARNING_TOOL_NAMES: readonly string[] = [LEARNING_SIGNALS, MEMORY_HABIT]
 
 /**
@@ -140,6 +145,8 @@ export const LESSONS_TOOL_NAMES: readonly string[] = [LESSONS_QUERY_TOOL, LESSON
 export const ORCHESTRATION_RESIDENT_TOOLS: ReadonlySet<string> = new Set([
   // memory
   'memory_store', 'memory_query', 'memory_forget',
+  // the habit questions: the rule habit-ask-first names it as the right path (m5-habit-rule)
+  MEMORY_HABIT,
   // lessons: the lookup every agent has; the merge tool is the main agent's and stays deferred
   LESSONS_QUERY_TOOL,
   // project graph

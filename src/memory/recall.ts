@@ -11,9 +11,14 @@
  * counted, and `memory_query` still finds it. At most 200 lines and 25,000
  * characters, as in ZCode; what does not fit is dropped from the end and a
  * warning line says so.
+ *
+ * After the entries, the habits the person said no to that are still in
+ * force (m5-habit-rule, M5 design §3.8): name, description and the date
+ * until which they are not asked again, at most ten lines, so the model
+ * sees the no before it asks. An expired no is not listed.
  */
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
-import { strength, type MemoryEntry, type MemoryState } from './model.ts'
+import { strength, type MemoryEntry, type MemoryState, type Scope } from './model.ts'
 
 export const INDEX_MAX_LINES = 200
 export const INDEX_MAX_CHARS = 25_000
@@ -51,10 +56,39 @@ function sourceNote(entry: MemoryEntry): string {
 
 const lineOf = (entry: MemoryEntry): string => `- ${entry.name} (${entry.type}) — ${entry.description}${sourceNote(entry)}`
 
-/** The index as the session's first request carries it, or undefined when no entry is active. */
-export function renderIndex(entries: readonly MemoryEntry[], now: string): MemoryIndex | undefined {
+/** A habit the person said no to that is still in force (m5-habit-rule): what the index and memory_query list of it. */
+export interface LiveDecline {
+  readonly name: string
+  readonly scope: Scope
+  readonly description: string
+  readonly until: string
+}
+
+/** The noes of both scopes whose `until` is still ahead of `now`, the latest first; an expired no is not listed. */
+export function liveDeclines(project: MemoryState | undefined, user: MemoryState | undefined, now: string): LiveDecline[] {
+  const nowMs = Date.parse(now)
+  return [project, user].flatMap(state => [...(state?.declined.values() ?? [])])
+    .filter(no => Date.parse(no.until) > nowMs)
+    .sort((a, b) => Date.parse(b.until) - Date.parse(a.until) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .map(no => ({ name: no.name, scope: no.scope, description: no.description, until: no.until }))
+}
+
+/** At most this many noes are listed in the index; the rest are counted (memory_query lists them by focus). */
+const DECLINES_LISTED = 10
+
+const declineLine = (no: LiveDecline): string => `- ${no.name} — ${no.description} (not asked again until ${no.until.slice(0, 10)})`
+
+/** The index as the session's first request carries it, or undefined when no entry is active and no no is in force. */
+export function renderIndex(entries: readonly MemoryEntry[], now: string, declines: readonly LiveDecline[] = []): MemoryIndex | undefined {
   const active = entries.filter(entry => entry.status === 'active')
-  if (active.length === 0) return undefined
+  const declineLines = declines.slice(0, DECLINES_LISTED).map(declineLine)
+  const declineBlock = declines.length === 0 ? [] : [
+    '',
+    'Habits the person said no to (do not ask them again before the date; memory_habit refuses an ask worded close to one as maybe_declined):',
+    ...declineLines,
+    ...(declines.length > DECLINES_LISTED ? [`${declines.length - DECLINES_LISTED} more not listed.`] : []),
+  ]
+  if (active.length === 0 && declineBlock.length === 0) return undefined
   const strengths = new Map(active.map(entry => [entry, strength(entry, now)]))
   const strengthOf = (entry: MemoryEntry): number => strengths.get(entry) ?? 0
   const faded = active.filter(entry => entry.kind === 'fact' && strengthOf(entry) < FADED_BELOW).length
@@ -80,6 +114,7 @@ export function renderIndex(entries: readonly MemoryEntry[], now: string): Memor
   const lines = [
     'Contents of the memory index (user\'s auto-memory, persists across conversations):',
     ...(kept > 0 || warnings.length > 0 ? ['', ...ordered.slice(0, kept), ...warnings] : []),
+    ...declineBlock,
     '',
     ...(faded === 0 ? [] : [`${faded} faded ${faded === 1 ? 'memory is' : 'memories are'} not listed; memory_query finds ${faded === 1 ? 'it' : 'them'}.`]),
     'Read a memory in full with memory_query {"name": "<name>"}.',
