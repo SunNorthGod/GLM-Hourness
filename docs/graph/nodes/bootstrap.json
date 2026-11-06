@@ -384,6 +384,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "B5 评审 CHANGES_REQUESTED：F1 候选名字没按设计 §8、§12 过滤；F2 提醒的长度上限从 2500 放到 3500 没有记录理由。循环接着修。"
+    },
+    {
+      "at": "2026-11-06T07:55:11.188Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管线（wf_f008ac0c87ec6943）B6 bootstrap-trial 做完，四个提交 ef6f086（源码：trial-env、trial-plan、trial、trial-round，dsh-min 的 sandbox 结构类型，killTree 导出）、4047a30（L2 12/12）、2b4bc95（L3 场景 bootstrap-trial）、aa62ce4（文档）已推 origin/bootstrap。最后的树上 build、preflight、lint、npm test（3277/0）、探针 439/439 绿，棘轮 73/18/1。真实 rc.3 Windows ACL 沙盒上：子进程看不到 GITHUB_TOKEN，写试跑目录外被拒（confinement-limited，EPERM 那一行），脚本里的 git push 没落地，管道起孙进程为 confinement-limited（U1、U4、U7、U8 成立）。行仍默认禁用。下一步 B6 评审；B7 仍等 M7 的 gate-norm.ts、floor.ts 进 main。"
     }
   ]
 }
