@@ -3,13 +3,31 @@
   "type": "task",
   "title": "上手页给指标板补上一句介绍",
   "why": "新用户读上手页就知道有指标板，不用自己去翻页脚",
-  "status": "doing",
+  "status": "done",
   "parent": "onboarding",
   "kind": "implement",
   "body": "上手页（ui/src/graph/Guide.tsx 一带）在介绍规则板、循环板的位置，按同样的写法加一行指标板，文字用指标板已交出的 GUIDE_LINE，排在循环板之后；六块的其余内容与顺序不动，页脚不动。指标行停用或没交 GUIDE_LINE 时这一行不出现。依据：批次 L4 B2，指标设计 §11 第 19 项。",
   "acceptance": [
     "上手页在规则板、循环板之后多一行指标板的介绍，文字等于指标板交出的 GUIDE_LINE；指标行停用时没有这一行；六块其余内容与页脚不变",
     "L2 钉住有、无两种情形；面板设计与指标设计 §11 第 19 项同批改写；门禁全绿，改动在 main 上，桌面版重启后上手页看得到这一行、没有新错误"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "436141f",
+      "note": "上手页给指标板补上一句介绍"
+    },
+    {
+      "kind": "commit",
+      "ref": "3ada48a",
+      "note": "合入 main，两个远端经 ls-remote 一致"
+    },
+    {
+      "kind": "test",
+      "ref": "build、preflight、npm test、check-lint、npm run -s probe on 3ada48a",
+      "exit": 0,
+      "note": "探针 423/423；L4 桌面版重启后上手页看得到指标板一行，无新错误"
+    }
   ],
   "history": [
     {
@@ -33,6 +51,32 @@
       "actor": "llm",
       "op": "comment",
       "text": "guide-metrics-line（wf_44088da95b2a2d84）code 步：436141f 推到 origin/guide-metrics-line，build 0、preflight 0、npm test 0、check-lint 73/18/1、探针 420/420。评审 APPROVED，没有挡路发现，验收逐条由 L2 钉住。下一步合入与桌面核对。"
+    },
+    {
+      "at": "2026-11-06T00:17:36.295Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "guide-metrics-line（wf_44088da95b2a2d84）完成：实现 436141f，评审 APPROVED、没有挡路发现；合入 main 3ada48a，origin 与 github 一致，合入树门禁绿（探针 423/423）。桌面核对：经 CDP 9333 发 Browser.close，没有退出确认框，约 21 秒退出，在人的 userData 上重启；上手页在循环板之后显示指标板一行，文字等于 GUIDE_LINE；dsh-glm-zcode 与 dsh-hourness 没有新错误。分支本地与远端已删，留下一个被别的进程占着的空工作树目录。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "436141f",
+          "note": "上手页给指标板补上一句介绍"
+        },
+        {
+          "kind": "commit",
+          "ref": "3ada48a",
+          "note": "合入 main，两个远端经 ls-remote 一致"
+        },
+        {
+          "kind": "test",
+          "ref": "build、preflight、npm test、check-lint、npm run -s probe on 3ada48a",
+          "exit": 0,
+          "note": "探针 423/423；L4 桌面版重启后上手页看得到指标板一行，无新错误"
+        }
+      ]
     }
   ]
 }
