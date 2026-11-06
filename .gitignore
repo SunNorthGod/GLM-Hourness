@@ -13,6 +13,10 @@ dist/
 !.agents/tasks/**/*.md
 !.agents/tasks/**/*.svg
 .agents/tasks/**/runs/
+# wire-run 是探针式运行目录（含嵌套的会话路径，Windows 上超过路径长度上限，git 遍历时报 Filename too long）。
+.agents/tasks/**/wire-run/
+# 仓库根目录的门禁与探针日志（.llm-<任务>-<步骤>.log），一次性运行产物。
+/.llm-*.log
 .worktrees/
 .kiro/
 # Built by scripts/build-ui.mjs from ui/src (npm run build).
