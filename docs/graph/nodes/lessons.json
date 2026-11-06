@@ -138,6 +138,12 @@
           "to": "踩过的坑记下来，下一个子 agent 不用再摸一遍"
         }
       }
+    },
+    {
+      "at": "2026-11-06T06:17:20.637Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 人问 AI 知识库是否已融进框架。现状（读 packages/hourness/cordis.patch.yml 与本节点子节点）：经验板代码在 main 上，lessons-1、lessons-2、lessons-4（21 条种子经验）已完成，lessons-3 经验页在做；glm-hourness/lessons 行出厂 disabled: true，按设计要等桌面版首轮验收才启用；记忆行 glm-hourness/memory 已启用。没有向量检索式的知识库，经验按文件、工具、命令与报错匹配。"
     }
   ]
 }
