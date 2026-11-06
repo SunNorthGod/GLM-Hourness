@@ -3,11 +3,13 @@
  * docs/ORCHESTRATION.md §19): the command /hourness-init, the service
  * `glmHournessBootstrap`, and on every root agent a step notice that
  * reminds the main agent of the open takeover (src/bootstrap/runtime.ts
- * does the work; src/bootstrap/service.ts is the contract M3 reads). Until M3's /wish calls the takeover, a takeover opens on
- * the transition path: an empty graph directory, /wish without words, then
- * /hourness-init in the same session (§3.1). The row injects `commands`;
- * activation never throws: a registration that fails is a warning. Ships
- * disabled until the L3 probe and the first desktop pass.
+ * does the work; src/bootstrap/service.ts is the contract M3 reads). M3's
+ * /wish calls the service (`wants`, `prepare`) and its stage reminder asks
+ * `holds` (§3.1); /hourness-init is the other way in, for a session that
+ * is the main agent while no takeover is open (the transition path: /wish
+ * without a takeover to call, then /hourness-init). The row injects
+ * `commands`; activation never throws: a registration that fails is a
+ * warning. Ships disabled until the first desktop pass.
  */
 import { homedir } from 'node:os'
 import { isMainAgentFor } from '../data/main-agent.ts'

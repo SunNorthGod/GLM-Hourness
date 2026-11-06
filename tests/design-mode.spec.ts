@@ -22,10 +22,11 @@ import { STR_REPLACE_EDITOR_UNKNOWN, WRITE_NATIVES } from '../src/design/role-fa
 import { claimHolder, holderFileOf, mainAgentOf, readHolder, replaceHolder } from '../src/graph/main-agent-holder.ts'
 import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
 import { PLAIN_QUESTION_GUIDE, PLAIN_WORDS_GUIDE, plainWordsIn } from '../src/graph/plain-question.ts'
-import type { AssemblePayload, AssembledTool, UserNotice } from '../src/shared/dsh-min.ts'
+import { createUserNotice, type AssemblePayload, type AssembledTool, type UserNotice } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { BASE_TOOLS, designHost, type DesignHost, type FakeAgent } from './design-host.ts'
 import { captureWarnings } from './graph-helpers.ts'
+import { provideTakeover } from './takeover-stub.ts'
 
 // Everything the row says to the person (replies, errors, row health): the last test holds it to plain words.
 const saidToPerson: string[] = []
@@ -499,6 +500,163 @@ test('/wish here in a project with no main agent is a plain /wish', async () => 
   const reply = await type(host, agent, '/wish here')
   assert.ok(reply.text.startsWith('已让这个会话的 agent 当主 Agent'))
   assert.equal(host.executed.length, 0)
+})
+
+// ---------------------------------------------------------------- the takeover's seam (takeover design 0.6 §3.1)
+
+const START_TEXT = '接管已开，主 Agent 开始读这个项目。'
+const TAKEOVER_SOURCE = 'stub-takeover'
+const takeoverNotice = (): UserNotice => createUserNotice(TAKEOVER_SOURCE, 'takeover started', 'The human started a takeover of this project; begin now.')
+const MAIN_REPLY = `已让这个会话的 agent 当主 Agent（项目经理）：它按项目图推进，不写文件；/wish off 退出`
+
+test('takeover seam: a takeover that does not want this /wish is asked nothing more, and /wish is what it was', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.wanted = false
+  const agent = host.addAgent('s1')
+  const reply = await type(host, agent, '/wish 记一笔账')
+  assert.equal(reply.text, `${MAIN_REPLY}。已把你的愿望交给它。${STRONG_MODEL_NOTE}`)
+  assert.deepEqual(stub.asked.wants, [host.workspace('ws')])
+  assert.deepEqual(stub.asked.prepare, [])
+  assert.equal(agent.sent[0]?.message.source.kind, 'glm-design-wish')
+})
+
+test('takeover seam, new project: the takeover\'s words come first, the wish goes to the interview as the wish notice', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.result = { ok: true, text: START_TEXT, holdWish: false }
+  const agent = host.addAgent('s1')
+  const reply = await type(host, agent, '/wish 记一笔账')
+  assert.deepEqual(stub.asked.prepare, [{ trigger: 'wish', wish: '记一笔账' }])
+  assert.equal(reply.text, `${START_TEXT}\n${MAIN_REPLY}。已把你的愿望交给它。${STRONG_MODEL_NOTE}`)
+  assert.deepEqual(agent.sent.map(entry => [entry.via, entry.message.source.kind]), [['followup', 'glm-design-wish']])
+  assert.deepEqual((agent.sent[0]?.message.source.designWish as { text: string }).text, '记一笔账')
+  assert.equal(isOn(host, agent), true)
+  const bare = host.addAgent('s2', { workspace: 'bare' })
+  assert.equal((await type(host, bare, '/wish')).text, `${START_TEXT}\n${MAIN_REPLY}。${STRONG_MODEL_NOTE}`)
+  assert.deepEqual(stub.asked.prepare.at(-1), { trigger: 'wish' }, 'no words: the request has no wish')
+})
+
+test('takeover seam, existing project: no wish notice; the takeover\'s start notice wakes an idle agent, and the role notice is told once', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.result = { ok: true, text: START_TEXT, holdWish: true, notice: takeoverNotice() }
+  const agent = host.addAgent('s1')
+  const reply = await type(host, agent, '/wish 加一个导出')
+  assert.deepEqual(stub.asked.prepare, [{ trigger: 'wish', wish: '加一个导出' }])
+  assert.equal(reply.text, `${START_TEXT}\n${MAIN_REPLY}。${STRONG_MODEL_NOTE}`, 'the wish is not said to be handed over: the takeover keeps it')
+  assert.deepEqual(agent.sent.map(entry => [entry.via, entry.message.source.kind]), [['followup', TAKEOVER_SOURCE]])
+  assert.ok(agent.woken !== undefined, 'the takeover notice woke the idle agent')
+  assert.ok(sectionOf(await agent.woken), 'its first step already has the role')
+  const told = await wishNoticesOfStep(agent)
+  assert.equal(told.length, 1)
+  assert.ok(told[0]?.content[0]?.text.startsWith('The human made this session\'s agent the main agent of this project with /wish'))
+  assert.equal(told[0]?.source.designWish, undefined, 'the role notice does not carry the wish')
+  assert.equal(isOn(host, agent), true)
+})
+
+test('takeover seam, existing project, running agent: the start notice is a steer; an empty /wish is the same', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.result = { ok: true, text: START_TEXT, holdWish: true, notice: takeoverNotice() }
+  const agent = host.addAgent('s1', { status: 'running' })
+  await type(host, agent, '/wish')
+  assert.deepEqual(agent.sent.map(entry => [entry.via, entry.message.source.kind]), [['steer', TAKEOVER_SOURCE]])
+  assert.equal(agent.woken, undefined)
+  assert.deepEqual(stub.asked.prepare, [{ trigger: 'wish' }])
+})
+
+test('takeover seam: a session that is the main agent already gets the start notice of an open takeover, not "already the main agent"', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.wanted = false
+  const agent = host.addAgent('s1')
+  await type(host, agent, '/wish')
+  assert.equal(await wishNoticesOfStep(agent).then(told => told.length), 1)
+  stub.wanted = true
+  stub.result = { ok: true, text: START_TEXT, holdWish: true, notice: takeoverNotice() }
+  const again = await type(host, agent, '/wish')
+  assert.equal(again.text, `${START_TEXT}\n${MAIN_REPLY}。${STRONG_MODEL_NOTE}`)
+  assert.deepEqual(agent.sent.map(entry => [entry.via, entry.message.source.kind]), [['followup', TAKEOVER_SOURCE]])
+  assert.deepEqual(await wishNoticesOfStep(agent), [], 'the role was told before: not again')
+})
+
+test('takeover seam: a takeover that refuses stops /wish: the error as it is, no role, no record, nothing sent', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.result = { ok: false, text: '这个目录有文件但不是 git 仓库：先在终端里 git init 并提交一次，再发 /wish' }
+  const agent = host.addAgent('s1')
+  assert.deepEqual(await type(host, agent, '/wish 记一笔账'), { kind: 'error', text: '这个目录有文件但不是 git 仓库：先在终端里 git init 并提交一次，再发 /wish' })
+  assert.equal(isOn(host, agent), false)
+  assert.equal(readHolder(recordFile(host)).kind, 'none')
+  assert.deepEqual(agent.sent, [])
+  stub.result = new Error('boom')
+  assert.deepEqual(await type(host, agent, '/wish'), { kind: 'error', text: '接管没能开始：boom' })
+  assert.equal(readHolder(recordFile(host)).kind, 'none')
+})
+
+test('takeover seam: the takeover makes the graph directory before M3 asks for it, and a /wish it does not want still refuses a missing one', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  const missing = host.addAgent('missing', { workspace: 'empty' })
+  rmSync(graphDirOf(host, 'empty'), { recursive: true })
+  stub.wanted = false
+  assert.equal((await type(host, missing, '/wish')).text, `这个工作区还没有项目图：先建空目录 ${graphDirOf(host, 'empty')}`)
+  stub.wanted = true
+  stub.onPrepare = () => { mkdirSync(graphDirOf(host, 'empty'), { recursive: true }) }
+  stub.result = { ok: true, text: START_TEXT, holdWish: false }
+  const reply = await type(host, missing, '/wish')
+  assert.equal(reply.kind, 'success', reply.text)
+  assert.equal(isOn(host, missing), true)
+  assert.equal(readHolder(recordFile(host, 'empty')).kind, 'held')
+})
+
+test('takeover seam: another session is the main agent, so this /wish is pointed and the takeover is not asked to open; /wish here asks it', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.wanted = false
+  const first = host.addAgent('s1')
+  const second = host.addAgent('s2')
+  await type(host, first, '/wish')
+  stub.wanted = true
+  stub.result = { ok: true, text: START_TEXT, holdWish: true, notice: takeoverNotice() }
+  const pointed = await type(host, second, '/wish 加一个导出')
+  assert.ok(pointed.text.startsWith(ROLE_UNCHANGED_MARK), pointed.text)
+  assert.deepEqual(stub.asked.prepare, [])
+  assert.equal(second.sent.length, 0)
+  assert.equal(isOn(host, second), false)
+  const moved = await type(host, second, '/wish here 加一个导出')
+  assert.deepEqual(stub.asked.prepare, [{ trigger: 'wish', wish: '加一个导出' }])
+  assert.ok(moved.text.startsWith(`${START_TEXT}\n主 Agent 已从另一个会话移到这里；`), moved.text)
+  assert.deepEqual(second.sent.map(entry => entry.message.source.kind), [TAKEOVER_SOURCE])
+  assert.equal(isOn(host, second), true)
+})
+
+test('takeover seam: the refusals before it stand: a child, a wish that is too long and a missing graph row never reach the takeover', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  const child = host.addAgent('child', { origin: 'subagent', parentSession: 's1' })
+  assert.equal((await type(host, child, '/wish')).text, '子 agent 的会话不能当主 Agent')
+  const agent = host.addAgent('s1')
+  assert.equal((await type(host, agent, `/wish ${'愿'.repeat(MAX_WISH_LENGTH + 1)}`)).text, '愿望太长，请先用一两句话说')
+  assert.deepEqual(stub.asked.wants, [])
+  const noGraphRow = open({ graph: false })
+  const lone = provideTakeover(noGraphRow.host)
+  assert.equal((await type(noGraphRow.host, noGraphRow.host.addAgent('s1'), '/wish')).kind, 'error')
+  assert.deepEqual(lone.asked.wants, [])
+})
+
+test('takeover seam: a takeover that cannot say whether it wants the /wish is warned about and /wish goes on without it', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.wanted = new Error('journal broke')
+  const agent = host.addAgent('s1')
+  const { result, warnings } = await captureWarnings(() => type(host, agent, '/wish'))
+  assert.equal(result.kind, 'success')
+  assert.equal(result.text, `${MAIN_REPLY}。${STRONG_MODEL_NOTE}`)
+  assert.equal(warnings.filter(warning => warning.includes('journal broke')).length, 1)
+  assert.deepEqual(stub.asked.prepare, [])
+  assert.equal(isOn(host, agent), true)
 })
 
 test('two projects, two main agents: a session in another workspace is not the holder\'s business', async () => {

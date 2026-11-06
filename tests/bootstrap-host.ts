@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { apply as applyBootstrap } from '../src/bootstrap/index.ts'
 import type { ScanResult } from '../src/bootstrap/scan.ts'
+import { BOOTSTRAP_SERVICE } from '../src/bootstrap/service.ts'
 import { journalPath } from '../src/bootstrap/takeover.ts'
 import { apply as applyDesign } from '../src/design/index.ts'
 import { designHost, type DesignHost, type FakeAgent } from './design-host.ts'
@@ -32,6 +33,23 @@ export async function rootAgent(made: DesignHost, id: string, workspace: string,
   await made.created(agent)
   if (wish) assert.equal((await made.execute(agent, '/wish'))?.result.kind, 'success')
   return agent
+}
+
+/**
+ * A root agent that became the main agent with a /wish that had no takeover
+ * to call (design 0.6 §3.1, the transition path): the takeover service is
+ * withdrawn for that one /wish, as it is while the takeover row is off, and
+ * put back after. The takeover then opens with /hourness-init.
+ */
+export async function transitionAgent(made: DesignHost, id: string, workspace: string): Promise<FakeAgent> {
+  const service = made.services.get(BOOTSTRAP_SERVICE)
+  made.services.delete(BOOTSTRAP_SERVICE)
+  try {
+    return await rootAgent(made, id, workspace)
+  }
+  finally {
+    if (service !== undefined) made.services.set(BOOTSTRAP_SERVICE, service)
+  }
 }
 
 /** `/hourness-init` with `input` as the person sends it, and its result. */

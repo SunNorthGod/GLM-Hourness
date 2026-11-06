@@ -17,7 +17,7 @@ export type TakeoverPath = 'new' | 'existing' | 'gaps'
 
 const PATHS: readonly string[] = ['new', 'existing', 'gaps']
 
-/** How the takeover was opened: `/hourness-init`, or `/wish` once M3 calls the takeover (B8). */
+/** How the takeover was opened: `/hourness-init`, or `/wish`. */
 type Trigger = 'init' | 'wish'
 
 export interface OpenTakeover {
@@ -27,6 +27,7 @@ export interface OpenTakeover {
   readonly openedAt: string
   readonly trigger: Trigger
   readonly graphDir: string
+  /** The person's words of the latest `/wish` that gave any: the one the takeover opened with, or a later `takeover-wish`. */
   readonly wish?: string
   /** The `note` codes this takeover already recorded. */
   readonly noted: readonly string[]
@@ -68,6 +69,7 @@ const TAKEOVER_FOLD: Fold<TakeoverState> = {
     if (open === undefined || record.id !== open.id) return { state }
     const data = isRecord(record.data) ? record.data : {}
     if (record.op === 'takeover-closed') return { state: {} }
+    if (record.op === 'takeover-wish') return typeof data.text === 'string' ? { state: { open: { ...open, wish: data.text } } } : { bad: 'takeover-wish without a text' }
     if (record.op === 'takeover-path') return typeof data.to === 'string' && PATHS.includes(data.to) ? { state: { open: { ...open, path: data.to as TakeoverPath } } } : { bad: 'takeover-path without a path' }
     if (record.op === 'note' && typeof data.code === 'string') return { state: { open: { ...open, noted: [...open.noted, data.code] } } }
     if (record.op === 'asked') {
@@ -123,7 +125,7 @@ export async function openTakeover(root: string, request: OpenRequest): Promise<
 
 /** One record about a takeover, as the row hands it over. */
 export interface TakeoverRecord {
-  readonly op: 'setup' | 'scan' | 'takeover-path' | 'takeover-closed' | 'note' | 'asked' | 'trial'
+  readonly op: 'setup' | 'scan' | 'takeover-path' | 'takeover-wish' | 'takeover-closed' | 'note' | 'asked' | 'trial'
   readonly data: Readonly<Record<string, JsonValue>>
 }
 

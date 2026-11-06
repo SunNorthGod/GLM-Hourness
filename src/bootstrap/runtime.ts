@@ -4,16 +4,17 @@
  * takeover (or hands back the open one) after the deterministic part and
  * writes the drafts the main agent reads (`defaults.md`, `questions.md`,
  * `floor.md`); `holds` tells M3's stage reminder that a goal is the
- * takeover's to steer; `attachable`, `proposalLine` and `acceptProposal`
- * are the takeover's row of M3's attach table (src/design/attach.ts) for
- * the two things only the human can say. On every step of the main agent
- * with an open takeover the row reads the journal and the graph, proposes
- * the three norm templates under the anchor as `harness` (§4.2), writes the
- * rule draft once 不许碰 holds repository paths, notes when M3 never asked
- * `holds` (F44), and builds the reminder. `wants`, the `wish` trigger and
- * the `holdWish` of the result arrive with M3's two seams (their caller);
- * until then the takeover is opened by `/hourness-init` on the transition
- * path (§3.1, last part).
+ * takeover's to steer; `wants` tells M3's `/wish` whether to call
+ * `prepare` at all (§3.1); `attachable`, `proposalLine` and
+ * `acceptProposal` are the takeover's row of M3's attach table
+ * (src/design/attach.ts) for the two things only the human can say. On
+ * every step of the main agent with an open takeover the row reads the
+ * journal and the graph, proposes the three norm templates under the anchor
+ * as `harness` (§4.2), writes the rule draft once 不许碰 holds repository
+ * paths, notes when M3 never asked `holds` (F44), and builds the reminder.
+ * The takeover opens from `/wish` (M3 calls `wants`, `prepare`, `holds`) or
+ * from `/hourness-init`, which is also the way in when `/wish` did not
+ * (§3.1, last part).
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
@@ -23,7 +24,7 @@ import { openEngine } from '../graph/engine.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { loadGraph } from '../graph/store.ts'
 import { validateRule } from '../rules/model.ts'
-import type { AgentLike, DerivedMessage, DesignInvocationLike, SessionLike, UserNotice } from '../shared/dsh-min.ts'
+import type { AgentLike, DerivedMessage, SessionLike, UserNotice } from '../shared/dsh-min.ts'
 import type { HealthState } from '../shared/health.ts'
 import { defaultsMarkdown, testsMissing } from './defaults.ts'
 import { floorDraft, floorMarkdown } from './floor.ts'
@@ -31,7 +32,8 @@ import { anchorOf, gapsOf, proposedSince, proposedSinceOpen } from './gaps.ts'
 import { startNotice, stepReminder, THING_LABELS, type ReminderFacts } from './notice.ts'
 import { questionsDraft, questionsMarkdown, type Thing } from './present.ts'
 import { writeScan, type ScanResult } from './scan.ts'
-import { ATTACH_PATTERN, TAKEOVER_ATTACH_PREFIX, takeoverAttachLine, takeoverAttachOf } from './service.ts'
+import { hasProjectGraph } from './path.ts'
+import { ATTACH_PATTERN, TAKEOVER_ATTACH_PREFIX, takeoverAttachLine, takeoverAttachOf, type WishSeam } from './service.ts'
 import { settleWorkspace } from './setup.ts'
 import { appendTakeover, openTakeover, openTakeoverOf, recordAsked, takeoverDir, type OpenTakeover, type TakeoverPath, type TakeoverRecord } from './takeover.ts'
 import { NORM_TEMPLATES } from './templates.ts'
@@ -40,32 +42,14 @@ import { ruleDraft } from './touch.ts'
 import { maybeStartRound, redCheckers, type RoundDeps } from './trial-round.ts'
 import { readTrialFile } from './trial.ts'
 
-/** How a takeover is asked for: `/hourness-init`, with the path the person chose when they gave one. */
-interface PrepareRequest {
-  readonly trigger: 'init'
-  readonly path?: 'new' | 'existing'
-}
-
-type PrepareResult =
-  | { readonly ok: false, readonly text: string }
-  | {
-    readonly ok: true
-    /** The path decision, what was done and the next step, for the command result (Chinese). */
-    readonly text: string
-    /** The takeover-start notice; none on the new-project path. */
-    readonly notice?: UserNotice
-  }
-
 /**
- * The takeover's members, and those M3's attach table calls
+ * The takeover's members: those M3's `/wish` and stage reminder call
+ * (src/bootstrap/service.ts `WishSeam`) and those M3's attach table calls
  * (src/design/attach.ts AttachService: `attachable` takes the attach after
  * `bootstrap:` and never rejects here, `acceptProposal` resolves to the line
  * the main agent is told).
  */
-interface BootstrapService extends AttachService {
-  prepare(invocation: DesignInvocationLike, request: PrepareRequest): Promise<PrepareResult>
-  /** Whether the goal belongs to the open takeover of an existing project or of the gaps (sync, from memory). */
-  holds(cwd: string, goalId: string): boolean
+interface BootstrapService extends AttachService, WishSeam {
   attachable(input: Parameters<AttachService['attachable']>[0]): Promise<Attachable>
 }
 
@@ -272,10 +256,15 @@ export function bootstrapRuntime(deps: BootstrapDeps): BootstrapRuntime {
       const because = decision.note === undefined ? decision.reason : `${decision.reason}；${decision.note}`
       const by = { session: session.id, commandId: invocation.commandId }
       const head = scan.scan.git.state === 'repo' ? scan.scan.git.head : undefined
-      const opened = await openTakeover(root, { path, because, trigger: request.trigger, projectRoot: root, graphDir, ...head === undefined ? {} : { head }, by })
+      const opened = await openTakeover(root, { path, because, trigger: request.trigger, projectRoot: root, graphDir, ...head === undefined ? {} : { head }, ...request.wish === undefined ? {} : { wish: request.wish }, by })
       if (opened.kind === 'io') return { ok: false, text: `接管流水写不进（${opened.message}）：接管没有开` }
       const { takeover } = opened
+      // The wish stays with the takeover on the paths that do not interview (an existing project, the gaps); on the new-project path it is M3's interview step 1.
+      const holdWish = takeover.path !== 'new'
       const warnings = [...settled.warnings]
+      if (opened.kind === 'resumed' && holdWish && request.wish !== undefined) {
+        await appendTakeover(root, takeover.id, [{ op: 'takeover-wish', data: { text: request.wish, commandId: invocation.commandId } }], by).catch((error: unknown) => { warnings.push(`新许的愿没记进接管流水：${message(error)}`) })
+      }
       const graph = await loadGraph(graphDir)
       const scanFacts: ScanFacts = { files: scan.files, testsMissing: takeover.path !== 'new' && testsMissing(scan.scan) }
       try {
@@ -305,10 +294,26 @@ export function bootstrapRuntime(deps: BootstrapDeps): BootstrapRuntime {
               ...gaps.wrongType.map(node => `${node.id} 是一个 ${node.type}，不是接管要的类型：没有动它。`),
             ],
         ...warnings,
-        takeover.path === 'new' ? '说一句你想做成什么，主 Agent 从这里开始问你。' : '主 Agent 开始读这个项目，读完先问你两件事。',
+        ...holdWish && request.wish !== undefined ? ['你许的愿记在接管流水里，清单同意之后交给主 Agent。'] : [],
+        ...takeover.path === 'new' ? request.wish === undefined ? ['说一句你想做成什么，主 Agent 从这里开始问你。'] : [] : ['主 Agent 开始读这个项目，读完先问你两件事。'],
       ]
       live.set(root, { takeover, goals: new Set(), anchorSteps: 0, asked: false, scan: scanFacts })
-      return { ok: true, text: lines.join('\n'), ...takeover.path === 'new' ? {} : { notice: startNotice(facts) } }
+      return { ok: true, text: lines.join('\n'), holdWish, ...takeover.path === 'new' ? {} : { notice: startNotice(facts) } }
+    },
+    async wants(cwd) {
+      const graphDir = deps.graphDir(cwd)
+      if (graphDir === undefined) return false
+      if (!hasProjectGraph(graphDir)) return true
+      const root = projectOf(cwd, deps.home())?.root
+      if (root === undefined) return false
+      try {
+        return await openTakeoverOf(root) !== undefined
+      }
+      catch (error) {
+        // An ordinary /wish goes on; the takeover's step reminder reports the journal it cannot read.
+        console.warn(`dsh-glm-hourness/bootstrap: the takeover journal of ${root} cannot be read, /wish goes on without the takeover: ${message(error)}`)
+        return false
+      }
     },
     holds(cwd, goalId) {
       const root = projectOf(cwd, deps.home())?.root

@@ -9,7 +9,7 @@
  */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
 import test from 'node:test'
@@ -22,13 +22,14 @@ import { NORM_TEMPLATES, PLACEHOLDERS } from '../src/bootstrap/templates.ts'
 import { ensureLlmIgnored } from '../src/data/llm-ignore.ts'
 import { projectOf } from '../src/data/project-root.ts'
 import { apply as applyDesign } from '../src/design/index.ts'
+import { ROLE_UNCHANGED_MARK, STRONG_MODEL_NOTE } from '../src/design/mode.ts'
 import { STAGE_SOURCE } from '../src/design/stage-notice.ts'
 import { openEngine } from '../src/graph/engine.ts'
 import { labeledSections } from '../src/graph/stage.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import type { UserNotice } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
-import { git, init, journal, rootAgent, takeoverHost as host } from './bootstrap-host.ts'
+import { git, init, journal, rootAgent, takeoverHost as host, transitionAgent } from './bootstrap-host.ts'
 import { designHost, type DesignHost, type FakeAgent } from './design-host.ts'
 import { serviceStore } from './fake-rc3.ts'
 
@@ -48,7 +49,7 @@ function existingProject(ws: string): void {
 
 test('transition path, new project: an empty folder with only docs/graph is git-initialised, .llm/ is ignored, the journal opens without a wish (row #1, #7 F47, #8)', async () => {
   const made = host()
-  const agent = await rootAgent(made, 's-new', 'fresh')
+  const agent = await transitionAgent(made, 's-new', 'fresh')
   const ws = made.workspace('fresh')
   assert.equal(projectOf(ws), undefined, 'before: a folder outside git without .llm is no project')
   const result = await init(made, agent)
@@ -77,7 +78,7 @@ test('transition path, new project: a folder outside git with only .llm/ and doc
   assert.equal(projectOf(ws)?.root, ws, 'a folder with .llm/ counts as a project before git init')
   // What the env row does at agent/created for that project root.
   assert.equal((await ensureLlmIgnored(ws)).kind, 'no-git')
-  const agent = await rootAgent(made, 's-llm-only', 'llm-only')
+  const agent = await transitionAgent(made, 's-llm-only', 'llm-only')
   const result = await init(made, agent)
   assert.equal(result.kind, 'success', result.text)
   assert.match(result.text, /（新项目）/)
@@ -92,7 +93,9 @@ test('transition path, existing project: the takeover-start notice wakes the idl
   const made = host()
   const ws = made.workspace('existing')
   existingProject(ws)
-  const agent = await rootAgent(made, 's-ex', 'existing')
+  const agent = await transitionAgent(made, 's-ex', 'existing')
+  // An M3 without the seam never finds the service, so it never asks holds (F44): the service is withdrawn for the rest of the test.
+  made.services.delete(BOOTSTRAP_SERVICE)
   const result = await init(made, agent)
   assert.equal(result.kind, 'success', result.text)
   assert.match(result.text, /（已有项目）：已有项目：1 个代码文件、1 个提交/)
@@ -145,7 +148,7 @@ test('holds is true only for a goal of the open existing or gaps takeover, and a
   const made = host()
   const ws = made.workspace('holds')
   existingProject(ws)
-  const agent = await rootAgent(made, 's-holds', 'holds')
+  const agent = await transitionAgent(made, 's-holds', 'holds')
   assert.equal((await init(made, agent)).kind, 'success')
   const service = made.services.get(BOOTSTRAP_SERVICE) as { holds(cwd: string, goal: string): boolean }
   const before = await openEngine(join(ws, 'docs', 'graph')).apply('human', { op: 'propose', reason: '旧目标', node: { type: 'goal', id: 'goal-old', title: '旧目标' } })
@@ -163,7 +166,7 @@ test('holds is true only for a goal of the open existing or gaps takeover, and a
 test('/hourness-init off before the first node, then /hourness-init again: a second takeover; an empty nodes/ is still no graph (row #4)', async () => {
   const made = host()
   const ws = made.workspace('reopen')
-  const agent = await rootAgent(made, 's-reopen', 'reopen')
+  const agent = await transitionAgent(made, 's-reopen', 'reopen')
   assert.equal((await init(made, agent)).kind, 'success')
   const off = await init(made, agent, 'off')
   assert.equal(off.kind, 'success')
@@ -182,7 +185,7 @@ test('path changes: new and existing while open (steer when running), refused on
   const made = host()
   const ws = made.workspace('change')
   existingProject(ws)
-  const agent = await rootAgent(made, 's-change', 'change')
+  const agent = await transitionAgent(made, 's-change', 'change')
   assert.equal((await init(made, agent)).kind, 'success')
   agent.status = 'running'
   const changed = await init(made, agent, 'new')
@@ -277,12 +280,179 @@ test('the row installs no gate, registers /hourness-init and provides its servic
   assert.equal(store.get(BOOTSTRAP_SERVICE), undefined, 'disposal withdraws the service')
   const made = host()
   assert.ok(made.commands.has('hourness-init'))
+  // With the row off, /wish is M3's own: no takeover, nothing written beside the holder record.
   const plain = designHost()
   applyDesign(plain.ctx)
-  const withRow = await made.execute(await rootAgent(made, 's-a', 'a', false), '/wish')
   const without = plain.addAgent('s-b', { workspace: 'b' })
   await plain.created(without)
-  assert.equal((await plain.execute(without, '/wish'))?.result.text, withRow?.result.text)
+  assert.equal((await plain.execute(without, '/wish'))?.result.text, `已让这个会话的 agent 当主 Agent（项目经理）：它按项目图推进，不写文件；/wish off 退出。${STRONG_MODEL_NOTE}`)
+  assert.ok(!existsSync(join(plain.workspace('b'), '.llm')) && !existsSync(join(plain.workspace('b'), '.git')))
+  // The same /wish with the row on is the takeover's turn first.
+  const withRow = await made.execute(await rootAgent(made, 's-a', 'a', false), '/wish')
+  assert.match(withRow?.result.text ?? '', /^开了接管 tk-[0-9a-z]{8}（新项目）/)
+})
+
+// ---------------------------------------------------------------- /wish calls the takeover (design 0.6 §3.1; row #1, #2, #4, #7)
+
+const startNoticesOf = (agent: FakeAgent): string[] => agent.sent.filter(sent => sent.message.source.kind === BOOTSTRAP_SOURCE).map(sent => sent.via)
+
+test('/wish on an empty folder opens the takeover as a new project: nothing to hold, the interview is M3\'s, the journal says /wish opened it (row #1)', async () => {
+  const made = host()
+  const agent = await rootAgent(made, 's-w-new', 'wnew', false)
+  const ws = made.workspace('wnew')
+  const run = await made.execute(agent, '/wish')
+  assert.equal(run?.result.kind, 'success', run?.result.text)
+  assert.match(run?.result.text ?? '', /^开了接管 tk-[0-9a-z]{8}（新项目）：空目录：当新项目，已建 git 仓库。/)
+  assert.match(run?.result.text ?? '', /说一句你想做成什么，主 Agent 从这里开始问你。\n已让这个会话的 agent 当主 Agent（项目经理）/)
+  const open = journal(ws)[0]
+  assert.deepEqual([open?.op, open?.data?.trigger, open?.data?.path, open?.data?.wish], ['takeover-open', 'wish', 'new', undefined])
+  assert.ok(existsSync(join(ws, '.llm')) && existsSync(join(ws, 'docs', 'graph', 'nodes')))
+  assert.equal(spawnSync('git', ['check-ignore', '-q', '.llm/x'], { cwd: ws }).status, 0)
+  assert.deepEqual(agent.sent, [], 'no words and a new project: nothing wakes the agent')
+  assert.equal(health(made, agent), 'active')
+  assert.match((await init(made, agent, 'status')).text, /^接管 tk-[0-9a-z]{8} 开着（新项目）/, 'the session is the main agent of the open takeover')
+})
+
+test('/wish with words in a folder that has no docs/graph: the directory is made, the takeover keeps the wish, and on a new project M3 also gets it as the interview\'s first step (row #1, #4)', async () => {
+  const made = host()
+  const agent = await rootAgent(made, 's-w-words', 'wwords', false)
+  const ws = made.workspace('wwords')
+  rmSync(join(ws, 'docs'), { recursive: true })
+  const run = await made.execute(agent, '/wish 记一笔账')
+  assert.equal(run?.result.kind, 'success', run?.result.text)
+  assert.ok(existsSync(join(ws, 'docs', 'graph', 'nodes')))
+  assert.doesNotMatch(run?.result.text ?? '', /说一句你想做成什么/, 'the person said it already')
+  assert.match(run?.result.text ?? '', /已把你的愿望交给它/)
+  const open = journal(ws)[0]
+  assert.deepEqual([open?.data?.trigger, open?.data?.path, open?.data?.wish], ['wish', 'new', '记一笔账'])
+  assert.deepEqual(agent.sent.map(sent => [sent.via, sent.message.source.kind]), [['followup', 'glm-design-wish']], 'a new project: M3\'s wish notice, no takeover-start notice')
+  assert.equal(health(made, agent), 'active')
+})
+
+test('/wish on an existing project: the takeover-start notice wakes the idle agent instead of the wish notice, the wish is kept in the journal, a second /wish resumes the takeover and keeps the new words, /hourness-init off quotes the latest (row #2, #4)', async () => {
+  const made = host()
+  const ws = made.workspace('wexisting')
+  existingProject(ws)
+  const agent = await rootAgent(made, 's-w-ex', 'wexisting', false)
+  const first = await made.execute(agent, '/wish 加一个导出')
+  assert.equal(first?.result.kind, 'success', first?.result.text)
+  assert.match(first?.result.text ?? '', /^开了接管 tk-[0-9a-z]{8}（已有项目）：已有项目：1 个代码文件、1 个提交/)
+  assert.match(first?.result.text ?? '', /你许的愿记在接管流水里，清单同意之后交给主 Agent。\n主 Agent 开始读这个项目，读完先问你两件事。\n已让这个会话的 agent 当主 Agent/)
+  assert.doesNotMatch(first?.result.text ?? '', /已把你的愿望交给它/)
+  assert.deepEqual(agent.sent.map(sent => [sent.via, sent.message.source.kind]), [['followup', BOOTSTRAP_SOURCE]], 'no wish notice: the takeover\'s own')
+  assert.ok(agent.woken !== undefined, 'the idle agent is woken')
+  assert.match(agent.sent[0]?.message.content[0]?.text ?? '', /^<system-reminder>\nThe human started a takeover of this project; begin now\./)
+  const open = journal(ws)[0]
+  assert.deepEqual([open?.data?.trigger, open?.data?.path, open?.data?.wish], ['wish', 'existing', '加一个导出'])
+
+  const second = await made.execute(agent, '/wish 再加一个导出')
+  assert.equal(second?.result.kind, 'success', second?.result.text)
+  assert.match(second?.result.text ?? '', /^接着做开着的接管 /)
+  assert.equal(journal(ws).filter(record => record.op === 'takeover-open').length, 1, 'the open takeover is resumed, not a second one')
+  const wishes = journal(ws).filter(record => record.op === 'takeover-wish')
+  assert.equal(wishes.length, 1)
+  assert.equal(wishes[0]?.id, open?.id)
+  assert.equal(wishes[0]?.data?.text, '再加一个导出')
+  assert.equal(typeof wishes[0]?.data?.commandId, 'string')
+  assert.deepEqual(startNoticesOf(agent), ['followup', 'followup'], 'the resumed takeover starts the next turn again')
+  assert.ok(!second?.result.text.includes('已经是主 Agent'))
+
+  const off = await init(made, agent, 'off')
+  assert.match(off.text, /你当时许的愿「再加一个导出」没有交出去，要的话再发 \/wish/)
+  assert.equal(journal(ws).filter(record => record.op === 'takeover-closed').length, 1)
+})
+
+test('/wish with an empty argument on an existing project reaches a running agent with steer (row #2)', async () => {
+  const made = host()
+  const ws = made.workspace('wsteer')
+  existingProject(ws)
+  const agent = await rootAgent(made, 's-w-steer', 'wsteer', false)
+  agent.status = 'running'
+  assert.equal((await made.execute(agent, '/wish'))?.result.kind, 'success')
+  assert.deepEqual(startNoticesOf(agent), ['steer'])
+  assert.equal(journal(ws)[0]?.data?.wish, undefined)
+})
+
+test('/wish that the takeover refuses (files that are not a git repository) writes nothing and the session is not the main agent (row #8)', async () => {
+  const made = host()
+  const agent = await rootAgent(made, 's-w-loose', 'wloose', false)
+  const ws = made.workspace('wloose')
+  writeFileSync(join(ws, 'notes.txt'), 'x\n')
+  const run = await made.execute(agent, '/wish 记一笔账')
+  assert.deepEqual(run?.result, { kind: 'error', text: '这个目录有文件但不是 git 仓库：先在终端里 git init 并提交一次，再发 /wish' })
+  assert.ok(!existsSync(join(ws, '.llm')) && !existsSync(join(ws, '.git')))
+  assert.deepEqual(agent.sent, [])
+  assert.deepEqual(await init(made, agent), { kind: 'success', text: NOT_MAIN_REPLY }, 'it never became the main agent')
+})
+
+test('/wish in a session while another session is the main agent points there and does not open or resume a takeover; /wish here moves the role and the takeover starts in the new session (row #2)', async () => {
+  const made = host()
+  const ws = made.workspace('wpoint')
+  existingProject(ws)
+  const first = await rootAgent(made, 's-w-first', 'wpoint', false)
+  assert.equal((await made.execute(first, '/wish'))?.result.kind, 'success')
+  const second = await rootAgent(made, 's-w-second', 'wpoint', false)
+  const pointed = await made.execute(second, '/wish 加一个导出')
+  assert.ok(pointed?.result.text.startsWith(ROLE_UNCHANGED_MARK), pointed?.result.text)
+  assert.equal(journal(ws).filter(record => record.op === 'takeover-open').length, 1)
+  assert.equal(journal(ws).filter(record => record.op === 'takeover-wish').length, 0, 'the words went nowhere')
+  assert.deepEqual(second.sent, [])
+  const moved = await made.execute(second, '/wish here 加一个导出')
+  assert.equal(moved?.result.kind, 'success', moved?.result.text)
+  assert.equal(journal(ws).filter(record => record.op === 'takeover-open').length, 1)
+  assert.deepEqual(journal(ws).filter(record => record.op === 'takeover-wish').map(record => record.data?.text), ['加一个导出'])
+  assert.deepEqual(startNoticesOf(second), ['followup'])
+})
+
+test('wants: true while the project has no graph or an open takeover, false for a graph with none; a graph with gaps is taken over by /hourness-init and /wish then resumes it (§3.1)', async () => {
+  const made = host()
+  const ws = made.workspace('wwants')
+  existingProject(ws)
+  const service = made.services.get(BOOTSTRAP_SERVICE) as { wants(cwd: string): Promise<boolean> }
+  assert.equal(await service.wants(ws), true, 'an empty nodes/ is no graph')
+  assert.ok((await openEngine(join(ws, 'docs', 'graph')).apply('human', { op: 'propose', reason: '种子', node: { type: 'goal', title: '目标' } })).ok)
+  assert.equal(await service.wants(ws), false, 'a graph and no open takeover: M3\'s own /wish')
+  const agent = await rootAgent(made, 's-w-wants', 'wwants')
+  assert.deepEqual(journal(ws), [], 'that /wish did not touch the takeover')
+  assert.equal((await init(made, agent)).kind, 'success')
+  assert.equal(await service.wants(ws), true, 'the gaps takeover is open')
+  const resumed = await made.execute(agent, '/wish 补一补')
+  assert.match(resumed?.result.text ?? '', /^接着做开着的接管 /)
+  assert.deepEqual(journal(ws).filter(record => record.op === 'takeover-wish').map(record => record.data?.text), ['补一补'])
+  assert.equal((await init(made, agent, 'off')).kind, 'success')
+  assert.equal(await service.wants(ws), false)
+})
+
+test('holds: M3\'s stage reminder leaves the interview of a held goal to the takeover and stops the note; a new project and a closed takeover keep it (row #7)', async () => {
+  const made = host()
+  const ws = made.workspace('wholds')
+  existingProject(ws)
+  const agent = await rootAgent(made, 's-w-holds', 'wholds', false)
+  assert.equal((await made.execute(agent, '/wish'))?.result.kind, 'success')
+  const dir = join(ws, 'docs', 'graph')
+  assert.ok((await openEngine(dir).apply('llm', { op: 'propose', reason: '接管：读项目', node: { type: 'goal', title: '这个项目要做成什么' } })).ok)
+  made.focuses.set(agent.id, 'goal-1')
+  await agent.assemble()
+  for (let step = 0; step < 4; step++) {
+    const decision = await agent.step()
+    const sources = kinds(decision.kind === 'enter' ? decision.messages : [])
+    assert.ok(sources.includes(BOOTSTRAP_SOURCE) || step > 0, `step ${step}: ${sources.join(', ')}`)
+    assert.ok(!sources.includes(STAGE_SOURCE), `step ${step}: M3's interview reminder yields: ${sources.join(', ')}`)
+  }
+  assert.equal(journal(ws).filter(record => record.op === 'note').length, 0, 'holds was asked on every step: no note')
+  assert.equal((await init(made, agent, 'off')).kind, 'success')
+  await agent.assemble()
+  const after = await agent.step()
+  assert.ok(kinds(after.kind === 'enter' ? after.messages : []).includes(STAGE_SOURCE), 'the takeover let go: the reminder is back')
+
+  const fresh = made.workspace('wholds-new')
+  const newAgent = await rootAgent(made, 's-w-holds-new', 'wholds-new', false)
+  assert.equal((await made.execute(newAgent, '/wish'))?.result.kind, 'success')
+  assert.ok((await openEngine(join(fresh, 'docs', 'graph')).apply('llm', { op: 'propose', reason: '访谈', node: { type: 'goal', title: '记账' } })).ok)
+  made.focuses.set(newAgent.id, 'goal-1')
+  await newAgent.assemble()
+  const interview = await newAgent.step()
+  assert.ok(kinds(interview.kind === 'enter' ? interview.messages : []).includes(STAGE_SOURCE), 'a new project is interviewed: the takeover holds nothing')
 })
 
 test('the reminder texts carry the interview sentence on the existing and gaps paths and never ask to wait or stop', () => {

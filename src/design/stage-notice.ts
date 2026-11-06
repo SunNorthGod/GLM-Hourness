@@ -324,6 +324,8 @@ export interface StageNoticeDeps {
   readonly eligible: () => boolean
   /** The graph row's service; undefined while the row is off. */
   readonly graph: () => GraphFocusService | undefined
+  /** The takeover's answer for a goal of the project at `cwd` (src/bootstrap/service.ts `holds`): true when the open takeover of an existing project or of the gaps steers it; false while the takeover row is off. */
+  readonly holds: (cwd: string, goalId: string) => boolean
   /** Report the row health of the agent's session. */
   readonly report: (agent: AgentLike, state: HealthState, reason: string) => void
 }
@@ -334,6 +336,27 @@ function warnOnce(agent: AgentLike, why: string): void {
   if (warnedRead) return
   warnedRead = true
   console.warn(`dsh-glm-hourness/design: the stage reminder is skipped for agent ${agent.id}: ${why}`)
+}
+
+/**
+ * Whether the takeover steers the goal the reminder is about (takeover design
+ * 0.6 §3.1): then the interview reminder stays out, the takeover's own
+ * reminder is the one the main agent follows. The takeover is asked on every
+ * step (that is how it knows this reminder asks it, F44) but only an
+ * interview stage yields; a takeover that throws is skipped for the step and
+ * the reminder goes out as it would without the takeover.
+ */
+function takeoverSteers(deps: StageNoticeDeps, agent: AgentLike, cwd: string | undefined, reminder: StageReminder): boolean {
+  if (cwd === undefined) return false
+  try {
+    return deps.holds(cwd, reminder.goal) && (reminder.stage === 'wish' || reminder.stage === 'interview')
+  }
+  catch (error) {
+    const why = error instanceof Error ? error.message : String(error)
+    warnOnce(agent, `the takeover could not be asked about the goal: ${why}`)
+    deps.report(agent, 'degraded', `阶段提醒问不到接管（${why}），这一步照常出访谈提醒`)
+    return false
+  }
 }
 
 /**
@@ -349,6 +372,7 @@ export function installStageNotice(agent: AgentLike, deps: StageNoticeDeps): (()
       if (graph === undefined || dir === undefined) throw new Error('the graph row does not say where the project graph is or what the session has in focus')
       const reminder = stageReminder(await loadGraph(dir), graph.focusOf(session))
       if (reminder.degraded !== undefined) deps.report(agent, 'degraded', reminder.degraded)
+      if (takeoverSteers(deps, agent, session.header.cwd, reminder)) return undefined
       return stageNotice(history, admitted, reminder)
     }
     catch (error) {

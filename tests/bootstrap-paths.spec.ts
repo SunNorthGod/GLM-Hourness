@@ -32,7 +32,7 @@ import { labeledSections } from '../src/graph/stage.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import { validateRule } from '../src/rules/model.ts'
 import { PROPOSE_TO_HUMAN, RECORD_HUMAN_ANSWER } from '../src/shared/tool-names.ts'
-import { git, init, journal, rootAgent, scanFixture, takeoverHost } from './bootstrap-host.ts'
+import { git, init, journal, scanFixture, takeoverHost, transitionAgent } from './bootstrap-host.ts'
 import { graphOf, node } from './execute-helpers.ts'
 import { exampleRecord } from './proposal-examples.ts'
 
@@ -226,7 +226,7 @@ test('the seam with M3: the drafted questions go through propose_to_human with a
   const made = takeoverHost()
   const ws = made.workspace('seam')
   costlyProject(ws)
-  const agent = await rootAgent(made, 's-seam', 'seam')
+  const agent = await transitionAgent(made, 's-seam', 'seam')
   assert.equal((await init(made, agent)).kind, 'success')
   const tk = journal(ws).find(record => record.op === 'takeover-open')?.id ?? ''
   const dir = join(ws, 'docs', 'graph')
