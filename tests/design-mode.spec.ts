@@ -581,6 +581,52 @@ test('takeover seam: a session that is the main agent already gets the start not
   assert.deepEqual(await wishNoticesOfStep(agent), [], 'the role was told before: not again')
 })
 
+test('takeover seam: a main agent that sends a bare /wish while the takeover opens a new project is told what the takeover did first (review B8 F1)', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.wanted = false
+  const agent = host.addAgent('s1')
+  await type(host, agent, '/wish')
+  stub.wanted = true
+  stub.result = { ok: true, text: START_TEXT, holdWish: false }
+  const again = await type(host, agent, '/wish')
+  assert.equal(again.text, `${START_TEXT}\n这个会话已经是主 Agent`)
+  assert.deepEqual(stub.asked.prepare, [{ trigger: 'wish' }])
+  assert.equal(isOn(host, agent), true)
+})
+
+test('takeover seam: the holder claim lost after the takeover opened: the reply is the pointer first (the role did not change), then what the takeover did; an unwritable record says the takeover is open', async () => {
+  const { host } = open({ persistence: true })
+  const stub = provideTakeover(host)
+  stub.wanted = false
+  const first = host.addAgent('s1')
+  const second = host.addAgent('s2')
+  await type(host, first, '/wish')
+  // The takeover's turn finds no record; while `prepare` runs, the session that is the main agent writes it again.
+  const holder = readHolder(recordFile(host))
+  assert.ok(holder.kind === 'held')
+  rmSync(recordFile(host))
+  stub.wanted = true
+  stub.result = { ok: true, text: START_TEXT, holdWish: true, notice: takeoverNotice() }
+  stub.onPrepare = () => { assert.ok(claimHolder(recordFile(host), holder.record)) }
+  const lost = await type(host, second, '/wish')
+  assert.equal(stub.asked.prepare.length, 1, 'the takeover was asked: the claim was lost afterwards')
+  assert.ok(lost.text.startsWith(ROLE_UNCHANGED_MARK), lost.text)
+  assert.ok(lost.text.endsWith(`\n${START_TEXT}`), 'what the takeover did is told after the pointer')
+  assert.equal(isOn(host, second), false, 'the projection reads the pointer as no change of role')
+  assert.equal(second.sent.length, 0, 'no start notice goes to a session that is not the main agent')
+
+  const other = open()
+  const failing = provideTakeover(other.host)
+  failing.result = { ok: true, text: START_TEXT, holdWish: false }
+  const agent = other.host.addAgent('s1')
+  mkdirSync(other.host.userHome, { recursive: true })
+  writeFileSync(join(other.host.userHome, 'main-agent'), 'a file where the directory should be')
+  const refused = await type(other.host, agent, '/wish')
+  assert.equal(refused.kind, 'error')
+  assert.match(refused.text, /^主 Agent 的持有者记录写不了：.*接管已经开着：在主 Agent 会话里发 \/hourness-init off 可放弃，再发 \/wish 接着做$/)
+})
+
 test('takeover seam: a takeover that refuses stops /wish: the error as it is, no role, no record, nothing sent', async () => {
   const { host } = open()
   const stub = provideTakeover(host)

@@ -362,6 +362,21 @@ test('/wish on an existing project: the takeover-start notice wakes the idle age
   assert.equal(journal(ws).filter(record => record.op === 'takeover-closed').length, 1)
 })
 
+test('/hourness-init off, then a bare /wish in the session that is the main agent: a second takeover opens and the reply says so (row #4; review B8 F1)', async () => {
+  const made = host()
+  const agent = await rootAgent(made, 's-w-reopen', 'wreopen', false)
+  const ws = made.workspace('wreopen')
+  assert.match((await made.execute(agent, '/wish'))?.result.text ?? '', /^开了接管 /)
+  assert.match((await init(made, agent, 'off')).text, /^已放弃这次接管/)
+  const again = await made.execute(agent, '/wish')
+  assert.equal(again?.result.kind, 'success')
+  assert.match(again?.result.text ?? '', /^开了接管 tk-[0-9a-z]{8}（新项目）[\s\S]*\n这个会话已经是主 Agent$/)
+  const opens = journal(ws).filter(record => record.op === 'takeover-open')
+  assert.equal(opens.length, 2)
+  assert.deepEqual(opens.map(record => record.data?.trigger), ['wish', 'wish'])
+  assert.deepEqual(journal(ws).filter(record => record.op === 'takeover-closed').map(record => record.data?.reason), ['abandoned'])
+})
+
 test('/wish with an empty argument on an existing project reaches a running agent with steer (row #2)', async () => {
   const made = host()
   const ws = made.workspace('wsteer')
