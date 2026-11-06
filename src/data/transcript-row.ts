@@ -11,9 +11,10 @@
  * the end of the summary in ZCode 3.17.1's transcript sentence. The row
  * health of the session names how many strings an export replaced, or why
  * nothing was written. Registers nothing model-facing; the
- * model reads the file with Read. Ships disabled until the L3 probe
- * (scenario glm-compact-transcript) and the first desktop pass
- * (AGENTS.md rule 4). Activation does no I/O and never throws.
+ * model reads the file with Read. Ships enabled since 2026-11-06, after the
+ * L3 probe (scenario glm-compact-transcript) and the desktop L4 on an
+ * isolated instance (packages/hourness/cordis.patch.yml). Activation does no
+ * I/O and never throws.
  */
 import { exportTranscript, TRANSCRIPT_KEEP_DAYS, TRANSCRIPTS_DIR, type ExportResult } from './transcript.ts'
 import { provideRowHealth, type HealthState } from '../shared/health.ts'

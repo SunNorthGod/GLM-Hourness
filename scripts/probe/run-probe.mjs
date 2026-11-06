@@ -450,18 +450,23 @@ const todoLastResult = todoFinal?.messages.findLastIndex(message => message.role
 const todoParallel = todo.steps[2]?.messages.findLast(message => message.role === 'assistant')?.toolCalls
 
 // GLM compaction: a low pressure threshold makes compaction-basic compact
-// at the second step boundary (sandbox overlay only).
+// at the second step boundary (sandbox overlay only). The transcript row
+// ships enabled; the overlay disables it here, so this scenario keeps the
+// check that a disabled row leaves the summary as it is without the row.
 const compacted = runScenario('glm-compact', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
   { text: 'done', status: true },
 ], 'Read package.json and reply done.', [
   '- id: compaction-basic',
   '  config: { thresholdRatio: 0.02, retainTokens: 0 }',
+  '- id: glm-hourness/transcript',
+  '  disabled: true',
 ])
-// GLM compaction with the transcript row enabled through the overlay (it
-// ships disabled): the checkpoint ends with ZCode's transcript sentence
-// naming the plaintext export under the scenario home, and the model reads
-// that file with Read ({transcript}, scripts/probe/probe-llm.mjs). The task
+// GLM compaction with the transcript row pinned on by the overlay (it ships
+// enabled; the overlay also points it at the scenario home): the checkpoint
+// ends with ZCode's transcript sentence naming the plaintext export under the
+// scenario home, and the model reads that file with Read ({transcript},
+// scripts/probe/probe-llm.mjs). The task
 // text carries two fake credentials (a Bearer value, a named-prefix key),
 // assembled from parts so that no line of this file is a token for the
 // secret scan; the export must carry neither (src/data/transcript.ts).
@@ -3396,7 +3401,7 @@ const checks = [
   ['glm compact transcript: the model\'s Read of the named file returns the export (a recorded request carries that tool result)', transcriptRead !== undefined && transcriptRead.isError !== true, transcriptRead === undefined ? `no tool result with the export text in ${compactTranscript.steps.length} step(s) and ${compactTranscript.compactions.length} compaction(s)` : transcriptRead.text.slice(0, 160).replace(/\n/g, ' | ')],
   ['glm compact transcript: no line of the export is longer than 1000 code points, and the long test:1 line of package.json is split', transcriptText.length > 0 && transcriptLong.length === 0 && transcriptSplit, `${transcriptLines.length} line(s); ${transcriptLong.length} over 1000; split test:1 line ${transcriptSplit}`],
   ['glm compact transcript: the two fake credentials of the task reach the session but not the export, which reads them as [redacted] and counts its replacements in the header; /glm-status gives the same count', transcriptFakesAsked && transcriptFakesLeft === 0 && transcriptText.includes(TRANSCRIPT_FAKES_LINE) && Number(transcriptReplaced) >= TRANSCRIPT_FAKES.length && healthOf(compactTranscript).transcript?.reason.includes(`遮掉 ${transcriptReplaced} 处`) === true, `in the first request: ${transcriptFakesAsked}; left in the export: ${transcriptFakesLeft} of ${TRANSCRIPT_FAKES.length}; redacted task line: ${transcriptText.includes(TRANSCRIPT_FAKES_LINE)}; header count: ${transcriptReplaced ?? 'none'}`],
-  ['glm compact transcript: in glm-compact (transcript row disabled, the shipped default) no checkpoint names a transcript', checkpointsOf(compacted).length > 0 && checkpointsOf(compacted).every(message => !message.text.includes(TRANSCRIPT_MARK)), `${checkpointsOf(compacted).length} checkpoint(s)`],
+  ['glm compact transcript: in glm-compact (transcript row disabled by the overlay) no checkpoint names a transcript', checkpointsOf(compacted).length > 0 && checkpointsOf(compacted).every(message => !message.text.includes(TRANSCRIPT_MARK)), `${checkpointsOf(compacted).length} checkpoint(s)`],
   ['glm compact transcript: /glm-status of the session lists the transcript row in effect with the export it wrote', healthOf(compactTranscript).transcript?.status === ACTED && healthOf(compactTranscript).transcript.reason.startsWith('压缩前导出'), JSON.stringify(healthOf(compactTranscript).transcript ?? null)],
   ['memory usage: one record per GLM step with the request provider, model and session id', glmUsage.length === glm.steps.length && glmUsage.every(record => record.provider === 'glm-probe' && record.model === 'glm-5.3' && typeof record.sessionId === 'string' && record.sessionId.length > 0), `${glmUsage.length} record(s) for ${glm.steps.length} step(s); first: ${JSON.stringify(glmUsage[0] ?? null).slice(0, 120)}`],
   ['memory usage: the compaction call is recorded with purpose compaction', compactUsage.length === compacted.compactions.length && compactUsage.length > 0, `${compactUsage.length} compaction record(s) for ${compacted.compactions.length} request(s)`],
@@ -3534,6 +3539,7 @@ const checks = [
   ['rules-peak-stop-exit: V13, the host exits with the goal paused at the stop level: the run is clean and the way out agrees with itself: a row that unloaded (its heartbeat file is gone) resumed the goal and wrote it on the ticket, a runner that left without unloading it left the goal and the ticket as the stop made them', stopExitProject.ready && rulesPeakStopExit.status === 0 && !stderrOf('rules-peak-stop-exit').includes('dsh-glm-hourness/rules') && stopExitNotes.some(entry => entry.kind === 'stop-held' && entry.goal?.phase === 'paused') && (stopExitUnloaded ? typeof stopExitState?.tickets?.['q-1']?.resumedAt === 'string' && stopExitOps.includes('resume') : stopExitState?.tickets?.['q-1']?.state === 'deferred' && stopExitState.tickets['q-1'].resumedAt === undefined && stopExitOps.join() === 'create,pause'), `unloaded ${stopExitUnloaded}; exit ${rulesPeakStopExit.status}; goal operations ${JSON.stringify(stopExitOps)}; ticket ${JSON.stringify(stopExitState?.tickets?.['q-1'] ?? null)}; journal ${JSON.stringify(stopExitJournal.map(record => [record.op, record.reason ?? null]).slice(-3))}; ${stderrOf('rules-peak-stop-exit').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['loops: the row ships enabled since the rules-loops merge: the boot scenarios list it in effect on both routes', glmHealth.loops?.status === ACTED && plainHealth.loops?.status === ACTED, `${healthLine(glmHealth, 'loops')}; ${healthLine(plainHealth, 'loops')}`],
   ['lessons: the row ships enabled since the lessons enablement: without the overlay the boot scenarios list it loaded on both routes', glmHealth.lessons !== undefined && glmHealth.lessons.status !== '未加载' && plainHealth.lessons !== undefined && plainHealth.lessons.status !== '未加载', `${healthLine(glmHealth, 'lessons')}; ${healthLine(plainHealth, 'lessons')}`],
+  ['transcript: the row ships enabled since the transcript enablement: without the overlay the boot scenarios list it loaded and not yet acting on both routes (it acts on a GLM compaction only)', [glmHealth, plainHealth].every(health => health.transcript?.status === IDLE && health.transcript.reason.startsWith('已加载；GLM 压缩时')), `${healthLine(glmHealth, 'transcript')}; ${healthLine(plainHealth, 'transcript')}`],
   ['loops: the row, enabled by the overlay in a scratch git clone that carries a person\'s entry file, boots, runs its four steps and exits clean with nothing from it on stderr', loopsBoard.ready && loops.status === 0 && loops.steps.length === 4 && !stderrOf('loops').includes('dsh-glm-hourness/loops'), `exit ${loops.status}, ${loops.steps.length} step(s), git ${loopsBoard.ready}; ${stderrOf('loops').split('\n').find(line => line.includes('loops')) ?? 'no stderr line mentions loops'}`],
   ['loops: a file tool writing into docs/loops/ is refused by loops:files-only with the four-part text, the entry file is as it was, and the refusal is journaled as a plain denial (the gate\'s records carry no mode, G1)', lastToolResult(loops.steps[1])?.isError === true && LOOPS_DENIAL.test(lastToolResult(loops.steps[1]).text) && readFileSync(loopsBoard.entryFile, 'utf8') === LOOPS_ENTRY_TEXT && rulesRecordOf(loopsRecords, 'loops:files-only') !== undefined && rulesRecordOf(loopsRecords, 'loops:files-only')?.mode === undefined, lastToolResult(loops.steps[1])?.text?.slice(0, 200) ?? 'no result'],
   ['loops: a shell command writing into the project\'s .llm/loops/ is refused by the same rule, not by file-tools-only, and the board\'s change record does not carry what it wrote (the recorder\'s follow-up records carry a kind)', lastToolResult(loops.steps[2])?.isError === true && (lastToolResult(loops.steps[2])?.text ?? '').includes('Rule loops:files-only') && loopsJournalText !== '' && !loopsJournalText.split('\n').includes('probe') && loopsRecords.filter(record => record.rule === 'loops:files-only' && record.kind === undefined).length === 2, `${lastToolResult(loops.steps[2])?.text?.slice(0, 160) ?? 'no result'}; ${loopsRecords.filter(record => record.rule === 'loops:files-only').length} journal line(s) for the rule`],
