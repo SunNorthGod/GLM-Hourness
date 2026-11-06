@@ -735,6 +735,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "guard 修复 07ee5baa（合入 origin/main 137359f 为 9aa3a9a6，9 处冲突）经独立 guard-review APPROVED：0 挡路、3 不挡路，范围 a2f934ec..07ee5baa，树 085e936f，门禁记录成立（3477/3477，探针 529/529，棘轮 73/18/1）；guard-converge 无改动跳过。评审提示 origin/main 已前进到 63da5e25（inject-via-prestep），合入步要再合一次 main，wake.ts 不受影响。下一步高峰外的第三次真实模型运行。"
+    },
+    {
+      "at": "2026-11-06T11:18:46.035Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 19:18：real-model-run-3（wf_36d1d690c7e1de90）在跑，19:17 取了 .llm/desktop-lock（headless，glm-5.3 主 Agent，高峰外）；过了才走 land-2、l4、report。"
     }
   ]
 }

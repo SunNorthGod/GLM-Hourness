@@ -97,6 +97,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "ablation（wf_5f5345b05e5c4e89）code 步按编排方批示接上第二版后台队列（pid 60792）：先等正在跑的 A0 Flash bugfix-shell-redirect 一格跑完再接锁，之后逐格补到每格 5 次；14:00 前停、18:00 后接着跑（GLM 高峰不跑、不改档位）；每格取探针锁、续写、跑完放锁；一臂一档跑完就重生成 results.md 并提交推 origin/ablation；同一格连续失败两次跳过并把原因记进 queue.skip。A0 已有 26 次有效运行，全部完成，计费 694.84 积分。全部跑完后写 report.md 与 DESIGN.md 逐段结论，再交评审。"
+    },
+    {
+      "at": "2026-11-06T11:18:45.778Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 19:18 进度：第二版队列（pid 60792）在高峰后接着跑，持 .llm/probe-lock；origin/ablation 已有 A0 两档、A1 两档的结果（最新 4ca66d88 docs(ablation): results of arm A1 on glm-5.3-flash）。剩 A2–A5 两档，跑完写 report.md 与 DESIGN.md 逐段结论再交评审。"
     }
   ]
 }
