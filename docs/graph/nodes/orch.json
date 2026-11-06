@@ -613,6 +613,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "Kiro 2026-11-06 18:30 前后再次重启，编排方对账：在跑的五路都已恢复。M7（wf_36d1d690c7e1de90）real-model-run-3 在跑；lessons-enable（wf_7ed94028a156d1cb）desktop-l4 在跑、持 desktop-lock；m5-index-truncation-alarm（wf_8924e7a9cdb716c0）code 步在跑；compact-recall-l4（wf_07a1fd00ce69e723）l4-check 在跑；ablation（wf_5f5345b05e5c4e89）code 步等回话，后台队列 pid 60792 活着、持 probe-lock，高峰已过，编排方回它照原计划跑完再写报告。main = origin = github = 6e545fd，主检出没有已跟踪改动。"
+    },
+    {
+      "at": "2026-11-06T10:55:20.025Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-06 说当时发过那份「把文档放到 AI 手边」的提炼（据 ZCode 会话里人的原话：从抖音下的一个人的编程理论，让编排方融合进设计）。编排方再查：仓库 docs/、docs/graph、.agents/tasks、video/ 与 ~/.zcode/cli 的 memories、artifacts、rollout 按「抖音」「手边」「知识库」等关键词都没有原文；ZCode 那边 2026-11-06 18:45 的会话（sess_067e6066）同样查过、同样没找到。原文多半只在 ZCode 早先会话的对话库 ~/.zcode/cli/db/db.sqlite（约 27 GB，ZCode 运行时被占用，编排方不去动它）。建议人请 ZCode 按「抖音」搜它自己的历史会话，或直接重发原文；拿到后逐条对照框架。"
     }
   ]
 }
