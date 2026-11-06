@@ -741,6 +741,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-06 19:18：real-model-run-3（wf_36d1d690c7e1de90）在跑，19:17 取了 .llm/desktop-lock（headless，glm-5.3 主 Agent，高峰外）；过了才走 land-2、l4、report。"
+    },
+    {
+      "at": "2026-11-06T12:44:47.924Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 real-model-run-3（wf_36d1d690c7e1de90）完成：第三次真实模型在 headless、glm-5.3 主 Agent 下达到设计 §10.3 第 2 条：主 Agent 把 goal-1 从 release 推到 complete，没有工人、没有人问题。进程后来以退出码 1 结束，但那时 goal-1 已经完成了 18 分钟。下一步 land-2。desktop-lock 已释放。"
     }
   ]
 }

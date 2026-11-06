@@ -113,6 +113,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-06 读了 L4 结论与代价（模型自己拆开写的凭证按形状认不出，可能留在项目 .llm/transcripts/ 的明文文件里，该目录不进 git）后答「那就开」。派 transcript-enable（wf_e67d1f1c90ebd359）照 bad85a49 的做法把 glm-hourness/transcript 行改为出厂启用：删 disabled、L2 钉住出厂启用、探针加出厂启用一项、glm-compact 的「禁用与无行逐字相同」改为在场景里显式禁用后照旧核对、DESIGN/HANDOFF/ORCHESTRATION 同批改并记下 l4.md 观察 1 的局限与人的决定；全量门禁与探针、独立评审、合入、人的桌面版核对 /glm-status 里 transcript 生效（不在人的会话里触发压缩）；桌面不过就新提交改回禁用。"
+    },
+    {
+      "at": "2026-11-06T12:44:48.540Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "transcript-enable（wf_e67d1f1c90ebd359）code 步被上游 503 打断，等待恢复。工作树 .worktrees/transcript-enable，分支 transcript-enable，基线 6b0b808。"
     }
   ]
 }

@@ -103,6 +103,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-06 19:18 进度：第二版队列（pid 60792）在高峰后接着跑，持 .llm/probe-lock；origin/ablation 已有 A0 两档、A1 两档的结果（最新 4ca66d88 docs(ablation): results of arm A1 on glm-5.3-flash）。剩 A2–A5 两档，跑完写 report.md 与 DESIGN.md 逐段结论再交评审。"
+    },
+    {
+      "at": "2026-11-06T12:44:48.236Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "消融队列（pid 60792）仍在跑，持 probe-lock（心跳 2026-11-06T20:42）。origin/ablation 已有 A0 两档、A1 两档、A2 两档结果（最新 28dbf0a5）。队列文件（queue-v2.json）已删，队列自己管状态。跑完写报告。"
     }
   ]
 }
