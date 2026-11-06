@@ -5,15 +5,18 @@
  * state under the project root write inside the run directory and never into
  * the project of the checkout the probe runs from (a work tree's project is
  * its main checkout's). The repositories are temporary directories of the
- * test; the run directory itself is not booted.
+ * test; the run directory itself is not booted. Where the run directory is
+ * (scripts/sandbox.mjs openRunDir, removeRunDir): directly under the
+ * temporary root, outside the repository tree, and its deletion never
+ * follows a junction into the checkout.
  */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative } from 'node:path'
 import test from 'node:test'
-import { initRepo, repo, scenarioWorkspace } from '../scripts/sandbox.mjs'
+import { initRepo, openRunDir, removeRunDir, repo, scenarioWorkspace } from '../scripts/sandbox.mjs'
 
 const head = (dir: string): string => spawnSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).stdout.trim()
 /** The repository a directory is in, as a real path in lower case, so the two spellings of one Windows path compare equal. */
@@ -75,6 +78,50 @@ test('every probe scenario boots in the directory scenarioWorkspace gives: the o
   const runner = /function runScenario\([^)]*\) \{[\s\S]*?\n\}\n/.exec(text)?.[0] ?? ''
   assert.ok(runner.includes('const workspace = scenarioWorkspace(dir, cwd)'), 'runScenario asks scenarioWorkspace for the directory')
   assert.ok(runner.includes('spawnSync(exe, args, { cwd: workspace,'), 'the runtime is spawned in that directory')
+  // The run directory is under the system temporary directory, which rc.3's workspace-write sandbox allows; the runtime's own is the scenario's.
+  // It is beside the scenario directories, never inside one: rc.3's Windows ACL sandbox refuses a temp root inside the workspace.
+  assert.ok(runner.includes("const temp = join(runDir, 'runtime-tmp', name)") && runner.includes('env: { ...env, TEMP: temp, TMP: temp }'), 'the runtime\'s temporary directory is the scenario\'s own, outside its directory')
   // No other place boots the runtime: every scenario goes through runScenario.
   assert.equal(text.match(/sandboxCommand\(/g)?.length, 1)
+})
+
+test('a probe run directory is a new directory directly under the temporary root, outside the checkout and outside any repository', () => {
+  const dir = openRunDir('2026-11-06T00-00-00-000Z')
+  try {
+    assert.equal(real(dirname(dir)), real(tmpdir()))
+    assert.match(basename(dir), /^glm-hourness-probe-2026-11-06T00-00-00-000Z-/)
+    assert.ok(relative(repo, dir).startsWith('..') || isAbsolute(relative(repo, dir)), `${dir} is outside ${repo}`)
+    // No repository above it: a scenario directory under it that is not made one has no project root to fall back to.
+    assert.notEqual(spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8' }).status, 0)
+  }
+  finally {
+    removeRunDir(dir)
+  }
+  assert.ok(!existsSync(dir))
+})
+
+test('removeRunDir unlinks the junctions inside before deleting, so the directory they point to keeps its files, and refuses any other directory', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'glmh-probe-tmp-'))
+  try {
+    const target = join(tmp, 'checkout', 'packages', 'glm')
+    mkdirSync(target, { recursive: true })
+    writeFileSync(join(target, 'index.js'), 'export {}\n')
+    const dir = openRunDir('stamp', tmp)
+    const modules = join(dir, 'dsh-root', 'profiles', 'probe-full', 'node_modules')
+    mkdirSync(modules, { recursive: true })
+    symlinkSync(target, join(modules, 'dsh-glm-zcode'), 'junction')
+    removeRunDir(dir, tmp)
+    assert.ok(!existsSync(dir))
+    assert.equal(readFileSync(join(target, 'index.js'), 'utf8'), 'export {}\n')
+
+    const other = join(tmp, 'checkout')
+    assert.throws(() => removeRunDir(other, tmp), /is not a probe run directory/)
+    const nested = join(openRunDir('stamp', tmp), 'glm-hourness-probe-inner')
+    mkdirSync(nested)
+    assert.throws(() => removeRunDir(nested, tmp), /is not a probe run directory/)
+    assert.ok(existsSync(join(target, 'index.js')) && existsSync(nested))
+  }
+  finally {
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 })
+  }
 })
