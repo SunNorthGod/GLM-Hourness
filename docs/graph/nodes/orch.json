@@ -607,6 +607,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "第六次往主检出写：17:50 主检出出现未提交的 tests/metrics-schema.spec.ts 改动（+5/-2），与 .worktrees/m5-index-truncation-alarm 里 17:51 写的同一文件内容一致。编排方存档到 .agents/tasks/zcode-parity/stray/metrics-schema-1750.patch 后还原主检出，并提醒该步只写自己的工作树。工具层挡主检出写入的线仍等 M7 合入后与写范围检查一起做。"
+    },
+    {
+      "at": "2026-11-06T10:34:05.695Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "Kiro 2026-11-06 18:30 前后再次重启，编排方对账：在跑的五路都已恢复。M7（wf_36d1d690c7e1de90）real-model-run-3 在跑；lessons-enable（wf_7ed94028a156d1cb）desktop-l4 在跑、持 desktop-lock；m5-index-truncation-alarm（wf_8924e7a9cdb716c0）code 步在跑；compact-recall-l4（wf_07a1fd00ce69e723）l4-check 在跑；ablation（wf_5f5345b05e5c4e89）code 步等回话，后台队列 pid 60792 活着、持 probe-lock，高峰已过，编排方回它照原计划跑完再写报告。main = origin = github = 6e545fd，主检出没有已跟踪改动。"
     }
   ]
 }
