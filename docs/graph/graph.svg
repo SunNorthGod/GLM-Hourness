@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1579" height="19150" viewBox="0 0 1579 19150" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="4f09928fc13f">
-<title>项目图 · 修订 4f09928fc13f · 269 个节点</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1579" height="19227" viewBox="0 0 1579 19227" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="1fd1657a7268">
+<title>项目图 · 修订 1fd1657a7268 · 270 个节点</title>
 <defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6b7280"/></marker><marker id="graph-arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7c3aed"/></marker></defs>
-<rect width="1579" height="19150" fill="#ffffff"/>
+<rect width="1579" height="19227" fill="#ffffff"/>
 <g data-legend="true" transform="translate(20 20)">
 <rect width="596" height="134" rx="8" fill="#f9fafb" stroke="#e5e7eb"/>
-<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 4f09928fc13f · 269 个节点</text>
+<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 1fd1657a7268 · 270 个节点</text>
 <text x="10" y="48.2" font-size="12" fill="#6b7280">状态</text>
 <rect x="54" y="37" width="28" height="14" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="88" y="48.2" font-size="12" fill="#111827">完成</text>
@@ -95,9 +95,9 @@
 <path data-edge="parent" data-node="zcode-3171" data-to="glm-house" d="M215 1799C247 1799 247 3383.5 279 3383.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="zcode-3171-follow" data-to="glm-house" d="M215 1799C247 1799 247 3469.5 279 3469.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-zcode-3171" data-to="glm-house" d="M215 1799C247 1799 247 3555.5 279 3555.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m0" data-to="hourness" d="M215 11299C247 11299 247 3662.5 279 3662.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="orch" data-to="hourness" d="M215 11299C247 11299 247 11183.5 279 11183.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m2" data-to="orch" d="M508 11183.5C540 11183.5 540 4224.5 572 4224.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m0" data-to="hourness" d="M215 11337.5C247 11337.5 247 3662.5 279 3662.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="orch" data-to="hourness" d="M215 11337.5C247 11337.5 247 11222 279 11222" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m2" data-to="orch" d="M508 11222C540 11222 540 4224.5 572 4224.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="q-graph-design" data-to="m2" d="M861 4224.5C893 4224.5 893 3742.5 925 3742.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m2-2" data-to="m2" d="M861 4224.5C893 4224.5 893 3819.5 925 3819.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m2-1" data-to="m2" d="M861 4224.5C893 4224.5 893 3887.5 925 3887.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -115,7 +115,7 @@
 <path data-edge="parent" data-node="q-graph-details" data-to="m2" d="M861 4224.5C893 4224.5 893 4597.5 925 4597.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-1" data-to="m2" d="M861 4224.5C893 4224.5 893 4656.5 925 4656.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m2-7" data-to="m2" d="M861 4224.5C893 4224.5 893 4715.5 925 4715.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m3" data-to="orch" d="M508 11183.5C540 11183.5 540 5452.5 572 5452.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m3" data-to="orch" d="M508 11222C540 11222 540 5452.5 572 5452.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m3-2" data-to="m3" d="M861 5452.5C893 5452.5 893 4786.5 925 4786.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m3-3" data-to="m3" d="M861 5452.5C893 5452.5 893 4845.5 925 4845.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m3-4" data-to="m3" d="M861 5452.5C893 5452.5 893 4904.5 925 4904.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -135,7 +135,7 @@
 <path data-edge="parent" data-node="d-main-agent-no-ask-card" data-to="m3" d="M861 5452.5C893 5452.5 893 5973.5 925 5973.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m3-metrics-wiring" data-to="m3" d="M861 5452.5C893 5452.5 893 6050.5 925 6050.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m3-5" data-to="m3" d="M861 5452.5C893 5452.5 893 6118.5 925 6118.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m4" data-to="orch" d="M508 11183.5C540 11183.5 540 6482 572 6482" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m4" data-to="orch" d="M508 11222C540 11222 540 6482 572 6482" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m4-gate" data-to="m4" d="M861 6482C893 6482 893 6189.5 925 6189.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m4-rules" data-to="m4" d="M861 6482C893 6482 893 6248.5 925 6248.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m4-checks" data-to="m4" d="M861 6482C893 6482 893 6307.5 925 6307.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -146,8 +146,8 @@
 <path data-edge="parent" data-node="m4-reanchor-violations" data-to="m4" d="M861 6482C893 6482 893 6629.5 925 6629.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m4-reanchor-norms" data-to="m4" d="M861 6482C893 6482 893 6706.5 925 6706.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m4-request-card" data-to="m4" d="M861 6482C893 6482 893 6774.5 925 6774.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-native-panel" data-to="orch" d="M508 11183.5C540 11183.5 540 6854.5 572 6854.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m5" data-to="orch" d="M508 11183.5C540 11183.5 540 7387 572 7387" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-native-panel" data-to="orch" d="M508 11222C540 11222 540 6854.5 572 6854.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m5" data-to="orch" d="M508 11222C540 11222 540 7387 572 7387" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m5-4" data-to="m5" d="M861 7387C893 7387 893 6934.5 925 6934.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m5-2" data-to="m5" d="M861 7387C893 7387 893 6993.5 925 6993.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m5-3" data-to="m5" d="M861 7387C893 7387 893 7061.5 925 7061.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -163,7 +163,7 @@
 <path data-edge="parent" data-node="lessons-4" data-to="lessons" d="M1210 7703.5C1242 7703.5 1242 7721.5 1274 7721.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="lessons-3" data-to="lessons" d="M1210 7703.5C1242 7703.5 1242 7780.5 1274 7780.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="lessons-1" data-to="lessons" d="M1210 7703.5C1242 7703.5 1242 7839.5 1274 7839.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="rules" data-to="orch" d="M508 11183.5C540 11183.5 540 8239 572 8239" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="rules" data-to="orch" d="M508 11222C540 11222 540 8239 572 8239" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-rules-human-only" data-to="rules" d="M861 8239C893 8239 893 7919.5 925 7919.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-32" data-to="rules" d="M861 8239C893 8239 893 7987.5 925 7987.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-33" data-to="rules" d="M861 8239C893 8239 893 8046.5 925 8046.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -174,18 +174,18 @@
 <path data-edge="parent" data-node="d-main-agent-peak-exempt" data-to="rules" d="M861 8239C893 8239 893 8404.5 925 8404.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-rules-in-repo" data-to="rules" d="M861 8239C893 8239 893 8481.5 925 8481.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="rules-r4d" data-to="rules" d="M861 8239C893 8239 893 8558.5 925 8558.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="dogfood" data-to="orch" d="M508 11183.5C540 11183.5 540 8686 572 8686" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="dogfood" data-to="orch" d="M508 11222C540 11222 540 8686 572 8686" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-dogfood-scope" data-to="dogfood" d="M861 8686C893 8686 893 8647.5 925 8647.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-rules-peak-slice" data-to="dogfood" d="M861 8686C893 8686 893 8724.5 925 8724.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-role-cards" data-to="orch" d="M508 11183.5C540 11183.5 540 8813.5 572 8813.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-dispatch" data-to="orch" d="M508 11183.5C540 11183.5 540 8890.5 572 8890.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-async-cards" data-to="orch" d="M508 11183.5C540 11183.5 540 8967.5 572 8967.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-driver" data-to="orch" d="M508 11183.5C540 11183.5 540 9053.5 572 9053.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="risk-orch-distribution" data-to="orch" d="M508 11183.5C540 11183.5 540 9139.5 572 9139.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-decision-tiers" data-to="orch" d="M508 11183.5C540 11183.5 540 9207.5 572 9207.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-audit-trail" data-to="orch" d="M508 11183.5C540 11183.5 540 9275.5 572 9275.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-verify-tiers" data-to="orch" d="M508 11183.5C540 11183.5 540 9352.5 572 9352.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m8" data-to="orch" d="M508 11183.5C540 11183.5 540 9723 572 9723" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-role-cards" data-to="orch" d="M508 11222C540 11222 540 8813.5 572 8813.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-dispatch" data-to="orch" d="M508 11222C540 11222 540 8890.5 572 8890.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-async-cards" data-to="orch" d="M508 11222C540 11222 540 8967.5 572 8967.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-driver" data-to="orch" d="M508 11222C540 11222 540 9053.5 572 9053.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="risk-orch-distribution" data-to="orch" d="M508 11222C540 11222 540 9139.5 572 9139.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-decision-tiers" data-to="orch" d="M508 11222C540 11222 540 9207.5 572 9207.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-audit-trail" data-to="orch" d="M508 11222C540 11222 540 9275.5 572 9275.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-verify-tiers" data-to="orch" d="M508 11222C540 11222 540 9352.5 572 9352.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m8" data-to="orch" d="M508 11222C540 11222 540 9723 572 9723" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m8-detail-layout" data-to="m8" d="M861 9723C893 9723 893 9432.5 925 9432.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m8-doing-layout" data-to="m8" d="M861 9723C893 9723 893 9491.5 925 9491.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m8-ui-audit" data-to="m8" d="M861 9723C893 9723 893 9559.5 925 9559.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -195,25 +195,25 @@
 <path data-edge="parent" data-node="guide-metrics-line" data-to="onboarding" d="M1210 9820.5C1242 9820.5 1242 9820.5 1274 9820.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m8-plain-language" data-to="m8" d="M861 9723C893 9723 893 9918.5 925 9918.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m8-row-titles" data-to="m8" d="M861 9723C893 9723 893 10004.5 925 10004.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-10" data-to="orch" d="M508 11183.5C540 11183.5 540 10093.5 572 10093.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="split" data-to="orch" d="M508 11183.5C540 11183.5 540 10348 572 10348" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-10" data-to="orch" d="M508 11222C540 11222 540 10093.5 572 10093.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="split" data-to="orch" d="M508 11222C540 11222 540 10348 572 10348" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-18" data-to="split" d="M861 10348C893 10348 893 10182.5 925 10182.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-13" data-to="split" d="M861 10348C893 10348 893 10250.5 925 10250.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-14" data-to="split" d="M861 10348C893 10348 893 10318.5 925 10318.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-15" data-to="split" d="M861 10348C893 10348 893 10386.5 925 10386.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-16" data-to="split" d="M861 10348C893 10348 893 10445.5 925 10445.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-17" data-to="split" d="M861 10348C893 10348 893 10513.5 925 10513.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="bootstrap" data-to="orch" d="M508 11183.5C540 11183.5 540 10611.5 572 10611.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="bootstrap" data-to="orch" d="M508 11222C540 11222 540 10611.5 572 10611.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-bootstrap-released" data-to="bootstrap" d="M861 10611.5C893 10611.5 893 10611.5 925 10611.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="ablation" data-to="orch" d="M508 11183.5C540 11183.5 540 10700.5 572 10700.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="metrics" data-to="orch" d="M508 11183.5C540 11183.5 540 10828 572 10828" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="ablation" data-to="orch" d="M508 11222C540 11222 540 10700.5 572 10700.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="metrics" data-to="orch" d="M508 11222C540 11222 540 10828 572 10828" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-metrics-ratios-person-only" data-to="metrics" d="M861 10828C893 10828 893 10789.5 925 10789.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-metrics-steps-by-checks" data-to="metrics" d="M861 10828C893 10828 893 10875.5 925 10875.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="risk-shared-desktop" data-to="orch" d="M508 11183.5C540 11183.5 540 10973.5 572 10973.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-11" data-to="orch" d="M508 11183.5C540 11183.5 540 11059.5 572 11059.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-12" data-to="orch" d="M508 11183.5C540 11183.5 540 11127.5 572 11127.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="reading-digest" data-to="orch" d="M508 11183.5C540 11183.5 540 11195.5 572 11195.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m6" data-to="orch" d="M508 11183.5C540 11183.5 540 11782.5 572 11782.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="risk-shared-desktop" data-to="orch" d="M508 11222C540 11222 540 10973.5 572 10973.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-11" data-to="orch" d="M508 11222C540 11222 540 11059.5 572 11059.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-12" data-to="orch" d="M508 11222C540 11222 540 11127.5 572 11127.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="reading-digest" data-to="orch" d="M508 11222C540 11222 540 11195.5 572 11195.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m6" data-to="orch" d="M508 11222C540 11222 540 11782.5 572 11782.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m6-host-export" data-to="m6" d="M861 11782.5C893 11782.5 893 11293.5 925 11293.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m6-reminder-text" data-to="m6" d="M861 11782.5C893 11782.5 893 11379.5 925 11379.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m6-probe" data-to="m6" d="M861 11782.5C893 11782.5 893 11465.5 925 11465.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -227,7 +227,7 @@
 <path data-edge="parent" data-node="m6-rules-probe" data-to="m6" d="M861 11782.5C893 11782.5 893 12126.5 925 12126.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m6-script-gate" data-to="m6" d="M861 11782.5C893 11782.5 893 12203.5 925 12203.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m6-metrics-events" data-to="m6" d="M861 11782.5C893 11782.5 893 12280.5 925 12280.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="m7" data-to="orch" d="M508 11183.5C540 11183.5 540 12902 572 12902" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="m7" data-to="orch" d="M508 11222C540 11222 540 12902 572 12902" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-plan-approval" data-to="m7" d="M861 12902C893 12902 893 12378.5 925 12378.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-37" data-to="m7" d="M861 12902C893 12902 893 12455.5 925 12455.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="question-38" data-to="m7" d="M861 12902C893 12902 893 12523.5 925 12523.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
@@ -244,73 +244,74 @@
 <path data-edge="parent" data-node="m7-habits" data-to="m7" d="M861 12902C893 12902 893 13298.5 925 13298.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="risk-calib-read" data-to="m7" d="M861 12902C893 12902 893 13375.5 925 13375.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="m7-10" data-to="m7" d="M861 12902C893 12902 893 13443.5 925 13443.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-recommend-last" data-to="orch" d="M508 11183.5C540 11183.5 540 13523.5 572 13523.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="recommend-last" data-to="orch" d="M508 11183.5C540 11183.5 540 13609.5 572 13609.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="prompt-fixes" data-to="orch" d="M508 11183.5C540 11183.5 540 13695.5 572 13695.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-failure-plans" data-to="orch" d="M508 11183.5C540 11183.5 540 13772.5 572 13772.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-28" data-to="orch" d="M508 11183.5C540 11183.5 540 13849.5 572 13849.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="field-trial" data-to="orch" d="M508 11183.5C540 11183.5 540 13947.5 572 13947.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-recommend-last" data-to="orch" d="M508 11222C540 11222 540 13523.5 572 13523.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="recommend-last" data-to="orch" d="M508 11222C540 11222 540 13609.5 572 13609.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="prompt-fixes" data-to="orch" d="M508 11222C540 11222 540 13695.5 572 13695.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-failure-plans" data-to="orch" d="M508 11222C540 11222 540 13772.5 572 13772.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-28" data-to="orch" d="M508 11222C540 11222 540 13849.5 572 13849.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="field-trial" data-to="orch" d="M508 11222C540 11222 540 13947.5 572 13947.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-video-paper-style" data-to="field-trial" d="M861 13947.5C893 13947.5 893 13947.5 925 13947.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-counter-line" data-to="orch" d="M508 11183.5C540 11183.5 540 14045.5 572 14045.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-29" data-to="orch" d="M508 11183.5C540 11183.5 540 14131.5 572 14131.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="prompt-audit" data-to="orch" d="M508 11183.5C540 11183.5 540 14226.5 572 14226.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-option-card" data-to="orch" d="M508 11183.5C540 11183.5 540 14321.5 572 14321.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-inertia-breaker" data-to="orch" d="M508 11183.5C540 11183.5 540 14407.5 572 14407.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-31" data-to="orch" d="M508 11183.5C540 11183.5 540 14484.5 572 14484.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-30" data-to="orch" d="M508 11183.5C540 11183.5 540 14561.5 572 14561.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-plain-questions" data-to="orch" d="M508 11183.5C540 11183.5 540 14638.5 572 14638.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-auto-drive" data-to="orch" d="M508 11183.5C540 11183.5 540 14724.5 572 14724.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-main-agent-models" data-to="orch" d="M508 11183.5C540 11183.5 540 14810.5 572 14810.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-main-agent-shell" data-to="orch" d="M508 11183.5C540 11183.5 540 14887.5 572 14887.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-one-main-agent" data-to="orch" d="M508 11183.5C540 11183.5 540 14973.5 572 14973.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-design-onepage" data-to="orch" d="M508 11183.5C540 11183.5 540 15068.5 572 15068.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-chat-not-cards" data-to="orch" d="M508 11183.5C540 11183.5 540 15163.5 572 15163.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="schedules" data-to="orch" d="M508 11183.5C540 11183.5 540 15258.5 572 15258.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-defaults-readonly" data-to="orch" d="M508 11183.5C540 11183.5 540 15353.5 572 15353.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-rules-visible" data-to="orch" d="M508 11183.5C540 11183.5 540 15439.5 572 15439.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="user-journey" data-to="orch" d="M508 11183.5C540 11183.5 540 15525.5 572 15525.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-boards-as-hooks" data-to="orch" d="M508 11183.5C540 11183.5 540 15611.5 572 15611.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-alignment-rounds" data-to="orch" d="M508 11183.5C540 11183.5 540 15697.5 572 15697.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-script-timeout" data-to="orch" d="M508 11183.5C540 11183.5 540 15783.5 572 15783.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-agent-examples" data-to="orch" d="M508 11183.5C540 11183.5 540 15869.5 572 15869.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-subagent-sonnet" data-to="orch" d="M508 11183.5C540 11183.5 540 15955.5 572 15955.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-freeze-until-dogfood" data-to="orch" d="M508 11183.5C540 11183.5 540 16032.5 572 16032.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-code-rules-enforce" data-to="orch" d="M508 11183.5C540 11183.5 540 16109.5 572 16109.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-credentials-readable" data-to="orch" d="M508 11183.5C540 11183.5 540 16186.5 572 16186.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-build-all-released" data-to="orch" d="M508 11183.5C540 11183.5 540 16263.5 572 16263.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-timeout-measured" data-to="orch" d="M508 11183.5C540 11183.5 540 16349.5 572 16349.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-desktop-direct-use" data-to="orch" d="M508 11183.5C540 11183.5 540 16444.5 572 16444.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-user-graph-one-graph" data-to="orch" d="M508 11183.5C540 11183.5 540 16539.5 572 16539.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="user-graph" data-to="orch" d="M508 11183.5C540 11183.5 540 16646.5 572 16646.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-counter-line" data-to="orch" d="M508 11222C540 11222 540 14045.5 572 14045.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-29" data-to="orch" d="M508 11222C540 11222 540 14131.5 572 14131.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="prompt-audit" data-to="orch" d="M508 11222C540 11222 540 14226.5 572 14226.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-option-card" data-to="orch" d="M508 11222C540 11222 540 14321.5 572 14321.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-inertia-breaker" data-to="orch" d="M508 11222C540 11222 540 14407.5 572 14407.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-31" data-to="orch" d="M508 11222C540 11222 540 14484.5 572 14484.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-30" data-to="orch" d="M508 11222C540 11222 540 14561.5 572 14561.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-plain-questions" data-to="orch" d="M508 11222C540 11222 540 14638.5 572 14638.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-auto-drive" data-to="orch" d="M508 11222C540 11222 540 14724.5 572 14724.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-main-agent-models" data-to="orch" d="M508 11222C540 11222 540 14810.5 572 14810.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-main-agent-shell" data-to="orch" d="M508 11222C540 11222 540 14887.5 572 14887.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-one-main-agent" data-to="orch" d="M508 11222C540 11222 540 14973.5 572 14973.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-design-onepage" data-to="orch" d="M508 11222C540 11222 540 15068.5 572 15068.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-chat-not-cards" data-to="orch" d="M508 11222C540 11222 540 15163.5 572 15163.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="schedules" data-to="orch" d="M508 11222C540 11222 540 15258.5 572 15258.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-defaults-readonly" data-to="orch" d="M508 11222C540 11222 540 15353.5 572 15353.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-rules-visible" data-to="orch" d="M508 11222C540 11222 540 15439.5 572 15439.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="user-journey" data-to="orch" d="M508 11222C540 11222 540 15525.5 572 15525.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-boards-as-hooks" data-to="orch" d="M508 11222C540 11222 540 15611.5 572 15611.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-alignment-rounds" data-to="orch" d="M508 11222C540 11222 540 15697.5 572 15697.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-script-timeout" data-to="orch" d="M508 11222C540 11222 540 15783.5 572 15783.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-agent-examples" data-to="orch" d="M508 11222C540 11222 540 15869.5 572 15869.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-subagent-sonnet" data-to="orch" d="M508 11222C540 11222 540 15955.5 572 15955.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-freeze-until-dogfood" data-to="orch" d="M508 11222C540 11222 540 16032.5 572 16032.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-code-rules-enforce" data-to="orch" d="M508 11222C540 11222 540 16109.5 572 16109.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-credentials-readable" data-to="orch" d="M508 11222C540 11222 540 16186.5 572 16186.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-build-all-released" data-to="orch" d="M508 11222C540 11222 540 16263.5 572 16263.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-timeout-measured" data-to="orch" d="M508 11222C540 11222 540 16349.5 572 16349.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-desktop-direct-use" data-to="orch" d="M508 11222C540 11222 540 16444.5 572 16444.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-user-graph-one-graph" data-to="orch" d="M508 11222C540 11222 540 16539.5 572 16539.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="user-graph" data-to="orch" d="M508 11222C540 11222 540 16646.5 572 16646.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="parent" data-node="d-user-graph-released" data-to="user-graph" d="M861 16646.5C893 16646.5 893 16646.5 925 16646.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-ask-three-gates" data-to="orch" d="M508 11183.5C540 11183.5 540 16762.5 572 16762.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-five-runs" data-to="orch" d="M508 11183.5C540 11183.5 540 16857.5 572 16857.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-status-hub" data-to="orch" d="M508 11183.5C540 11183.5 540 16943.5 572 16943.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="status-hub" data-to="orch" d="M508 11183.5C540 11183.5 540 17050.5 572 17050.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-status-hub-released" data-to="status-hub" d="M861 17050.5C893 17050.5 893 17050.5 925 17050.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-tests-required-gate" data-to="orch" d="M508 11183.5C540 11183.5 540 17157.5 572 17157.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-docs-tracked-for-handover" data-to="orch" d="M508 11183.5C540 11183.5 540 17243.5 572 17243.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-wip-branch-push" data-to="orch" d="M508 11183.5C540 11183.5 540 17329.5 572 17329.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-handover-on-request" data-to="orch" d="M508 11183.5C540 11183.5 540 17415.5 572 17415.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-publish-as-is" data-to="orch" d="M508 11183.5C540 11183.5 540 17492.5 572 17492.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-license-polyform" data-to="orch" d="M508 11183.5C540 11183.5 540 17569.5 572 17569.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="license-files" data-to="orch" d="M508 11183.5C540 11183.5 540 17655.5 572 17655.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="risk-1" data-to="orch" d="M508 11183.5C540 11183.5 540 17741.5 572 17741.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-finish-then-bootstrap" data-to="orch" d="M508 11183.5C540 11183.5 540 17809.5 572 17809.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-github-mirror-main" data-to="orch" d="M508 11183.5C540 11183.5 540 17877.5 572 17877.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-npm-after-done" data-to="orch" d="M508 11183.5C540 11183.5 540 17954.5 572 17954.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-parallel-lanes-desktop-free" data-to="orch" d="M508 11183.5C540 11183.5 540 18031.5 572 18031.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-desktop-cdp-only" data-to="orch" d="M508 11183.5C540 11183.5 540 18117.5 572 18117.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-habits-into-framework" data-to="orch" d="M508 11183.5C540 11183.5 540 18212.5 572 18212.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="habits-prompts" data-to="orch" d="M508 11183.5C540 11183.5 540 18298.5 572 18298.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="inject-via-prestep" data-to="orch" d="M508 11183.5C540 11183.5 540 18375.5 572 18375.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="probe-run-dir-outside-repo" data-to="orch" d="M508 11183.5C540 11183.5 540 18452.5 572 18452.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="data-journal-lock-flake" data-to="orch" d="M508 11183.5C540 11183.5 540 18529.5 572 18529.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="docs-at-hand" data-to="orch" d="M508 11183.5C540 11183.5 540 18615.5 572 18615.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="d-graph-programming" data-to="hourness" d="M215 11299C247 11299 247 18704.5 279 18704.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="question-27" data-to="hourness" d="M215 11299C247 11299 247 18781.5 279 18781.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-merge-gate" data-to="hourness" d="M215 11299C247 11299 247 18867.5 279 18867.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
-<path data-edge="parent" data-node="norm-review-floor" data-to="hourness" d="M215 11299C247 11299 247 18935.5 279 18935.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-ask-three-gates" data-to="orch" d="M508 11222C540 11222 540 16762.5 572 16762.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-status-hub" data-to="orch" d="M508 11222C540 11222 540 16866.5 572 16866.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="status-hub" data-to="orch" d="M508 11222C540 11222 540 16973.5 572 16973.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-status-hub-released" data-to="status-hub" d="M861 16973.5C893 16973.5 893 16973.5 925 16973.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-tests-required-gate" data-to="orch" d="M508 11222C540 11222 540 17080.5 572 17080.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-docs-tracked-for-handover" data-to="orch" d="M508 11222C540 11222 540 17166.5 572 17166.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-wip-branch-push" data-to="orch" d="M508 11222C540 11222 540 17252.5 572 17252.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-handover-on-request" data-to="orch" d="M508 11222C540 11222 540 17338.5 572 17338.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-publish-as-is" data-to="orch" d="M508 11222C540 11222 540 17415.5 572 17415.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-license-polyform" data-to="orch" d="M508 11222C540 11222 540 17492.5 572 17492.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="license-files" data-to="orch" d="M508 11222C540 11222 540 17578.5 572 17578.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="risk-1" data-to="orch" d="M508 11222C540 11222 540 17664.5 572 17664.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-five-runs" data-to="orch" d="M508 11222C540 11222 540 17741.5 572 17741.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-no-run-cap" data-to="orch" d="M508 11222C540 11222 540 17818.5 572 17818.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-finish-then-bootstrap" data-to="orch" d="M508 11222C540 11222 540 17886.5 572 17886.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-github-mirror-main" data-to="orch" d="M508 11222C540 11222 540 17954.5 572 17954.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-npm-after-done" data-to="orch" d="M508 11222C540 11222 540 18031.5 572 18031.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-parallel-lanes-desktop-free" data-to="orch" d="M508 11222C540 11222 540 18108.5 572 18108.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-desktop-cdp-only" data-to="orch" d="M508 11222C540 11222 540 18194.5 572 18194.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-habits-into-framework" data-to="orch" d="M508 11222C540 11222 540 18289.5 572 18289.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="habits-prompts" data-to="orch" d="M508 11222C540 11222 540 18375.5 572 18375.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="inject-via-prestep" data-to="orch" d="M508 11222C540 11222 540 18452.5 572 18452.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="probe-run-dir-outside-repo" data-to="orch" d="M508 11222C540 11222 540 18529.5 572 18529.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="data-journal-lock-flake" data-to="orch" d="M508 11222C540 11222 540 18606.5 572 18606.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="docs-at-hand" data-to="orch" d="M508 11222C540 11222 540 18692.5 572 18692.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="d-graph-programming" data-to="hourness" d="M215 11337.5C247 11337.5 247 18781.5 279 18781.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="question-27" data-to="hourness" d="M215 11337.5C247 11337.5 247 18858.5 279 18858.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-merge-gate" data-to="hourness" d="M215 11337.5C247 11337.5 247 18944.5 279 18944.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
+<path data-edge="parent" data-node="norm-review-floor" data-to="hourness" d="M215 11337.5C247 11337.5 247 19012.5 279 19012.5" fill="none" stroke="#9ca3af" stroke-width="1.5"/>
 <path data-edge="depends" data-node="ablation" data-to="split" d="M861 10361.4C941 10361.4 941 10710.3 861 10710.3" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
 <path data-edge="depends" data-node="bootstrap" data-to="split" d="M861 10361.4C928.9 10361.4 928.9 10624.9 861 10624.9" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
 <path data-edge="depends" data-node="dogfood" data-to="m3" d="M861 5465.9C941 5465.9 941 8699.4 861 8699.4" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#graph-arrow)"/>
@@ -404,6 +405,7 @@
 <path data-edge="source" data-node="split" data-to="question-10" d="M856.2 10106.9C927.4 10106.9 927.4 10361.4 861 10361.4" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#graph-arrow)"/>
 <path data-edge="supersedes" data-node="d-dispatch" data-to="d-role-cards" d="M856.2 8826.9C893 8826.9 893 8903.9 856.2 8903.9" fill="none" stroke="#7c3aed" stroke-width="1.8" marker-end="url(#graph-arrow-purple)"/>
 <path data-edge="supersedes" data-node="d-main-agent-no-ask-card" data-to="d-interview-cards" d="M1205.2 5904.5C1242.9 5904.5 1242.9 5986.9 1205.2 5986.9" fill="none" stroke="#7c3aed" stroke-width="1.8" marker-end="url(#graph-arrow-purple)"/>
+<path data-edge="supersedes" data-node="d-no-run-cap" data-to="d-five-runs" d="M856.2 17754.9C893 17754.9 893 17831.9 856.2 17831.9" fill="none" stroke="#7c3aed" stroke-width="1.8" marker-end="url(#graph-arrow-purple)"/>
 <g data-id="glm-house" data-type="goal" data-status="done" data-tone="done">
 <title>GLM 住进 DSH：以 ZCode 3.16.3 的训练分布工作，质量与官方 ZCode 一致
 glm-house · 目标 · 完成</title>
@@ -837,11 +839,11 @@ d-zcode-3171 · 决策 · 已批准 · 未验证</title>
 <g data-id="hourness" data-type="goal" data-status="doing" data-tone="doing">
 <title>开发由系统保证：任何模型在 DSH 里沿项目图干活，人在图上编程
 hourness · 目标 · 进行中</title>
-<rect x="0" y="11252" width="215" height="94" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2.5"/>
-<text x="107.5" y="11275.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">开发由系统保证：任何模型在</text>
-<text x="107.5" y="11296.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">DSH 里沿项目图干活，人在</text>
-<text x="107.5" y="11317.8" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">图上编程</text>
-<text x="107.5" y="11334.4" text-anchor="middle" font-size="11" fill="#6b7280">hourness</text>
+<rect x="0" y="11290.5" width="215" height="94" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2.5"/>
+<text x="107.5" y="11314.3" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">开发由系统保证：任何模型在</text>
+<text x="107.5" y="11335.3" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">DSH 里沿项目图干活，人在</text>
+<text x="107.5" y="11356.3" text-anchor="middle" font-size="15" font-weight="600" fill="#111827">图上编程</text>
+<text x="107.5" y="11372.9" text-anchor="middle" font-size="11" fill="#6b7280">hourness</text>
 </g>
 <g data-id="m0" data-type="feature" data-status="done" data-tone="done">
 <title>M0 文档沉淀
@@ -853,9 +855,9 @@ m0 · 特性 · 完成</title>
 <g data-id="orch" data-type="feature" data-status="approved" data-tone="todo">
 <title>编排层：LLM 之上的工作流
 orch · 特性 · 已批准</title>
-<rect x="279" y="11159" width="229" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="393.5" y="11180.6" text-anchor="middle" font-size="13" fill="#111827">编排层：LLM 之上的工作流</text>
-<text x="393.5" y="11196.4" text-anchor="middle" font-size="11" fill="#6b7280">orch</text>
+<rect x="279" y="11197.5" width="229" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="393.5" y="11219.1" text-anchor="middle" font-size="13" fill="#111827">编排层：LLM 之上的工作流</text>
+<text x="393.5" y="11234.9" text-anchor="middle" font-size="11" fill="#6b7280">orch</text>
 </g>
 <g data-id="m2" data-type="feature" data-status="done" data-tone="done">
 <title>M2 项目图行走骨架
@@ -2365,228 +2367,236 @@ d-ask-three-gates · 决策 · 已批准 · 未验证</title>
 <text x="716.5" y="16786.6" text-anchor="middle" font-size="13" fill="#111827">行）</text>
 <text x="716.5" y="16802.4" text-anchor="middle" font-size="11" fill="#6b7280">d-ask-three-gates · 未验证</text>
 </g>
-<g data-id="d-five-runs" data-type="decision" data-status="approved" data-tone="todo">
-<title>同时只跑五个运行，按关键路径排先后
-d-five-runs · 决策 · 已批准 · 未验证</title>
-<polygon points="584,16824 849,16824 861,16857.5 849,16891 584,16891 572,16857.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="16845.6" text-anchor="middle" font-size="13" fill="#111827">同时只跑五个运行，按关键</text>
-<text x="716.5" y="16863.6" text-anchor="middle" font-size="13" fill="#111827">路径排先后</text>
-<text x="716.5" y="16879.4" text-anchor="middle" font-size="11" fill="#6b7280">d-five-runs · 未验证</text>
-</g>
 <g data-id="d-status-hub" data-type="decision" data-status="approved" data-tone="todo">
 <title>状态只交一次：面板、晨报、周报与主 Agent 都从这里读
 d-status-hub · 决策 · 已批准 · 未验证</title>
-<polygon points="584,16901 849,16901 861,16943.5 849,16986 584,16986 572,16943.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="16922.6" text-anchor="middle" font-size="13" fill="#111827">状态只交一次：面板、晨</text>
-<text x="716.5" y="16940.6" text-anchor="middle" font-size="13" fill="#111827">报、周报与主 Agent 都从</text>
-<text x="716.5" y="16958.6" text-anchor="middle" font-size="13" fill="#111827">这里读</text>
-<text x="716.5" y="16974.4" text-anchor="middle" font-size="11" fill="#6b7280">d-status-hub · 未验证</text>
+<polygon points="584,16824 849,16824 861,16866.5 849,16909 584,16909 572,16866.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="16845.6" text-anchor="middle" font-size="13" fill="#111827">状态只交一次：面板、晨</text>
+<text x="716.5" y="16863.6" text-anchor="middle" font-size="13" fill="#111827">报、周报与主 Agent 都从</text>
+<text x="716.5" y="16881.6" text-anchor="middle" font-size="13" fill="#111827">这里读</text>
+<text x="716.5" y="16897.4" text-anchor="middle" font-size="11" fill="#6b7280">d-status-hub · 未验证</text>
 </g>
 <g data-id="status-hub" data-type="feature" data-status="doing" data-tone="doing">
 <title>状态板块：各模块的状态只交一次，面板、晨报、周报与主 Agent 都从这里读
 status-hub · 特性 · 进行中</title>
-<rect x="572" y="17008" width="289" height="85" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
-<text x="716.5" y="17029.6" text-anchor="middle" font-size="13" fill="#111827">状态板块：各模块的状态只</text>
-<text x="716.5" y="17047.6" text-anchor="middle" font-size="13" fill="#111827">交一次，面板、晨报、周报</text>
-<text x="716.5" y="17065.6" text-anchor="middle" font-size="13" fill="#111827">与主 Agent 都从这里读</text>
-<text x="716.5" y="17081.4" text-anchor="middle" font-size="11" fill="#6b7280">status-hub</text>
+<rect x="572" y="16931" width="289" height="85" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+<text x="716.5" y="16952.6" text-anchor="middle" font-size="13" fill="#111827">状态板块：各模块的状态只</text>
+<text x="716.5" y="16970.6" text-anchor="middle" font-size="13" fill="#111827">交一次，面板、晨报、周报</text>
+<text x="716.5" y="16988.6" text-anchor="middle" font-size="13" fill="#111827">与主 Agent 都从这里读</text>
+<text x="716.5" y="17004.4" text-anchor="middle" font-size="11" fill="#6b7280">status-hub</text>
 </g>
 <g data-id="d-status-hub-released" data-type="decision" data-status="approved" data-tone="todo">
 <title>状态板块设计 0.3 放行；6 条做完条件由人定下
 d-status-hub-released · 决策 · 已批准 · 未验证</title>
-<polygon points="937,17017 1198,17017 1210,17050.5 1198,17084 937,17084 925,17050.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="1067.5" y="17038.6" text-anchor="middle" font-size="13" fill="#111827">状态板块设计 0.3 放行；6</text>
-<text x="1067.5" y="17056.6" text-anchor="middle" font-size="13" fill="#111827">条做完条件由人定下</text>
-<text x="1067.5" y="17072.4" text-anchor="middle" font-size="11" fill="#6b7280">d-status-hub-released · 未验证</text>
+<polygon points="937,16940 1198,16940 1210,16973.5 1198,17007 937,17007 925,16973.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="1067.5" y="16961.6" text-anchor="middle" font-size="13" fill="#111827">状态板块设计 0.3 放行；6</text>
+<text x="1067.5" y="16979.6" text-anchor="middle" font-size="13" fill="#111827">条做完条件由人定下</text>
+<text x="1067.5" y="16995.4" text-anchor="middle" font-size="11" fill="#6b7280">d-status-hub-released · 未验证</text>
 </g>
 <g data-id="d-tests-required-gate" data-type="decision" data-status="approved" data-tone="todo">
 <title>插件带出去的项目：模块的测试命令必须在已同意的检查里，没有就挡住合入
 d-tests-required-gate · 决策 · 已批准 · 未验证</title>
-<polygon points="584,17115 849,17115 861,17157.5 849,17200 584,17200 572,17157.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="17136.6" text-anchor="middle" font-size="13" fill="#111827">插件带出去的项目：模块的</text>
-<text x="716.5" y="17154.6" text-anchor="middle" font-size="13" fill="#111827">测试命令必须在已同意的检</text>
-<text x="716.5" y="17172.6" text-anchor="middle" font-size="13" fill="#111827">查里，没有就挡住合入</text>
-<text x="716.5" y="17188.4" text-anchor="middle" font-size="11" fill="#6b7280">d-tests-required-gate · 未验证</text>
+<polygon points="584,17038 849,17038 861,17080.5 849,17123 584,17123 572,17080.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="17059.6" text-anchor="middle" font-size="13" fill="#111827">插件带出去的项目：模块的</text>
+<text x="716.5" y="17077.6" text-anchor="middle" font-size="13" fill="#111827">测试命令必须在已同意的检</text>
+<text x="716.5" y="17095.6" text-anchor="middle" font-size="13" fill="#111827">查里，没有就挡住合入</text>
+<text x="716.5" y="17111.4" text-anchor="middle" font-size="11" fill="#6b7280">d-tests-required-gate · 未验证</text>
 </g>
 <g data-id="d-docs-tracked-for-handover" data-type="decision" data-status="approved" data-tone="todo">
 <title>设计文稿纳入版本库，交接说明写成完整的现状
 d-docs-tracked-for-handover · 决策 · 已批准 · 未验证</title>
-<polygon points="584,17210 849,17210 861,17243.5 849,17277 584,17277 572,17243.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="17231.6" text-anchor="middle" font-size="13" fill="#111827">设计文稿纳入版本库，交接</text>
-<text x="716.5" y="17249.6" text-anchor="middle" font-size="13" fill="#111827">说明写成完整的现状</text>
-<text x="716.5" y="17265.4" text-anchor="middle" font-size="11" fill="#6b7280">d-docs-tracked-for-handover · 未验证</text>
+<polygon points="584,17133 849,17133 861,17166.5 849,17200 584,17200 572,17166.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="17154.6" text-anchor="middle" font-size="13" fill="#111827">设计文稿纳入版本库，交接</text>
+<text x="716.5" y="17172.6" text-anchor="middle" font-size="13" fill="#111827">说明写成完整的现状</text>
+<text x="716.5" y="17188.4" text-anchor="middle" font-size="11" fill="#6b7280">d-docs-tracked-for-handover · 未验证</text>
 </g>
 <g data-id="d-wip-branch-push" data-type="decision" data-status="approved" data-tone="todo">
 <title>进行中的分支每轮改完就推，允许改写；只有 main 坚决不强推
 d-wip-branch-push · 决策 · 已批准 · 未验证</title>
-<polygon points="584,17287 849,17287 861,17329.5 849,17372 584,17372 572,17329.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="17308.6" text-anchor="middle" font-size="13" fill="#111827">进行中的分支每轮改完就</text>
-<text x="716.5" y="17326.6" text-anchor="middle" font-size="13" fill="#111827">推，允许改写；只有 main</text>
-<text x="716.5" y="17344.6" text-anchor="middle" font-size="13" fill="#111827">坚决不强推</text>
-<text x="716.5" y="17360.4" text-anchor="middle" font-size="11" fill="#6b7280">d-wip-branch-push · 未验证</text>
+<polygon points="584,17210 849,17210 861,17252.5 849,17295 584,17295 572,17252.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="17231.6" text-anchor="middle" font-size="13" fill="#111827">进行中的分支每轮改完就</text>
+<text x="716.5" y="17249.6" text-anchor="middle" font-size="13" fill="#111827">推，允许改写；只有 main</text>
+<text x="716.5" y="17267.6" text-anchor="middle" font-size="13" fill="#111827">坚决不强推</text>
+<text x="716.5" y="17283.4" text-anchor="middle" font-size="11" fill="#6b7280">d-wip-branch-push · 未验证</text>
 </g>
 <g data-id="d-handover-on-request" data-type="decision" data-status="approved" data-tone="todo">
 <title>换工具的交接等人开口再做，照固定三步收尾
 d-handover-on-request · 决策 · 已批准 · 未验证</title>
-<polygon points="584,17382 849,17382 861,17415.5 849,17449 584,17449 572,17415.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="17403.6" text-anchor="middle" font-size="13" fill="#111827">换工具的交接等人开口再</text>
-<text x="716.5" y="17421.6" text-anchor="middle" font-size="13" fill="#111827">做，照固定三步收尾</text>
-<text x="716.5" y="17437.4" text-anchor="middle" font-size="11" fill="#6b7280">d-handover-on-request · 未验证</text>
+<polygon points="584,17305 849,17305 861,17338.5 849,17372 584,17372 572,17338.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="17326.6" text-anchor="middle" font-size="13" fill="#111827">换工具的交接等人开口再</text>
+<text x="716.5" y="17344.6" text-anchor="middle" font-size="13" fill="#111827">做，照固定三步收尾</text>
+<text x="716.5" y="17360.4" text-anchor="middle" font-size="11" fill="#6b7280">d-handover-on-request · 未验证</text>
 </g>
 <g data-id="d-publish-as-is" data-type="decision" data-status="approved" data-tone="todo">
 <title>公开时照现在的形态发，内嵌的逐字文本不另做处理
 d-publish-as-is · 决策 · 已批准 · 未验证</title>
-<polygon points="584,17459 849,17459 861,17492.5 849,17526 584,17526 572,17492.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="17480.6" text-anchor="middle" font-size="13" fill="#111827">公开时照现在的形态发，内</text>
-<text x="716.5" y="17498.6" text-anchor="middle" font-size="13" fill="#111827">嵌的逐字文本不另做处理</text>
-<text x="716.5" y="17514.4" text-anchor="middle" font-size="11" fill="#6b7280">d-publish-as-is · 未验证</text>
+<polygon points="584,17382 849,17382 861,17415.5 849,17449 584,17449 572,17415.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="17403.6" text-anchor="middle" font-size="13" fill="#111827">公开时照现在的形态发，内</text>
+<text x="716.5" y="17421.6" text-anchor="middle" font-size="13" fill="#111827">嵌的逐字文本不另做处理</text>
+<text x="716.5" y="17437.4" text-anchor="middle" font-size="11" fill="#6b7280">d-publish-as-is · 未验证</text>
 </g>
 <g data-id="d-license-polyform" data-type="decision" data-status="approved" data-tone="todo">
 <title>仓库许可用 PolyForm 非商业许可，另附第三方声明
 d-license-polyform · 决策 · 已批准 · 未验证</title>
-<polygon points="584,17536 849,17536 861,17569.5 849,17603 584,17603 572,17569.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="17557.6" text-anchor="middle" font-size="13" fill="#111827">仓库许可用 PolyForm 非</text>
-<text x="716.5" y="17575.6" text-anchor="middle" font-size="13" fill="#111827">商业许可，另附第三方声明</text>
-<text x="716.5" y="17591.4" text-anchor="middle" font-size="11" fill="#6b7280">d-license-polyform · 未验证</text>
+<polygon points="584,17459 849,17459 861,17492.5 849,17526 584,17526 572,17492.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="17480.6" text-anchor="middle" font-size="13" fill="#111827">仓库许可用 PolyForm 非</text>
+<text x="716.5" y="17498.6" text-anchor="middle" font-size="13" fill="#111827">商业许可，另附第三方声明</text>
+<text x="716.5" y="17514.4" text-anchor="middle" font-size="11" fill="#6b7280">d-license-polyform · 未验证</text>
 </g>
 <g data-id="license-files" data-type="task" data-status="done" data-tone="done">
 <title>仓库许可与第三方声明：LICENSE、第三方声明、依赖许可清单
 license-files · 任务 · 完成</title>
-<rect x="572" y="17613" width="289" height="85" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="716.5" y="17634.6" text-anchor="middle" font-size="13" fill="#111827">仓库许可与第三方声明：</text>
-<text x="716.5" y="17652.6" text-anchor="middle" font-size="13" fill="#111827">LICENSE、第三方声明、依</text>
-<text x="716.5" y="17670.6" text-anchor="middle" font-size="13" fill="#111827">赖许可清单</text>
-<text x="716.5" y="17686.4" text-anchor="middle" font-size="11" fill="#6b7280">license-files</text>
+<rect x="572" y="17536" width="289" height="85" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="716.5" y="17557.6" text-anchor="middle" font-size="13" fill="#111827">仓库许可与第三方声明：</text>
+<text x="716.5" y="17575.6" text-anchor="middle" font-size="13" fill="#111827">LICENSE、第三方声明、依</text>
+<text x="716.5" y="17593.6" text-anchor="middle" font-size="13" fill="#111827">赖许可清单</text>
+<text x="716.5" y="17609.4" text-anchor="middle" font-size="11" fill="#6b7280">license-files</text>
 </g>
 <g data-id="risk-1" data-type="risk" data-status="approved" data-tone="todo">
 <title>公开形态与逐字文本的转发权
 risk-1 · 风险 · 已批准</title>
-<rect x="572" y="17708" width="289" height="67" rx="6" fill="#f3f4f6" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5 3"/>
-<text x="716.5" y="17729.6" text-anchor="middle" font-size="13" fill="#111827">公开形态与逐字文本的转发</text>
-<text x="716.5" y="17747.6" text-anchor="middle" font-size="13" fill="#111827">权</text>
-<text x="716.5" y="17763.4" text-anchor="middle" font-size="11" fill="#6b7280">risk-1</text>
+<rect x="572" y="17631" width="289" height="67" rx="6" fill="#f3f4f6" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="716.5" y="17652.6" text-anchor="middle" font-size="13" fill="#111827">公开形态与逐字文本的转发</text>
+<text x="716.5" y="17670.6" text-anchor="middle" font-size="13" fill="#111827">权</text>
+<text x="716.5" y="17686.4" text-anchor="middle" font-size="11" fill="#6b7280">risk-1</text>
+</g>
+<g data-id="d-five-runs" data-type="decision" data-status="superseded" data-tone="closed" opacity="0.5">
+<title>同时只跑五个运行，按关键路径排先后
+d-five-runs · 决策 · 被取代 · 被取代</title>
+<polygon points="584,17708 849,17708 861,17741.5 849,17775 584,17775 572,17741.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="17729.6" text-anchor="middle" font-size="13" fill="#111827">同时只跑五个运行，按关键</text>
+<text x="716.5" y="17747.6" text-anchor="middle" font-size="13" fill="#111827">路径排先后</text>
+<text x="716.5" y="17763.4" text-anchor="middle" font-size="11" fill="#6b7280">d-five-runs · 被取代</text>
+</g>
+<g data-id="d-no-run-cap" data-type="decision" data-status="approved" data-tone="todo">
+<title>不限同时运行的条数，能开的线全开
+d-no-run-cap · 决策 · 已批准 · 未验证</title>
+<polygon points="584,17785 849,17785 861,17818.5 849,17852 584,17852 572,17818.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="17806.6" text-anchor="middle" font-size="13" fill="#111827">不限同时运行的条数，能开</text>
+<text x="716.5" y="17824.6" text-anchor="middle" font-size="13" fill="#111827">的线全开</text>
+<text x="716.5" y="17840.4" text-anchor="middle" font-size="11" fill="#6b7280">d-no-run-cap · 未验证</text>
 </g>
 <g data-id="d-finish-then-bootstrap" data-type="decision" data-status="approved" data-tone="todo">
 <title>先彻底做完再进自举
 d-finish-then-bootstrap · 决策 · 已批准 · 未验证</title>
-<polygon points="584,17785 849,17785 861,17809.5 849,17834 584,17834 572,17809.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="17806.6" text-anchor="middle" font-size="13" fill="#111827">先彻底做完再进自举</text>
-<text x="716.5" y="17822.4" text-anchor="middle" font-size="11" fill="#6b7280">d-finish-then-bootstrap · 未验证</text>
+<polygon points="584,17862 849,17862 861,17886.5 849,17911 584,17911 572,17886.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="17883.6" text-anchor="middle" font-size="13" fill="#111827">先彻底做完再进自举</text>
+<text x="716.5" y="17899.4" text-anchor="middle" font-size="11" fill="#6b7280">d-finish-then-bootstrap · 未验证</text>
 </g>
 <g data-id="d-github-mirror-main" data-type="decision" data-status="approved" data-tone="todo">
 <title>GitHub 镜像只跟主干，工作分支只在 Gitee
 d-github-mirror-main · 决策 · 已批准 · 未验证</title>
-<polygon points="584,17844 849,17844 861,17877.5 849,17911 584,17911 572,17877.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="17865.6" text-anchor="middle" font-size="13" fill="#111827">GitHub 镜像只跟主干，工</text>
-<text x="716.5" y="17883.6" text-anchor="middle" font-size="13" fill="#111827">作分支只在 Gitee</text>
-<text x="716.5" y="17899.4" text-anchor="middle" font-size="11" fill="#6b7280">d-github-mirror-main · 未验证</text>
+<polygon points="584,17921 849,17921 861,17954.5 849,17988 584,17988 572,17954.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="17942.6" text-anchor="middle" font-size="13" fill="#111827">GitHub 镜像只跟主干，工</text>
+<text x="716.5" y="17960.6" text-anchor="middle" font-size="13" fill="#111827">作分支只在 Gitee</text>
+<text x="716.5" y="17976.4" text-anchor="middle" font-size="11" fill="#6b7280">d-github-mirror-main · 未验证</text>
 </g>
 <g data-id="d-npm-after-done" data-type="decision" data-status="approved" data-tone="todo">
 <title>npm 等整体彻底做完再发版，由人执行
 d-npm-after-done · 决策 · 已批准 · 未验证</title>
-<polygon points="584,17921 849,17921 861,17954.5 849,17988 584,17988 572,17954.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="17942.6" text-anchor="middle" font-size="13" fill="#111827">npm 等整体彻底做完再发</text>
-<text x="716.5" y="17960.6" text-anchor="middle" font-size="13" fill="#111827">版，由人执行</text>
-<text x="716.5" y="17976.4" text-anchor="middle" font-size="11" fill="#6b7280">d-npm-after-done · 未验证</text>
+<polygon points="584,17998 849,17998 861,18031.5 849,18065 584,18065 572,18031.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="18019.6" text-anchor="middle" font-size="13" fill="#111827">npm 等整体彻底做完再发</text>
+<text x="716.5" y="18037.6" text-anchor="middle" font-size="13" fill="#111827">版，由人执行</text>
+<text x="716.5" y="18053.4" text-anchor="middle" font-size="11" fill="#6b7280">d-npm-after-done · 未验证</text>
 </g>
 <g data-id="d-parallel-lanes-desktop-free" data-type="decision" data-status="approved" data-tone="todo">
 <title>桌面版由编排方直接关开与核对；能并行的线尽量都开
 d-parallel-lanes-desktop-free · 决策 · 已批准 · 未验证</title>
-<polygon points="584,17998 849,17998 861,18031.5 849,18065 584,18065 572,18031.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="18019.6" text-anchor="middle" font-size="13" fill="#111827">桌面版由编排方直接关开与</text>
-<text x="716.5" y="18037.6" text-anchor="middle" font-size="13" fill="#111827">核对；能并行的线尽量都开</text>
-<text x="716.5" y="18053.4" text-anchor="middle" font-size="11" fill="#6b7280">d-parallel-lanes-desktop-free · 未验证</text>
+<polygon points="584,18075 849,18075 861,18108.5 849,18142 584,18142 572,18108.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="18096.6" text-anchor="middle" font-size="13" fill="#111827">桌面版由编排方直接关开与</text>
+<text x="716.5" y="18114.6" text-anchor="middle" font-size="13" fill="#111827">核对；能并行的线尽量都开</text>
+<text x="716.5" y="18130.4" text-anchor="middle" font-size="11" fill="#6b7280">d-parallel-lanes-desktop-free · 未验证</text>
 </g>
 <g data-id="d-desktop-cdp-only" data-type="decision" data-status="approved" data-tone="todo">
 <title>操作桌面版只经调试端口（CDP），不注入系统鼠标键盘
 d-desktop-cdp-only · 决策 · 已批准 · 未验证</title>
-<polygon points="584,18075 849,18075 861,18117.5 849,18160 584,18160 572,18117.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="18096.6" text-anchor="middle" font-size="13" fill="#111827">操作桌面版只经调试端口</text>
-<text x="716.5" y="18114.6" text-anchor="middle" font-size="13" fill="#111827">（CDP），不注入系统鼠标</text>
-<text x="716.5" y="18132.6" text-anchor="middle" font-size="13" fill="#111827">键盘</text>
-<text x="716.5" y="18148.4" text-anchor="middle" font-size="11" fill="#6b7280">d-desktop-cdp-only · 未验证</text>
+<polygon points="584,18152 849,18152 861,18194.5 849,18237 584,18237 572,18194.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="18173.6" text-anchor="middle" font-size="13" fill="#111827">操作桌面版只经调试端口</text>
+<text x="716.5" y="18191.6" text-anchor="middle" font-size="13" fill="#111827">（CDP），不注入系统鼠标</text>
+<text x="716.5" y="18209.6" text-anchor="middle" font-size="13" fill="#111827">键盘</text>
+<text x="716.5" y="18225.4" text-anchor="middle" font-size="11" fill="#6b7280">d-desktop-cdp-only · 未验证</text>
 </g>
 <g data-id="d-habits-into-framework" data-type="decision" data-status="approved" data-tone="todo">
 <title>人的工程习惯做成编排框架的默认做法，人设与说话风格照旧不进插件
 d-habits-into-framework · 决策 · 已批准 · 未验证</title>
-<polygon points="584,18170 849,18170 861,18212.5 849,18255 584,18255 572,18212.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="716.5" y="18191.6" text-anchor="middle" font-size="13" fill="#111827">人的工程习惯做成编排框架</text>
-<text x="716.5" y="18209.6" text-anchor="middle" font-size="13" fill="#111827">的默认做法，人设与说话风</text>
-<text x="716.5" y="18227.6" text-anchor="middle" font-size="13" fill="#111827">格照旧不进插件</text>
-<text x="716.5" y="18243.4" text-anchor="middle" font-size="11" fill="#6b7280">d-habits-into-framework · 未验证</text>
+<polygon points="584,18247 849,18247 861,18289.5 849,18332 584,18332 572,18289.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="716.5" y="18268.6" text-anchor="middle" font-size="13" fill="#111827">人的工程习惯做成编排框架</text>
+<text x="716.5" y="18286.6" text-anchor="middle" font-size="13" fill="#111827">的默认做法，人设与说话风</text>
+<text x="716.5" y="18304.6" text-anchor="middle" font-size="13" fill="#111827">格照旧不进插件</text>
+<text x="716.5" y="18320.4" text-anchor="middle" font-size="11" fill="#6b7280">d-habits-into-framework · 未验证</text>
 </g>
 <g data-id="habits-prompts" data-type="task" data-status="done" data-tone="done">
 <title>第二次返工先提醒、汇报说清可靠度、规范写意图
 habits-prompts · 任务 · 完成</title>
-<rect x="572" y="18265" width="289" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="716.5" y="18286.6" text-anchor="middle" font-size="13" fill="#111827">第二次返工先提醒、汇报说</text>
-<text x="716.5" y="18304.6" text-anchor="middle" font-size="13" fill="#111827">清可靠度、规范写意图</text>
-<text x="716.5" y="18320.4" text-anchor="middle" font-size="11" fill="#6b7280">habits-prompts</text>
+<rect x="572" y="18342" width="289" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="716.5" y="18363.6" text-anchor="middle" font-size="13" fill="#111827">第二次返工先提醒、汇报说</text>
+<text x="716.5" y="18381.6" text-anchor="middle" font-size="13" fill="#111827">清可靠度、规范写意图</text>
+<text x="716.5" y="18397.4" text-anchor="middle" font-size="11" fill="#6b7280">habits-prompts</text>
 </g>
 <g data-id="inject-via-prestep" data-type="task" data-status="done" data-tone="done">
 <title>插件的提示不再排在会话收件箱里，桌面版能直接关掉
 inject-via-prestep · 任务 · 完成</title>
-<rect x="572" y="18342" width="289" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="716.5" y="18363.6" text-anchor="middle" font-size="13" fill="#111827">插件的提示不再排在会话收</text>
-<text x="716.5" y="18381.6" text-anchor="middle" font-size="13" fill="#111827">件箱里，桌面版能直接关掉</text>
-<text x="716.5" y="18397.4" text-anchor="middle" font-size="11" fill="#6b7280">inject-via-prestep</text>
+<rect x="572" y="18419" width="289" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="716.5" y="18440.6" text-anchor="middle" font-size="13" fill="#111827">插件的提示不再排在会话收</text>
+<text x="716.5" y="18458.6" text-anchor="middle" font-size="13" fill="#111827">件箱里，桌面版能直接关掉</text>
+<text x="716.5" y="18474.4" text-anchor="middle" font-size="11" fill="#6b7280">inject-via-prestep</text>
 </g>
 <g data-id="probe-run-dir-outside-repo" data-type="task" data-status="done" data-tone="done">
 <title>探针的临时运行目录挪到仓库外面
 probe-run-dir-outside-repo · 任务 · 完成</title>
-<rect x="572" y="18419" width="289" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="716.5" y="18440.6" text-anchor="middle" font-size="13" fill="#111827">探针的临时运行目录挪到仓</text>
-<text x="716.5" y="18458.6" text-anchor="middle" font-size="13" fill="#111827">库外面</text>
-<text x="716.5" y="18474.4" text-anchor="middle" font-size="11" fill="#6b7280">probe-run-dir-outside-repo</text>
+<rect x="572" y="18496" width="289" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="716.5" y="18517.6" text-anchor="middle" font-size="13" fill="#111827">探针的临时运行目录挪到仓</text>
+<text x="716.5" y="18535.6" text-anchor="middle" font-size="13" fill="#111827">库外面</text>
+<text x="716.5" y="18551.4" text-anchor="middle" font-size="11" fill="#6b7280">probe-run-dir-outside-repo</text>
 </g>
 <g data-id="data-journal-lock-flake" data-type="task" data-status="done" data-tone="done">
 <title>两个进程同时写流水时，锁偶尔被误当成过期接管
 data-journal-lock-flake · 任务 · 完成</title>
-<rect x="572" y="18496" width="289" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
-<text x="716.5" y="18517.6" text-anchor="middle" font-size="13" fill="#111827">两个进程同时写流水时，锁</text>
-<text x="716.5" y="18535.6" text-anchor="middle" font-size="13" fill="#111827">偶尔被误当成过期接管</text>
-<text x="716.5" y="18551.4" text-anchor="middle" font-size="11" fill="#6b7280">data-journal-lock-flake</text>
+<rect x="572" y="18573" width="289" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+<text x="716.5" y="18594.6" text-anchor="middle" font-size="13" fill="#111827">两个进程同时写流水时，锁</text>
+<text x="716.5" y="18612.6" text-anchor="middle" font-size="13" fill="#111827">偶尔被误当成过期接管</text>
+<text x="716.5" y="18628.4" text-anchor="middle" font-size="11" fill="#6b7280">data-journal-lock-flake</text>
 </g>
 <g data-id="docs-at-hand" data-type="task" data-status="approved" data-tone="todo">
 <title>组件旁的知识文档：动手的 agent 一打开文件就看到为什么这样写
 docs-at-hand · 任务 · 已批准</title>
-<rect x="572" y="18573" width="289" height="85" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="716.5" y="18594.6" text-anchor="middle" font-size="13" fill="#111827">组件旁的知识文档：动手的</text>
-<text x="716.5" y="18612.6" text-anchor="middle" font-size="13" fill="#111827">agent 一打开文件就看到为</text>
-<text x="716.5" y="18630.6" text-anchor="middle" font-size="13" fill="#111827">什么这样写</text>
-<text x="716.5" y="18646.4" text-anchor="middle" font-size="11" fill="#6b7280">docs-at-hand</text>
+<rect x="572" y="18650" width="289" height="85" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="716.5" y="18671.6" text-anchor="middle" font-size="13" fill="#111827">组件旁的知识文档：动手的</text>
+<text x="716.5" y="18689.6" text-anchor="middle" font-size="13" fill="#111827">agent 一打开文件就看到为</text>
+<text x="716.5" y="18707.6" text-anchor="middle" font-size="13" fill="#111827">什么这样写</text>
+<text x="716.5" y="18723.4" text-anchor="middle" font-size="11" fill="#6b7280">docs-at-hand</text>
 </g>
 <g data-id="d-graph-programming" data-type="decision" data-status="approved" data-tone="todo">
 <title>第一理念：在图上编程
 d-graph-programming · 决策 · 已批准 · 未验证</title>
-<polygon points="291,18680 496,18680 508,18704.5 496,18729 291,18729 279,18704.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="393.5" y="18701.6" text-anchor="middle" font-size="13" fill="#111827">第一理念：在图上编程</text>
-<text x="393.5" y="18717.4" text-anchor="middle" font-size="11" fill="#6b7280">d-graph-programming · 未验证</text>
+<polygon points="291,18757 496,18757 508,18781.5 496,18806 291,18806 279,18781.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="393.5" y="18778.6" text-anchor="middle" font-size="13" fill="#111827">第一理念：在图上编程</text>
+<text x="393.5" y="18794.4" text-anchor="middle" font-size="11" fill="#6b7280">d-graph-programming · 未验证</text>
 </g>
 <g data-id="question-27" data-type="question" data-status="done" data-tone="done">
 <title>「减轻人的负担而质量不降」要不要写进编排层目标并量化
 question-27 · 待决 · 完成
 拍板：B 写进编排层目标的正文，并加一条可量化的验收</title>
-<polygon points="291,18739 496,18739 508,18781.5 496,18824 291,18824 279,18781.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
-<text x="393.5" y="18760.6" text-anchor="middle" font-size="13" fill="#111827">「减轻人的负担而质量不</text>
-<text x="393.5" y="18778.6" text-anchor="middle" font-size="13" fill="#111827">降」要不要写进编排层目标</text>
-<text x="393.5" y="18796.6" text-anchor="middle" font-size="13" fill="#111827">并量化</text>
-<text x="393.5" y="18812.4" text-anchor="middle" font-size="11" fill="#6b7280">question-27 · 选 B</text>
+<polygon points="291,18816 496,18816 508,18858.5 496,18901 291,18901 279,18858.5" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="393.5" y="18837.6" text-anchor="middle" font-size="13" fill="#111827">「减轻人的负担而质量不</text>
+<text x="393.5" y="18855.6" text-anchor="middle" font-size="13" fill="#111827">降」要不要写进编排层目标</text>
+<text x="393.5" y="18873.6" text-anchor="middle" font-size="13" fill="#111827">并量化</text>
+<text x="393.5" y="18889.4" text-anchor="middle" font-size="11" fill="#6b7280">question-27 · 选 B</text>
 </g>
 <g data-id="norm-merge-gate" data-type="norm" data-status="approved" data-tone="todo">
 <title>合入主干前必须全部通过的命令
 norm-merge-gate · 规范 · 已批准</title>
-<rect x="279" y="18834" width="229" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="393.5" y="18855.6" text-anchor="middle" font-size="13" fill="#111827">合入主干前必须全部通过的</text>
-<text x="393.5" y="18873.6" text-anchor="middle" font-size="13" fill="#111827">命令</text>
-<text x="393.5" y="18889.4" text-anchor="middle" font-size="11" fill="#6b7280">norm-merge-gate</text>
+<rect x="279" y="18911" width="229" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="393.5" y="18932.6" text-anchor="middle" font-size="13" fill="#111827">合入主干前必须全部通过的</text>
+<text x="393.5" y="18950.6" text-anchor="middle" font-size="13" fill="#111827">命令</text>
+<text x="393.5" y="18966.4" text-anchor="middle" font-size="11" fill="#6b7280">norm-merge-gate</text>
 </g>
 <g data-id="norm-review-floor" data-type="norm" data-status="approved" data-tone="todo">
 <title>本仓库必须全审的改动
 norm-review-floor · 规范 · 已批准</title>
-<rect x="279" y="18911" width="229" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
-<text x="393.5" y="18932.6" text-anchor="middle" font-size="13" fill="#111827">本仓库必须全审的改动</text>
-<text x="393.5" y="18948.4" text-anchor="middle" font-size="11" fill="#6b7280">norm-review-floor</text>
+<rect x="279" y="18988" width="229" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+<text x="393.5" y="19009.6" text-anchor="middle" font-size="13" fill="#111827">本仓库必须全审的改动</text>
+<text x="393.5" y="19025.4" text-anchor="middle" font-size="11" fill="#6b7280">norm-review-floor</text>
 </g>
 </g>
 </svg>
