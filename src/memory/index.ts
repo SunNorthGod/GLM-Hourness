@@ -45,7 +45,7 @@ import type { AgentLike, DerivedMessage, InjectHost, LlmStreamHost, PreExecuteHo
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import type { TokenUsage } from '../shared/lm-min.ts'
 import { MEMORY_SERVICE } from '../shared/memory-service.ts'
-import { emitMetric } from '../shared/metrics.ts'
+import { emitMetric, metricsWhereOf } from '../shared/metrics.ts'
 import { sessionNotebook, warnOnceFor, whenPresent } from '../shared/row-support.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { LEARNING_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../shared/tool-names.ts'
@@ -305,12 +305,17 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
       const failed = [read.project, read.user].find(outcome => outcome?.ok === false)
       env.note(session.id, 'index', failed === undefined ? undefined : '索引不全：有一份记忆读不出')
       const have = history.some(isIndexNotice)
+      const before = indexed.has(session.id)
       if (have) indexed.add(session.id)
       const at = now().toISOString()
       const index = have ? undefined : renderIndex(visibleEntries(states[0], states[1]), at, liveDeclines(states[0], states[1], at))
       if (index !== undefined) indexed.add(session.id)
       report(session)
       if (index === undefined) return undefined
+      if (index.cap !== undefined) {
+        // Counts only, never an entry's text: whether the index still fits is a decision to make on data (m5-index-truncation-alarm).
+        env.emit?.({ k: 'memory.index-truncated', by: 'memory', body: { eligible: index.eligible, shown: index.listed, dropped: index.eligible - index.listed, chars: index.chars, cap: index.cap, again: before } }, metricsWhereOf(session))
+      }
       return createUserNotice(INDEX_SOURCE, 'memory index', index.text, { entries: index.listed, faded: index.faded, truncated: index.truncated, digest: createHash('sha256').update(index.text).digest('hex').slice(0, 16) })
     }
     catch (error) {

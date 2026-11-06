@@ -10,8 +10,9 @@
  * named (host kinds, `timeout.*`, `progress.*`, `lift`), plus the ones the
  * sibling designs already fixed — rules board 0.10 §10.5, loop board 0.6
  * §6.10, M7 0.6 §3.16, M6 0.6 §14.2, M3 addendum 0.6 §3.12 and the takeover
- * 0.6 trial. Value lists that a sibling design owns stay there: such fields
- * are typed `string` (id) and only the names are fixed here.
+ * 0.6 trial, and the memory row's two counts. Value lists that a sibling
+ * design owns stay there: such fields are typed `string` (id) and only the
+ * names are fixed here.
  */
 import type { ServiceLookup, SessionLike } from './dsh-min.ts'
 import { buildStamp } from './build-info.ts'
@@ -282,6 +283,18 @@ export interface BootstrapBodies {
 }
 
 /**
+ * The memory row's two kinds (project graph node m5-index-truncation-alarm):
+ * counts only, never a memory's name, description, body or the words of a
+ * query; the session is the envelope's `sid`.
+ */
+export interface MemoryBodies {
+  /** The session index dropped entries at the line or the character cap; `again` when the session had an index before (a compaction removed it). */
+  'memory.index-truncated': { readonly eligible: number, readonly shown: number, readonly dropped: number, readonly chars: number, readonly cap: 'lines' | 'chars', readonly again: boolean }
+  /** A memory_query answered with no entry. */
+  'memory.query-empty': { readonly mode: 'focus' | 'name', readonly type?: 'user' | 'feedback' | 'project' | 'reference', readonly searched: number }
+}
+
+/**
  * One kind's event as a caller hands it in: the kind, the submitter and
  * optionally its own instant at the envelope level, the body's fields under
  * `body` — the same two layers the line stores (§4; two sibling kinds
@@ -301,6 +314,7 @@ export type EmittedEvent =
   | EventsOf<GlmBodies>
   | EventsOf<DesignBodies>
   | EventsOf<BootstrapBodies>
+  | EventsOf<MemoryBodies>
 
 /** One kind's event of a namespace before the sender adds the submitter: the kind and its body (a sender row's sink adds `by`). */
 export type BodyEventOf<B> = { [K in keyof B & string]: { readonly k: K, readonly body: B[K] } }[keyof B & string]

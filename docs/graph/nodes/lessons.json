@@ -144,6 +144,36 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-06 人问 AI 知识库是否已融进框架。现状（读 packages/hourness/cordis.patch.yml 与本节点子节点）：经验板代码在 main 上，lessons-1、lessons-2、lessons-4（21 条种子经验）已完成，lessons-3 经验页在做；glm-hourness/lessons 行出厂 disabled: true，按设计要等桌面版首轮验收才启用；记忆行 glm-hourness/memory 已启用。没有向量检索式的知识库，经验按文件、工具、命令与报错匹配。"
+    },
+    {
+      "at": "2026-11-06T09:00:47.713Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-06 问 AI 知识库是否融进框架，编排方答：经验板在 main 上但出厂禁用。派 lessons-enable（wf_7ed94028a156d1cb）按本行自己的门把它带到默认启用：先只读列出 lessons-3 验收与四个 L3 场景的现状，补缺（带 L2），翻开行，文档同批，全量门禁与探针（四个经验场景通过），独立评审，合入，人的桌面版 L4 对 21 条真实经验核对经验页；L4 不过就新提交改回禁用。"
+    },
+    {
+      "at": "2026-11-06T09:04:43.732Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-06 指出「AI 知识库」是单独问的一件，编排方上一轮误当已答。编排方重答：框架里装的是经验板（本节点，lessons-enable 正在把它带到默认启用）、记忆行与项目图；每周读 AI 工程文章的 reading-digest 只服务本仓库的开发，结论经图上的批注与提议落地，不在插件里，别的项目装上 Hourness 拿不到；没有上传文档、检索作答的那种知识库。是否要把其中某一种做进框架，等人说指的是哪一种。"
+    },
+    {
+      "at": "2026-11-06T09:16:47.327Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "lessons-enable（wf_7ed94028a156d1cb）只读审计 .agents/tasks/lessons-enable/audit.md：lessons-3 验收 (a)–(c) 由 L2 加隔离实例 L4 满足，(d) 按设计的读法满足；四个 L3 经验场景在上一次全量探针（420/420，2026-11-06 00:43，较旧基点）通过。缺的：行仍是 disabled: true、没有「出厂启用」的 L2、四处文档要改、新树上要重跑探针、人的桌面版 L4 没做。主检出没有已跟踪改动，HEAD = origin/main = eb45707。下一步建工作树补齐并翻开行。"
+    },
+    {
+      "at": "2026-11-06T10:31:19.564Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "lessons-enable（wf_7ed94028a156d1cb）：bad85a49 feat: ship the lessons row enabled 合入 main，origin 与 github 一致。glm-hourness/lessons 行出厂启用；L2 tests/lessons-row.spec.ts 钉住行无 disabled，探针加「row ships enabled」检查；DESIGN、ORCHESTRATION §8.6、HANDOFF、DEVELOPMENT §14 与包 README 同批改。门禁 build、preflight、npm test、check-lint（73/18/1）退出 0，探针 437/437，四个经验场景全过；评审 APPROVED 无挡路。剩人的桌面版 L4（经验页对 21 条真实经验核对），该步被上游 503 暂停后已恢复；L4 不过就新提交改回禁用。"
+    },
+    {
+      "at": "2026-11-06T11:16:08.579Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "lessons-3 经桌面 L4 关闭（2026-11-06）；经验行 glm-hourness/lessons 从 bad85a49 起出厂启用，已在人的桌面版上生效。子节点 lessons-1 至 lessons-4 全部完成；M7 派发简报带经验与交回调 propose 两件仍随 M7（ORCHESTRATION §8.6「还没做」）。"
     }
   ]
 }

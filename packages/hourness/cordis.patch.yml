@@ -32,11 +32,12 @@
       # a project, kept in its .llm/lessons.jsonl. lessons_query for every
       # agent, lessons_merge for the main agent, the service
       # glmHournessLessons for the dispatch of work, notices to the main agent
-      # and /lessons. Advice, not rules: blocks nothing. Ships disabled until
-      # the L3 probe (scenarios glm-lessons, non-glm-lessons) and the first
-      # desktop pass (docs/DEVELOPMENT.md §3, AGENTS.md).
+      # and /lessons. Advice, not rules: blocks nothing. Ships enabled since
+      # the lessons enablement (2026-11-06): the L3 probe scenarios
+      # (glm-lessons, non-glm-lessons, glm-lessons-failure,
+      # non-glm-lessons-failure) passed; the first desktop pass
+      # (docs/DEVELOPMENT.md §3, AGENTS.md) is still owed.
       name: dsh-hourness/lessons
-      disabled: true
       inject: [tools]
       config: {}
     - id: glm-hourness/workflow
