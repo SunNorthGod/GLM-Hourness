@@ -433,6 +433,44 @@ Learning digest (hourness): in the last 28 days the person corrected the same ki
 4. 撤：人对主 Agent 说「汇报细度恢复默认」，主 Agent 带原话调 `memory_forget reporting-depth`；或人在输入框打 `/memory forget reporting-depth`。下一个会话回到配置的默认。
 
 先后：人最近一次说的（偏好里的值）> 配置 `reportingDepth` > `balanced`。为什么取「最近一次」而不平滑：人能一眼看懂（「你上次说要简洁，所以这次从简洁开始」），记忆页上写明来由，人说一句就回去。
+### 3.8 习惯先问：从提示词升成规则（`m5-habit-rule`，2026-11-05）
+
+本节补在 0.6 正文后面。0.7 的 §3.8（`memory_habit` 的问、确认、回绝）全文已不在任何检出里（`rest-plan.md` 第 2 条），以代码 `src/memory/habit.ts`、`tools.ts` 与图上 `m5-4` 的验收为准；这里只写 `m5-habit-rule` 加的部分。人 2026-11-05 定：人直接说出口的习惯照旧直接记，不是直接说出口的要先问，并且做成规则。
+
+根因（实读 main 7560058 的代码，详见 `.agents/tasks/m5/habit-rule-plan.md` §1）：2026-11-04 桌面批次里 GLM-5.3-Flash 用通用问答卡问了一条猜出的习惯，人的回绝因此没进 `memory_habit` 的记录。
+
+1. `memory_habit` 在 GLM 路由上是延迟工具（不在 `ORCHESTRATION_RESIDENT_TOOLS`），模型要先检索再经 `DeferredToolCall` 调；它的说明（问法、28 天）在检索之前看不到。
+2. 通用问答卡 `ask_user_question` 常驻；只有主 Agent 模式下才被拿掉并由 `main-agent-ask` 拦。
+3. 指向 `memory_habit` 的提示只在 `relay` 参数说明末句、`ask_first` 的 `hint`、学习摘要提醒与它自己的说明里；`# Memory` 一节不提它。
+4. 没有代码规则：记忆行不注册 `tools/pre-execute`，`ask_first`、`relay_not_said` 是工具报错，不进违规流水、没有编号。
+5. 所以有两条绕路：卡上问（回答是工具结果，不是人的消息，回绝什么都不留）；对话里问、人答「好」之后 `memory_store` 带 `relay: "好"` 或复述问话的半句直接记成偏好（能过 `saidLatest`，不留 `ask`、不计每周上限）。
+
+取舍：
+
+| 做法 | 管得住 | 代价 | 取 |
+| --- | --- | --- | --- |
+| `memory_habit` 常驻，`# Memory` 一节加一句（`MEMORY_L3`） | 根因 1、3：第一步就看得见定义与 28 天的说法 | 每个 GLM 请求多一份工具定义（约 2.5 KB，进前缀缓存）；仍是提示 | 取 |
+| 规则拦卡上问习惯 | 桌面批次实际走的路：卡上的问题、标题或选项带「习惯、偏好、记住、记下、以后都……」（许可词表）就拦 | 问别的事带了这些词也拦；纠正提醒说改在对话里问，人一句话可撤 | 取 |
+| 规则拦「把人只是答应的话记成偏好」 | `memory_store` 一侧的绕路：`relay` 是光秃秃的同意（`isPlainYes`），或 `relay` 的词至少一半出自 agent 在人最近一条消息之前问的那句话（含问号） | 启发式：人复述 agent 问过的话也算答应，要再走一次 `memory_habit`；压缩后看不见那一问时放过 | 取 |
+| 拦对话里直接问 | — | 对话文本不经工具调用，调用边界看不到；只能事后猜回复文字 | 不做，留作已知缺口 |
+
+规则 `habit-ask-first`（`src/memory/habit-rule.ts`，记忆行经 `installRuleGate` 安装，规则总表 `memory:habit-ask-first`，`liftVia: 'any'`）：只判根会话的 `memory_store` 与 `ask_user_question`；拦下的调用进会话项目的 `.llm/audit/violations.jsonl`（与记忆的项目目录同一处），带规则编号与纠正提醒，提醒的正路是 `memory_habit ask`，跟进记录器认下一次调 `memory_habit` 为走了正路。放过：人直述的偏好（`relay` 不是光秃秃的同意、也不复述 agent 的问话）、`reporting-depth`（`memory_habit` 带不了 `value`，§3.7 照旧）、事实类记忆、卡上问别的事。撤下只走 M4 的一条路（`d-one-lift-path`）：人对主 Agent 说一句，主 Agent 带人的原话调 `guard_lift habit-ask-first`；规则板的 `/rules lift` 还没接到代码规则（`src/guard/lift-service.ts`），纠正提醒与规则板都不写它。撤下后规则不拦、`glm:guard` 一节不再声明它。记忆行生效时 `glm:guard` 一节多一行 `HABIT_RULE_DECLARATION`。行健康：规则没装上（宿主没有 `tools/pre-execute`，或安装抛错）时记忆行降级并写明。
+
+剩下的缺口：模型在对话里直接问、人说「不用」时，回绝仍只在那个会话里。规则让这条路什么都记不进去（人答应了也得回到 `memory_habit`），`memory_habit` 常驻、`# Memory` 一句与规则声明让正路是最顺手的那条；两档模型的真实运行记在 `.agents/tasks/m5/habit-rule-runs.md`。
+
+#### 3.8.6 说过「不用」之后：看得见，且换了说法也要模型确认（2026-11-06，编排方定）
+
+起因：2026-11-06 第一批真实运行（`habit-rule-runs.md`）里，两档模型在第二个会话都换了名字与说法再问同一条习惯，`memory_habit ask` 没认出：「同一条」只认组键、同名或名字加说明的词集 Jaccard ≥ 0.6，那两对只有 0.30 与 0.46；会话索引与 `memory_query` 又都不列「不用」，模型问之前看不到。词集重合分不开真的再问与另一条习惯：同一工具相反的偏好（单引号对双引号）1.00、同一条规矩换一门语言 0.88、同说法不同范围 1.00，都比两对真实再问高（`habit-rule-plan.md` 记了全部数字），所以不设一个阈值去硬拦。
+
+做法（不是新的 guard 规则，是 `memory_habit` 自己的参数检查，与 `declined_recently` 同类）：
+
+1. 看得见：会话开局的索引在条目之后列还在期内的「不用」，一行一条（名字、说明、到哪天不再问），至多 10 行，其余写条数；只有「不用」、没有条目时索引照发。`memory_query` 的结果不论关键词都带 `declined`（同样的三项加范围，至多 10 条）。过了 `until` 的不列。
+2. 软检查：`ask` 的说明与一条还在期内的「不用」的说明词集重合 ≥ 0.25（`MAYBE_DECLINED_SHARE`；两对真实再问 0.304、0.429，无关但同语言的习惯 0.154），或名字加说明 ≥ 0.6，就拒为 `maybe_declined`，文字点名那条「不用」（名字、说明、到哪天）并写出路：是同一条就别问；确实是另一条，带 `notSame: true` 再发。误中只多一次调用，所以阈值取低。
+3. 硬拒不变的部分：同名或组键相同的「不用」仍是 `declined_recently`，`notSame` 撤不掉它。
+4. 记下：带 `notSame: true` 放行的 `ask` 记录里有 `data.notSame`（被放过的「不用」的 id，`<范围>:<名字>`），工具结果带 `notSame`，指标流水交一条 `count`（`by: memory`，`what: habit-not-same`，`byKey` 是那些 id），以后可数被放过几次。
+
+L2 `tests/memory-habit-declined.spec.ts`：两对真实再问都得 `maybe_declined`；五个反例（相反偏好、另一门语言、不同范围同说法、共用常见词的无关习惯、完全无关）要么低于 0.25 直接问得出，要么带 `notSame: true` 放行且记下；`notSame` 撤不掉同名与同组键的「不用」；过期的不再拦；索引与 `memory_query` 列在期内的、不列过期的。
+
 ## 4. 经验板块（`lessons`）
 
 ### 4.1 一条经验（lessons-1）

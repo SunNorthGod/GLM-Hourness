@@ -41,7 +41,7 @@ export function toMetricsId(value: string | undefined): string {
 export type MetricsMap = Readonly<Record<string, number | boolean | string>>
 
 /** Who handed an event in: the metrics row, or the row that emitted it through the service (§4.1 `by`). */
-export type MetricsBy = 'host' | 'graph' | 'guard' | 'rules' | 'loops' | 'execute' | 'operate' | 'glm' | 'design' | 'bootstrap' | 'env'
+export type MetricsBy = 'host' | 'graph' | 'guard' | 'rules' | 'loops' | 'execute' | 'operate' | 'glm' | 'design' | 'bootstrap' | 'env' | 'memory'
 
 /** Where a timeout value's limit comes from (`d-timeout-measured`, §4.2). */
 type TimeoutSource = 'estimate' | 'measured' | 'default' | 'ceiling' | 'fixed'

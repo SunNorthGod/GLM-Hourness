@@ -39,4 +39,5 @@ export const GUARD_RULES: readonly GuardRuleEntry[] = [
   { id: 'files-only', row: 'loops', title: '循环板的条目、脚本和运行时文件只由循环板自己写：写这些文件的调用会被拒', blocks: 'writes under the loop board\'s files', liftVia: 'any' },
   { id: 'schedule-tools', row: 'loops', title: '循环板自己的 DSH 提醒不经定时工具改，也不许冒充循环板建提醒', blocks: 'changes to the loop board\'s reminders through the schedule tools', liftVia: 'any' },
   { id: 'metrics-files-only', row: 'metrics', title: '指标流水只由 harness 写：写、删、移流水文件与 npm run metrics -- prune 都会被拒', blocks: 'writes, deletes and moves under the metrics journal, and npm run metrics -- prune', liftVia: 'any' },
+  { id: 'habit-ask-first', row: 'memory', title: '猜出的习惯先经 memory_habit 问人：问答卡上问习惯、把人只是答应的话直接记成偏好都会被拒', blocks: 'habit questions on a question card, and preferences whose relay only agrees to a question the agent asked', liftVia: 'any' },
 ]
