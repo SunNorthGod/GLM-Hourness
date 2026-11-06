@@ -2087,6 +2087,9 @@ const designWishOffIdle = designScenario('glm-design-wish-off-idle', 'glm-5.3', 
   { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish' } },
   { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish off' } },
   { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish off', say: 'Reply done.' } },
+  // The woken session runs its turn while the main one waits; without the
+  // wait the run ends before that turn sends its first request.
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the second session run' } } },
   { text: 'done' },
 ], { others: [[{ text: 'done' }]] })
 // Stage reminders and design-before-release (docs/ORCHESTRATION.md §3.5, §6.1; M3 step 5).
