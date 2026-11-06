@@ -18,6 +18,12 @@
       "op": "propose",
       "reason": "m3-metrics-wiring 第 2 轮门禁（.agents/tasks/m3-metrics-wiring-2026-11-05/report.md Round 2）与评审 N8：tests/data-journal.spec.ts「two processes appending 200 records each」一次失败，临时目录里留下 .lock.stale-<ms>，重跑通过；推断是负载下写入者接管了超过 STALE_LOCK_MS 的锁。同一类偶发失败已挡过几条线的合入，按修根因的习惯单独查。agent 定。",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-06T06:22:01.723Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "inject-via-prestep 合入步在合并树 ba56d27 上撞到 tests/data-journal.spec.ts 两进程用例「不留锁」失败，查明原因并修在 829236b（fix(journal): wait 500 ms before taking over an empty lock file）：appendJournal 没传 unreadableGraceMs，共享锁把刚 open(wx) 还没写入内容的锁文件当成空文件立即接管、改名为 .stale-。修法是 M5 的锁选项取 unreadableGraceMs 500（短于 2 秒等待，崩溃留下的空锁仍在一次追加内接管），新增 L2：空锁 500 ms 后接管并保留为 .stale-，期间被创建者写入的不接管；DESIGN.md 与 ORCHESTRATION.md §17.6 同批记值。已在 main e45498f。本节点的根因看来就是这一条；关闭前要在负载下多跑几次该 spec 确认不再复现。"
     }
   ]
 }
