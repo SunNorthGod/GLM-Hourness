@@ -729,6 +729,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 guard-fix 步完成：先把 origin/main 137359f 合进 m7（9aa3a9a6，解了 9 处冲突），再提交 guard 修复 07ee5baa（树 085e936f）：已登记、活着、计划已批的子 agent 在自己的 writeScope 或计划列出的路径里写文件时不受 scratch-only 拦，其余照旧。门禁 build、preflight、test（3477/3477）、check-lint（73/18/1）、探针 529/529 全为 0，已推 origin/m7 = 07ee5baa。记录 .worktrees/m3/.llm/wf/m7-e9/guard-fix.md。下一步独立 guard 评审，然后高峰外第三次真实模型运行。"
+    },
+    {
+      "at": "2026-11-06T08:38:08.218Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "guard 修复 07ee5baa（合入 origin/main 137359f 为 9aa3a9a6，9 处冲突）经独立 guard-review APPROVED：0 挡路、3 不挡路，范围 a2f934ec..07ee5baa，树 085e936f，门禁记录成立（3477/3477，探针 529/529，棘轮 73/18/1）；guard-converge 无改动跳过。评审提示 origin/main 已前进到 63da5e25（inject-via-prestep），合入步要再合一次 main，wake.ts 不受影响。下一步高峰外的第三次真实模型运行。"
     }
   ]
 }
