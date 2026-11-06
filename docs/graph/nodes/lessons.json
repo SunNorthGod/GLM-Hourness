@@ -162,6 +162,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "lessons-enable（wf_7ed94028a156d1cb）只读审计 .agents/tasks/lessons-enable/audit.md：lessons-3 验收 (a)–(c) 由 L2 加隔离实例 L4 满足，(d) 按设计的读法满足；四个 L3 经验场景在上一次全量探针（420/420，2026-11-06 00:43，较旧基点）通过。缺的：行仍是 disabled: true、没有「出厂启用」的 L2、四处文档要改、新树上要重跑探针、人的桌面版 L4 没做。主检出没有已跟踪改动，HEAD = origin/main = eb45707。下一步建工作树补齐并翻开行。"
+    },
+    {
+      "at": "2026-11-06T10:31:19.564Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "lessons-enable（wf_7ed94028a156d1cb）：bad85a49 feat: ship the lessons row enabled 合入 main，origin 与 github 一致。glm-hourness/lessons 行出厂启用；L2 tests/lessons-row.spec.ts 钉住行无 disabled，探针加「row ships enabled」检查；DESIGN、ORCHESTRATION §8.6、HANDOFF、DEVELOPMENT §14 与包 README 同批改。门禁 build、preflight、npm test、check-lint（73/18/1）退出 0，探针 437/437，四个经验场景全过；评审 APPROVED 无挡路。剩人的桌面版 L4（经验页对 21 条真实经验核对），该步被上游 503 暂停后已恢复；L4 不过就新提交改回禁用。"
     }
   ]
 }

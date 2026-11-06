@@ -601,6 +601,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-06 澄清「AI 知识库」指的是此前提炼给编排方的一位业内人士的项目开发经验：把文档放到 AI 手边。编排方在仓库、docs/graph 与 .agents/tasks 里按关键词查过，没找到这份提炼的记录，判断它只在早先的对话里、随上下文截断丢了，等人重发原文。现状对照（实读）：框架已做到的是会话开局与每次压缩之后把用户级与项目 AGENTS.md 交给模型（宿主 dsh-agent-instructions，L3 实测见 FACTS.md §3，m4-reanchor-norms）、每步的图投影、env 分支提醒、记忆索引、派活简报带经验；只在本仓库成立、框架不带的是文档地图与分工（AGENTS.md「文档」一节、CHARTER.md §11）和条款整条重写的写法，别的项目装上 Hourness 不会得到文档地图，也没有文档过时的检查。人重发原文后逐条对照再定要不要提节点。"
+    },
+    {
+      "at": "2026-11-06T10:31:20.053Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第六次往主检出写：17:50 主检出出现未提交的 tests/metrics-schema.spec.ts 改动（+5/-2），与 .worktrees/m5-index-truncation-alarm 里 17:51 写的同一文件内容一致。编排方存档到 .agents/tasks/zcode-parity/stray/metrics-schema-1750.patch 后还原主检出，并提醒该步只写自己的工作树。工具层挡主检出写入的线仍等 M7 合入后与写范围检查一起做。"
     }
   ]
 }
