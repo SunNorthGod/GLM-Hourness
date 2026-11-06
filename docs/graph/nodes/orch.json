@@ -565,6 +565,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "主检出第三次被别的线写进草稿（前两次：m4-checks-loop-details 合入时四个文件、m4-reanchor-norms 合入时 package.json）：这次是 docs/DESIGN.md，08:58，内容是损坏的编辑，几个工作树的 DESIGN.md 修改时刻里 bootstrap（08:59:39）最接近，来源未核实。已存档还原。写主检出的源头还没堵上：各线任务书都写了只在自己的工作树改，仍有步骤写进主检出。后续要查是哪类步骤（推断：用绝对路径的编辑工具把主检出路径当成工作树路径）并在任务书模板与规则上修根因，不再逐次清理。"
+    },
+    {
+      "at": "2026-11-06T02:07:39.009Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "10:06 巡检：上游限流又暂停了 inject-via-prestep、ablation、m5-rule-expected-effect、bootstrap 四条运行，编排方已恢复。在跑：M7 真实模型运行一步（wf_36d1d690c7e1de90 real-model-run）、m5-habit-rule 第 2 轮评审、status-hub-3 合入后 L4、probe-run-dir-outside-repo 合入（主检出已干净，已告知接着做）。主检出已跟踪文件干净，两把探针锁空闲。"
     }
   ]
 }
