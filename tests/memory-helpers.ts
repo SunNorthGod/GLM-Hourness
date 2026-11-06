@@ -51,6 +51,8 @@ export interface FixtureOptions {
   readonly graph?: GraphRead
   /** The talk state the session reads; none by default (the person's messages cannot be read). */
   readonly talk?: TalkView
+  /** Where the tools hand metrics events; none by default. */
+  readonly emit?: MemoryEnv['emit']
 }
 
 export const MAIN = agentOf('main-session', { cwd: 'C:/work/project' })
@@ -76,6 +78,7 @@ export function memoryFixture(options: FixtureOptions = {}): MemoryFixture {
     // The journal's stamps follow the fixture's clock, so records written
     // before and after `setNow` read as being apart by that time.
     append: options.append ?? { lock: { ...realLockEnvironment, now: () => current.getTime() } },
+    ...(options.emit === undefined ? {} : { emit: options.emit }),
   }
   const tools = new Map([...memoryTools(env), ...learningTools(env)].map(tool => [tool.name, tool]))
   return {

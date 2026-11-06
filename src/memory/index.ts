@@ -35,7 +35,7 @@ import { HABIT_ASK_FIRST, installHabitRule } from './habit-rule.ts'
 import { memoryCommand } from './commands.ts'
 import { answersOf } from './answers.ts'
 import { learningNotice } from './notices.ts'
-import { renderIndex, visibleEntries } from './recall.ts'
+import { liveDeclines, renderIndex, visibleEntries } from './recall.ts'
 import { memoryRowService } from './service.ts'
 import { readBoth, type Both, type GraphRead, type MemoryEnv, type NoteKey, type Places, type SourceCheck } from './storage.ts'
 import { learningTools, memoryTools } from './tools.ts'
@@ -45,6 +45,7 @@ import type { AgentLike, DerivedMessage, InjectHost, LlmStreamHost, PreExecuteHo
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import type { TokenUsage } from '../shared/lm-min.ts'
 import { MEMORY_SERVICE } from '../shared/memory-service.ts'
+import { emitMetric } from '../shared/metrics.ts'
 import { sessionNotebook, warnOnceFor, whenPresent } from '../shared/row-support.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { LEARNING_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../shared/tool-names.ts'
@@ -239,6 +240,7 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
     talk: session => answers.talkOf(session),
     now,
     note: notebook.note,
+    emit: (event, where) => { emitMetric(ctx, event, where) },
     ...(config.append === undefined ? {} : { append: config.append }),
   }
 
@@ -304,7 +306,8 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
       env.note(session.id, 'index', failed === undefined ? undefined : '索引不全：有一份记忆读不出')
       const have = history.some(isIndexNotice)
       if (have) indexed.add(session.id)
-      const index = have ? undefined : renderIndex(visibleEntries(states[0], states[1]), now().toISOString())
+      const at = now().toISOString()
+      const index = have ? undefined : renderIndex(visibleEntries(states[0], states[1]), at, liveDeclines(states[0], states[1], at))
       if (index !== undefined) indexed.add(session.id)
       report(session)
       if (index === undefined) return undefined

@@ -17,7 +17,7 @@ import { METRICS_ID_PATTERN, type MetricsBy } from '../shared/metrics.ts'
 /** The envelope's format version; raised only when a kind's fields change meaning (§4.1). */
 export const FORMAT_VERSION = 1
 
-export const METRICS_BY: readonly MetricsBy[] = ['host', 'graph', 'guard', 'rules', 'loops', 'execute', 'operate', 'glm', 'design', 'bootstrap', 'env']
+export const METRICS_BY: readonly MetricsBy[] = ['host', 'graph', 'guard', 'rules', 'loops', 'execute', 'operate', 'glm', 'design', 'bootstrap', 'env', 'memory']
 
 /**
  * One field of a closed table. `type` is a scalar of the grammar below, a

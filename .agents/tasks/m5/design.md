@@ -458,6 +458,19 @@ Learning digest (hourness): in the last 28 days the person corrected the same ki
 
 剩下的缺口：模型在对话里直接问、人说「不用」时，回绝仍只在那个会话里。规则让这条路什么都记不进去（人答应了也得回到 `memory_habit`），`memory_habit` 常驻、`# Memory` 一句与规则声明让正路是最顺手的那条；两档模型的真实运行记在 `.agents/tasks/m5/habit-rule-runs.md`。
 
+#### 3.8.6 说过「不用」之后：看得见，且换了说法也要模型确认（2026-11-06，编排方定）
+
+起因：2026-11-06 第一批真实运行（`habit-rule-runs.md`）里，两档模型在第二个会话都换了名字与说法再问同一条习惯，`memory_habit ask` 没认出：「同一条」只认组键、同名或名字加说明的词集 Jaccard ≥ 0.6，那两对只有 0.30 与 0.46；会话索引与 `memory_query` 又都不列「不用」，模型问之前看不到。词集重合分不开真的再问与另一条习惯：同一工具相反的偏好（单引号对双引号）1.00、同一条规矩换一门语言 0.88、同说法不同范围 1.00，都比两对真实再问高（`habit-rule-plan.md` 记了全部数字），所以不设一个阈值去硬拦。
+
+做法（不是新的 guard 规则，是 `memory_habit` 自己的参数检查，与 `declined_recently` 同类）：
+
+1. 看得见：会话开局的索引在条目之后列还在期内的「不用」，一行一条（名字、说明、到哪天不再问），至多 10 行，其余写条数；只有「不用」、没有条目时索引照发。`memory_query` 的结果不论关键词都带 `declined`（同样的三项加范围，至多 10 条）。过了 `until` 的不列。
+2. 软检查：`ask` 的说明与一条还在期内的「不用」的说明词集重合 ≥ 0.25（`MAYBE_DECLINED_SHARE`；两对真实再问 0.304、0.429，无关但同语言的习惯 0.154），或名字加说明 ≥ 0.6，就拒为 `maybe_declined`，文字点名那条「不用」（名字、说明、到哪天）并写出路：是同一条就别问；确实是另一条，带 `notSame: true` 再发。误中只多一次调用，所以阈值取低。
+3. 硬拒不变的部分：同名或组键相同的「不用」仍是 `declined_recently`，`notSame` 撤不掉它。
+4. 记下：带 `notSame: true` 放行的 `ask` 记录里有 `data.notSame`（被放过的「不用」的 id，`<范围>:<名字>`），工具结果带 `notSame`，指标流水交一条 `count`（`by: memory`，`what: habit-not-same`，`byKey` 是那些 id），以后可数被放过几次。
+
+L2 `tests/memory-habit-declined.spec.ts`：两对真实再问都得 `maybe_declined`；五个反例（相反偏好、另一门语言、不同范围同说法、共用常见词的无关习惯、完全无关）要么低于 0.25 直接问得出，要么带 `notSame: true` 放行且记下；`notSame` 撤不掉同名与同组键的「不用」；过期的不再拦；索引与 `memory_query` 列在期内的、不列过期的。
+
 ## 4. 经验板块（`lessons`）
 
 ### 4.1 一条经验（lessons-1）
