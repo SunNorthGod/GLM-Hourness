@@ -3,7 +3,7 @@
   "type": "task",
   "title": "两个进程同时写流水时，锁偶尔被误当成过期接管",
   "why": "机器忙的时候流水的锁会被抢走，测试偶发失败挡住合入，真用的时候也可能写坏记录",
-  "status": "approved",
+  "status": "doing",
   "parent": "orch",
   "kind": "implement",
   "body": "tests/data-journal.spec.ts 的两进程各追加 200 条一例偶发失败，临时目录留下 .lock.stale-<ms>（m3-metrics-wiring 第 2 轮门禁记录）。先查 src/data 的流水锁：持锁时是否续写时间戳、STALE_LOCK_MS 与负载下的持锁时长、接管过期锁时与原持有者的竞态；确认是产品代码的竞态还是测试夹具的问题，修在原因上。是产品竞态的话，流水在负载下不丢、不重、不交错的保证要有 L2 钉住。",
@@ -24,6 +24,14 @@
       "actor": "llm",
       "op": "comment",
       "text": "inject-via-prestep 合入步在合并树 ba56d27 上撞到 tests/data-journal.spec.ts 两进程用例「不留锁」失败，查明原因并修在 829236b（fix(journal): wait 500 ms before taking over an empty lock file）：appendJournal 没传 unreadableGraceMs，共享锁把刚 open(wx) 还没写入内容的锁文件当成空文件立即接管、改名为 .stale-。修法是 M5 的锁选项取 unreadableGraceMs 500（短于 2 秒等待，崩溃留下的空锁仍在一次追加内接管），新增 L2：空锁 500 ms 后接管并保留为 .stale-，期间被创建者写入的不接管；DESIGN.md 与 ORCHESTRATION.md §17.6 同批记值。已在 main e45498f。本节点的根因看来就是这一条；关闭前要在负载下多跑几次该 spec 确认不再复现。"
+    },
+    {
+      "at": "2026-11-06T09:00:47.105Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 data-journal-lock-flake（wf_fcb40f5c2675411f）开工：先在负载下（并行一套 npm test）连跑两进程用例 20 次，核对 829236b 的 L2 与文档；20/20 绿则不改代码、写报告关单，否则修根因、评审、合入",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

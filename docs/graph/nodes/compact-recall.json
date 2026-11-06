@@ -95,6 +95,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "compact-recall-redact 已合入 main（3aa7e8e），导出文件遮掉像凭证的片段。本节点的 L4 按 2026-11-05 的批注照旧顺延：在隔离实例里做，不改人的 profile；是否默认启用 transcript 行另交人定。"
+    },
+    {
+      "at": "2026-11-06T09:00:47.422Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "compact-recall-redact 已在 main，L4 解锁：派 compact-recall-l4（wf_07a1fd00ce69e723）在隔离桌面实例里做（自己的 userData 与 DSH home，不在人的 profile 上开 transcript 行）：埋两个假凭证、压缩、核对摘要末句与路径、导出文件存在且不入 git、凭证为 [redacted]、模型能分页 Read、行关掉后输出与无行逐字相同。真实请求只在高峰外跑，记积分；只经 CDP。不改代码，结论与是否默认启用的建议写 .agents/tasks/compact-recall/l4.md，由编排方定。"
     }
   ]
 }

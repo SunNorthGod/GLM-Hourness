@@ -589,6 +589,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-06 16:48 Kiro 重启后对账：M7（wf_36d1d690c7e1de90）停在 real-model-run-3、接管（wf_f008ac0c87ec6943）停在 B6 修复，两条已恢复；消融后台队列（pid 60792）仍在跑，高峰 14:00–18:00 不开新格，18:00 后接着跑；M7 第三次真实运行同样只在高峰外跑。主检出已跟踪文件干净，三把锁空闲。"
+    },
+    {
+      "at": "2026-11-06T09:00:48.307Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 17:00 人要求尽量并行。在跑 6 路：M7（第三次真实模型运行）、接管（B6 评审两条挡路在修）、消融（后台队列，高峰后自动续跑）、data-journal-lock-flake、compact-recall-l4、lessons-enable。其余就绪节点（m7-1、m7-2、m7-4、m7-6、m7-7、m7-8、m7-9、m7-habits、m7-handback-path-check、rules-r4d、m4-request-card）代码都压在 M7 分支上，等 M7 合入 main；主检出写入拦截同属 M7 写范围一类，也等 M7。"
     }
   ]
 }
