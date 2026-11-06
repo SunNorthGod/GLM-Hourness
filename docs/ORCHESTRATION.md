@@ -1151,7 +1151,7 @@ LLM 爱造轮子，因为写脚本只花当前这一轮的力气，装工具却�
 - 汇报细度闭环〔已实现，M5 步骤 R1〕：三档滑杆（简洁 / 适中 / 详细，LLM 每次自选）的常设档，是人最近一次说定的。人的话表明长短要一直这样时，主 Agent 调 `memory_store`（`name: reporting-depth`、`type: user`、`value` 是三档之一、`relay` 写人的原话）；人只是这一次嫌长或嫌短，主 Agent 只改这一次的讲法，不写。GLM 方言的 `glm:reporting-depth` 一节在会话的 agent 创建时读 `glmHournessMemory` 的 `depth` 一次，没有时用配置的 `reportingDepth`（旧键 `persona` 照读，见 `DESIGN.md` §5.2 之后的 `reportingDepth` 一段）：写入的那个会话里系统提示词不变，下一个会话带上新的档。人说「汇报细度恢复默认」，主 Agent 带原话调 `memory_forget reporting-depth`，或人打 `/memory forget reporting-depth`，下一个会话回到配置。服务不在、形状不对、读不出时用配置的档，并在行健康里说明。
 - 子 agent 各配独立记忆目录，避免互相污染。
 
-### 8.6 经验板〔M5 步骤 L1、L2、P1、S1 已实现并合入 main，验到 L2、L3；种子导入、`/lessons` 与面板经验页在 2026-11-04 的桌面批次里看过（导入的是批次自己的临时项目）；第一批 21 条经验 2026-11-05 导入本项目的 `.llm/lessons.jsonl`；行出厂仍禁用〕
+### 8.6 经验板〔M5 步骤 L1、L2、P1、S1 已实现并合入 main，验到 L2、L3；种子导入、`/lessons` 与面板经验页在 2026-11-04 的桌面批次里看过（导入的是批次自己的临时项目）；第一批 21 条经验 2026-11-05 导入本项目的 `.llm/lessons.jsonl`；行 2026-11-06 起出厂启用，L3 场景 `glm-lessons`、`non-glm-lessons`、`glm-lessons-failure`、`non-glm-lessons-failure` 已通过，人的桌面版首轮验收还欠〕
 
 经验板（`src/lessons/`，行 `glm-hourness/lessons`）记「在某种情况下踩过的坑与解法」。一条经验写明情况（文件、工具、命令、报错片段）、坑、解法、证据、最近一次确认；都属于项目，存在项目的 `.llm/lessons.jsonl`，没有用户级经验（`d-memory-scope`）。设计与验收在 `.agents/tasks/m5/design.md` §4（项目图节点 `lessons`）。经验是建议，不是规则：行不注册任何 `tools/pre-execute` 监听器，不拦任何调用（`d-code-rules-enforce`：本行没有规则）；它监听工具调用的唯一处是 `tools/post-execute`，只往失败的结果里加提醒，不改调用、不拒绝。
 

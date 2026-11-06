@@ -308,3 +308,14 @@ test('activation does not throw when a tool cannot be registered or the service 
   assert.ok(collectHealth(taken.ctx, undefined).find(entry => entry.row === 'lessons')!.reason.includes('没提供上'))
   second.result()
 })
+
+test('the row ships enabled in the orchestration patch (no disabled key) and declares the tools service', () => {
+  const patch = readFileSync(new URL('../packages/hourness/cordis.patch.yml', import.meta.url), 'utf8')
+  const start = patch.indexOf('    - id: glm-hourness/lessons')
+  assert.ok(start >= 0)
+  const next = patch.indexOf('\n    - id:', start + 1)
+  const block = patch.slice(start, next < 0 ? undefined : next)
+  assert.match(block, /^ {6}name: dsh-hourness\/lessons$/m)
+  assert.doesNotMatch(block, /^ {6}disabled:/m, 'enabled after the L3 scenarios glm-lessons, non-glm-lessons, glm-lessons-failure and non-glm-lessons-failure passed with the row on')
+  assert.match(block, /^ {6}inject: \[tools\]$/m, 'a row that does not declare the injected service fails to activate (G3)')
+})

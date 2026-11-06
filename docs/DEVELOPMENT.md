@@ -293,7 +293,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 2. 请求里像密钥的文字、不合语法的证据和出处照 `lessons_merge` 的规则拒绝，拒绝的内容不落盘。
 3. Windows PowerShell 5.1 下请求文件用 UTF-8 存，一律用 `--file`；读 JSON 输出用 `npm run -s`。
 4. 试写不要对本仓库：对本工作树的路径，项目根会解析到主检出，写进主检出的 `.llm/`。在一个带自己 `.git` 的临时文件夹里用 `--cwd`，或让规格用临时目录。
-5. 改命令行或经验的纯函数层只需过 `npm run build`、`npm run preflight`、`npm test`；改经验行（`src/lessons/index.ts`、`tools.ts`、`service.ts`、`notices.ts`、`import.ts`、`commands.ts`）要再跑 `npm run probe`：L3 场景是 `glm-lessons`、`non-glm-lessons`。
+5. 改命令行或经验的纯函数层只需过 `npm run build`、`npm run preflight`、`npm test`；改经验行（`src/lessons/index.ts`、`tools.ts`、`service.ts`、`notices.ts`、`import.ts`、`commands.ts`）要再跑 `npm run probe`：L3 场景是 `glm-lessons`、`non-glm-lessons`、`glm-lessons-failure`、`non-glm-lessons-failure`。
 
 ## 15. 拦截命令行
 
