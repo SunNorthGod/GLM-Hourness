@@ -804,6 +804,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 19 | Dynamic Behavior 节 | 方言 | 3.17.1 原文，coding-plan 与 start-plan 都发（§5.3） | 已实现 2026-10-30 |
 | 20 | Memory 节 | 方言 | 3.17.1 `buildMemorySection` 的十行放进镜像文件，两句改写、两句新增，白名单测试钉住只改了这几处（§5.3 ⑧） | 已实现 2026-11-01（m5-3） |
 | 21 | 压缩后读原文 | 方言 | 3.17.1 `Bxt` 的原文路径一句逐字接在 GLM 压缩摘要末尾，路径指向编排层导出的纯文本（§5.6、§2.4「会话原文」）；位置在 DSH 的 `<compacted-summary>` 外框里，不在 ZCode 的续接消息里；3.17.1 的正式调用不传 `transcriptPath`，ZCode 正式流量里没有这一句 | 已实现 2026-11-05，行默认禁用，L3 探针通过，真机未验收 |
+| 22 | 子目录指令：别名 Read、Write、Edit 触到工作目录之下的文件后，送该文件所在各层的 AGENTS.md 等 | 缺口 | glm-prompt 内的步前通知（§5.11）；ZCode 3.17.1 不送子目录指令，这一项是请求上的偏离 | 已实现于分支 `glm-subdir-instructions`，未合入，等人定是否偏离（`.agents/tasks/glm-subdir-instructions/report.md`） |
 
 第 1、2、4、6、8 项的文本对齐状态以 §5.9 为准。
 
@@ -855,6 +856,25 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 - `DeferredToolCall({name, input})`：只接受当前目录里的延迟工具；对常驻工具或控制工具本身回「Call X directly using its normal tool call; DeferredToolCall only accepts deferred tools.」。包装在派发前还原为目标调用，历史里记录目标身份。
 - 更正（2026-10-27）：本节初版按 3.16.2 源码记载 local 模式的工具名与文案，与 3.16.3 安装包不符；移植时对照安装包发现并更正。
 - 定案〔用户 2026-10-27〕：本项目默认开启工具检索，实现与 ZCode 一致。没有服务端检索能力时，ZCode `auto` 模式回落到 `local`，本项目按 `local` 语义实现。DSH 独有、ZCode 无对应的工具按 MCP 工具的规则处理（延迟）；有对应的随对应工具的常驻 / 延迟属性。
+
+### 5.11 子目录指令（别名 Read、Write、Edit）
+
+〔实读 + 实测，2026-11-07；依据与证据等级见 `.agents/tasks/glm-subdir-instructions/report.md`〕
+
+缺口：rc.3 的 `dsh-agent-instructions` 在原生 `read`、`write`、`edit` 成功触碰会话工作目录之下的文件后，于下一次请求追加一条 `agent-instructions` 消息，列出工作目录到该文件所在目录之间每一层的 `AGENTS.md`、`CLAUDE.md`、`AGENTS.local.md`、`CLAUDE.local.md`（agent-instructions:1210–1221、1425–1445）。触发表按执行的工具名匹配；GLM 路由上模型调 ZCode 别名，别名执行时 `exec.name` 仍是 `Read`、`Write`、`Edit`（tools:3232），所以这条路径上没有任何子目录文件进入上下文。
+
+ZCode 3.17.1 不送子目录指令：它只在会话开始解析一次用户指令，来源是 `~/.zcode/AGENTS.md` 与从工作目录向上到项目根的最近一份 `AGENTS.md`（`cPs`、`fPs`，zcode.cjs 行 1994、1996），没有向下的发现，也没有由工具触发的加载。所以别名路由的现状与 ZCode 一致，补上是对 ZCode 请求的偏离（§5.8 第 22 项）。
+
+实现（`src/glm-prompt/subdir-instructions.ts`，配置键 `subdirInstructions`，缺省开）：
+
+- 不动工具面：别名的名字、描述、schema 与执行体都不变，不经注册表再派一次调用（再派会让 `tools/pre-execute`、`tools/post-execute` 上的 guard、规则板、指标、经验、权限各看到一次原生调用）。
+- 复用 `installStepNotice`（`agent/pre-step`，GLM 步才发）：从请求可见历史找成功的 `Read`、`Write`、`Edit` 调用（有结果且不是错误）的 `file_path`，相对路径按会话工作目录解析；路径在工作目录之下时，取工作目录（不含）到文件所在目录的每一层，读宿主同一组候选文件（顺序同宿主：`AGENTS.md`、`CLAUDE.md`、`AGENTS.local.md`、`CLAUDE.local.md`；同目录里修剪后内容相同的只留一份，空文件与超过 1 MiB 的不送）。
+- 一步一条 user 通知，来源 `glm-subdir-instructions`，外包 `<system-reminder>`，每份文件的段落文字取宿主 `additionalSectionText` 的原文（「Additional instructions from: <相对项目根的路径>」、适用范围一句、指导一句、内容）；整批 64 KiB，超出先丢浅层再截最深一份，与宿主的预算规则一致。通知排在被认领消息之后、其余提醒之前，与宿主自己的指令消息位置一致。
+- 状态来自历史：通知的来源事实 `dirs` 记下已送的目录，宿主的 `agent-instructions` 消息的 `changes[].path` 也算已送（会话中途换过路由时不重复）；压缩把通知压掉之后，再触碰才会重送，与宿主一致。没有文件的目录在进程内记一次，不每步重查。
+- 与宿主不同处：不做「文件改了整份替换」和「文件删了声明移除」（宿主每步按版本重查已加载的文件，这里只送一次）；只认直接调用的 `Read`、`Write`、`Edit`（三者都是常驻工具，不经 `DeferredToolCall`）。
+- 读失败只告警一次，该步不带通知（失败要出声，不拦步）。
+
+请求偏离：GLM 请求在触碰子目录文件之后多一条 user 消息，文字用宿主的措辞，不是 ZCode 的任何文本。基线里 DSH 的 `agent-instructions` 消息已经是 ZCode 没有的形态（ZCode 把指令放进 `Request User Context` 元消息），峰时提醒、编排层的图投影也是 ZCode 没有的 user 通知，所以偏离的形态不新；对 1.5 倍用量（`risk-signing`）的影响没有验证，与那几条同一等级。
 
 ## 6. 注入约定〔定案〕
 
