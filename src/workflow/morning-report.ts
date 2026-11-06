@@ -14,6 +14,7 @@
  * the end instead of silently shaping the numbers.
  */
 import { auditPaths, type DecisionRecord, type UsageRecord } from '../memory/audit.ts'
+import { effectCheckLines, effectChecks, type EffectCheck, type JournalRead } from '../memory/effect.ts'
 import { classifyRecord, journalEarliest, type GuardRecord, type LiftRecord } from '../guard/records.ts'
 import { liftRecordPath } from '../guard/lift.ts'
 import { liftLines, renderStamp, ruleLines, type LiftsInput } from '../guard/status.ts'
@@ -77,6 +78,8 @@ export interface ReportInput {
   readonly now?: number | undefined
   /** The metrics journal's facts and its 记录 coverage line, ready-made lines; absent when the caller passed no project. */
   readonly metrics?: readonly string[]
+  /** The checks of the rule proposals whose days fell due in the last seven days (src/memory/effect.ts); absent or empty when there are none. */
+  readonly effects?: readonly EffectCheck[]
 }
 
 /** The local calendar day of an instant, as 2026-10-27. */
@@ -256,6 +259,7 @@ export function morningReport(input: ReportInput): string {
   const suppressionLine = suppressionLineOf(input.suppressions ?? [])
   if (suppressionLine !== undefined) lines.push(suppressionLine)
   lines.push(...timingSection(input.timing ?? [], input.limits ?? [], input.now ?? Date.now(), offsetMinutes))
+  lines.push(...effectCheckLines(input.effects ?? [], offsetMinutes))
 
   lines.push('')
   lines.push('## 等你定的事')
@@ -308,10 +312,10 @@ export interface ReportOptions {
 /** Reads the project graph of the session that asked for the report; rejects with the reason when it cannot. */
 export type GraphReader = () => Promise<LoadedGraph>
 
-/** The asks of the graph `read` gives, or why it could not be read: the report names the reason and goes on. */
-async function readAsks(read: GraphReader, since: string | undefined): Promise<AskSummary | GraphUnreadable> {
+/** The graph `read` gives, or why it could not be read; read once per report, the asks and the checks of the rule proposals share it. */
+async function readOnce(read: GraphReader): Promise<{ readonly graph: LoadedGraph } | GraphUnreadable> {
   try {
-    return askSummary(await read(), since)
+    return { graph: await read() }
   }
   catch (error) {
     return { unreadable: error instanceof Error ? error.message : String(error) }
@@ -382,6 +386,7 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
   const uncommitted = root === undefined || file === undefined || 'error' in file
     ? undefined
     : await runGit(root, ['status', '--porcelain', '--', 'docs/guard/lifts.jsonl']).then(run => run.code === 0 && run.out.trim().length > 0, () => undefined)
+  const loaded = await readOnce(graph)
   return morningReport({
     decisions: inPeriod(await readJsonl<DecisionRecord>(paths.decisions)),
     violations: inPeriod(wholeViolations),
@@ -396,7 +401,7 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
     pricing: options.pricing,
     problem: options.problem,
     usageScope: gapLines(parseGaps(gapRaw), nowAt, zone, periodStart),
-    asks: await readAsks(graph, since),
+    asks: 'unreadable' in loaded ? loaded : askSummary(loaded.graph, since),
     offsetMinutes: options.offsetMinutes,
     lifts: {
       records: liftRecords,
@@ -405,7 +410,25 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
       ...(uncommitted === undefined ? {} : { uncommitted }),
     },
     ...(metricsLinesOut === undefined ? {} : { metrics: metricsLinesOut }),
+    effects: 'unreadable' in loaded ? [] : await readEffects(loaded.graph, options.metrics, nowAt),
   })
+}
+
+/**
+ * The checks of the rule proposals whose days are up (M5 design §3.6.1): the
+ * graph gives the agreed proposals and the corrections, the metrics journal
+ * of the session's project the denials. The caller gives no checks for a
+ * graph that cannot be read (the section of asks already names why); a
+ * journal that cannot be read makes the denial checks unchecked, with the
+ * reason.
+ */
+async function readEffects(loaded: LoadedGraph, metrics: ReportOptions['metrics'], nowMs: number): Promise<EffectCheck[]> {
+  const journal: JournalRead = metrics === undefined
+    ? { unreadable: '这次调用没有给出项目' }
+    : !('root' in metrics)
+        ? { unreadable: metrics.reason }
+        : await readLog(metrics.root).then(read => ({ events: read.events }), (error: unknown) => ({ unreadable: error instanceof Error ? error.message : String(error) }))
+  return effectChecks(loaded.nodes.values(), journal, nowMs)
 }
 
 /** The facts groups the conversation-facing report carries (§7.3): the task, interception, lift, timeout, stall and report groups, no scores, no burden numbers, no coverage group. */
