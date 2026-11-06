@@ -699,6 +699,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 E9 第 (1) 节在 m7 分支落定（wf_36d1d690c7e1de90 e9-commit）：按编排方选的 A，三个已推的 wip(m7-e9) 提交 c0d89dd1、59ebb1f3、fb37d604 原样作为 E9 的记录，没有压缩、没有强推；origin/m7 = HEAD = fb37d604，树 af3da938 即评审（APPROVED，0 条发现）与门禁用的树。门禁：build 0、preflight 0、npm test 3164（3163 过、1 跳过）、棘轮 73/18/1、探针 478/478，含 glm-exec-skeleton 的 11 项。execute 行仍出厂停用。压缩留到 M7 合入 main 时（C）。下一步 real-model-run，然后合入、L4 与报告。"
+    },
+    {
+      "at": "2026-11-06T02:46:44.760Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 真实模型运行（wf_36d1d690c7e1de90 real-model-run，headless，临时 DSH home，m7 fb37d604，主 Agent 为第二个根会话 glm-5.3，DRIVE_ON，非高峰，5.9 分钟，计 23.49 积分）发现死锁：子 agent 调 submit_plan 后 5 分钟没有进展（主 Agent 空闲、goal 在跑、roundsStarted 0），看门狗结束运行。原因（读 rc.3 源码与 src/rules/wake.ts）：submit_plan 挂着子 agent 的工具调用；notifyMain 经 deliver() 投递，主 Agent 空闲且 goal 在跑时选 inject，不叫醒；goal 轮次驱动要等 subagents.waitForChildren 返回才开下一轮，而子 agent 在等主 Agent，只有 30 分钟计划超时才解开。ask_main 同一路径。L3 骨架没抓到：脚本化的主 Agent 不结束回合（E9 计划 D2），glm-exec-drive 用的是 quick。其余观察：主 Agent 自选 glm-5.3-flash 并写明理由、请轻审带理由；第一次 dispatch_task 的 quick 因带目录被拒，下一步自己改对；没有 guard 拦截、没有问人。编排方定 A：合入前在 m7 上修，requests.ts 的计划与提问通知对空闲持有者用 followup 叫醒（忙时不变），补 L2（空闲持有者加活 goal 两种通知都送到且轮次继续、忙时仍不叫醒、不重复开轮），文档同批改，全量门禁与探针，origin/m7 只快进，再重跑一次真实模型运行（积分照规矩只披露）；合入前插入一步独立评审修复提交。与 inject-via-prestep 的重叠：那条线把不叫醒的提示挪进 src/shared/step-mailbox.ts、改 src/loops/deliver.ts，计划与提问通知在那里必须保持叫醒，后合入的一方处理冲突。记录在 m7 工作树 .llm/wf/m7-e9/rmr/2026-11-06T02-28-10-056Z/。"
     }
   ]
 }
