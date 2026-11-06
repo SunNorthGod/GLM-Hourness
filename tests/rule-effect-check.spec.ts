@@ -154,6 +154,23 @@ test('denials are counted from the metrics journal, by the rule with or without 
   }
 })
 
+test('a journal of several hundred thousand events is checked like a small one: the earliest instant is found without putting every event on the call stack', async () => {
+  const w = await world()
+  try {
+    const effect: RuleEffect = { change: 'add', effect: 'shell 里写文件的次数变少', metric: 'denials:guard:file-tools-only', direction: 'down', days: 14 }
+    await w.agreed(AGREED, '加严 shell 写文件的规则', effect)
+    const nodes = (await w.graph()).nodes
+    const size = 400_000
+    const step = Math.floor((DUE - BASE) / size)
+    const events: JournalEvent[] = Array.from({ length: size }, (_, i) => ({ k: 'host.started', at: iso(BASE + i * step), body: {} }))
+    events.push({ k: 'rule', at: iso(AGREED - DAY), body: { rule: 'file-tools-only', effect: 'deny' } })
+    assert.deepEqual(effectChecks(nodes.values(), { events }, DUE + DAY).map(check => [check.outcome, check.before, check.after]), [['met', 1, 0]])
+  }
+  finally {
+    await w.close()
+  }
+})
+
 test('an older rule whose count went back in the windows of a newer one is named under it, even when the newer one met its own effect', async () => {
   const w = await world()
   try {

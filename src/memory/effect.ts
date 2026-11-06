@@ -253,9 +253,13 @@ function countsOf(metric: string, nodes: readonly GraphNode[], journal: JournalR
     return { before: own.filter(ms => ms < at).length, after: own.filter(ms => ms >= at).length }
   }
   if ('unreadable' in journal) return { unchecked: `指标流水读不到：${journal.unreadable}` }
-  const times = journal.events.map(event => Date.parse(event.at)).filter(ms => !Number.isNaN(ms))
-  if (times.length === 0) return { unchecked: '指标流水还没有记录' }
-  const earliest = Math.min(...times)
+  // A loop, not Math.min(...): a spread puts every event on the call stack, and a real journal outgrows it.
+  let earliest = Number.POSITIVE_INFINITY
+  for (const event of journal.events) {
+    const ms = Date.parse(event.at)
+    if (ms < earliest) earliest = ms
+  }
+  if (earliest === Number.POSITIVE_INFINITY) return { unchecked: '指标流水还没有记录' }
   if (earliest > from) return { unchecked: `指标流水从 ${iso(earliest).slice(0, 10)} 才有，够不着同意之前的那段` }
   const row = ROW_OF.get(parts.name)
   const own = journal.events.filter(event => deniedBy(event, parts.name, row)).map(event => Date.parse(event.at)).filter(ms => ms >= from && ms < due)
