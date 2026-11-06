@@ -15,7 +15,7 @@
  * declared in ./cordis-min.ts (no Node import) and re-exported here.
  */
 import { randomUUID } from 'node:crypto'
-import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmRuntime } from '@deepseek-ai/dsh-llm'
 import type { ProvideHost, ServiceLookup } from './cordis-min.ts'
 import type { StreamChunk } from './lm-min.ts'
 
@@ -767,11 +767,13 @@ export interface SubagentsService {
  * deduplicated catalog of a provider — the runtime does not bind the catalog
  * to routing, so it is a check, not a gate (§3.1.3) — and it throws for a
  * provider that is not registered; `resolveModelInfo` (typert.host.js:243,
- * async) adds the model's `reasoning.efforts` when it has any.
+ * async) adds the model's `reasoning.efforts` when it has any: effort records
+ * whose `id` is the value `reasoningEffort` takes (dsh-llm types.d.ts
+ * `LlmModelReasoningInfo`, `LlmReasoningEffortInfo`).
  */
 export interface LlmCatalog {
   listModels(provider: string): Promise<readonly { readonly id: string, readonly name?: string }[]>
-  resolveModelInfo(provider: string, model: string): Promise<{ readonly reasoning?: { readonly efforts?: readonly string[] } } | undefined>
+  resolveModelInfo(provider: string, model: string): Promise<{ readonly reasoning?: { readonly efforts?: readonly { readonly id: string, readonly name: string, readonly description?: string }[] } } | undefined>
 }
 
 /**
@@ -997,6 +999,16 @@ export type LlmStreamOptionsContractCheck = GenerateOptions extends LlmStreamOpt
 /** Referenced so the conditional type is evaluated by tsc. */
 const llmStreamOptionsContractCheck: LlmStreamOptionsContractCheck = true
 void llmStreamOptionsContractCheck
+
+/**
+ * Compile-time contract check against the installed @deepseek-ai/dsh-llm
+ * types: the runtime's `listModels` and `resolveModelInfo` offer what the
+ * execute row reads, with compatible types (the effort records, not bare ids).
+ */
+type LlmCatalogContractCheck = Pick<LlmRuntime, 'listModels' | 'resolveModelInfo'> extends LlmCatalog ? true : never
+/** Referenced so the conditional type is evaluated by tsc. */
+const llmCatalogContractCheck: LlmCatalogContractCheck = true
+void llmCatalogContractCheck
 
 /** Recursively freeze a freshly built JSON value (createMessage freezes its output). */
 function deepFreeze<T>(value: T): T {

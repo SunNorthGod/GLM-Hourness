@@ -33,7 +33,7 @@ import { pinsOf, renderPins } from '../graph/pins.ts'
 import { projectOf } from '../data/project-root.ts'
 import { peakModeService } from '../shared/peak-mode.ts'
 import { isGlmModel } from '../shared/route.ts'
-import type { AgentLike, LiveAgentLike, ServiceLookup, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
+import type { AgentLike, LiveAgentLike, LlmCatalog, ServiceLookup, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
 import { briefGate, renderAcceptanceBrief, renderBrief, renderDesignReviewBrief, renderReviewBrief, type Brief, type BriefContext, type BriefInput, type GateResult } from './brief.ts'
 import { latestDispatch, lostChildOf, makeChildId, nextAttempt, parseHandbackComment, registerAttempt, registeredDispatches, renderDispatchComment, type Attempt, type DispatchSummary, type HandbackComment, type PlanStatus } from './attempts.ts'
 import { trunkBranchOf } from './check.ts'
@@ -116,10 +116,7 @@ function readServices(lookup: ServiceLookup | undefined): DispatchServices | und
     resolveMaxDepth?: (configured?: unknown) => number | undefined
   } | undefined
   if (subagents === undefined || typeof subagents.startActivation !== 'function' || typeof subagents.resolveMaxDepth !== 'function') return undefined
-  const llm = get('llm') as {
-    listModels?: (provider: string) => Promise<readonly CatalogEntry[]>
-    resolveModelInfo?: (provider: string, model: string) => Promise<{ readonly reasoning?: { readonly efforts?: readonly string[] } } | undefined>
-  } | undefined
+  const llm = get('llm') as Partial<LlmCatalog> | undefined
   const hasLlm = llm !== undefined && typeof llm.listModels === 'function' && typeof llm.resolveModelInfo === 'function'
   return {
     // The services are called as methods: the runtime's members read `this`.
@@ -138,7 +135,9 @@ function readServices(lookup: ServiceLookup | undefined): DispatchServices | und
     efforts: hasLlm
       ? async (provider, model) => {
         try {
-          return (await llm.resolveModelInfo!(provider, model))?.reasoning?.efforts
+          const info = await llm.resolveModelInfo!(provider, model)
+          // A resolved model without reasoning takes no effort: rc.3 refuses one at the first call (UNSUPPORTED_REASONING_EFFORT, dsh-llm resolveCallWithInfo).
+          return info === undefined ? undefined : (info.reasoning?.efforts ?? []).map(effort => effort.id)
         }
         catch {
           return undefined

@@ -11,7 +11,8 @@ import { PEAK_MODE_SERVICE, peakModeService, type PeakModeService } from '../src
 import { EXECUTE_SERVICE, type ExecuteService } from '../src/shared/execute-service.ts'
 import { EXECUTE_RULES, installExecuteRules, type CommandRecordLine } from '../src/guard/execute-rules.ts'
 import { REQUESTS_SERVICE, type RequestsService } from '../src/guard/request-service.ts'
-import type { AgentLike, AssembledTool, InjectableServices, ServiceLookup, SessionLike, ToolDefinitionLike } from '../src/shared/dsh-min.ts'
+import type { AgentLike, AssembledTool, InjectableServices, LlmCatalog, ServiceLookup, SessionLike, ToolDefinitionLike } from '../src/shared/dsh-min.ts'
+import { GLM_REASONING_EFFORTS } from '../src/glm-llm/models.ts'
 import { faceOfRole } from '../src/execute/faces.ts'
 import { dispatchTool, createGraphCache, type DispatchDeps } from '../src/execute/dispatch.ts'
 import { dispatchDescription } from '../src/execute/examples.ts'
@@ -418,6 +419,32 @@ test('the GLM peak cap limits a second GLM dispatch to slots_full; a non-GLM mod
     const third = await dispatch(deps, project.root, { id: 'task-8', model: 'probe-model', why: 'not a glm model' }) as { childId: string }
     cleanup(String(first.childId))
     cleanup(String(third.childId))
+  }
+  finally {
+    dispose(project)
+  }
+})
+
+test('reasoningEffort is checked against the ids of the model\u2019s effort records as rc.3 resolveModelInfo returns them: a listed id dispatches with it, another is invalid and the hint names the ids; a model resolved without reasoning takes none', async () => {
+  const project = await presetProject([WORK_TASK, { ...WORK_TASK, id: 'task-7', title: 'Second', writeScope: ['site/b/'] }])
+  try {
+    const subagents = fakeSubagents()
+    // rc.3 `llm.resolveModelInfo` resolves LlmResolvedModelInfo, whose reasoning.efforts are {id, name, description?} records (dsh-llm types.d.ts LlmModelReasoningInfo); the GLM channel declares GLM_REASONING_EFFORTS (zcode.ts resolveModelInfo). A model without reasoning resolves without the field.
+    const llm: LlmCatalog = {
+      listModels: () => Promise.resolve([{ id: 'glm-5.3', name: 'GLM-5.3' }, { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash' }, { id: 'plain-model', name: 'Plain' }]),
+      resolveModelInfo: (_provider, model) => Promise.resolve(model === 'plain-model' ? {} : { reasoning: { efforts: GLM_REASONING_EFFORTS } }),
+    }
+    const { deps, cleanup } = depsFor(project, subagents.service, { lookup: lookupWith(subagents.service, { llm }) })
+    const unlisted = await refusedOf(() => dispatch(deps, project.root, { id: 'task-7', model: 'glm-5.3-flash', why: 'x', reasoningEffort: 'turbo' }))
+    assert.equal(unlisted.code, 'invalid')
+    assert.equal(unlisted.hint, 'Model "glm-5.3-flash" has these reasoning effort levels: low, high, max.')
+    const none = await refusedOf(() => dispatch(deps, project.root, { id: 'task-7', model: 'plain-model', why: 'x', reasoningEffort: 'low' }))
+    assert.equal(none.code, 'invalid')
+    assert.equal(none.hint, 'Model "plain-model" has no reasoning effort levels.')
+    const listed = await dispatch(deps, project.root, { id: 'task-1', model: 'glm-5.3-flash', why: 'two small files', reasoningEffort: 'low' }) as { childId: string }
+    const spec = subagents.started.at(-1) as { request: { agentOptions: { reasoningEffort?: string } } }
+    assert.equal(spec.request.agentOptions.reasoningEffort, 'low')
+    cleanup(String(listed.childId))
   }
   finally {
     dispose(project)

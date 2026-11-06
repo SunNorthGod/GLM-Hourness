@@ -826,7 +826,7 @@ test('main agent rules: every rule of the table denies once on the fake host, an
 test('the model catalog and the session query shapes of the execute row are implementable against rc.3', async () => {
   const catalog: LlmCatalog = {
     listModels: provider => Promise.resolve(provider === 'glm' ? [{ id: 'glm-5.3-flash' }] : []),
-    resolveModelInfo: (provider, model) => Promise.resolve(provider === 'glm' && model === 'glm-5.3-flash' ? { reasoning: { efforts: ['none', 'low'] } } : undefined),
+    resolveModelInfo: (provider, model) => Promise.resolve(provider === 'glm' && model === 'glm-5.3-flash' ? { reasoning: { efforts: [{ id: 'low', name: 'Low' }, { id: 'high', name: 'High' }] } } : undefined),
   }
   assert.deepEqual(await catalog.listModels('glm'), [{ id: 'glm-5.3-flash' }])
   assert.equal((await catalog.resolveModelInfo('glm', 'glm-5.3-flash'))?.reasoning?.efforts?.length, 2)
