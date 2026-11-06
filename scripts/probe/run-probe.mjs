@@ -165,6 +165,7 @@ import { FAILURE_SOURCE } from '../../packages/hourness/dist/lessons/failure.js'
 import { GUARD_CORRECTION_SOURCE, GUARD_LIFT_LINE } from '../../packages/hourness/dist/guard/index.js'
 import { PENDING_SOURCE as LESSONS_PENDING_SOURCE, RECUR_SOURCE as LESSONS_RECUR_SOURCE } from '../../packages/hourness/dist/lessons/notices.js'
 import { INDEX_SOURCE as MEMORY_INDEX_SOURCE } from '../../packages/hourness/dist/memory/index.js'
+import { HABIT_RULE_DECLARATION } from '../../packages/hourness/dist/memory/habit-rule.js'
 import { compareShapes, describeDifference, isProjectDifference, profileShape } from '../profile-shape.mjs'
 import { checkLog, readLog } from '../../packages/hourness/dist/metrics/read.js'
 import { METRICS_FILES_ONLY } from '../../packages/hourness/dist/metrics/rules.js'
@@ -1873,22 +1874,29 @@ const depthSessions = (() => {
 /** The depth id the standing-preference sentence of the request's prompt names. */
 const depthOf = step => /The user's standing preference is [^（]+（(\w+)）/.exec(step?.system ?? '')?.[1]
 
-// The habit questions (M5 design §3.8, m5-4 items 4 to 8): the task is the
-// person's message, so a preference quoting it is stored checked; the agent
-// asks one habit question (deferred on the GLM route), the probe sends the
-// person's reply into the same session (`tell`), the confirm records the
-// habit with their words, and a relay that only an earlier message had is
-// refused. The user-level journal holds store, ask, store and nothing else.
+// The habit questions (M5 design §3.8, m5-4 items 4 to 8; m5-habit-rule):
+// the task is the person's message, so a preference quoting it is stored
+// checked (said outright, the rule habit-ask-first lets it through); a
+// question card about a habit is denied by habit-ask-first; the agent asks
+// one habit question with memory_habit (resident on the GLM route), the probe
+// sends the person's reply into the same session (`tell`), a memory_store
+// whose relay is only their yes is denied by habit-ask-first, the confirm
+// records the habit with their words, and a relay that only an earlier
+// message had is refused. The user-level journal holds store, ask, store and
+// nothing else; the violation journal holds the two denials.
 const HABIT_ASK = { name: 'commit-in-english', scope: 'all', description: 'Write commit messages in English', body: 'Commit messages stay in English.\n**Why:** the person asked for it.\n**How to apply:** write the subject and the body in English.', question: '以后提交说明都写成英文，好吗？', learnedFrom: ['edit:goal.stage'] }
 const HABIT_TASK = '试一下习惯先问再记；先记住我这句话：汇报只写结论。'
+const HABIT_CARD = { questions: [{ id: 'q-habit', question: '要把「提交说明都写成英文」记成你的习惯吗？', options: [{ label: '记下' }, { label: '不用' }] }] }
 const memoryHabit = runScenario('glm-memory-habit', 'glm-5.3', [
   { tool: { name: 'memory_store', arguments: { name: 'reports-conclusion-only', type: 'feedback', scope: 'all', description: 'Reports carry only the conclusion', body: 'The conclusion first, the rest on demand.\n**Why:** the person said so.', relay: '汇报只写结论' } } },
-  { tool: { name: 'DeferredToolCall', arguments: { name: 'memory_habit', input: { action: 'ask', ...HABIT_ASK } } } },
+  { tool: { name: 'ask_user_question', arguments: HABIT_CARD } },
+  { tool: { name: 'memory_habit', arguments: { action: 'ask', ...HABIT_ASK } } },
   { tell: '好，都写成英文吧' },
-  { tool: { name: 'DeferredToolCall', arguments: { name: 'memory_habit', input: { action: 'confirm', name: 'commit-in-english', words: ['好，都写成英文吧'] } } } },
+  { tool: { name: 'memory_store', arguments: { name: 'commit-english-direct', type: 'feedback', scope: 'all', description: 'Write commit messages in English', body: 'Commit messages stay in English.\n**Why:** the person said yes.', relay: '好' } } },
+  { tool: { name: 'memory_habit', arguments: { action: 'confirm', name: 'commit-in-english', words: ['好，都写成英文吧'] } } },
   { tool: { name: 'memory_store', arguments: { name: 'from-the-task', type: 'feedback', scope: 'all', description: 'Quoting an earlier message', body: 'This must be refused.\n**Why:** the words are not in the latest message.', relay: '汇报只写结论' } } },
   { text: 'done', status: true },
-], HABIT_TASK, [], repo)
+], HABIT_TASK, ['- insert:', '    - id: glm-hourness-probe/tool-ask-user', '      name: \'@deepseek-ai/dsh-tool-ask-user\''], repo)
 
 // Compaction: the session starts with a memory in the project, so its first
 // request has the index; the compaction removes it from the visible history
@@ -2097,6 +2105,21 @@ const designOne = designScenario('glm-design-one-main', 'glm-5.3', ws => [
   { tool: { name: 'Write', arguments: { file_path: join(ws, '.llm', 'x.txt'), content: 'x\n' } }, status: true },
   { text: 'done' },
 ], { wish: true })
+// A /wish off in an idle session leaves its inbox empty (inject-via-prestep):
+// the main session types /wish into a second root session that never ran,
+// then /wish off, then /wish off again with a message of the person that
+// wakes it. The notices of the two first commands wait in the design row's
+// step mailbox, not in the inbox the desktop host counts as a running task,
+// and the woken session's first request carries both before the message.
+const designWishOffIdle = designScenario('glm-design-wish-off-idle', 'glm-5.3', ws => [
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish' } },
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish off' } },
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish off', say: 'Reply done.' } },
+  // The woken session runs its turn while the main one waits; without the
+  // wait the run ends before that turn sends its first request.
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the second session run' } } },
+  { text: 'done' },
+], { others: [[{ text: 'done' }]] })
 // Stage reminders and design-before-release (docs/ORCHESTRATION.md §3.5, §6.1; M3 step 5).
 // The graph of the workspace is seeded before the run. The main agent
 // (the simulated human's /wish) dispatches subagents through the dispatch
@@ -2968,6 +2991,34 @@ function personaChecks() {
     ['design persona (non-GLM): the row is in effect in /hourness-status and ran quietly', inEffectRow(rowAt(designPersonaPlain, designPersonaPlain.steps[0]?.command?.text)) && designPersonaPlain.status === 0 && !stderrOf(PERSONA_PLAIN).includes('dsh-glm-hourness/design'), `${JSON.stringify(rowAt(designPersonaPlain, designPersonaPlain.steps[0]?.command?.text) ?? null)}; exit ${designPersonaPlain.status}`],
   ]
 }
+/**
+ * A /wish off in an idle session (scenario glm-design-wish-off-idle,
+ * inject-via-prestep): the two commands typed into the second root session
+ * leave its inbox empty and log no inbox event; its first request, the turn the
+ * person's message woke, carries the enter notice and the leave notice, in that
+ * order and before the message, and no later request carries them again.
+ */
+function wishOffIdleChecks(wishNotices) {
+  const scenario = designWishOffIdle
+  const mainId = scenario.steps[0]?.sessionId
+  const main = scenario.steps.filter(step => step.sessionId === mainId)
+  const otherId = scenario.steps.find(step => step.sessionId !== mainId)?.sessionId
+  const second = otherId === undefined ? [] : bySession(scenario, otherId)
+  const typed = [0, 1].map(index => main[index]?.other)
+  const idleEmpty = typed.every(line => line?.kind === 'success' && !line.types.includes('agent/inbox/spliced') && isDeepStrictEqual(line.inbox, { nextStep: 0, nextTurn: 0 }))
+  const first = second[0]
+  const notices = wishNotices(first)
+  const at = text => (first?.messages ?? []).findIndex(message => message.source === 'glm-design-wish' && message.text.includes(text))
+  const said = (first?.messages ?? []).findIndex(message => message.role === 'user' && message.source === 'user' && message.text.includes('Reply done.'))
+  const entered = (first?.messages ?? []).findIndex(message => message.source === 'glm-design-wish' && message.text.startsWith('The human made this session\'s agent the main agent'))
+  const left = at('left main-agent mode with /wish off')
+  const later = second.slice(1).every(step => wishNotices(step).length === wishNotices(first).length)
+  return [
+    ['design wish off idle: /wish and /wish off typed into an idle second session succeed, log no inbox event, and leave its inbox empty (nextStep 0, nextTurn 0)', idleEmpty, JSON.stringify(typed.map(line => ({ kind: line?.kind, types: line?.types, inbox: line?.inbox ?? null })))],
+    ['design wish off idle: the first request of the woken session carries the enter notice, then the leave notice, both before the person\'s message; the second /wish off adds none', notices.length === 2 && entered >= 0 && left > entered && said > left && main[2]?.other?.kind === 'success' && main[2].other.resultText === '这个会话本来就不是主 Agent', `${notices.length} notice(s); enter ${entered}, leave ${left}, message ${said}; ${JSON.stringify(main[2]?.other ?? null).slice(0, 120)}`],
+    ['design wish off idle: no later request of the second session carries the notices again (the history keeps the two it admitted), the record is gone, the row warned of nothing', second.length >= 1 && later && designRecord(scenario).kind === 'none' && !stderrOf(scenario.name).includes('dsh-glm-hourness/design') && scenario.status === 0, `${second.length} request(s); record ${designRecord(scenario).kind}; exit ${scenario.status}`],
+  ]
+}
 function designChecks() {
   const zcode = (step) => step?.system.indexOf('You are ZCode, an interactive agent') ?? -1
   const ascending = (...marks) => marks.every(mark => mark >= 0) && marks.every((mark, index) => index === 0 || marks[index - 1] < mark)
@@ -3016,6 +3067,7 @@ function designChecks() {
     ['design one main: a second root session in the same workspace, typing /wish, is told where the main agent is and how to move it; its tool face and the first session\'s are not changed by it', mainSteps[0]?.other?.kind === 'success' && mainSteps[0].other.resultText.includes('这个项目的主 Agent 在另一个会话里') && mainSteps[0].other.resultText.includes('/wish here') && sectionAt(mainSteps[1]) >= 0 && lacks(mainSteps[1], ['Write', 'Edit']), JSON.stringify(mainSteps[0]?.other ?? null).slice(0, 160)],
     ['design one main: /wish here moves the role; the first session\'s next request has no section, its tool face back (Write, Edit, ask_user_question), the notice that the main agent moved; the Write runs', mainSteps[1]?.other?.kind === 'success' && mainSteps[1].other.resultText.startsWith('主 Agent 已从另一个会话移到这里；') && mainSteps[2] !== undefined && sectionAt(mainSteps[2]) < 0 && hasCut(mainSteps[2], GLM_CUT) && wishNotices(mainSteps[2]).some(message => message.text.includes('moved to another session')) && files(one, 'x.txt')[0], `${mainSteps[1]?.other?.kind}; section ${sectionAt(mainSteps[2])}; x.txt ${files(one, 'x.txt')[0]}`],
     ['design one main: the record names the second session, not the first and not the fork; the second session logged its own two commands', holder.kind === 'held' && holder.record.sessionId.startsWith('probe-other-') && holder.record.sessionId !== mainId && holder.record.sessionId !== forkNote?.sessionId && mainSteps[0]?.other?.types.join('>') === 'command/run>command/done', `${holder.kind === 'held' ? holder.record.sessionId : holder.kind}`],
+    ...wishOffIdleChecks(wishNotices),
     ...stageChecks(),
     ...questionChecks(),
     ...interviewChecks(),
@@ -3046,11 +3098,17 @@ function memoryChecks() {
   const habitRun = bySession(memoryHabit, memoryHabit.steps[0]?.sessionId)
   const said = (run, at, piece) => (run[at]?.messages ?? []).some(message => message.text.includes(piece))
   const habitJournal = memoryJournalOf('glm-memory-habit', 'all')
+  /** The denials (records without a kind) of the scenario's violation journal; the settled follow-ups are records of their own. */
+  const habitDenials = jsonl(join(runDir, 'glm-memory-habit', 'home', 'audit', 'violations.jsonl')).filter(record => record.kind === undefined)
   const habitChecks = [
-    ['memory habit: the preference quoting the task (the person\'s latest message in the session) is stored with the words checked', habitJournal[0]?.op === 'store' && habitJournal[0]?.data.relayChecked === true && habitJournal[0]?.relay === '汇报只写结论' && habitRun.length === 6, `journal ${habitJournal.map(record => record.op).join(', ') || 'none'}; requests ${habitRun.length} (exit ${memoryHabit.status})`],
-    ['memory habit: the ask is recorded with its question and its result reached the model as the circled text with the content on a second line', habitJournal[1]?.op === 'ask' && habitJournal[1]?.data.question === HABIT_ASK.question && isDeepStrictEqual(habitJournal[1]?.data.learnedFrom, ['edit:goal.stage']) && said(habitRun, 2, '① 以后提交说明都写成英文，好吗？') && said(habitRun, 2, `要记的：${HABIT_ASK.description}`), (habitRun[2]?.messages ?? []).map(message => message.text).find(text => text.includes('要记的：'))?.slice(0, 120) ?? 'the ask result did not reach the model'],
-    ['memory habit: the person\'s reply (`tell`) woke the session and the confirm stored what was asked, with their words as the relay, checked, and the question named', habitJournal[2]?.op === 'store' && habitJournal[2]?.data.ask === HABIT_ASK.question && habitJournal[2]?.relay === '好，都写成英文吧' && habitJournal[2]?.data.relayChecked === true && said(habitRun, 4, '"confirmed":true'), habitJournal[2] === undefined ? 'no confirm store' : (habitRun[4]?.messages ?? []).map(message => message.text).find(text => text.includes('confirmed'))?.slice(0, 120) ?? 'the confirm result did not reach the model'],
-    ['memory habit: a relay that only an earlier message had is refused as relay_not_said and nothing more was written', habitJournal.length === 3 && said(habitRun, 5, 'relay_not_said'), habitJournal.length === 3 ? (habitRun[5]?.messages ?? []).map(message => message.text).find(text => text.includes('relay_not_said'))?.slice(0, 120) ?? 'the refusal did not reach the model' : `journal ${habitJournal.map(record => record.op).join(', ')}`],
+    ['memory habit: the preference quoting the task (the person\'s latest message in the session, said outright) is stored with the words checked', habitJournal[0]?.op === 'store' && habitJournal[0]?.data.relayChecked === true && habitJournal[0]?.relay === '汇报只写结论' && habitRun.length === 8, `journal ${habitJournal.map(record => record.op).join(', ') || 'none'}; requests ${habitRun.length} (exit ${memoryHabit.status})`],
+    ['memory habit: memory_habit is resident in the GLM face from the first request, and the guard section declares habit-ask-first', habitRun[0]?.tools.some(tool => tool.name === 'memory_habit' && tool.deferLoading !== true) === true && habitRun[0].system.includes(HABIT_RULE_DECLARATION), `${(habitRun[0]?.tools ?? []).filter(tool => tool.name.startsWith('memory_')).map(tool => tool.name).join(', ')}; declared ${habitRun[0]?.system.includes(HABIT_RULE_DECLARATION)}`],
+    ['memory habit: a question card about a habit is denied by habit-ask-first with memory_habit as the right path, and the card never ran', lastToolResult(habitRun[2])?.isError === true && lastToolResult(habitRun[2]).text.includes('Rule habit-ask-first') && lastToolResult(habitRun[2]).text.includes('Call memory_habit with action "ask"'), (lastToolResult(habitRun[2])?.text ?? 'no result').slice(0, 160)],
+    ['memory habit: the ask is recorded with its question and its result reached the model as the circled text with the content on a second line', habitJournal[1]?.op === 'ask' && habitJournal[1]?.data.question === HABIT_ASK.question && isDeepStrictEqual(habitJournal[1]?.data.learnedFrom, ['edit:goal.stage']) && said(habitRun, 3, '① 以后提交说明都写成英文，好吗？') && said(habitRun, 3, `要记的：${HABIT_ASK.description}`), (habitRun[3]?.messages ?? []).map(message => message.text).find(text => text.includes('要记的：'))?.slice(0, 120) ?? 'the ask result did not reach the model'],
+    ['memory habit: after the person\'s yes, a memory_store whose relay is only that yes is denied by habit-ask-first and writes nothing', lastToolResult(habitRun[5])?.isError === true && lastToolResult(habitRun[5]).text.includes('Rule habit-ask-first') && !habitJournal.some(record => record.data?.name === 'commit-english-direct'), (lastToolResult(habitRun[5])?.text ?? 'no result').slice(0, 160)],
+    ['memory habit: the person\'s reply (`tell`) woke the session and the confirm stored what was asked, with their words as the relay, checked, and the question named', habitJournal[2]?.op === 'store' && habitJournal[2]?.data.ask === HABIT_ASK.question && habitJournal[2]?.relay === '好，都写成英文吧' && habitJournal[2]?.data.relayChecked === true && said(habitRun, 6, '"confirmed":true'), habitJournal[2] === undefined ? 'no confirm store' : (habitRun[6]?.messages ?? []).map(message => message.text).find(text => text.includes('confirmed'))?.slice(0, 120) ?? 'the confirm result did not reach the model'],
+    ['memory habit: a relay that only an earlier message had is refused as relay_not_said and nothing more was written', habitJournal.length === 3 && said(habitRun, 7, 'relay_not_said'), habitJournal.length === 3 ? (habitRun[7]?.messages ?? []).map(message => message.text).find(text => text.includes('relay_not_said'))?.slice(0, 120) ?? 'the refusal did not reach the model' : `journal ${habitJournal.map(record => record.op).join(', ')}`],
+    ['memory habit: the violation journal of the session\'s project holds the two denials of habit-ask-first, the card and the store, each with its tool', isDeepStrictEqual(habitDenials.map(record => [record.rule, record.tool]), [['habit-ask-first', 'ask_user_question'], ['habit-ask-first', 'memory_store']]), JSON.stringify(habitDenials.map(record => [record.rule, record.tool]))],
     ['memory habit: the memory row reports itself in effect, and the run warned of nothing', healthOf(memoryHabit).memory?.status === ACTED && quiet('glm-memory-habit'), `${healthLine(healthOf(memoryHabit), 'memory')}; stderr ${stderrOf('glm-memory-habit').length} byte(s)`],
   ]
   return [
@@ -3064,7 +3122,7 @@ function memoryChecks() {
         [`memory (${label}): the second root agent of the workspace has the index in its first request after the first user message, with the four memories, once, and not repeated in its next request`, run.second.length === 2 && afterFirstUser(run.second[0]) && isDeepStrictEqual(counts(run.second), [1, 1]) && MEMORY_NAMES.every(entry => indexTexts(run.second[0])[0]?.includes(`- ${entry} (`) === true), run.second.length === 0 ? `no second session (exit ${scenario.status}): ${JSON.stringify(scenario.steps.at(-1)?.spawn ?? null)}` : `index notices per request: ${counts(run.second).join(', ')}; ${(indexTexts(run.second[0])[0] ?? 'none').replace(/\n/g, ' | ').slice(0, 160)}`],
         [`memory (${label}): each root agent's system prompt is the same at every step`, new Set(run.first.map(step => step.system)).size === 1 && new Set(run.second.map(step => step.system)).size === 1, `${new Set(run.first.map(step => step.system)).size} and ${new Set(run.second.map(step => step.system)).size} distinct prompt(s)`],
         [`memory (${label}): the three memory tools are in the face of the root agent, resident, and the glm:memory section is ${glmRoute ? 'in' : 'not in'} the prompt`, memoryFace(run.first[0]).length === 3 && memoryFace(run.first[0]).every(tool => tool.deferLoading !== true) && run.first[0].system.includes(MEMORY_SECTION_LINE) === glmRoute, `${memoryFace(run.first[0]).map(tool => tool.name).join(', ')}; section ${run.first[0]?.system.includes(MEMORY_SECTION_LINE)}`],
-        [`memory (${label}): the learning tool ${glmRoute ? 'is deferred on the GLM route: it is not in the face and tool search reaches it' : 'is in the face of the root agent'}`, glmRoute ? learningFace(run.first[0]).length === 0 : learningFace(run.first[0]).length === LEARNING_TOOL_NAMES.length && learningFace(run.first[0]).every(tool => tool.deferLoading !== true && LEARNING_TOOL_NAMES.includes(tool.name)), `${learningFace(run.first[0]).map(tool => tool.name).join(', ') || 'none'} in the face`],
+        [`memory (${label}): the learning tool ${glmRoute ? 'is deferred on the GLM route (not in the face, tool search reaches it) while memory_habit is resident' : 'and memory_habit are in the face of the root agent'}`, glmRoute ? isDeepStrictEqual(learningFace(run.first[0]).map(tool => tool.name), ['memory_habit']) && learningFace(run.first[0]).every(tool => tool.deferLoading !== true) : learningFace(run.first[0]).length === LEARNING_TOOL_NAMES.length && learningFace(run.first[0]).every(tool => tool.deferLoading !== true && LEARNING_TOOL_NAMES.includes(tool.name)), `${learningFace(run.first[0]).map(tool => tool.name).join(', ') || 'none'} in the face`],
         [`memory (${label}): the row reports itself in effect and says the session has the index; the configured home is said to be ignored`, healthOf(scenario).memory?.status === ACTED && healthOf(scenario).memory.reason.includes('本会话已带索引') && healthOf(scenario).memory.reason.includes('行配置 home 已不再使用（M5）'), JSON.stringify(healthOf(scenario).memory ?? null)],
       ]
     }),

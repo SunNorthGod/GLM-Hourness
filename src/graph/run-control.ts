@@ -12,12 +12,14 @@
  *   for graph_focus on it; an idle agent starts a turn, a running one takes
  *   it after the current turn.
  * - stop: cancel the main agent's turn (`keepInbox`) when it stands on the
- *   node, `inject` a message that the human paused the node and it must not
- *   be re-dispatched, then interrupt each direct child that stands on it.
- *   The message goes in before the interrupts: a child that stops sends its
- *   settlement notice, which wakes the main agent (subagent:2048–2058), and
- *   the step that reads the notice reads the message with it (the first
- *   step of a turn claims the next-step messages first, agent-loop:103–107).
+ *   node, put a message that the human paused the node and it must not be
+ *   re-dispatched before the main agent's next step (the row's step
+ *   mailbox, src/shared/step-mailbox.ts: not the inbox, which the cancelled
+ *   turn no longer claims and the desktop host counts as a running task),
+ *   then interrupt each direct child that stands on it. The message waits
+ *   before the interrupts: a child that stops sends its settlement notice,
+ *   which wakes the main agent (subagent:2048–2058), and the first step
+ *   that reads the notice gets the message before it.
  * - redo: reopen a done task, cancel what stands on the node, then
  *   `followup` a message with the acceptance before and after; in that
  *   order the message starts a turn as soon as the cancelled one ends.
@@ -34,6 +36,7 @@
  * and sends nothing: the history entry is written before anything acts.
  */
 import { createUserNotice, type AgentCommandInvocationLike, type AgentsService, type CommandResultLike, type LiveAgentLike, type SessionProjectionsService, type SubagentsService, type UserNotice } from '../shared/dsh-min.ts'
+import type { StepMailbox } from '../shared/step-mailbox.ts'
 import { openEngine, type GraphEngine } from './engine.ts'
 import { STATUS_LABELS, noGraphText, refusalForHuman } from './labels.ts'
 import { FOCUS_TOOL, LIVE_KEY, placeOf } from './live.ts'
@@ -52,6 +55,8 @@ const CATALOG_KEY = 'subagentCatalog'
 export interface RunServices {
   projections: SessionProjectionsService | undefined
   children: { readonly agents: AgentsService, readonly subagents: SubagentsService } | undefined
+  /** Where the pause notice waits for the main agent's next step (src/shared/step-mailbox.ts); the row's own, for its lifetime. */
+  readonly mailbox: StepMailbox
 }
 
 /** A direct child that runs on the node, and how to stop it. */
@@ -207,11 +212,11 @@ export async function runFromCommand(invocation: AgentCommandInvocationLike, con
     const problem = await record(engine, graph, node, `${runNote('stop')}：停下了${who}`, false)
     if (problem !== undefined) return refused(action, problem)
     if (standing.main) agent.cancel({ kind: 'user' }, { keepInbox: true })
-    agent.inject(message(invocation, action, node, `暂停了「${node.title}」`, [
+    const posted = services.mailbox.post(agent, message(invocation, action, node, `暂停了「${node.title}」`, [
       `[项目图] 人用 /graph-run 暂停了任务 ${node.id}「${node.title}」上的工作，停下了${who}。`,
       `不要接着做这个节点，也不要重新派发它；等人再点「${RUN_LABELS.start}」，或在对话里说继续。`,
     ], stopped))
-    const failures = stopChildren(standing.children)
+    const failures = [...posted.via === 'none' ? [`暂停说明没能送到主 Agent：${posted.reason}`] : [], ...stopChildren(standing.children)]
     return { kind: failures.length === 0 ? 'success' : 'error', text: [`已暂停「${node.title}」：停下了${who}`, ...failures].join('；') }
   }
 

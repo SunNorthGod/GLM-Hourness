@@ -672,9 +672,14 @@ export const learnNotifiedRecord = (keys: readonly string[], by: NonNullable<New
   data: { keys: [...keys] },
 })
 
-/** An open habit question (§3.8.1): the content the `store` of a confirm must repeat word for word. */
-export function askRecord(fields: HabitFields, by: NonNullable<NewRecord['by']>): NewRecord<'ask'> {
-  return { actor: 'llm', by, op: 'ask', id: memoryId(fields.scope, fields.name), data: { ...fields } }
+/**
+ * An open habit question (§3.8.1): the content the `store` of a confirm must
+ * repeat word for word. `notSame` lists the ids of the live noes the model
+ * set aside (memory_habit `notSame: true` after `maybe_declined`), so an
+ * override can be counted from the journal.
+ */
+export function askRecord(fields: HabitFields, by: NonNullable<NewRecord['by']>, notSame: readonly string[] = []): NewRecord<'ask'> {
+  return { actor: 'llm', by, op: 'ask', id: memoryId(fields.scope, fields.name), data: { ...fields, ...(notSame.length === 0 ? {} : { notSame: [...notSame] }) } }
 }
 
 /** The person's no to a habit question (§3.8.4): their words and the content the question carried. */

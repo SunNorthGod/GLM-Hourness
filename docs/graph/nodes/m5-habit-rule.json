@@ -3,7 +3,7 @@
   "type": "task",
   "title": "记习惯前先问，从提示词升成规则",
   "why": "提示词管不住模型绕开专门的工具去问；做成规则之后，人说过「不用」的习惯 28 天里真的不会再被问",
-  "status": "doing",
+  "status": "done",
   "parent": "m5",
   "kind": "implement",
   "body": "起因：2026-11-04 桌面批次（m5 节点批注），GLM-5.3-Flash 没有加载延迟工具 memory_habit，用 DSH 通用问答卡问了人，人的回绝没有进 memory_habit 的记录，28 天不再问的约束因此只在那个会话里有效；S12 的提示只写在 relay 的说明里。人 2026-11-05 定：直接说出口的习惯照旧直接记（m5-4 已关），不是直接说出口的习惯要先问，并且做成规则。先找根因（模型为什么没用 memory_habit），再定规则查什么：可能的做法有把 memory_habit 列为常驻工具、把「不经问与确认记习惯」做成按规则拦下等，由计划写明取舍。规则一启用就拦（d-code-rules-enforce），撤下只走一条路（d-one-lift-path），进规则总表。",
@@ -11,6 +11,24 @@
     "人没有直接说出口的习惯，agent 不经 memory_habit 的问与确认就记不进去：被拦下，带规则编号进违规流水，提醒写明正路；人直接说出口的照旧直接记",
     "人对一条习惯说了「不用」之后，28 天内这条习惯不会再被问，GLM-5.3 与 GLM-5.3-Flash 两档模型都一样；根因与取舍写进 M5 设计",
     "规则在规则总表与规则板上看得到，一句话能撤下；L2 钉住，L3 探针通过，改动在 main 上"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "b6ea653",
+      "note": "maybe_declined 软检查与拒绝列表，L2 12 例"
+    },
+    {
+      "kind": "commit",
+      "ref": "c249ca9",
+      "note": "合入 main，两个远端一致"
+    },
+    {
+      "kind": "test",
+      "ref": "合入树 build、preflight、npm test、check-lint、npm run -s probe",
+      "exit": 0,
+      "note": "门禁全绿；桌面版 L4 核对无新错误"
+    }
   ],
   "history": [
     {
@@ -64,6 +82,32 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 2 轮评审 APPROVED，没有挡路项：B1（两档模型真实重跑，验收 2 在 bb726f1 上满足）与 B2（文档同批）已解决；不挡路：探针结果只记在图上、wip 提交、origin/main 已前进。下一步合入。"
+    },
+    {
+      "at": "2026-11-06T04:37:03.940Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "m5-habit-rule（wf_b5171bd117c811ba）完成：规则 habit-ask-first、memory_habit 常驻；真实运行发现换说法重问被拒的习惯，按编排方定的软检查修：有效的拒绝列进会话索引与 memory_query，说明与某条拒绝相近（0.25）时先退回 maybe_declined、模型标 notSame 才放行，退回计入指标流水；GLM-5.3 与 GLM-5.3-Flash 重跑第二个会话都不再重问（验收 2）。第 2 轮评审 APPROVED；合入 main c249ca9，origin 与 github 一致，合入树门禁全绿，桌面版 L4 核对通过。工作树已注销、分支已删，磁盘上留一个被占用的空目录。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "b6ea653",
+          "note": "maybe_declined 软检查与拒绝列表，L2 12 例"
+        },
+        {
+          "kind": "commit",
+          "ref": "c249ca9",
+          "note": "合入 main，两个远端一致"
+        },
+        {
+          "kind": "test",
+          "ref": "合入树 build、preflight、npm test、check-lint、npm run -s probe",
+          "exit": 0,
+          "note": "门禁全绿；桌面版 L4 核对无新错误"
+        }
+      ]
     }
   ]
 }

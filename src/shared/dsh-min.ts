@@ -361,6 +361,8 @@ export interface PluginContext {
   on(event: 'agent/request', listener: (payload: AgentRequestPayload, next: () => Promise<unknown>) => Promise<unknown>): () => void
   /** A step's stream ended aborted or in error (rc.3 agent-loop:1136); the decision may be `{kind: 'retry'}`. */
   on(event: 'agent/request-error', listener: (payload: AgentRequestErrorPayload, next: () => Promise<unknown>) => Promise<unknown>): () => void
+  /** Session log events, also on an agent's scope: the agent loop listens there itself (agent-loop agent.ts:357; rc.3 dsh-agent-loop lib/index.js:976). */
+  on(event: 'session/event', listener: (session: SessionLike, event: SessionEventLike) => void): () => void
 }
 
 /**
@@ -461,12 +463,16 @@ export interface SessionProjectionsService {
  * `send`, agent-loop:800–805, which sends a waking message that arrives
  * after a cancel to the next turn and latches the wake). `cancel` aborts
  * the running turn; `keepInbox` keeps the pending messages, as the stop
- * button does (agent-loop:815–821; api-session-controller:1065).
+ * button does (agent-loop:815–821; api-session-controller:1065). `ctx` is
+ * the agent's scoped context (runtime-types.ts:202–203), on which the step
+ * mailbox (step-mailbox.ts) listens; optional only so that test agents may
+ * leave it out.
  */
 export interface LiveAgentLike {
   readonly id: string
   readonly session: SessionLike
   readonly status: 'idle' | 'running'
+  readonly ctx?: PluginContext
   followup(message: UserNotice): void
   inject(message: UserNotice): void
   cancel(cause: { readonly kind: 'user' }, options: { readonly keepInbox: true }): void

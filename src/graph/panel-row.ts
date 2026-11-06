@@ -24,6 +24,7 @@
  */
 import type { AgentCommandInvocationLike, CommandDefinitionLike, CommandsHost, InjectableServices, InjectHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 import { provideRowHealth } from '../shared/health.ts'
+import { createStepMailbox } from '../shared/step-mailbox.ts'
 import { LIVE_KEY, liveProjection } from './live.ts'
 import { holderFileOf, holderHome } from './main-agent-holder.ts'
 import { runFromCommand, type RunServices } from './run-control.ts'
@@ -206,7 +207,7 @@ function registerCommands(ctx: CommandsHost<AgentCommandInvocationLike>, config:
  * for a session's agent); it follows the optional services.
  */
 export function apply(ctx: CommandsHost<AgentCommandInvocationLike> & Partial<InjectHost> & Partial<ProvideHost>, config: GraphPanelConfig = {}): () => void {
-  const services: RunServices = { projections: undefined, children: undefined }
+  const services: RunServices = { projections: undefined, children: undefined, mailbox: createStepMailbox('graph-panel') }
   const commands = registerCommands(ctx, config, services)
   let live: string | undefined = WAITING_LIVE
   let children: string | undefined = WAITING_CHILDREN
@@ -226,5 +227,6 @@ export function apply(ctx: CommandsHost<AgentCommandInvocationLike> & Partial<In
   return () => {
     health.dispose()
     commands.unregister()
+    services.mailbox.dispose()
   }
 }

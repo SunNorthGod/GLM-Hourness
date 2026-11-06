@@ -22,7 +22,7 @@ import { checkSourceKnown, checkStore, classify, judgeStore, revokeRecord, revok
 import { firstReply, saidInReply, saidLatest, shownSinceLastPerson } from './answers.ts'
 import { askText, checkHabitAsk, checkWords, planAnswer, planAsk } from './habit.ts'
 import { readDigest } from './digest.ts'
-import { visibleEntries } from './recall.ts'
+import { liveDeclines, visibleEntries } from './recall.ts'
 import { dirOfScope, noteWrite, readBoth, writeScope, type MemoryEnv, type ReadOutcome, type WriteResult } from './storage.ts'
 
 /** The example in the description of memory_store; the spec runs it through the same check as a real call. */
@@ -213,6 +213,8 @@ interface QueryRequest {
 }
 
 const QUERY_KEYS: readonly string[] = ['focus', 'name', 'type', 'limit']
+/** At most this many live noes come with a memory_query answer (`declined`), the latest first. */
+const QUERY_DECLINES = 10
 const TYPES: readonly string[] = ['user', 'feedback', 'project', 'reference']
 
 function checkQuery(args: unknown): QueryRequest | Refusal<'invalid'> {
@@ -292,8 +294,11 @@ async function query(env: MemoryEnv, args: unknown, exec: unknown): Promise<unkn
     const reviewed = await writeScope<never>('project', places.project, () => ({ records: [reviewRecord(facts)] }), env.append)
     noteWrite(env, caller.session?.id, reviewed)
   }
+  // The noes still in force, whatever the focus (m5-habit-rule): the model sees them before it asks a habit again.
+  const declined = liveDeclines(project, user, now).slice(0, QUERY_DECLINES)
   return {
     matches: matches.map(entry => matchOf(entry, now, entry.scope === 'project' && hidden.has(entry.name))),
+    ...(declined.length === 0 ? {} : { declined }),
     ...(notes.length === 0 ? {} : { notes }),
   }
 }
@@ -378,7 +383,7 @@ function checkLearning(args: unknown, now: Date): LearningRequest | Refusal<'inv
 
 const LEARNING_DESCRIPTION = [
   'Read-only: lists the kinds of correction the person has made to your work, in the last 28 days or since `since`, that happened at least `minCount` times (default 2). Each group has its key, what the key means, how many times it happened, examples, how many memories, lessons, notes and habit questions already settle it (learned), whether the group was already put to the person as a habit question and how that went (asked), how many times it came back after the first of those (recurrences) and the counts of the last four weeks (weekly).',
-  'Call it when the learning digest reminder arrives or the person asks what could be learned. It writes nothing. Settle a group with memory_store or lessons_merge and name the group key in learnedFrom, or with a graph_comment on the node that starts "学自：" and the key. Example key: edit:task.acceptance, "the person changed the acceptance the agent had set on a task".',
+  'Call it when the learning digest reminder arrives or the person asks what could be learned. It writes nothing. Settle a group with memory_store or lessons_merge and name the group key in learnedFrom, or with a graph_comment on the node that starts "学自：" and the key; a rule proposal is put with propose_to_human and rule, and a "学自：" comment on a question settles a group only when the question carries that rule. Example key: edit:task.acceptance, "the person changed the acceptance the agent had set on a task".',
 ].join('\n')
 
 async function signals(env: MemoryEnv, args: unknown, exec: unknown): Promise<unknown> {
@@ -394,9 +399,12 @@ const render: ToolDefinitionLike['output']['render'] = (_args, value) => [{ type
 
 const HABIT_ACTIONS: readonly string[] = ['ask', 'confirm', 'decline']
 
+/** The `what` of the metrics `count` event an ask with notSame hands in: one per ask, the noes it set aside in `byKey`. */
+export const HABIT_NOT_SAME = 'habit-not-same'
+
 const HABIT_DESCRIPTION = [
   'Record a habit you would otherwise only guess from how the person works. ask puts one short question to them in the chat; it returns text with a circled number — show that text as given in your reply, after the propose_to_human calls of the same reply, never before them.',
-  'At most three questions go in one reply together with propose_to_human, and at most three habit questions to one project in a week. The person answers in their own next message: confirm quotes their words and stores the habit as a preference that never fades and only they revoke; decline records their no, and the same habit is not asked again for 28 days.',
+  'At most three questions go in one reply together with propose_to_human, and at most three habit questions to one project in a week. The person answers in their own next message: confirm quotes their words and stores the habit as a preference that never fades and only they revoke; decline records their no, and the same habit is not asked again for 28 days. The memory index and memory_query list the noes still in force; an ask worded close to one is refused as maybe_declined.',
   'The words of confirm and decline must quote their reply in this session, within 7 days of the question. The stored content is the one the question carried; ask again (with the person\'s say-so) to change it.',
 ].join('\n')
 
@@ -410,6 +418,7 @@ const HABIT_PARAMETERS = {
     body: { type: 'string', description: 'ask only: at most 4000 characters, with **Why:** and **How to apply:** lines.' },
     question: { type: 'string', description: 'ask only: one line of 10 to 90 characters ending with ？ or ?, in the person\'s own kind of words; the plain-words list is checked.' },
     learnedFrom: { type: 'array', items: { type: 'string' }, description: 'ask only: keys of the learning groups this habit settles (at most 5), as learning_signals shows them. A second ask about a group already asked or declined answers with that outcome.' },
+    notSame: { type: 'boolean', description: 'ask only: send true only after an ask was refused as maybe_declined and the habit is really a different one from the no it named; the ask is recorded with that no.' },
     words: { type: 'array', items: { type: 'string' }, description: 'confirm and decline only: stretches of the person\'s reply, exactly as they said them, at most 500 characters together.' },
   },
   required: ['action', 'name'],
@@ -424,7 +433,8 @@ async function bothStates(env: MemoryEnv, session: SessionLike | undefined): Pro
 const noStore = (scope: Scope): Failure => scope === 'project' ? NO_PROJECT : NO_USER_DIR
 
 async function habitAsk(env: MemoryEnv, args: Record<string, unknown>, caller: Caller): Promise<Record<string, unknown>> {
-  const { action: _action, ...ask } = args
+  const { action: _action, notSame, ...ask } = args
+  if (notSame !== undefined && typeof notSame !== 'boolean') fail(invalid('notSame', 'notSame must be true or false'))
   const fields: HabitFields | Refusal = checkHabitAsk(ask)
   if (isRefusal(fields)) fail(fields)
   const dir = dirOfScope(env.places(caller.session), fields.scope)
@@ -437,13 +447,22 @@ async function habitAsk(env: MemoryEnv, args: Record<string, unknown>, caller: C
     now: env.now().toISOString(),
     lastPersonAt,
     shown: talk === undefined ? undefined : shownSinceLastPerson(talk),
+    notSame: notSame === true,
   })
   if (isRefusal(plan)) fail(plan)
+  const overrides = plan.overrides ?? []
   const result = await writeScope<Failure>(fields.scope, dir, () => ({
-    records: [askRecord(fields, originOf(caller, 'memory_habit'))],
+    records: [askRecord(fields, originOf(caller, 'memory_habit'), overrides)],
   }), env.append)
   settle(env, caller, result)
-  return { asked: true, name: fields.name, scope: fields.scope, number: plan.number, text: askText(plan.number, fields) }
+  // An ask that set a no aside is counted in the metrics journal too (the ask record above is the fact).
+  if (overrides.length > 0) {
+    env.emit?.({ k: 'count', by: 'memory', body: { what: HABIT_NOT_SAME, value: overrides.length, byKey: Object.fromEntries(overrides.map(id => [id, 1])) } }, {
+      ...(caller.session === undefined ? {} : { sessionId: caller.session.id }),
+      ...(caller.session?.header.cwd === undefined ? {} : { dir: caller.session.header.cwd }),
+    })
+  }
+  return { asked: true, name: fields.name, scope: fields.scope, number: plan.number, text: askText(plan.number, fields), ...(overrides.length === 0 ? {} : { notSame: overrides }) }
 }
 
 async function habitAnswer(env: MemoryEnv, action: 'confirm' | 'decline', args: Record<string, unknown>, caller: Caller): Promise<Record<string, unknown>> {
@@ -572,7 +591,7 @@ export function memoryTools(env: MemoryEnv): ToolDefinitionLike[] {
       name: 'memory_query',
       description: 'Recall memories by keyword focus (strongest first), or read one in full by name. Facts fade (14-day half-life) unless they are recalled; each recalled fact counts as a review. Preferences do not fade.',
       parameters: QUERY_PARAMETERS,
-      output: { schema: { type: 'object', properties: { matches: { type: 'array', items: { type: 'object' } }, notes: { type: 'array', items: { type: 'string' } } } }, render },
+      output: { schema: { type: 'object', properties: { matches: { type: 'array', items: { type: 'object' } }, declined: { type: 'array', items: { type: 'object' } }, notes: { type: 'array', items: { type: 'string' } } } }, render },
       execute: (args, exec) => query(env, args, exec),
     },
     {

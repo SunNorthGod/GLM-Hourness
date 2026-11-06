@@ -85,6 +85,18 @@
       "actor": "llm",
       "op": "comment",
       "text": "ablation-calibration（wf_5f5345b05e5c4e89）的 build-loop 两轮用完没通过：第 1 轮 plan 与 code 步都被上游 503「No available accounts」打断，没有改动；第 2 轮 code 步只补写了计划（6e52206，评审认为计划与任务一致）。第 2 轮评审 CHANGES_REQUESTED，挡路 F1–F4：check.mjs 的圈禁、消融开关、各臂的 L3 核对、两档模型的结果表与报告、门禁记录都还没有（工作树 .agents/tasks/ablation/review/review.md）。人选了照旧全开、被打断就接着跑（原话「先全开吧，你盯着点就行，任务也是做完一点就落盘一点」），编排方据此给这个循环加 3 轮，总预算 5 轮；现在已过高峰时段，真实模型的运行可以做。"
+    },
+    {
+      "at": "2026-11-06T04:05:43.636Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "ablation（wf_5f5345b05e5c4e89）code 步：读取圈禁 fence.mjs（L2 7/7、L3 calib-fence 通过）、消融开关 ablation.mjs（L3 逐臂核对 A1–A5 全过）、新任务 bugfix-shell-redirect（原样不过、参考解通过）已做；build、preflight、npm test 绿，探针 427/427，棘轮 73/18/1，提交 b2b48f23 已推 origin/ablation。A0 两档跑了 24 次全部完成，计费 673 积分。剩 A0 Flash 补跑 7 次与 A1–A5 两档三任务各 5 次（150 次）；周五 14:00–18:00 GLM 高峰不跑、不改档位，后台队列 18:00 后自动接着跑，预计 23:00–01:00 跑完，再写报告、结果表与 DESIGN.md 逐段结论。编排方答复照此进行，每跑完一组就追加结果表并推分支，某格连续失败两次跳过并记原因。花费只披露：按 A0 的单次均价估计剩余约 4,000–4,500 积分（推断，未核）。"
+    },
+    {
+      "at": "2026-11-06T04:19:46.463Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "ablation（wf_5f5345b05e5c4e89）code 步按编排方批示接上第二版后台队列（pid 60792）：先等正在跑的 A0 Flash bugfix-shell-redirect 一格跑完再接锁，之后逐格补到每格 5 次；14:00 前停、18:00 后接着跑（GLM 高峰不跑、不改档位）；每格取探针锁、续写、跑完放锁；一臂一档跑完就重生成 results.md 并提交推 origin/ablation；同一格连续失败两次跳过并把原因记进 queue.skip。A0 已有 26 次有效运行，全部完成，计费 694.84 积分。全部跑完后写 report.md 与 DESIGN.md 逐段结论，再交评审。"
     }
   ]
 }

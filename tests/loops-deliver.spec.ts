@@ -24,9 +24,11 @@ import { archivedSessionsOf, canDeliver, holderFault, holderLine, holderStateOf,
 import { emptyState, type RuntimeState } from '../src/loops/inbox.ts'
 import { scheduleIdsOf, stepLine } from '../src/loops/reminder.ts'
 import { DATA_SERVICE } from '../src/shared/data-home.ts'
-import type { AgentLike, MessageableAgentLike, ServiceLookup, SessionLike } from '../src/shared/dsh-min.ts'
+import type { AgentLike, MessageableAgentLike, ServiceLookup, SessionLike, UserNotice } from '../src/shared/dsh-min.ts'
 import { fakeLive, fakeWorkspaceRegistry, type FakeLive } from './fake-rc3.ts'
+import { captureWarnings } from './graph-helpers.ts'
 import { heldTimers, NOW } from './loops-helpers.ts'
+import { stepScope, type StepScope } from './step-agent.ts'
 
 const HOLDER = 'session-main'
 const PROJECT = 'C:/work/app'
@@ -267,6 +269,7 @@ test('deliver: the wake table, and a message that does not wake the session only
   const it = host()
   const agent = agentOf(HOLDER)
   it.live.add(agent, 'running')
+  scoped(it, HOLDER)
   const sent = delivery(it)
   const told = await sent.made.deliver(request())
   assert.deepEqual([told.kind, told.kind === 'delivered' ? told.how : ''], ['delivered', 'steer'])
@@ -275,23 +278,69 @@ test('deliver: the wake table, and a message that does not wake the session only
   assert.ok(it.live.woken[0].text.startsWith('<system-reminder>'))
   assert.ok(it.live.woken[0].text.includes('run-000000000001'))
   assert.equal(it.outside, 1, 'the delivery is made outside anybody\'s turn')
-  // A running agent and a message that does not wake it: the next step reads it.
-  await sent.made.deliver(request({ wake: false }))
-  assert.equal(it.live.woken[1].how, 'inject')
+  // A running agent and a message that does not wake it: it waits for the next step, not in the inbox (the next test).
+  const quiet = await sent.made.deliver(request({ wake: false }))
+  assert.deepEqual([quiet.kind, quiet.kind === 'delivered' ? quiet.how : ''], ['delivered', 'inject'])
+  assert.equal(it.live.woken.length, 1)
   it.live.setStatus(HOLDER, 'idle')
   it.live.setGoal(HOLDER, 'active')
   await sent.made.deliver(request())
-  assert.equal(it.live.woken[2].how, 'inject')
+  assert.equal(it.live.woken[1].how, 'inject', 'idle with an active goal: the wake table still injects, the goal driver opens the round')
   it.live.setGoal(HOLDER, 'paused')
   await sent.made.deliver(request())
-  assert.equal(it.live.woken[3].how, 'followup')
+  assert.equal(it.live.woken[2].how, 'followup')
   it.live.setGoal(HOLDER, undefined)
   await sent.made.deliver(request())
-  assert.equal(it.live.woken[4].how, 'followup')
+  assert.equal(it.live.woken[3].how, 'followup')
   // A goal service that throws for the agent means no goal (goal:611-614).
   it.live.setGoal(HOLDER, 'active')
   it.live.breakGoals(HOLDER)
   assert.equal(wayTo(it.ctx, it.live.agents.get(HOLDER) as unknown as MessageableAgentLike, true), 'followup')
+})
+
+/** Give the registry's live agent of a session a step scope (tests/step-agent.ts), as rc.3's agents have one. */
+function scoped(it: Host, id: string): StepScope {
+  const scope = stepScope()
+  Object.assign(it.live.agents.get(id) as object, { ctx: scope.ctx })
+  return scope
+}
+
+/** The loop board notices one step of the session admits. */
+async function loopNoticesOfStep(scope: StepScope, id: string): Promise<string[]> {
+  const decision = await scope.step(sessionOf(id), { messages: [{ id: `claimed-${Math.random()}`, role: 'user', content: [{ type: 'text', text: 'go on' }], source: { kind: 'user' } }] })
+  return decision.kind === 'enter' ? (decision.messages as UserNotice[]).filter(message => message.source.kind === LOOP_NOTICE_SOURCE).map(message => message.content[0].text) : []
+}
+
+test('deliver: a message that does not wake the main agent goes before its next step, idle or running, once, and never into its inbox', async () => {
+  const it = host()
+  it.live.add(agentOf(HOLDER))
+  const scope = scoped(it, HOLDER)
+  const sent = delivery(it)
+  for (const status of ['idle', 'running'] as const) {
+    it.live.setStatus(HOLDER, status)
+    const told = await sent.made.deliver(request({ wake: false, run: `run-${status}` }))
+    assert.deepEqual([told.kind, told.kind === 'delivered' ? told.how : ''], ['delivered', 'inject'], status)
+    assert.deepEqual(it.live.woken, [], `${status}: the host's inbox got nothing`)
+    const first = await loopNoticesOfStep(scope, HOLDER)
+    assert.equal(first.length, 1, status)
+    assert.ok(first[0].includes(`run-${status}`), first[0])
+    assert.deepEqual(await loopNoticesOfStep(scope, HOLDER), [], `${status}: told once`)
+  }
+  assert.equal(it.outside, 2, 'still made outside anybody\'s turn')
+  sent.made.dispose()
+})
+
+test('deliver: a message that does not wake and reaches nobody is a failure, tried again after a minute', async () => {
+  const it = host()
+  it.live.add(agentOf(HOLDER))
+  const scope = scoped(it, HOLDER)
+  scope.refuse('agent/pre-step')
+  it.live.breakWake(HOLDER, 'inject')
+  const sent = delivery(it)
+  const { result } = await captureWarnings(() => sent.made.deliver(request({ wake: false })))
+  assert.equal(result.kind, 'failed')
+  assert.ok(sent.timers.timers.some(timer => timer.ms === RETRY_MS[0]), 'the first retry waits a minute')
+  sent.made.dispose()
 })
 
 test('deliver: a cold session is revived only for a message that wakes it, and the two expected refusals hold the message instead of failing', async () => {
@@ -393,6 +442,7 @@ test('deliver: the answer of a run that belongs to another session goes to it wh
   it.live.add(child, 'running')
   const sent = delivery(it)
   await sent.made.deliver(request({ session: 'session-child', text: 'the check failed' }))
+  // A running session takes it into its inbox: its driver claims it at the next step (design §1, not the step mailbox).
   assert.deepEqual(it.live.woken.map(woken => [woken.agentId, woken.how]), [['session-child', 'inject']])
   // The child has stopped: the main agent is told instead, and the message says which session it was for.
   it.live.setStatus('session-child', 'idle')
