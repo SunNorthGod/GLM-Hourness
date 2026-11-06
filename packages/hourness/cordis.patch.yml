@@ -191,11 +191,14 @@
       # with ZCode 3.17.1's sentence pointing at that file, which the model
       # reads with Read. Each write rewrites the session's file and deletes
       # the other sessions' files not written for 14 days. config.home
-      # overrides the project data directory. Ships disabled until the L3
-      # probe (scenario glm-compact-transcript) and the first desktop pass
-      # (docs/DEVELOPMENT.md §3, AGENTS.md rule 4).
+      # overrides the project data directory. Ships enabled since the
+      # transcript enablement (2026-11-06, the person's word): the L3 probe
+      # scenario glm-compact-transcript passed, and the desktop L4 passed on
+      # an isolated instance on 2026-11-06
+      # (.agents/tasks/compact-recall/l4.md). Known limit: redaction goes by
+      # the shape of a string, so a credential the model splits apart in its
+      # own words stays in the plain-text file (docs/DESIGN.md §2.4).
       name: dsh-hourness/transcript
-      disabled: true
       config: {}
     - id: glm-hourness/ui
       # The package's client face (dsh.client in package.json, host half

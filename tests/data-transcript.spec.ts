@@ -354,3 +354,14 @@ test('without provide the row activates all the same, warns once and provides no
   assert.equal(warnings.length, 1)
   assert.ok(warnings[0]?.includes(TRANSCRIPT_SERVICE))
 })
+
+test('the row ships enabled in the orchestration patch (no disabled key) with an empty config', () => {
+  const patch = readFileSync(new URL('../packages/hourness/cordis.patch.yml', import.meta.url), 'utf8')
+  const start = patch.indexOf('    - id: glm-hourness/transcript')
+  assert.ok(start >= 0)
+  const next = patch.indexOf('\n    - id:', start + 1)
+  const block = patch.slice(start, next < 0 ? undefined : next)
+  assert.match(block, /^ {6}name: dsh-hourness\/transcript$/m)
+  assert.doesNotMatch(block, /^ {6}disabled:/m, 'enabled on the person\'s word (2026-11-06) after the L3 scenario glm-compact-transcript and the desktop L4 on an isolated instance passed')
+  assert.match(block, /^ {6}config: \{\}$/m, 'a shipped home would take the exports out of the project .llm that the row makes git-ignored first')
+})

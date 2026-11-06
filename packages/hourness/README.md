@@ -43,9 +43,10 @@ Declared in `cordis.patch.yml` (DSH Loader dialect). Row ids keep the `glm-hourn
 | `glm-hourness/rules` | rules board with peak modes, `/rules` | enabled |
 | `glm-hourness/design` | `/wish` main-agent mode | enabled |
 | `glm-hourness/loops` | loops board: entries, events, run lock | enabled |
+| `glm-hourness/transcript` | plain-text session export after a GLM compaction, under the project's git-ignored `.llm/transcripts/`, credential-shaped strings redacted | enabled |
 | `glm-hourness/ui` | client face: right sidebar project graph panel | enabled |
 
-The `data` row ships without a project directory; each session resolves its workspace `.llm` (set `projectHome` per row in the plugin manager to override). Rows with `disabled` ship off until you enable them.
+The `data` row ships without a project directory; each session resolves its workspace `.llm` (set `projectHome` per row in the plugin manager to override).
 
 ## License
 
