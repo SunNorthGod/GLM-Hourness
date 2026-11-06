@@ -595,6 +595,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-06 17:00 人要求尽量并行。在跑 6 路：M7（第三次真实模型运行）、接管（B6 评审两条挡路在修）、消融（后台队列，高峰后自动续跑）、data-journal-lock-flake、compact-recall-l4、lessons-enable。其余就绪节点（m7-1、m7-2、m7-4、m7-6、m7-7、m7-8、m7-9、m7-habits、m7-handback-path-check、rules-r4d、m4-request-card）代码都压在 M7 分支上，等 M7 合入 main；主检出写入拦截同属 M7 写范围一类，也等 M7。"
+    },
+    {
+      "at": "2026-11-06T09:14:17.740Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-06 澄清「AI 知识库」指的是此前提炼给编排方的一位业内人士的项目开发经验：把文档放到 AI 手边。编排方在仓库、docs/graph 与 .agents/tasks 里按关键词查过，没找到这份提炼的记录，判断它只在早先的对话里、随上下文截断丢了，等人重发原文。现状对照（实读）：框架已做到的是会话开局与每次压缩之后把用户级与项目 AGENTS.md 交给模型（宿主 dsh-agent-instructions，L3 实测见 FACTS.md §3，m4-reanchor-norms）、每步的图投影、env 分支提醒、记忆索引、派活简报带经验；只在本仓库成立、框架不带的是文档地图与分工（AGENTS.md「文档」一节、CHARTER.md §11）和条款整条重写的写法，别的项目装上 Hourness 不会得到文档地图，也没有文档过时的检查。人重发原文后逐条对照再定要不要提节点。"
     }
   ]
 }
