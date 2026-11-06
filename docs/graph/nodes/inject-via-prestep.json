@@ -51,6 +51,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "与 M7 的重叠（编排方 2026-11-06）：M7 真实模型运行查出子 agent 的计划与提问通知因不叫醒的 inject 造成死锁，M7 改为对空闲持有者用 followup 叫醒。本线把不叫醒的提示挪进 step-mailbox 时，这两类通知不能进 mailbox；后合入的一方处理冲突并在报告里写明。"
+    },
+    {
+      "at": "2026-11-06T03:48:16.859Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "inject-via-prestep（wf_d93b6a094e3f5503）第 2 轮 code 步处理了评审两条挡路：report.md 写好（含与 M7 的重叠与门禁记录）；a6ab5c8 上 build、preflight、npm test（3235/0）、探针 432/432（glm-design-wish-off-idle 三项全过）、棘轮 73/18/1 全绿，分支推到 origin d69aa5b。复审 APPROVED，没有挡路项。下一步合入与桌面核对；与 M7 死锁修法（requests.ts 叫醒空闲持有者）相邻，后合入的一方处理冲突。"
     }
   ]
 }
