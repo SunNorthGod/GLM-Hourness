@@ -3,7 +3,7 @@
   "type": "task",
   "title": "设计循环里的事件记进指标流水",
   "why": "问人三道关在试行，要看效果就得有数；接上之后访谈、提议、放行的每一次都记下来",
-  "status": "doing",
+  "status": "done",
   "parent": "m3",
   "kind": "implement",
   "body": "现状：src/design/metrics.ts 的 emitMetric 是空函数（注释写指标流水还没有写入口），指标流水与 METRICS_SERVICE 从 31c9e0f 起在 main。docs/ORCHESTRATION.md 指标流水「接线与启用」一段：M3 的 12 个调用点字段名早于指标设计 §4.5 的闭表，5 处整条会被拒收；design.holder-moved 与 git.snapshot 没有发射点；接线归 M3 自己的步。人 2026-10-31 定 d-ask-three-gates 时说「先这样改和试行吧，我看看效果」，试行要看的数（design.proposal-shown 的 form、points 等）至今一条没记。做法：emitMetric 接指标服务，服务在时交、不在时不做也不告警；12 个调用点对齐闭表；补设计循环自己的发射点，归 M7 执行线的不在本任务做。顺手：packages/hourness/locale 下 design、env、rules、metrics 四行设置页说明还写「默认关闭」，改成与 cordis.patch.yml 一致；HANDOFF.md 的 loops、M3、M4、M6 几行按 main 现状改。",
@@ -11,6 +11,29 @@
     "指标服务在时，设计循环的每类事件都交进指标流水，字段过指标设计 §4.5 的闭表，没有一条被拒收；服务不在时不交、不告警。L2 逐类钉住",
     "ORCHESTRATION.md 点名归设计循环的事件都有发射点；归执行线的写明留给 M7",
     "四行设置页说明与 HANDOFF.md 的相应几行和 main 的现状一致；改动在 main 上，四道门禁全绿"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "b79bf69",
+      "note": "design 行的指标出口，十类事件"
+    },
+    {
+      "kind": "commit",
+      "ref": "35556ee",
+      "note": "评审 B1：HANDOFF 的 M3 一行"
+    },
+    {
+      "kind": "commit",
+      "ref": "c6c1bca",
+      "note": "合入 main，两个远端一致"
+    },
+    {
+      "kind": "test",
+      "ref": "build、preflight、npm test、check-lint、npm run -s probe on c6c1bca",
+      "exit": 0,
+      "note": "探针 422/422；L4 桌面重启无新错误；tests/design-metrics.spec.ts 11/11"
+    }
   ],
   "history": [
     {
@@ -46,6 +69,37 @@
       "actor": "llm",
       "op": "comment",
       "text": "m3-metrics-wiring（wf_4a9f7c0523d33a93）：实现 b79bf69，第 1 轮评审 1 条挡路（HANDOFF 的 M3 一行写成「在分支上等合入」，合入后就不对）在 35556ee 修好；第 2 轮评审 APPROVED，不挡路 N1–N8，其中 N7 是 HANDOFF.md 与当前 origin/main 有合并冲突、N8 是本分支之外 data-journal 一条偶发失败的测试，合入步处理冲突并查 N8 的原因。下一步合入。"
+    },
+    {
+      "at": "2026-11-05T22:24:44.863Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "m3-metrics-wiring（wf_4a9f7c0523d33a93）完成：实现 b79bf69，第 1 轮评审 1 条挡路（HANDOFF 的 M3 一行）在 35556ee 修好，第 2 轮 APPROVED；合入 main c6c1bca，origin 与 github 经 ls-remote 一致；合入树 build、preflight、npm test 绿，探针 422/422，棘轮 73/18/1；桌面版经 CDP 重启核对通过。设计循环与 git 快照的十类事件交给指标流水，字段对齐 §4.5 封闭表；execute.* 与 operate.* 留给 M7。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "b79bf69",
+          "note": "design 行的指标出口，十类事件"
+        },
+        {
+          "kind": "commit",
+          "ref": "35556ee",
+          "note": "评审 B1：HANDOFF 的 M3 一行"
+        },
+        {
+          "kind": "commit",
+          "ref": "c6c1bca",
+          "note": "合入 main，两个远端一致"
+        },
+        {
+          "kind": "test",
+          "ref": "build、preflight、npm test、check-lint、npm run -s probe on c6c1bca",
+          "exit": 0,
+          "note": "探针 422/422；L4 桌面重启无新错误；tests/design-metrics.spec.ts 11/11"
+        }
+      ]
     }
   ]
 }

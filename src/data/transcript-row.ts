@@ -5,10 +5,12 @@
  * Provides the cordis service `glmHournessTranscript`
  * (src/shared/transcript.ts). The glm-compact row of the GLM channel
  * package calls it once a GLM compaction summary is done: the service
- * writes the session's whole log as plain text to
- * `<project data dir>/transcripts/<session id>.txt` (src/data/transcript.ts)
- * and returns the path, which glm-compact puts at the end of the summary in
- * ZCode 3.17.1's transcript sentence. Registers nothing model-facing; the
+ * writes the session's whole log as plain text, credential-like strings
+ * replaced, to `<project data dir>/transcripts/<session id>.txt`
+ * (src/data/transcript.ts) and returns the path, which glm-compact puts at
+ * the end of the summary in ZCode 3.17.1's transcript sentence. The row
+ * health of the session names how many strings an export replaced, or why
+ * nothing was written. Registers nothing model-facing; the
  * model reads the file with Read. Ships disabled until the L3 probe
  * (scenario glm-compact-transcript) and the first desktop pass
  * (AGENTS.md rule 4). Activation does no I/O and never throws.
@@ -33,13 +35,13 @@ export function transcriptHealth(result: ExportResult): [HealthState, string] {
     ...(result.cleanup.removed > 0 ? [`清掉 ${result.cleanup.removed} 份超过 ${TRANSCRIPT_KEEP_DAYS} 天的旧导出`] : []),
     ...(result.cleanup.failed > 0 ? [`${result.cleanup.failed} 份旧导出没清掉`] : []),
   ]
-  const reason = [`压缩前导出 ${result.entries} 条到 ${result.path}`, ...cleanup].join('；')
+  const reason = [`压缩前导出 ${result.entries} 条到 ${result.path}，遮掉 ${result.redacted} 处像凭证的字符串`, ...cleanup].join('；')
   return [result.cleanup.failed > 0 ? 'degraded' : 'active', reason]
 }
 
 /** cordis plugin entry: provide the service and the row health; activation never throws. */
 export function apply(ctx: ServiceLookup & Partial<ProvideHost>, config: TranscriptConfig = {}): () => void {
-  const health = provideRowHealth(ctx, 'transcript', 'active', `已加载；GLM 压缩时把会话导出到项目 .llm/${TRANSCRIPTS_DIR}/，别的会话的导出 ${TRANSCRIPT_KEEP_DAYS} 天后清掉`)
+  const health = provideRowHealth(ctx, 'transcript', 'active', `已加载；GLM 压缩时把会话导出到项目 .llm/${TRANSCRIPTS_DIR}/，像凭证的字符串遮掉，别的会话的导出 ${TRANSCRIPT_KEEP_DAYS} 天后清掉`)
   const home = config.home === undefined || config.home.length === 0 ? undefined : config.home
   const service: TranscriptService = Object.freeze({
     async exportBeforeCompaction(sessionId: string) {

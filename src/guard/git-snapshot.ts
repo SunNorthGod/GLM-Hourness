@@ -1345,8 +1345,14 @@ export interface GuardGitInput {
 
 export type GuardGitResult =
   /** Nothing to save, or saved: the call goes through. `notices` are for the main agent, `degraded` is for the row health. */
-  | { readonly kind: 'allow', readonly notices: readonly string[], readonly degraded: readonly string[] }
+  | { readonly kind: 'allow', readonly notices: readonly string[], readonly degraded: readonly string[], readonly saved: readonly SavedSnapshot[] }
   | { readonly kind: 'refuse', readonly refusal: Refusal }
+
+/** A snapshot saved before a call: its journal line and how long it took, for the metrics (`git.snapshot`). */
+export interface SavedSnapshot {
+  readonly entry: SnapshotEntry
+  readonly ms: number
+}
 
 export const GIT_MISSING = '找不到 git，快照跳过'
 
@@ -1387,10 +1393,11 @@ export async function guardGit(input: GuardGitInput, env: SnapshotEnvironment = 
   }
   const notices: string[] = []
   const degraded: string[] = []
+  const saved: SavedSnapshot[] = []
   const who: SnapshotWho = { command: input.command, ...input.base === undefined ? {} : { sessionDir: input.base }, ...input.sessionId === undefined ? {} : { sessionId: input.sessionId }, ...input.agentId === undefined ? {} : { agentId: input.agentId } }
   for (const invocation of invocations) {
     try {
-      const refusal = await guardOne(invocation, who, env, notices, degraded)
+      const refusal = await guardOne(invocation, who, env, notices, degraded, saved)
       if (refusal !== undefined) return { kind: 'refuse', refusal }
     }
     catch (error) {
@@ -1399,10 +1406,10 @@ export async function guardGit(input: GuardGitInput, env: SnapshotEnvironment = 
       else return { kind: 'refuse', refusal: refuse('git-failed', error instanceof Error ? error.message : String(error)) }
     }
   }
-  return { kind: 'allow', notices, degraded }
+  return { kind: 'allow', notices, degraded, saved }
 }
 
-async function guardOne(invocation: GitInvocation, who: SnapshotWho, env: SnapshotEnvironment, notices: string[], degraded: string[]): Promise<Refusal | undefined> {
+async function guardOne(invocation: GitInvocation, who: SnapshotWho, env: SnapshotEnvironment, notices: string[], degraded: string[], saved: SavedSnapshot[]): Promise<Refusal | undefined> {
   const clean = cleanRefusal(invocation)
   if (clean !== undefined) return clean
   const written = riskOf(invocation)
@@ -1432,6 +1439,7 @@ async function guardOne(invocation: GitInvocation, who: SnapshotWho, env: Snapsh
     if (outbound !== undefined) return outbound
     if (risk === undefined) return undefined
   }
+  const started = env.now().getTime()
   const outcome = await takeSnapshot(repo, effective, risk, who, env, info)
   switch (outcome.kind) {
     case 'refused':
@@ -1440,6 +1448,7 @@ async function guardOne(invocation: GitInvocation, who: SnapshotWho, env: Snapsh
       degraded.push(GIT_MISSING)
       return undefined
     case 'saved':
+      saved.push({ entry: outcome.entry, ms: Math.max(0, env.now().getTime() - started) })
       if (outcome.notice !== undefined) notices.push(outcome.notice)
       if (outcome.journalError !== undefined) degraded.push(`快照 ${outcome.entry.id} 已存，记录没写上：${outcome.journalError}`)
       return undefined
