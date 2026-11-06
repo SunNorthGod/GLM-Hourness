@@ -687,6 +687,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 E9 第 (1) 节（骨架场景）完成并推到 origin/m7：c0d89dd、59ebb1f、fb37d60（wip(m7-e9)）。树 af3da93 上 build、preflight、npm test（3164：3163 过、1 跳过）0，棘轮 73/18/1，探针 478/478，glm-exec-skeleton 的 11 项全过；execute 行仍出厂停用。下一步 E9 评审。"
+    },
+    {
+      "at": "2026-11-06T01:04:22.936Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 E9（第 1 节，骨架场景）评审 APPROVED，0 条发现。三个 wip(m7-e9) 提交 c0d89dd、59ebb1f、fb37d60 已在 2026-11-06 08:57 推上 origin/m7，HEAD 树 af3da93 等于评审与门禁的树：build 0、preflight 0、npm test 3164（3163 过、1 跳过）、棘轮 73/18/1、探针 478/478（11 项 glm-exec-skeleton 全过，运行 2026-11-06T00-40-40-699Z）；execute 行仍出厂停用。e9-commit 步发现要压成一个提交就得强推已发布的历史，停下问。编排方定：不强推，三个 wip 提交留在 origin/m7 作 E9 的记录；M7 合入 main 时由合入步决定是否以压缩合并进 main（不改写 origin/m7）。下一步 real-model-run。"
     }
   ]
 }
