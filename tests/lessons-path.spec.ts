@@ -95,10 +95,15 @@ const inRow = (body: (row: Row) => Promise<void>, options: RowOptions = {}): Pro
 
 const SESSION_AGENT = (row: Row): AgentLike => row.runtime.agent
 
+/** A row whose project has the graph and the lesson of the spec. */
+const inSeededRow = (body: (row: Row) => Promise<void>): Promise<void> => inRow(async (row) => {
+  await seedGraph(row)
+  await row.tool('lessons_merge', LESSON)
+  await body(row)
+})
+
 test('a successful read of a file in a component carries the document, the decisions with what the graph says now, the open work and the lessons, in one reminder', async () => {
-  await inRow(async (row) => {
-    await seedGraph(row)
-    await row.tool('lessons_merge', LESSON)
+  await inSeededRow(async (row) => {
     const result = await call(row, SESSION_AGENT(row), 'Read', 'src/loops/run.ts')
     const text = textOf(noticeOf(result))
     assert.match(text, /^<system-reminder>\nDocs and lessons at hand for src\/loops\/run\.ts \(component src\/loops\):\nsrc\/loops\/AGENTS\.md:\n# Loops\n/)
@@ -113,9 +118,7 @@ test('a successful read of a file in a component carries the document, the decis
 })
 
 test('what the session was told is not told again: not in a second call, not when the history says so; a write adds the keep-true sentence once, and a changed document is sent again', async () => {
-  await inRow(async (row) => {
-    await seedGraph(row)
-    await row.tool('lessons_merge', LESSON)
+  await inSeededRow(async (row) => {
     const agent = SESSION_AGENT(row)
     const first = noticeOf(await call(row, agent, 'Read', 'src/loops/run.ts'))
     noneOf(await call(row, agent, 'Read', 'src/loops/run.ts'))
@@ -126,10 +129,25 @@ test('what the session was told is not told again: not in a second call, not whe
     // The document changed in the session: the next touch of the component brings the new one.
     writeFileSync(join(WORK, 'src', 'loops', 'AGENTS.md'), `${COMPONENT_DOC}\n## Cases\nA new case.\n`)
     assert.match(textOf(noticeOf(await call(row, agent, 'Read', 'src/loops/run.ts'))), /A new case\./)
-    // A compaction took the notices out of the visible history, and this process forgets nothing: the history is what says what was told.
     assert.ok((first.source.keys as string[]).length > 0, 'the reminder names what it told, for the history')
     const other = agentOf('session-2', { cwd: WORK })
     assert.ok(textOf(noticeOf(await call(row, other, 'Read', 'src/loops/run.ts'))).includes('Loops'), 'another session is told afresh')
+  })
+})
+
+test('a push is on its way only while the history has not moved: once it has, what is not in it was taken out by a compaction and is told again', async () => {
+  await inSeededRow(async (row) => {
+    const agent = SESSION_AGENT(row)
+    const first = noticeOf(await call(row, agent, 'Read', 'src/loops/run.ts'))
+    noneOf(await call(row, agent, 'Read', 'src/loops/inner/deep.ts'))
+    // The step ended and the history moved on, with the notice in it: still told.
+    row.runtime.history.push({ role: 'user', content: first.content, source: first.source })
+    noneOf(await call(row, agent, 'Read', 'src/loops/inner/deep.ts'))
+    // A compaction replaced the history with a summary that has no notice in it.
+    row.runtime.history.splice(0, row.runtime.history.length, { role: 'user', content: [{ type: 'text', text: 'summary' }], source: { kind: 'compaction', form: 'notice' } })
+    const again = textOf(noticeOf(await call(row, agent, 'Read', 'src/loops/run.ts')))
+    assert.match(again, /src\/loops\/AGENTS\.md:\n# Loops/)
+    assert.match(again, /Lessons for this path/)
   })
 })
 
@@ -156,6 +174,11 @@ test('the host\'s own delivery decides whether the document is sent: a native to
     // An alias carries a name the host's table does not know: the host does not deliver, so the document comes here.
     const alias = textOf(noticeOf(await call(row, agent, 'Read', 'src/loops/inner/deep.ts')))
     assert.match(alias, /src\/loops\/AGENTS\.md:\n# Loops/)
+    // The host's table reads write and edit as well: a native write of another file of the component is delivered by the host too.
+    const write = await call(row, agent, 'write', 'src/loops/inner/new.ts')
+    assert.doesNotMatch((write.additionalContexts as UserNotice[] | undefined)?.map(textOf).join('\n') ?? '', /src\/loops\/AGENTS\.md:/)
+    const edit = await call(row, agent, 'edit', 'src/loops/inner/deep.ts')
+    assert.doesNotMatch((edit.additionalContexts as UserNotice[] | undefined)?.map(textOf).join('\n') ?? '', /src\/loops\/AGENTS\.md:/)
   }, { natives: ['read', 'write', 'edit', 'pwsh'] })
   await inRow(async (row) => {
     // The host's row is not there (no instructions message in the history): the native call brings the document too.
@@ -181,10 +204,11 @@ test('one call carries one reminder: a failed call only the failure matching\'s,
   await inRow(async (row) => {
     await row.tool('lessons_merge', LESSON)
     const agent = SESSION_AGENT(row)
+    await row.tool('lessons_merge', { ...LESSON, situation: { files: ['src/loops/**'], errors: ['old_string not found'] } })
     tool(row, 'Edit', () => new Error('old_string not found'))
     const failed = await call(row, agent, 'Edit', 'src/loops/run.ts')
     assert.equal(failed.isError, true)
-    noneOf(failed)
+    assert.deepEqual((failed.additionalContexts as UserNotice[]).map(notice => notice.source.kind), [FAILURE_SOURCE], 'the failure matching speaks and the reminder at a file does not')
     noneOf(await call(row, agent, 'Read', 'src/loops/run.ts', { parent: 'run_code' }))
     noneOf(await call(row, agent, 'pwsh', 'src/loops/run.ts'))
     noneOf(await call(row, undefined, 'Read', 'src/loops/run.ts'))

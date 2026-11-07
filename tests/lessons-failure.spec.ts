@@ -48,7 +48,6 @@ const shellValue = (run: ShellRun) => ({
   stderr: { text: run.stderr ?? '', truncated: false },
 })
 
-
 /** A shell tool that answers with the runs in order (the last one repeats). */
 function shell(row: Row, name: string, runs: readonly ShellRun[]): void {
   let next = 0

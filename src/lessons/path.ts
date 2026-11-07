@@ -13,7 +13,8 @@
  * A call is either a failure (failure matching speaks) or a success (this
  * speaks), so one call carries one reminder. What a session was told is the
  * visible history of the notices of both sources plus what this process pushed
- * since, so a lesson, a decision or a component is told once.
+ * in the step that is still going on, so a lesson, a decision or a component is
+ * told once, and told again when a compaction took its notice out of the history.
  *
  * Whether the host delivers the component's `AGENTS.md` is judged from what
  * the call is, not from the host's own message (which comes a step later): the
@@ -34,7 +35,7 @@ import { loadGraph } from '../graph/store.ts'
 import type { LoadedGraph } from '../graph/store.ts'
 import { createUserNotice, type DerivedMessage, type PostExecuteHost, type PostExecutePayload, type ServiceLookup, type SessionLike, type UserNotice } from '../shared/dsh-min.ts'
 import { componentDirOf, decisionIdsOf, DECISIONS_LISTED, graphFacts, pathNotice, WORK_LISTED, type Listed } from './docs.ts'
-import { PATH_SOURCE, toldTo } from './failure.ts'
+import { PATH_SOURCE, toldTo, type PushedBy } from './failure.ts'
 import { relevant } from './match.ts'
 import { briefLine } from './render.ts'
 import { projectDirFor, readLessons, type LessonsEnv } from './storage.ts'
@@ -53,7 +54,7 @@ export interface PathParts {
   readonly ctx: PostExecuteHost & ServiceLookup
   readonly env: LessonsEnv
   /** What this process pushed to each session, shared with the failure matching. */
-  readonly pushedBy: WeakMap<SessionLike, Set<string>>
+  readonly pushedBy: PushedBy
   /** Tell the row's health how the session stands. */
   report(session: SessionLike): Promise<void>
   /** Warn on the console once per key. */
@@ -154,8 +155,11 @@ async function remind(parts: PathParts, graphs: Map<string, { at: number, graph:
   env.note(session.id, 'path', problems.length === 0 ? undefined : `路径提醒有一部分没送：${problems.join('；')}`)
   if (problems.length > 0) await parts.report(session)
 
+  // Nothing to say about this path: the history is not even looked at.
+  if (componentRel === undefined && lessons.length === 0 && facts.decisions.length === 0 && facts.work.length === 0) return undefined
+
   // Everything below is synchronous: what this call claims, a parallel call that finishes later does not claim again.
-  const pushed = parts.pushedBy.get(session) ?? new Set<string>()
+  const pushed = parts.pushedBy.get(session) ?? new Map<string, number>()
   parts.pushedBy.set(session, pushed)
   let history: readonly DerivedMessage[] = []
   let historyKnown = true
@@ -194,7 +198,7 @@ async function remind(parts: PathParts, graphs: Map<string, { at: number, graph:
     ...lessonIds.filter((_, index) => fresh(lessonIds[index] ?? '')),
     ...(keepTrue && keepKey !== undefined ? [keepKey] : []),
   ]
-  for (const key of keys) pushed.add(key)
+  for (const key of keys) pushed.set(key, history.length)
   return createUserNotice(PATH_SOURCE, 'docs and lessons at hand', text, { keys })
 }
 
@@ -204,10 +208,11 @@ export function installPathNotices(parts: PathParts): () => void {
   return parts.ctx.on('tools/post-execute', async (exec, result, next) => {
     const downstream = await next()
     const session = exec.agent?.session
-    const native = parts.env.native(exec.name)
     // A failed call is the failure matching's; a call a tool made inside another (`parent`) is not looked at.
-    if (session === undefined || exec.parent !== undefined || result.isError || !FILE_TOOLS.has(native)) return downstream
+    if (session === undefined || exec.parent !== undefined || result.isError) return downstream
     try {
+      const native = parts.env.native(exec.name)
+      if (!FILE_TOOLS.has(native)) return downstream
       const notice = await remind(parts, graphs, exec, session, native)
       return notice === undefined ? downstream : { ...downstream, additionalContexts: [notice, ...downstream.additionalContexts ?? []] }
     }

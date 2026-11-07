@@ -79,7 +79,7 @@ export const LOOP_DEFAULTS: readonly LoopEntryDefinition[] = [
     when: { kind: 'daily', time: '18:05' },
     action: {
       kind: 'tell-main',
-      text: 'End-of-day check: look in this project for work that is not committed or not pushed. Read only: run git worktree list; in the main checkout and each listed worktree run git status --short (the task worktrees under .worktrees/hz-* belong to running dispatches, list them as such and do not count them); run git branch -vv for branches ahead of their upstream and for branches with no upstream whose commits are on no remote; run git stash list. If everything is committed and pushed, end your turn without telling the human anything. Otherwise tell the human in one short list what is left and whether it looks finished. Do not commit or push because of this reminder; the human decides. If this project is not a git repository, end your turn.',
+      text: 'End-of-day check: look in this project for work that is not committed or not pushed. Read only: run git worktree list; in the main checkout and each listed worktree run git --no-optional-locks status --short (the task worktrees under .worktrees/hz-* belong to running dispatches, list them as such and do not count them); run git branch -vv for branches ahead of their upstream and for branches with no upstream whose commits are on no remote; run git stash list. If everything is committed and pushed, end your turn without telling the human anything. Otherwise tell the human in one short list what is left and whether it looks finished. Do not commit or push because of this reminder; the human decides. If this project is not a git repository, end your turn.',
       wake: true,
     },
   },

@@ -600,7 +600,7 @@ test('the loop row brings exactly five entries, with the names, times, doers and
   assert.equal(unsynced.action.kind === 'tell-main' && unsynced.action.wake, true)
   const told = unsynced.action.kind === 'tell-main' ? unsynced.action.text : ''
   assert.doesNotMatch(told, /[{}]/, 'no placeholder: the entry has no event to fill it from')
-  assert.match(told, /Read only: run git worktree list;.*git status --short.*git branch -vv.*git stash list\./)
+  assert.match(told, /Read only: run git worktree list;.*git --no-optional-locks status --short.*git branch -vv.*git stash list\./)
   assert.match(told, /If everything is committed and pushed, end your turn without telling the human anything\./)
   assert.match(told, /Do not commit or push because of this reminder; the human decides\./)
 

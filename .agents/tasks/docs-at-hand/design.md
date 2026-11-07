@@ -239,7 +239,7 @@ Keep the component doc true: if your change alters what <C>/AGENTS.md says, upda
 
 ### 5.4 去重与预算
 
-- 同一会话里同一组件的正文、同一个决策、活或经验只送一次：可见历史里本来源（以及失败匹配的来源，经验已经由失败匹配说过的不再说）的提醒列过的不再送，加上本进程已经推给这个会话的（经验行的失败匹配与本件共用同一份按会话的记录，`src/lessons/failure.ts` 的 `pushedBy`；调用的结果要到下一步才进历史，只看历史挡不住同一步里的并行调用）。压缩把它们摘掉之后，下一次触碰再送一次。正文按「组件路径加内容摘要」去重：会话里有人改了这份 `AGENTS.md`，下一次触碰这个组件时送新的一份。
+- 同一会话里同一组件的正文、同一个决策、活或经验只送一次：可见历史里本来源（以及失败匹配的来源，经验已经由失败匹配说过的不再说）的提醒列过的不再送，加上本进程在这一步里已经推给这个会话的（经验行的失败匹配与本件共用同一份按会话的记录，`src/lessons/failure.ts` 的 `PushedBy`：键加推出时历史的长度；调用的结果要到本步结束才进历史，只看历史挡不住同一步里的并行调用，所以历史长度没变时推出的键算在途，历史往前走了而键不在历史里，就是被压缩摘掉了）。压缩把它们摘掉之后，下一次触碰再送一次。正文按「组件路径加内容摘要」去重：会话里有人改了这份 `AGENTS.md`，下一次触碰这个组件时送新的一份。
 - 一步里并行的几个调用碰到同一组件，只有第一个带正文（共用的记录在监听器同步部分写入，先到先得）。
 - 「保持文档为真」那一句按会话加组件只送一次（第一次 `write` 或 `edit` 这个组件里的文件时带上）。
 - 一条也没有可送的就不加提醒。
@@ -266,7 +266,7 @@ M7 的简报（`src/execute/brief.ts` 的上下文栏，经验那一行之后）
 | --- | --- | --- |
 | 读组件文件、读图、读经验账本出错 | 经验行健康 degraded 写明哪一样（备注键 `path`），每种告警一次 | 这一部分不送，其余照送；原调用的结果原样不动 |
 | 监听器自己抛错 | 同上 | 结果原样返回（与失败匹配同一兜底），写一次告警 |
-| 图行、方言服务、工作目录服务不在 | 行健康 info 写明 | 决策与活不列；别名按静态表换算；相对路径按会话头的 `cwd` |
+| 图行、方言服务、工作目录服务不在 | 不是故障，没有备注 | 决策与活不列；别名按静态表换算；相对路径按会话头的 `cwd` |
 | 组件文档里的 id 不在图里 | 提醒那一行写 `not in the graph` | 第三件的审查看得到 |
 | 提醒太长 | — | 按 §5.2 的上限截，截掉的写 `(+N more)` |
 
@@ -325,7 +325,7 @@ M7 的简报（`src/execute/brief.ts` 的上下文栏，经验那一行之后）
 
 - `id: 'loops.unsynced-daily'`，标题「每天下班前：查有没有没提交、没推送的改动」，`why`「改完没提交、提交了没推送的东西容易被忘，这一项每天傍晚叫主 Agent 查一遍，有东西才告诉你」。
 - `when: { kind: 'daily', time: '18:05' }`（宿主时区；18:05 在 GLM 高峰 14:00–18:00 之后，叫醒主 Agent 的那一次请求不落在高峰里）。
-- `action: { kind: 'tell-main', wake: true, text }`，文字（英文，不含占位符）：`End-of-day check: look in this project for work that is not committed or not pushed. Read only: run git worktree list; in the main checkout and each listed worktree run git status --short (the task worktrees under .worktrees/hz-* belong to running dispatches, list them as such and do not count them); run git branch -vv for branches ahead of their upstream and for branches with no upstream whose commits are on no remote; run git stash list. If everything is committed and pushed, end your turn without telling the human anything. Otherwise tell the human in one short list what is left and whether it looks finished. Do not commit or push because of this reminder; the human decides. If this project is not a git repository, end your turn.`
+- `action: { kind: 'tell-main', wake: true, text }`，文字（英文，不含占位符）：`End-of-day check: look in this project for work that is not committed or not pushed. Read only: run git worktree list; in the main checkout and each listed worktree run git --no-optional-locks status --short (the task worktrees under .worktrees/hz-* belong to running dispatches, list them as such and do not count them); run git branch -vv for branches ahead of their upstream and for branches with no upstream whose commits are on no remote; run git stash list. If everything is committed and pushed, end your turn without telling the human anything. Otherwise tell the human in one short list what is left and whether it looks finished. Do not commit or push because of this reminder; the human decides. If this project is not a git repository, end your turn.`
 - 没有 `limits`、没有 `quiet`（时间条目不允许 `quiet`，`src/loops/model.ts` `checkQuiet`）。
 
 只汇报不动手：18:05 人可能不在，`hz-*` 工作树里可能是在跑的派发，M7 的主干前进核对还没合入，提交与推送留给主 Agent 平常的规范路径（`d-main-agent-shell`、`norm-merge-gate` 的 `push` 行）。人想换时间，可以自己加一条同形状的时间条目（默认那条仍在）。

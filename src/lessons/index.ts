@@ -35,7 +35,7 @@ import { sessionNotebook, warnOnceFor, whenPresent } from '../shared/row-support
 import { LESSONS_MERGE_TOOL } from '../shared/tool-names.ts'
 import type { AppendOptions } from '../data/journal.ts'
 import { lessonsCommand } from './commands.ts'
-import { installFailureMatching } from './failure.ts'
+import { installFailureMatching, type PushedBy } from './failure.ts'
 import { installPathNotices } from './path.ts'
 import { createImporter } from './import.ts'
 import { activeLessons, openCandidates, type RandomSource } from './model.ts'
@@ -194,7 +194,7 @@ export function apply(ctx: LessonsContext, config: LessonsConfig = {}): () => vo
   const notices = { ctx, env, importer: createImporter(ctx, env), report, warn: warnOnce }
 
   // What each session was told by the two reminders after a call: shared, so a lesson one tells the other does not tell again.
-  const pushedBy = new WeakMap<SessionLike, Set<string>>()
+  const pushedBy: PushedBy = new WeakMap()
 
   // The reminder after a failed call; without it the lessons still reach the agent through the brief, the notices and lessons_query.
   try {
