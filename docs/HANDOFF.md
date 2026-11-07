@@ -1,9 +1,9 @@
 # 交接说明
 
-版本：0.7（2026-11-01）
+版本：0.8（2026-11-07）
 本文件记录环境、组件状态与已知问题，供接手者继续工作。进度与下一步只记在项目图 `docs/graph/` 上（`ORCHESTRATION.md` §2.13）：`npm run -s graph -- open` 列出进行中、可以开工与等人的事。设计以 `CHARTER.md`、`DESIGN.md`、`ORCHESTRATION.md` 为准，里程碑与验收以 `ROADMAP.md` 为准。
 
-0.7 在 0.6 之上加了第 8、9 节（编排层各模块的状态、自举还缺什么、换机器或换 IDE 接手），第 1 到 7 节未改，其中的状态截至 2026-11-01 的 M6 核对；代码状态见第 8 节。
+0.7 在 0.6 之上加了第 8、9 节（编排层各模块的状态、自举还缺什么、换机器或换 IDE 接手），第 1 到 7 节未改，其中的状态截至 2026-11-01 的 M6 核对；代码状态见第 8 节。0.8 加第 10 节（2026-11-07 交回 ZCode），第 7 节加一句指向它。
 
 本版的状态截至代码 `a9f12e1`（m1-parity 合入点）、2026-10-29 的批次 L4（项目图 `m1-11`，记录在不入库的 `.agents/tasks/m1-l4/l4.md`）与同日 L4 之后的清理（项目图 `m1-cleanup`，记录在 `.agents/tasks/m1-l4/cleanup.md`）。
 
@@ -140,7 +140,7 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 
 ## 7. 下一步
 
-只看项目图（`npm run -s graph -- open`，或桌面版右侧栏的「项目图」）：进行中、可以开工与等人的事都在上面，节点批注里有接着做的要点。
+2026-11-07 交回 ZCode 时各条线的下一步在第 10 节。平时的进度只看项目图（`npm run -s graph -- open`，或桌面版右侧栏的「项目图」）：进行中、可以开工与等人的事都在上面，节点批注里有接着做的要点。
 
 ## 8. 编排层各模块的状态（2026-11-01）
 
@@ -172,4 +172,30 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 - **不入库**：`.agents` 下的运行产物、日志与一次性脚本；`.worktrees/`（工作树本身，分支提交在 git 对象库里）；`.llm/`、`reference/`；`.kiro/`（Kiro 的工作区配置与编排规则，换到别的 agent 要手动带）。
 - **进行中的分支**：`m3`（`a9b8ad5`）、`m3-flow`（`49f5d3e`）、`rules-loops-impl`（`c632387`）、`m5-memory-lessons`（`6e21948`）已于 2026-11-01 按人的要求推到 origin 作备份（`d-docs-tracked-for-handover`），远端与本机同点。它们是进行中的线，不要据此当成已放行；合入 main 之后删掉远端分支。再有新提交时要重新推送。
 - **编排运行**：属于 Kiro 的会话，换 IDE 即断。它们的产出都已落盘（设计文稿与分支提交），换过去之后照项目图重新派活。
-- **起步读法**：`AGENTS.md` → `docs/CHARTER.md` → 本文件第 8、9 节 → `npm run -s graph -- open`。
+- **起步读法**：`AGENTS.md` → `docs/CHARTER.md` → 本文件第 10 节，再看第 8、9 节 → `npm run -s graph -- open`。
+
+## 10. 接着做什么（2026-11-07 交回 ZCode）
+
+核对到 2026-11-07 20:00（UTC+8）。main 在 `23acb4d1` 之上加本节。三把锁都空：`.llm/probe-lock-2` 里是 bootstrap B8 03:18 的心跳，超过 30 分钟，按 `DEVELOPMENT.md` §1.1 删了。Cursor 的 shell 会注入 `GIT_CONFIG_COUNT`、`GIT_CONFIG_KEY_0`、`GIT_CONFIG_VALUE_0`，带着跑 `npm run probe` 会失败，跑之前清掉。桌面只走 `--remote-debugging-port`，不注入系统鼠标键盘，不杀桌面版进程；出现 `#32770` 确认框就停下来请人点。
+
+人已定，接着守：
+
+- `d-no-run-cap`（`e4680b5b`）取代 `d-five-runs`：不限同时运行的条数。硬限制仍是两把探针锁、一把桌面锁、GLM 高峰 14:00–18:00。
+- docs-at-hand 做进现有流程，不另加插件行。设计 0.3 在分支 `docs-at-hand`：按路径送达并进经验行；一个组件只一份 `AGENTS.md`（不要 `FLOW.md`、`CASES.md`）；每日 18:05 的 `loops.unsynced-daily`；同步核对等 M7 合入，并进交回，不加规则板规则。
+- 子目录 `AGENTS.md` 的修法会让 GLM 请求偏离 ZCode 3.17.1（ZCode 自己不送）。不合入 main，等人选 `.agents/tasks/glm-subdir-instructions/report.md` §7 的 A/B/C。报告推荐 C（合入但缺省关）。
+- 视频字幕 `source-transcript.md` 不入库。它在主检出 `.agents/tasks/docs-at-hand/`，未跟踪。
+- 自举仍按 `d-finish-then-bootstrap`：先做完再进自举。B8 的开工凭据是编排方对 `d-bootstrap-released` 与这条决定的解读，记在 `23acb4d1`，人可推翻。
+
+按卡住别人的程度：
+
+1. **M7。** 分支 `m7`，工作树 `.worktrees/m3`，`origin/m7` = `74e8a368`。工作树干净。这一提交把 `glm-hourness/execute` 改为出厂启用；推理档位提示的 `[object Object]` 修在 `6f9888e4`。还没合入 main，第一批 L4（设计 §9.2）没跑。下一步：追 `origin/main`，跑 `npm run build`、`npm run preflight`、`npm test`、`npm run probe`（先清上面三个变量）。过了再按 `DEVELOPMENT.md` §5 第 4 条关桌面版、主检出 `git merge --ff-only`、主检出 build、先推 `origin main` 再推 `github main`、重启、跑 L4。L4 不过就用新提交改回禁用。不要强推。
+2. **docs-at-hand。** `origin/docs-at-hand` = `6fff4c29`。0.3 与经验行、每日条目的实现已在分支上；`6fff4c29` 是收尾时提交的修正（两条提醒共用已送集合，18:05 那条用 `git --no-optional-locks`）。这一个提交没跑门禁。下一步：追 main、四道门禁、评审、合入。经验行已经启用，合入会改桌面版正在跑的代码，同样先关桌面版。不要新开 `glm-hourness/docs` 行。
+3. **bootstrap。** `origin/bootstrap` = `1e7136f6`（B8：`/wish` 调接管，阶段提醒问 `holds`）。工作树干净。不要现在合入 main，它和 m7 有冲突，等 M7 进 main 后再合，并接着做 B7、B9、B10。面板 `ui/src/guide/NoGraphCard.tsx` 的过渡文字要在 B8 合入后改指 `/wish`，另做一件小活。
+4. **rules-r4d。** `origin/rules-r4d` = `72647c1e`，工作树干净。设计 0.11、R3、R4d（`checkCall` 跑人同意过的拦路脚本）都在分支上，没合入 main。接 `trunkAdvanceFor` 的一段等 M7。合入前跑门禁并评审。
+5. **ablation。** `origin/ablation` = `5cd05adf`。A0–A5 两档的运行结果在此前的提交里，`5cd05adf` 补了有效次数与 `bugfix-shell-redirect` 的完成表。`DESIGN.md` 里逐段去留结论若还没有，就补上再合入。注入文字本身不要删，等人看过结论。`.agents/tasks/ablation/review/review.md` 是 2026-11-06 对「只有计划」那一版的评审，不是对跑完的数据。
+6. **glm-subdir-instructions。** `origin/glm-subdir-instructions` = `9399278a`。`0ca8b04f` 上 build、preflight、test 绿（3289 通过，棘轮 73/18/1），逐字门禁 502/0。`9399278a` 是收尾时提交的读失败与路径大小写修正，没跑门禁。不要合入 main，先等人定 §7。
+7. **transcript。** 已在 main 出厂启用（`ac6413cf`，图 `e381f062`）。桌面核对记录 `1707adbb`。`m5-index-truncation-alarm` 随同一次桌面核对关掉。
+8. **卫生。** 任务文稿 `4eb29f4d`，从工作树抢救的文稿 `08d1e9a7`，`m3` 关掉、`d-dogfood-scope` 被 `d-build-all-released` 取代、dogfood 开始条件改按 M7 设计 0.6，都在 `0ce50ab8`。指标「一天大小」那条当时没写，图上记了推迟。
+9. **别动。** `.worktrees/ablation-trial` 停在游离提交 `db2bbc69`，收尾没有改它，也没有删工作树和远端分支。
+
+待人定：宣传视频三件（人说过晚点看）；申请通道接到面板「需要你」时要不要把「三种事」改成「四种事」；改基之后才算合入的远端分支删不删；子目录 `AGENTS.md` 的 A/B/C。
