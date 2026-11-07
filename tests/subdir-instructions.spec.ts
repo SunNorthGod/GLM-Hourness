@@ -197,6 +197,56 @@ test('the notice follows the admitted messages and precedes the later reminders'
   finally { cleanup() }
 })
 
+test('a file written into a directory after it was probed empty is found on a later step; empty and oversize files are left out', async () => {
+  const { root, cleanup } = project()
+  try {
+    const first = await step(root, turn([{ name: 'Read', args: { file_path: join(root, 'pkg', 'plain', 'file.txt') } }]))
+    assert.deepEqual(subdirNotices(first.decision).map(notice => notice.source.dirs), [[join(root, 'pkg')]])
+    writeFileSync(join(root, 'pkg', 'plain', 'AGENTS.md'), 'LATE-MARK\n')
+    writeFileSync(join(root, 'pkg', 'plain', 'CLAUDE.md'), '  \n')
+    first.rt.history.push(subdirNotices(first.decision)[0], ...turn([{ name: 'Read', args: { file_path: join(root, 'pkg', 'plain', 'file.txt') } }]))
+    await first.rt.assemble({ model: 'glm-5.3' })
+    const [later] = subdirNotices(await first.rt.preStep({ step: 3 }))
+    assert.ok(later !== undefined)
+    assert.deepEqual(later.source.dirs, [join(root, 'pkg', 'plain')])
+    assert.deepEqual(later.source.files, [join('pkg', 'plain', 'AGENTS.md')])
+    writeFileSync(join(root, 'other', 'AGENTS.md'), 'x'.repeat(1048577))
+    const big = await step(root, turn([{ name: 'Read', args: { file_path: join(root, 'other', 'x.txt') } }]))
+    assert.deepEqual(subdirNotices(big.decision).map(notice => notice.source.files), [[join('other', 'CLAUDE.md')]])
+  }
+  finally { cleanup() }
+})
+
+test('the working directory comes from the workingDirectory service, else the session header; with neither it is told once and nothing is sent', async () => {
+  const { root, cleanup } = project()
+  const warnings: string[] = []
+  const warn = console.warn
+  console.warn = (message: unknown) => { warnings.push(String(message)) }
+  try {
+    const history = turn([{ name: 'Read', args: { file_path: join(root, 'pkg', 'sub', 'file.txt') } }])
+    const rt = fakeRuntime()
+    rt.services.set('workingDirectory', { get: () => root })
+    apply(rt.ctx, {}, () => Date.parse('2026-10-28T10:00:00+08:00'))
+    await rt.create()
+    rt.history.push(...history)
+    await rt.assemble({ model: 'glm-5.3' })
+    assert.equal(subdirNotices(await rt.preStep({ step: 2 })).length, 1)
+    const bare = fakeRuntime()
+    apply(bare.ctx, {}, () => Date.parse('2026-10-28T10:00:00+08:00'))
+    await bare.create()
+    bare.history.push(...history)
+    await bare.assemble({ model: 'glm-5.3' })
+    assert.deepEqual(subdirNotices(await bare.preStep({ step: 2 })), [])
+    await bare.assemble({ model: 'glm-5.3' })
+    assert.deepEqual(subdirNotices(await bare.preStep({ step: 3 })), [])
+    assert.equal(warnings.filter(text => text.includes('no working directory')).length, 1)
+  }
+  finally {
+    console.warn = warn
+    cleanup()
+  }
+})
+
 test('touchedPaths and descendantDirs', () => {
   const cwd = resolve('/work/proj')
   const history = [...turn([{ name: 'Read', args: { file_path: 'a/b.txt' } }, { name: 'Write', args: { file_path: '/work/proj/c/d.txt' } }, { name: 'Edit', args: { file_path: '  ' } }, { name: 'Read', args: {} }])]
@@ -205,6 +255,7 @@ test('touchedPaths and descendantDirs', () => {
   assert.deepEqual(descendantDirs(cwd, resolve(cwd, 'y.txt')), [])
   assert.deepEqual(descendantDirs(cwd, resolve('/work/other/y.txt')), [])
   assert.deepEqual(descendantDirs(cwd, resolve('/work/proj/..x/y.txt')), [resolve('/work/proj/..x')])
+  if (process.platform === 'win32') assert.deepEqual(descendantDirs('C:\\Proj', 'c:\\Proj\\pkg\\x.txt'), ['c:\\Proj\\pkg']) // a case difference does not walk up to the drive root
 })
 
 test('renderBatch keeps everything within the budget; over it the shallow files go first, then the deepest is cut', () => {

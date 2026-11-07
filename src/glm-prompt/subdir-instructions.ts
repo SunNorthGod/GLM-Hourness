@@ -39,7 +39,7 @@ const FILE_TOUCH_ALIASES: ReadonlySet<string> = new Set(['Read', 'Write', 'Edit'
 /** The host's candidate file names, in its order: the shared files, then the local overlays (dsh-agent-instructions defaults). */
 const INSTRUCTION_FILES: readonly string[] = ['AGENTS.md', 'CLAUDE.md', 'AGENTS.local.md', 'CLAUDE.local.md']
 
-/** The host's marker of a project root and its per-batch and per-file byte limits (`maxBytes` in dsh-base, `maxSourceBytes` default). */
+/** The host's marker of a project root and its per-batch and per-file byte limits (the dsh-base row's `maxBytes` and the `maxSourceBytes` default); fixed here, a profile that changes the host's values does not change these. */
 const PROJECT_ROOT_MARKER = '.git'
 export const MAX_BATCH_BYTES = 65536
 const MAX_SOURCE_BYTES = 1048576
@@ -93,20 +93,28 @@ export function descendantDirs(cwd: string, file: string): string[] {
   const rel = relative(root, target)
   if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return []
   const dirs: string[] = []
-  for (let current = target; current !== root; current = dirname(current)) {
+  // `relative` compares paths the way the platform does (case-insensitively on Windows); a string comparison with `root` would walk past it when the case differs.
+  for (let current = target; relative(root, current) !== ''; current = dirname(current)) {
     dirs.push(current)
     if (dirname(current) === current) break
   }
   return dirs.reverse()
 }
 
-async function isFile(path: string): Promise<number | undefined> {
+/** Whether a probe failed because nothing is there (the only failure that means "no file"). */
+const isAbsent = (error: unknown): boolean => isRecord(error) && (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+
+const describe = (error: unknown): string => error instanceof Error ? error.message : String(error)
+
+/** The size of the regular file at `path`; undefined when it is absent or not a regular file. Any other failure throws. */
+async function fileSize(path: string): Promise<number | undefined> {
   try {
     const info = await stat(path)
     return info.isFile() ? info.size : undefined
   }
-  catch {
-    return undefined
+  catch (error) {
+    if (isAbsent(error)) return undefined
+    throw error
   }
 }
 
@@ -125,19 +133,26 @@ async function projectRootOf(cwd: string): Promise<string> {
   }
 }
 
-/** The instruction files of one directory, host order; a candidate whose trimmed content repeats an earlier one's, or that is empty or too large, is left out. */
-async function readDirectory(directory: string, root: string): Promise<InstructionFile[]> {
+/**
+ * The instruction files of one directory, host order; a candidate whose
+ * trimmed content repeats an earlier one's, or that is empty or too large, is
+ * left out. A candidate that cannot be probed or read for any reason but
+ * absence is left out too and reported through `problem`; the directory is
+ * probed again on a later step.
+ */
+async function readDirectory(directory: string, root: string, problem: (message: string) => void): Promise<InstructionFile[]> {
   const files: InstructionFile[] = []
   const seen = new Set<string>()
   for (const name of INSTRUCTION_FILES) {
     const path = join(directory, name)
-    const size = await isFile(path)
-    if (size === undefined || size > MAX_SOURCE_BYTES) continue
     let content: string
     try {
+      const size = await fileSize(path)
+      if (size === undefined || size > MAX_SOURCE_BYTES) continue
       content = await readFile(path, 'utf8')
     }
-    catch {
+    catch (error) {
+      problem(`${path}: ${describe(error)}`)
       continue
     }
     if (content.trim().length === 0) continue
@@ -172,7 +187,8 @@ function frame(files: readonly InstructionFile[], notes: readonly string[]): str
  */
 export function renderBatch(files: readonly InstructionFile[], maxBytes: number = MAX_BATCH_BYTES): { readonly text: string, readonly included: readonly InstructionFile[] } {
   const full = frame(files, [])
-  if (byteLength(full) <= maxBytes) return { text: full, included: files }
+  const deepest = files[files.length - 1]
+  if (deepest === undefined || byteLength(full) <= maxBytes) return { text: full, included: files }
   const budget = (omitted: readonly InstructionFile[], cut: string): string =>
     `Workspace instruction budget ${maxBytes} bytes: ${[omitted.length > 0 ? `omitted ${omitted.map(file => file.displayPath).join(', ')}` : '', cut].filter(part => part.length > 0).join('; ')}`
   for (let start = 1; start < files.length; start++) {
@@ -180,8 +196,6 @@ export function renderBatch(files: readonly InstructionFile[], maxBytes: number 
     const text = frame(kept, [budget(files.slice(0, start), '')])
     if (byteLength(text) <= maxBytes) return { text, included: kept }
   }
-  const deepest = files[files.length - 1]
-  if (deepest === undefined) return { text: '', included: [] }
   const omitted = files.slice(0, -1)
   const original = byteLength(deepest.content)
   const cutTo = (bytes: number): { text: string, file: InstructionFile } => {
@@ -221,38 +235,35 @@ function deliveredDirs(history: readonly DerivedMessage[], root: string): Set<st
   return delivered
 }
 
-/** What one agent remembers between steps: directories found without files, and the project root of each working directory. */
-interface SubdirState {
-  readonly empty: Set<string>
-  readonly roots: Map<string, string>
-}
+/** Path identity as the platform compares paths: case-insensitive on Windows. */
+const pathKey = (path: string): string => process.platform === 'win32' ? path.toLowerCase() : path
 
-const newSubdirState = (): SubdirState => ({ empty: new Set(), roots: new Map() })
+/** The project root of each working directory seen, so the marker walk runs once per directory. */
+type RootCache = Map<string, string>
 
 /**
- * The notice for the directories the history's alias touches newly reach: the
- * touched directories not known to hold no files and not delivered by an
- * earlier message in the history. Directories whose files do not fit the
- * budget count as delivered, so the same batch is not sent again every step.
+ * The notice for the directories the history's alias touches newly reach:
+ * the touched directories no earlier message in the history delivered.
+ * Directories whose files do not fit the budget count as delivered, so the
+ * same batch is not sent again every step; a directory without files is
+ * probed again on every step (a few `stat` calls), so a file written later is
+ * found, as the host does on every touch.
  */
-async function buildSubdirNotice(history: readonly DerivedMessage[], cwd: string, state: SubdirState): Promise<ReturnType<typeof createUserNotice> | undefined> {
-  const wanted: string[] = []
+async function buildSubdirNotice(history: readonly DerivedMessage[], cwd: string, roots: RootCache, problem: (message: string) => void): Promise<ReturnType<typeof createUserNotice> | undefined> {
+  const wanted = new Map<string, string>()
   for (const file of touchedPaths(history, cwd)) {
-    for (const dir of descendantDirs(cwd, file)) if (!state.empty.has(dir) && !wanted.includes(dir)) wanted.push(dir)
+    for (const dir of descendantDirs(cwd, file)) if (!wanted.has(pathKey(dir))) wanted.set(pathKey(dir), dir)
   }
-  if (wanted.length === 0) return undefined
-  let root = state.roots.get(cwd)
+  if (wanted.size === 0) return undefined
+  let root = roots.get(cwd)
   if (root === undefined) {
     root = await projectRootOf(cwd)
-    state.roots.set(cwd, root)
+    roots.set(cwd, root)
   }
-  const delivered = deliveredDirs(history, root)
+  const delivered = new Set([...deliveredDirs(history, root)].map(pathKey))
   const files: InstructionFile[] = []
-  for (const dir of wanted) {
-    if (delivered.has(dir)) continue
-    const found = await readDirectory(dir, root)
-    if (found.length === 0) state.empty.add(dir)
-    files.push(...found)
+  for (const [key, dir] of wanted) {
+    if (!delivered.has(key)) files.push(...await readDirectory(dir, root, problem))
   }
   if (files.length === 0) return undefined
   const { text, included } = renderBatch(files)
@@ -275,21 +286,30 @@ export function sessionWorkingDirectory(ctx: ServiceLookup, session: SessionLike
 }
 
 /**
- * Install the notice on one agent (src/shared/step-notice.ts). A read that
- * fails is told once and the step goes on without the notice.
+ * Install the notice on one agent (src/shared/step-notice.ts). Whatever keeps
+ * a directory from being read (a probe or read error, no working directory,
+ * an unexpected failure) is told once per agent on the console, and the step
+ * goes on without that part of the notice.
  */
 export function installSubdirInstructions(agent: AgentLike, eligible: () => boolean, workingDirectory: () => string | undefined): (() => void) | undefined {
-  const state = newSubdirState()
+  const roots: RootCache = new Map()
   let told = false
+  const tell = (message: string): void => {
+    if (told) return
+    told = true
+    console.warn(`dsh-glm-hourness/glm-prompt: subdirectory instructions for agent ${agent.id}: ${message}`)
+  }
   return installStepNotice(agent, 'subdirectory instructions', eligible, async (history) => {
-    const cwd = workingDirectory()
-    if (cwd === undefined) return undefined
     try {
-      return await buildSubdirNotice(history, cwd, state)
+      const cwd = workingDirectory()
+      if (cwd === undefined) {
+        tell('the session has no working directory, so no subdirectory is resolved')
+        return undefined
+      }
+      return await buildSubdirNotice(history, cwd, roots, tell)
     }
     catch (error) {
-      if (!told) console.warn(`dsh-glm-hourness/glm-prompt: subdirectory instructions skipped for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
-      told = true
+      tell(`skipped: ${describe(error)}`)
       return undefined
     }
   }, 'glm-prompt')
