@@ -33,7 +33,11 @@
  * depth, the review task, the floor refusal for a light review, the voided
  * round and its re-dispatch with the same model, the demoted finding, the
  * stop with the marker and the stop draft, the waiting_human refusal, the
- * person's recorded answer lifting it, and the passing round's evidence.
+ * person's recorded answer lifting it, and the passing round's evidence. The
+ * docs scenario (glm-exec-docs, docs-at-hand design 0.3 §4.4, §6) runs the
+ * component-doc sentence in two workers' briefs over two components, the gap
+ * sentence and the verbatim docs line in the two handback comments, and the
+ * reviewer's brief carrying the gap line and the checklist rule.
  * The merge scenarios (glm-exec-merge, glm-exec-merge-upstream) run the
  * merge gate: check_commit on the external check provider, the refused and
  * the checked trunk advances with their advances.jsonl lines, the task's
@@ -2749,6 +2753,60 @@ const execReview = designScenario(EXEC_REVIEW, 'glm-5.3-flash', () => [
   execReviewVerdict('APPROVED', ['acceptance:0', 'acceptance:1'], []),
 ] })
 
+// E6b (docs-at-hand design 0.3 §4.4, §6, §6.4; scenario glm-exec-docs): the
+// component-doc sentence in the worker brief and the docs gaps of the handback
+// processing, over two tasks in two components. The workspace seeds two
+// component `AGENTS.md` files (site/feed/, site/rss/), so the workers' briefs
+// carry the keep-it-true sentence; worker one changes code without the docs
+// field, worker two hands back `docs: 'still true: site/rss/AGENTS.md'`. The
+// handback comments then carry the gap sentence for site/feed and the worker's
+// line verbatim for site/rss; the reviewer of task-1 starts from a brief whose
+// context carries the gap line and whose checklist carries the component-docs
+// rule verbatim.
+const EXEC_DOCS = 'glm-exec-docs'
+const docsSeeds = [
+  ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/feed.json'], acceptance: ['the feed builds'], worktree: true }],
+  ['human', { type: 'task', id: 'task-2', title: 'Add the atom feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/rss/atom.js'], acceptance: ['the atom feed is valid'], worktree: true }],
+]
+await stageGraph(EXEC_DOCS, docsSeeds)
+const DOCS_WHY = 'probe: the component-doc flow needs a running model'
+const seedDocsProject = async (name) => {
+  const ws = stageWs(name)
+  mkdirSync(join(ws, 'site', 'feed'), { recursive: true })
+  mkdirSync(join(ws, 'site', 'rss'), { recursive: true })
+  writeFileSync(join(ws, 'site', 'feed', 'AGENTS.md'), '# Feed\nWhat the feed builder may do.\n')
+  writeFileSync(join(ws, 'site', 'rss', 'AGENTS.md'), '# RSS\nWhat the atom writer may do.\n')
+  return ws
+}
+const docsWorker = (task, file, handback) => [
+  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_DOCS, 'ws', '.worktrees', `hz-${task}`, file), content: `probe ${file}\n` } } },
+  { tool: { name: 'Bash', arguments: { command: `git add -A; git -c user.name=t -c user.email=t@example.invalid commit -m probe:docs; git log --oneline -1`, description: 'probe: commit the change' } } },
+  { tool: { name: 'structured_output', arguments: { status: 'done', summary: `wrote ${file} and committed it`, commits: ['{git-head}'], files: [file], checks: [], questions: [], assumptions: [], lessons: [], ...handback } } },
+  { text: 'worker done' },
+]
+const docsReviewer = [
+  { tool: { name: 'Bash', arguments: { command: 'git diff main...HEAD --stat', description: 'probe: see the change' } } },
+  { tool: { name: 'structured_output', arguments: { verdict: 'APPROVED', commit: '{head:task-1}', findings: [], checked: ['acceptance:0 the feed file is there'], lessons: [] } } },
+  { text: 'review done' },
+]
+const docsDispatch = { model: 'glm-5.3-flash', why: DOCS_WHY, quick: true, review: { depth: 'light', why: 'probe: one file' } }
+const docsWs = await seedDocsProject(EXEC_DOCS)
+const execDocs = runScenario(EXEC_DOCS, 'glm-5.3-flash', [
+  { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+  { tool: { name: 'dispatch_task', arguments: { id: 'task-1', ...docsDispatch } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let worker one hand back' } } },
+  { tool: { name: 'dispatch_task', arguments: { id: 'task-2', ...docsDispatch } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let worker two hand back' } } },
+  { tool: { name: 'dispatch_task', arguments: { id: '{review:task-1}', model: 'glm-5.3-flash', why: DOCS_WHY, depth: 'full', depthWhy: 'probe: full it is' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the review pass' } } },
+  { text: 'done', status: true },
+], 'Dispatch two workers in components, review the first, then reply done.', [
+  ...designRows({ record: slash(join(runDir, EXEC_DOCS, 'human.jsonl')), wish: true }),
+  '- id: glm-hourness/execute',
+  '  disabled: false',
+], docsWs, [docsWorker('task-1', 'site/feed/feed.json', {}), docsWorker('task-2', 'site/rss/atom.js', { docs: 'still true: site/rss/AGENTS.md' }), docsReviewer])
+
 // E7 (M7 design §3.8, §3.11.1, §9.1 glm-exec-merge): the merge gate on the
 // real runtime. First a docs/graph-only commit on the main branch passes by
 // paths (no check record exists yet, so the advance is the only paths' own)
@@ -3945,6 +4003,45 @@ const gitOut = (cwd, ...args) => {
   return result.status === 0 ? result.stdout.trim() : ''
 }
 
+/**
+ * E6b (docs-at-hand design 0.3 §4.4, §6, §6.4; scenario glm-exec-docs): what
+ * the component-doc sentence and the docs gaps did on the real runtime. The
+ * main agent's scripted steps, in order: focus, worker one (task-1), a sleep,
+ * worker two (task-2), a sleep, the review of task-1 dispatched full, a
+ * sleep, done.
+ */
+function docsChecks() {
+  const name = EXEC_DOCS
+  const ws = join(runDir, name, 'ws')
+  const main = execDocs.steps.filter(step => step.sessionId === execDocs.steps[0]?.sessionId)
+  const result = step => lastToolResult(step)?.text ?? ''
+  const nodeId = file => { try { return JSON.parse(readFileSync(join(ws, 'docs', 'graph', 'nodes', file), 'utf8')) } catch { return undefined } }
+  const handbackComment = task => nodeId(`${task}.json`)?.history.find(entry => entry.op === 'comment' && entry.actor === 'harness' && String(entry.text ?? '').startsWith('第 1 次交回'))
+  const first = handbackComment('task-1')
+  const second = handbackComment('task-2')
+  const childOf = index => { try { return JSON.parse(result(main[index])).childId } catch { return undefined } }
+  const worker1 = childOf(2) === undefined ? [] : bySession(execDocs, childOf(2))
+  const worker2 = childOf(4) === undefined ? [] : bySession(execDocs, childOf(4))
+  const reviewer = childOf(6) === undefined ? [] : bySession(execDocs, childOf(6))
+  const briefOf = steps => steps[0]?.messages.find(message => message.source === 'user')?.text ?? ''
+  const brief1 = briefOf(worker1)
+  const brief2 = briefOf(worker2)
+  const reviewBrief = briefOf(reviewer)
+  const notices = main.flatMap(step => messagesOf(step, 'glm-hourness-execute'))
+  const reviewId = notices.map(message => /review dispatch of ([a-z0-9-]+)/.exec(message.text)?.[1]).find(id => id !== undefined)
+  const reviewNode = reviewId === undefined ? undefined : nodeId(`${reviewId}.json`)
+  const GAP = 'site/feed changed code but its AGENTS.md was not touched and the handback says nothing about it.'
+  const CHECKLIST = 'Component docs: if the handback names a component whose AGENTS.md was not updated, check that "still true" holds; a doc that carries a to-do list, progress or decision conclusions is misplaced. A stale doc is a non-blocking finding unless an acceptance item covers docs.'
+  const KEEP_TRUE = component => `- Component doc covering your scope: ${component}/AGENTS.md. Keep it true: update it in the same commits when your change alters what it says; otherwise say in the handback field "docs" why it still holds.`
+  return [
+    [`exec docs: each worker's brief carries the component-doc sentence for the component its scope sits in`, brief1.includes(KEEP_TRUE('site/feed')) && brief2.includes(KEEP_TRUE('site/rss')), `brief1 ${brief1.length} chars, has site/feed: ${brief1.includes(KEEP_TRUE('site/feed'))}; brief2 has site/rss: ${brief2.includes(KEEP_TRUE('site/rss'))}`],
+    [`exec docs: worker one handed back without the docs field and the summary comment says the gap`, first !== undefined && String(first.text).includes(`Docs: ${GAP}`), String(first?.text ?? 'no handback comment').split('\n').filter(line => line.startsWith('Docs:')).join(' | ') || 'no Docs line'],
+    [`exec docs: worker two's docs line is recorded verbatim and raises no gap for the component it names`, second !== undefined && String(second.text).includes('Docs: still true: site/rss/AGENTS.md') && !String(second.text).includes('changed code but its AGENTS.md was not touched'), String(second?.text ?? 'no handback comment').split('\n').filter(line => line.startsWith('Docs:')).join(' | ') || 'no Docs line'],
+    [`exec docs: the reviewer starts from the gap line in its context and the component-docs rule on its checklist verbatim`, reviewBrief.includes(`- The handback says of the component docs:\n  - ${GAP}`) && reviewBrief.includes(CHECKLIST), `review brief ${reviewBrief.length} chars, context line ${reviewBrief.includes(GAP)}, checklist ${reviewBrief.includes('Component docs: if the handback names')}`],
+    [`exec docs: the review of task-1 is dispatched and alive when the run ends (the pass path itself is pinned by tests/execute-handback.spec against the real engine and git; the headless runner's shutdown timing decides nothing here, E6), and the run exits clean with nothing from the execute row on stderr`, reviewNode !== undefined && ['approved', 'doing', 'done'].includes(reviewNode.status) && execDocs.status === 0 && !stderrOf(name).includes('dsh-glm-hourness/execute'), `review ${reviewId ?? 'none'}: ${reviewNode?.status ?? 'none'}; exit ${execDocs.status}; stderr ${stderrOf(name).split('\n').find(line => line.includes('execute')) ?? 'none'}`],
+  ]
+}
+
 /** The pieces both merge scenarios read: the main agent's requests, the result of the scripted step at an index, the check records, the advances, the trunk-advance violations and the execute notices. */
 function mergeRun(scenario, name) {
   const ws = join(runDir, name, 'ws')
@@ -4802,6 +4899,7 @@ const checks = [
   ...execChecks(),
   ...planChecks(),
   ...reviewChecks(),
+  ...docsChecks(),
   ...mergeChecks(),
   ...mergeUpstreamChecks(),
   ...driveChecks(),
