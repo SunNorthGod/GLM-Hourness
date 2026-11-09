@@ -15,6 +15,14 @@
  * passes the call (design §4.1). Requestable: a real new module in a new
  * place goes through the request channel (the tool arrives with G4; the
  * correction already names it with this call's ref).
+ *
+ * One exemption (M7 design 0.6 §3.2.1, after the E9 real-model run 2): a
+ * worker registered by `dispatch_task` whose plan is approved creates the
+ * files of its task, not one-off scripts. The guard row asks the execute
+ * row's service (`glmHournessExecute.inApprovedScope`) whether the caller is
+ * such a worker and the target lies inside its task's write scope or its
+ * approved plan's paths, and passes `approvedScope: true` only then; every
+ * other caller and target is judged as before.
  */
 import { readdir, stat } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
@@ -89,8 +97,14 @@ function createsFile(call: ToolCall): boolean {
   return false
 }
 
-/** The rule over one call's prepared context; `roots` are the workspace roots the scratch areas hang under, `ref` the call's request ref (design §5.2). */
-export function scratchOnly(roots: readonly string[], context: RuleContext, ref: string): GuardRule {
+/**
+ * The rule over one call's prepared context; `roots` are the workspace roots
+ * the scratch areas hang under, `ref` the call's request ref (design §5.2).
+ * `approvedScope` is true when the execute row says the caller is a
+ * registered worker with an approved plan writing inside its scope (M7
+ * design 0.6 §3.2.1): the call then passes.
+ */
+export function scratchOnly(roots: readonly string[], context: RuleContext, ref: string, approvedScope = false): GuardRule {
   const scratchPrefixes = roots.map(root => pathKey(resolve(root, ...SCRATCH_DIR.split('/'))))
   const underScratch = (target: string): boolean => scratchPrefixes.some(prefix => {
     const keyed = pathKey(target)
@@ -102,6 +116,8 @@ export function scratchOnly(roots: readonly string[], context: RuleContext, ref:
     detect(call) {
       const target = fileToolTargetOf(call)
       if (target === undefined || !createsFile(call)) return ALLOW
+      // A registered worker's planned file is its task's, not a one-off script (M7 design 0.6 §3.2.1).
+      if (approvedScope) return ALLOW
       // "The target did not exist before" is a fact from the context; unknown
       // passes (design §4.1). A `str_replace_editor create` on an existing
       // target is refused by the tool itself before the body would run.

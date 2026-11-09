@@ -91,9 +91,10 @@ rowTest('/loops with nothing lists every entry: the plugins\' first, then the pe
   const mine = lines.indexOf('你自己加的（2 项）：')
   // Without a pricing service the loop row hands over its two entries that are not about the peak; the one whose events nobody declares does not run now.
   assert.deepEqual(lines.slice(0, mine), [
-    '插件带来的（2 项，只能看）：',
+    '插件带来的（3 项，只能看）：',
     '· 依赖文件变了之后：查依赖 · 碰到「hourness.trunk-advanced」或「hourness.outside-advance」 · 还没跑过 · 现在不跑',
     '· 有事等你太久时：再跟你说一次 · 碰到「有事等你超过一段时间」 · 还没跑过',
+    '· 每天下班前：查有没有没提交、没推送的改动 · 每天 18:05 · 还没跑过 · 下次 11月2日 18:05',
   ])
   assert.deepEqual(lines.slice(mine + 1), [
     `· 每周五看一眼没合入的分支 · 每周五 17:00${zoneOf('Asia/Shanghai')} · 还没跑过 · 下次 ${next}`,
@@ -451,6 +452,6 @@ rowTest('with the GLM channel\'s pricing service the row lists its four entries 
   const listed = await run('')
   assert.equal(listed.kind, 'success')
   const words = listed.text
-  assert.match(words, /插件带来的（8 项，只能看）/)
+  assert.match(words, /插件带来的（9 项，只能看）/)
   for (const entry of GLM_LOOP_DEFAULTS) assert.ok(words.includes(entry.title), `${entry.id} is listed`)
 })

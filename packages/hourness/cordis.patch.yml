@@ -112,14 +112,34 @@
       name: dsh-hourness/design
       inject: [commands]
       config: {}
+    - id: glm-hourness/execute
+      # The execution line (docs/ORCHESTRATION.md §3, M7 design 0.6): dispatch_task
+      # for the main agent, the dispatched chain's execution-boundary rules
+      # (worker-scope, worker-graph-readonly, worker-git, worker-message-live-only;
+      # dispatch-chain-readonly is the change to M3's design-before-release), the
+      # tool faces of the chain, the plan and communication tools, the handback
+      # processing and the review loop, the merge gate (check_commit on the
+      # external check provider hourness-gate, trunk-advance-checked before and
+      # after a call, the full trunk check), the drive (the holder's DSH goal from
+      # a release without a command, the completion gate on update_goal complete,
+      # await_human, the idle and peak stops, the reconcile after a restart, the
+      # dispatch status notice), the loop-board seam (contribute, emit, runAction,
+      # M7's fallback executor and watchdog) and the glmHournessExecute service.
+      # Ships enabled since the M7 landing (2026-11-07): the L3 skeleton
+      # scenario glm-exec-skeleton passes and the third real model run took a
+      # released goal to completion with no person (M7 design 0.6 §10.3 item 2).
+      # The first desktop L4 batch (design §9.2) runs on this build.
+      name: dsh-hourness/execute
+      inject: [tools]
+      config: {}
     - id: glm-hourness/loops
       # Loop board (docs/ORCHESTRATION.md §18): what is done when something
       # happens or the time comes. Rows hand their entries, events and harness
       # actions to the service glmHournessLoops; the board validates and lists
       # them, an entry whose event nobody declares waits greyed, and the row
-      # brings four entries of its own (dependency check after a merge,
-      # a reminder for what waits for you too long, the two ends of a GLM
-      # peak). It keeps the entries a person agreed to (docs/loops/ in the
+      # brings five entries of its own (dependency check after a merge,
+      # a reminder for what waits for you too long, the end-of-day check
+      # for work not committed or not pushed, the two ends of a GLM peak). It keeps the entries a person agreed to (docs/loops/ in the
       # repository, the change record in the project's .llm/loops/), gives the
       # person /loops, keeps its own files to itself (loops:files-only), and in
       # a process that has a session controller it holds the project's run
@@ -191,11 +211,14 @@
       # with ZCode 3.17.1's sentence pointing at that file, which the model
       # reads with Read. Each write rewrites the session's file and deletes
       # the other sessions' files not written for 14 days. config.home
-      # overrides the project data directory. Ships disabled until the L3
-      # probe (scenario glm-compact-transcript) and the first desktop pass
-      # (docs/DEVELOPMENT.md §3, AGENTS.md rule 4).
+      # overrides the project data directory. Ships enabled since the
+      # transcript enablement (2026-11-06, the person's word): the L3 probe
+      # scenario glm-compact-transcript passed, and the desktop L4 passed on
+      # an isolated instance on 2026-11-06
+      # (.agents/tasks/compact-recall/l4.md). Known limit: redaction goes by
+      # the shape of a string, so a credential the model splits apart in its
+      # own words stays in the plain-text file (docs/DESIGN.md §2.4).
       name: dsh-hourness/transcript
-      disabled: true
       config: {}
     - id: glm-hourness/bootstrap
       # Take over a project (docs/ORCHESTRATION.md §19; takeover design 0.6):

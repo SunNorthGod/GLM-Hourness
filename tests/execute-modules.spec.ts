@@ -4,15 +4,31 @@ import { briefGate } from '../src/execute/brief.ts'
 import {
   DESIGN_REVIEW_ACCEPTANCE,
   MODULE_READERS,
+  acceptanceRounds,
   directionsOf,
+  derivedStage,
+  goalCompletion,
   goalLayer,
   isDesignReview,
   releaseAtOf,
   releaseOf,
   scopedTasks,
   sentBack,
+  type CompletionFacts,
+  type ModuleReaders,
 } from '../src/graph/execute-stage.ts'
-import { at, designReviewTask, freeContext, getNode as get, graphOf, node, refusalOf as refusal, splitGraph, stageEdit, throwingReaders, withNode } from './execute-helpers.ts'
+import type { LoadedGraph } from '../src/graph/parse.ts'
+import type { GraphNode, HistoryEntry } from '../src/graph/schema.ts'
+import { at, comment, designReviewTask, freeContext, getNode as get, graphOf, node, refusalOf as refusal, splitGraph, stageEdit, throwingReaders, withNode } from './execute-helpers.ts'
+import { GOAL } from './execute-repo.ts'
+import { goalNow, setStage, startedRig, withRig } from './execute-drive-rig.ts'
+
+/** Readers whose module reads throw, the strict side for the stage and the gate (R5-F3). */
+const unreadable: ModuleReaders = {
+  ...MODULE_READERS,
+  isSplit: () => { throw new TypeError('isSplit is not a function') },
+  modulesOf: () => { throw new TypeError('modulesOf is not a function') },
+}
 
 test('releaseAtOf: the time the node last entered the released state, null when it is not in it', () => {
   const graph = splitGraph()
@@ -30,6 +46,8 @@ test('releaseAtOf: the time the node last entered the released state, null when 
   // A move between stages after release is not a new release.
   const moved = node({ id: 'module-a', type: 'feature', stage: 'execute' }, 1, 'llm', [stageEdit(10, 'design', 'release'), stageEdit(15, 'release', 'execute')])
   assert.equal(releaseAtOf(moved), at(10))
+  // Released from its creation (no entry moves the stage into release): the first history entry's time (§3.9.7's failure table).
+  assert.equal(releaseAtOf(node({ id: 'goal-3', type: 'goal', stage: 'release' }, 4)), at(4))
   // Proposed nodes are never in the released state.
   assert.equal(releaseAtOf(node({ id: 'm', type: 'feature', stage: 'release', status: 'proposed' }, 0, 'llm', [stageEdit(1, 'design', 'release')])), null)
 })
@@ -245,3 +263,234 @@ test('a design review does not make the released module look busy, and the propo
   assert.deepEqual(scopedTasks(graph, get(graph, 'module-b')).map(task => task.id), ['task-b1'])
   assert.equal(scopedTasks(graph, get(graph, 'module-b')).some(task => task.id === 'review-b'), false)
 })
+
+// ---- derived stage (§2.4) ----
+
+test('derivedStage: done is operate, a pre-release stage passes through, a split goal with nothing released stays at release', () => {
+  const graph = splitGraph()
+  // A module still in design reads its own stage, whatever its tasks say.
+  assert.equal(derivedStage(graph, get(graph, 'module-b')), 'design')
+  // task-a1 is approved with no children and no unmet dependencies: ready, so execute.
+  assert.equal(derivedStage(graph, get(graph, 'module-a')), 'execute')
+  assert.equal(derivedStage(graph, get(graph, 'goal-1')), 'execute')
+  // Done wins over everything.
+  const done = withNode(graph, { ...get(graph, 'goal-1'), status: 'done' })
+  assert.equal(derivedStage(done, get(done, 'goal-1')), 'operate')
+  // The big loop released the goal, but no module's work has begun: still at release.
+  const unreleased = graphOf([...graph.nodes.values()].map(entry => entry.id === 'module-a'
+    ? node({ id: 'module-a', type: 'feature', parent: 'goal-1', stage: 'design', acceptance: ['module a works'] }, 1)
+    : entry))
+  assert.equal(derivedStage(unreleased, get(unreleased, 'goal-1')), 'release')
+  // Readers that throw read as split with nothing released (R5-F3, the strict side).
+  assert.equal(derivedStage(graph, get(graph, 'goal-1'), unreadable), 'release')
+})
+
+test('derivedStage: doing and ready are execute, closed or waiting for its review is merge, nothing dispatchable is decompose', () => {
+  const graph = splitGraph()
+  // A task in progress: execute.
+  const doing = withNode(graph, { ...get(graph, 'task-a1'), status: 'doing' })
+  assert.equal(derivedStage(doing, get(doing, 'module-a')), 'execute')
+  // All of the goal's in-scope tasks closed: merge. task-b1 is doing, but its module
+  // is in design, so it is not the goal's work; module-b itself reads execute.
+  const closed = graphOf([...graph.nodes.values()].map(entry => {
+    if (entry.id === 'task-a1' || entry.id === 'task-top') return { ...entry, status: 'done' as const }
+    if (entry.id === 'task-b1') return { ...entry, status: 'doing' as const }
+    return entry
+  }))
+  assert.equal(derivedStage(closed, get(closed, 'goal-1')), 'merge')
+  assert.equal(derivedStage(closed, get(closed, 'module-a')), 'merge')
+  // module-b itself is still in design and reads its own stage, whatever its task says.
+  assert.equal(derivedStage(closed, get(closed, 'module-b')), 'design')
+  // A task handed back and waiting for its review is merge; the review of work in
+  // scope is the waiting itself, not work (an open review alone is not execute).
+  const handedBack = graphOf([...graph.nodes.values(), node({ id: 'review-a1', type: 'task', parent: 'task-a1', kind: 'review', writeScope: [], edges: [{ type: 'source', to: 'task-a1' }], status: 'doing' }, 20, 'harness')])
+  assert.equal(derivedStage(handedBack, get(handedBack, 'module-a')), 'merge')
+  // No tasks at all: decompose.
+  const empty = graphOf([node({ id: 'goal-2', type: 'goal', stage: 'release', acceptance: ['g'] }, 0, 'human', [stageEdit(5, 'design', 'release')])])
+  assert.equal(derivedStage(empty, get(empty, 'goal-2')), 'decompose')
+  // Tasks exist but none can start and none is closed: decompose.
+  const planned = graphOf([
+    node({ id: 'goal-3', type: 'goal', stage: 'release', acceptance: ['g'] }, 0, 'human', [stageEdit(5, 'design', 'release')]),
+    node({ id: 'module-a', type: 'feature', parent: 'goal-3', stage: 'release', acceptance: ['m'] }, 1, 'llm', [stageEdit(10, 'design', 'release')]),
+    node({ id: 'task-a1', type: 'task', parent: 'module-a', writeScope: ['src/a/'], kind: 'implement', acceptance: ['x'], edges: [{ type: 'depends', to: 'task-a2' }] }),
+    node({ id: 'task-a2', type: 'task', parent: 'module-a', writeScope: ['src/a/'], kind: 'implement', acceptance: ['y'], status: 'proposed' }),
+  ])
+  assert.equal(derivedStage(planned, get(planned, 'module-a')), 'decompose')
+  // A goal that never ran the design loop (no stage) runs the same table once approved.
+  const noStage = graphOf([
+    node({ id: 'goal-4', type: 'goal', acceptance: ['g'] }),
+    node({ id: 't1', type: 'task', parent: 'goal-4', writeScope: ['src/'], kind: 'implement', acceptance: ['x'] }),
+  ])
+  assert.equal(derivedStage(noStage, get(noStage, 'goal-4')), 'execute')
+})
+
+// ---- completion gate (§3.9.3) ----
+
+const ACCEPTANCE = '验收审查第 1 轮：APPROVED · 挡路 0 · hz-goal-1-acc-aaaaaa · @acc1234567 · pins: goal-1@0123456789ab'
+
+/** A goal whose every item holds: one done write task with harness commit evidence on the trunk, acceptance passed. */
+const completeGoal = (goalExtra: readonly HistoryEntry[] = [], task: GraphNode = doneWriteTask()): LoadedGraph => graphOf([
+  node({ id: 'goal-1', type: 'goal', stage: 'release', acceptance: ['the goal'] }, 0, 'human', [stageEdit(5, 'design', 'release'), comment(30, ACCEPTANCE), ...goalExtra]),
+  task,
+])
+
+function doneWriteTask(extra: readonly HistoryEntry[] = []): GraphNode {
+  return node(
+    { id: 'task-1', type: 'task', parent: 'goal-1', kind: 'implement', writeScope: ['src/'], worktree: true, acceptance: ['works'], status: 'done', evidence: [{ kind: 'commit', ref: 'c1' }] },
+    1, 'llm', [{ at: at(10), actor: 'harness', op: 'edit', reason: '合入主干', evidence: [{ kind: 'commit', ref: 'c1' }] }, ...extra],
+  )
+}
+
+const facts: CompletionFacts = {
+  onTrunk: (ref: string): boolean => ref === 'c1' || ref === 'acc1234567',
+  isAncestor: (older: string, newer: string): boolean => older === 'c1' && newer === 'acc1234567',
+  running: new Set<string>(),
+  runningChecks: [],
+  pinsFresh: (): string | undefined => undefined,
+}
+
+test('goalCompletion: the gate passes when every item holds', () => {
+  assert.deepEqual(goalCompletion(completeGoal(), get(completeGoal(), 'goal-1'), facts), { ok: true, gaps: [] })
+})
+
+test('goalCompletion: open tasks, and harness commit evidence on the trunk for done write tasks', () => {
+  // A task that is not closed.
+  const open = completeGoal([], node({ id: 'task-1', type: 'task', parent: 'goal-1', kind: 'implement', writeScope: ['src/'], worktree: true, acceptance: ['works'] }, 1))
+  assert.deepEqual(goalCompletion(open, get(open, 'goal-1'), facts).gaps, ['task task-1 is approved; close it, or drop or supersede it'])
+  // A done write task whose evidence the harness did not write.
+  const unrecorded = completeGoal([], node({ id: 'task-1', type: 'task', parent: 'goal-1', kind: 'implement', writeScope: ['src/'], worktree: true, acceptance: ['works'], status: 'done', evidence: [{ kind: 'commit', ref: 'c1' }] }, 1))
+  assert.deepEqual(goalCompletion(unrecorded, get(unrecorded, 'goal-1'), facts).gaps, ['task task-1 has no harness commit evidence on the trunk: run check_commit on the commit, fast-forward the trunk to it, and let the harness record it'])
+  // Evidence there, but the commit is not on the trunk — and, the acceptance review
+  // being passed, also not inside the reviewed trunk commit.
+  const offTrunk = completeGoal([], node(
+    { id: 'task-1', type: 'task', parent: 'goal-1', kind: 'implement', writeScope: ['src/'], worktree: true, acceptance: ['works'], status: 'done', evidence: [{ kind: 'commit', ref: 'c2' }] },
+    1, 'llm', [{ at: at(10), actor: 'harness', op: 'edit', reason: '合入主干', evidence: [{ kind: 'commit', ref: 'c2' }] }],
+  ))
+  assert.deepEqual(goalCompletion(offTrunk, get(offTrunk, 'goal-1'), facts).gaps, [
+    'task task-1 has no harness commit evidence on the trunk: run check_commit on the commit, fast-forward the trunk to it, and let the harness record it',
+    "task task-1's trunk commit c2 is not in the reviewed trunk commit acc1234567",
+  ])
+  // A read-only task (empty write scope) needs no commit evidence.
+  const readOnly = completeGoal([], node({ id: 'task-1', type: 'task', parent: 'goal-1', kind: 'review', writeScope: [], acceptance: ['checked'], status: 'done' }, 1))
+  assert.deepEqual(goalCompletion(readOnly, get(readOnly, 'goal-1'), facts), { ok: true, gaps: [] })
+  // A task under a closed ancestor is skipped, its open review child with it (0.2 评审 F22).
+  const droppedAncestor = graphOf([
+    node({ id: 'goal-1', type: 'goal', stage: 'release', acceptance: ['the goal'] }, 0, 'human', [stageEdit(5, 'design', 'release'), comment(30, ACCEPTANCE)]),
+    node({ id: 'task-1', type: 'task', parent: 'goal-1', kind: 'implement', writeScope: ['src/'], worktree: true, acceptance: ['works'], status: 'dropped' }, 1),
+    node({ id: 'review-1', type: 'task', parent: 'task-1', kind: 'review', writeScope: [], edges: [{ type: 'source', to: 'task-1' }] }, 2, 'harness'),
+  ])
+  assert.deepEqual(goalCompletion(droppedAncestor, get(droppedAncestor, 'goal-1'), facts), { ok: true, gaps: [] })
+})
+
+test('goalCompletion: no open question or proposal, and the acceptance review items', () => {
+  // The acceptance comment reads back as one round with its verdict, commit and pins.
+  const base = completeGoal()
+  assert.deepEqual(acceptanceRounds(get(base, 'goal-1')), [{
+    k: 1, verdict: 'APPROVED', blocking: 0, childId: 'hz-goal-1-acc-aaaaaa', commit: 'acc1234567',
+    pins: 'pins: goal-1@0123456789ab', stopped: false, at: at(30),
+  }])
+  // An undecided question and an undecided proposal (a node left in proposed).
+  const withQuestion = withNode(base, node({ id: 'q-1', type: 'question', parent: 'goal-1', options: [{ key: 'A', label: 'a' }, { key: 'B', label: 'b' }] }))
+  const undecided = withNode(withQuestion, node({ id: 'q-2', type: 'question', parent: 'goal-1', options: [{ key: 'A', label: 'a' }, { key: 'B', label: 'b' }], status: 'proposed' }, 5, 'llm'))
+  assert.deepEqual(goalCompletion(undecided, get(undecided, 'goal-1'), facts).gaps, ['question q-1 is still open', 'proposal q-2 is not decided yet'])
+  // The acceptance review missing, stopped, or not approved.
+  const noReview = completeGoal()
+  const bare = graphOf([...noReview.nodes.values()].map(entry => entry.id === 'goal-1'
+    ? node({ id: 'goal-1', type: 'goal', stage: 'release', acceptance: ['the goal'] }, 0, 'human', [stageEdit(5, 'design', 'release')])
+    : entry))
+  assert.deepEqual(goalCompletion(bare, get(bare, 'goal-1'), facts).gaps, ["the goal's acceptance review has not passed: dispatch_task goal-1 with a model and why"])
+  const stopped = graphOf([...noReview.nodes.values()].map(entry => entry.id === 'goal-1'
+    ? node({ id: 'goal-1', type: 'goal', stage: 'release', acceptance: ['the goal'] }, 0, 'human', [stageEdit(5, 'design', 'release'), comment(30, `${ACCEPTANCE} · 停下`)])
+    : entry))
+  assert.deepEqual(goalCompletion(stopped, get(stopped, 'goal-1'), facts).gaps, ['the acceptance review was stopped: the person has not answered yet'])
+  const changes = graphOf([...noReview.nodes.values()].map(entry => entry.id === 'goal-1'
+    ? node({ id: 'goal-1', type: 'goal', stage: 'release', acceptance: ['the goal'] }, 0, 'human', [stageEdit(5, 'design', 'release'), comment(30, '验收审查第 2 轮：CHANGES_REQUESTED · 挡路 2 · hz-goal-1-acc-bbbbbb · @acc1234567 · pins: goal-1@0123456789ab')])
+    : entry))
+  assert.deepEqual(goalCompletion(changes, get(changes, 'goal-1'), facts).gaps, ["the goal's acceptance review has not passed: round 2 is CHANGES_REQUESTED with 2 blocking"])
+  // Stale pins.
+  const stale = goalCompletion(completeGoal(), get(completeGoal(), 'goal-1'), { ...facts, pinsFresh: () => 'goal-1 released again' })
+  assert.deepEqual(stale.gaps, ["the acceptance review's pins are stale (goal-1 released again); review the goal again"])
+  // A trunk commit the reviewed commit does not contain.
+  const notAncestor = goalCompletion(completeGoal(), get(completeGoal(), 'goal-1'), { ...facts, isAncestor: () => false })
+  assert.deepEqual(notAncestor.gaps, ["task task-1's trunk commit c1 is not in the reviewed trunk commit acc1234567"])
+})
+
+test('goalCompletion: nothing of the goal still running, no module left in design, readable structure', () => {
+  // A live dispatch named in the goal's or a task's comments.
+  const live = completeGoal([comment(31, '派发 hz-goal-1-w-bbbbbb 的简报记下了模型与理由')])
+  assert.deepEqual(
+    goalCompletion(live, get(live, 'goal-1'), { ...facts, running: new Set(['hz-goal-1-w-bbbbbb']) }).gaps,
+    ['dispatch hz-goal-1-w-bbbbbb is still running'],
+  )
+  // A dispatch of another goal that happens to be alive does not count.
+  assert.deepEqual(
+    goalCompletion(live, get(live, 'goal-1'), { ...facts, running: new Set(['hz-goal-9-w-zzzzzz']) }),
+    { ok: true, gaps: [] },
+  )
+  // A merge check still running on a task of the goal is a gap (§3.9.3 point 6); one of another goal's task is not.
+  assert.deepEqual(goalCompletion(completeGoal(), get(completeGoal(), 'goal-1'), { ...facts, runningChecks: ['task-1', 'task-9'] }).gaps, ['a merge check of task task-1 is still running'])
+  // A split goal: the module in design is a gap; its design review does not count
+  // (R5-F4), but a real task of that module does.
+  const split = withNode(splitGraph(), designReviewTask())
+  const splitDone = graphOf([...split.nodes.values()].map(entry => {
+    if (entry.id === 'task-a1' || entry.id === 'task-top') {
+      return { ...entry, status: 'done' as const, evidence: [{ kind: 'commit' as const, ref: 'c1' }], history: [...entry.history, { at: at(15), actor: 'harness' as const, op: 'edit', reason: '合入主干', evidence: [{ kind: 'commit' as const, ref: 'c1' }] }] }
+    }
+    if (entry.id === 'goal-1') {
+      return { ...entry, history: [...entry.history, comment(30, ACCEPTANCE)] }
+    }
+    return entry
+  }))
+  assert.deepEqual(goalCompletion(splitDone, get(splitDone, 'goal-1'), facts).gaps, [
+    'task task-b1 is approved; close it, or drop or supersede it',
+    'module module-b has not been released: put its design to the person with propose_to_human (kind release, module module-b), or drop the module',
+  ])
+  // Readers that throw: the gate waits until the structure can be read.
+  const gate = goalCompletion(completeGoal(), get(completeGoal(), 'goal-1'), facts, unreadable)
+  assert.deepEqual(gate.gaps, ['the module structure could not be read; the completion gate waits until it can'])
+})
+
+// ---- the drive on a two-module goal (design §6.6 (a), (c); src/execute/drive.ts) ----
+
+const MODULE_A = { type: 'feature', id: 'module-a', parent: 'goal-1', title: 'Feed', stage: 'release', acceptance: ['the feed works'] }
+const MODULE_B = { type: 'feature', id: 'module-b', parent: 'goal-1', title: 'Search', stage: 'design', acceptance: ['search works'] }
+const TASK_A = { type: 'task', id: 'task-a1', parent: 'module-a', title: 'Add the feed', kind: 'implement', writeScope: ['src/feed/'], acceptance: ['the feed builds'], worktree: true }
+const splitRig = (): ReturnType<typeof startedRig> => startedRig({ nodes: [GOAL, MODULE_A, MODULE_B, TASK_A] })
+
+test('(a) drive: module A\'s release creates the one goal; B\'s later release hands over design-released with module B and its own key, and start-drive only comments', () => withRig(splitRig, async (rig) => {
+  const releasedA = rig.emitted.filter(event => event.event === 'hourness.design-released')
+  const atA = releaseAtOf(await rig.node('module-a'))
+  assert.deepEqual(releasedA.map(event => [event.key, event.payload.module]), [[`design-released:module-a:${atA}`, 'module-a']])
+  const goal = goalNow(rig)
+  assert.match(goal.objective, /The work is split into modules and the person releases each module on its own; .* call await_human\.$/)
+  assert.ok((await rig.comments('goal-1')).includes(`自动推进已开始 · 放行 ${atA} · 模块 module-a · goal ${goal.id} · 会话 main-1 · 主干 main`))
+  assert.ok(rig.live.woken.some(entry => entry.text.includes('Module module-a "Feed" of goal goal-1 is released and the drive has started. Decompose it into tasks with dispatch attributes under the module')))
+  await setStage(rig, 'module-b', 'release')
+  await rig.step()
+  const atB = releaseAtOf(await rig.node('module-b'))
+  assert.deepEqual(rig.emitted.filter(event => event.event === 'hourness.design-released').map(event => [event.key, event.payload.module]), [[`design-released:module-a:${atA}`, 'module-a'], [`design-released:module-b:${atB}`, 'module-b']])
+  assert.ok((await rig.comments('goal-1')).includes(`模块 module-b 已放行 · 放行 ${atB}`))
+  assert.ok(rig.live.woken.some(entry => entry.text.includes('Module module-b "Search" of goal goal-1 is released. Decompose it')), 'no "and the drive has started" for a later module')
+  assert.equal(rig.live.goalCalls.filter(call => call.op === 'create').length, 1, 'one goal for the whole goal')
+  assert.ok(rig.metrics.some(event => event.event === 'execute.goal' && event.op === 'module-released' && event.module === 'module-b'))
+}))
+
+test('(c) drive: the goal sent back to design blocks hourness-design-wait without asking; its re-release resumes and zeroes both counters', () => withRig(splitRig, async (rig) => {
+  await rig.round()
+  await rig.round()
+  await rig.round()
+  assert.deepEqual(rig.drive.status('main-1').counters, { idle: 2, peak: 0 })
+  await setStage(rig, 'goal-1', 'design')
+  await rig.step()
+  assert.deepEqual(goalNow(rig).blockedReason, { code: 'hourness-design-wait', message: 'The framework of goal goal-1 is being changed with the person (the goal went back to design). Nothing is dispatched until it is released again.' })
+  assert.ok((await rig.lines()).some(line => line.op === 'design-wait'))
+  assert.ok((await rig.comments('goal-1')).some(text => text.startsWith('退回设计 · ')))
+  assert.equal(rig.drive.status('main-1').returns[0]?.tier, 3)
+  await setStage(rig, 'goal-1', 'release')
+  await rig.step()
+  assert.deepEqual([goalNow(rig).phase, goalNow(rig).activation], ['active', 'armed'])
+  assert.deepEqual(rig.drive.status('main-1').counters, { idle: 0, peak: 0 })
+  assert.equal(rig.drive.status('main-1').state, 'The goal was released again. Tasks that were running when it went back are stale: dispatch them again with the new design.')
+  assert.ok((await rig.lines()).some(line => line.op === 'resume' && line.reason === 'design-released'))
+  assert.equal(rig.live.goalCalls.filter(call => call.op === 'create').length, 1)
+}))

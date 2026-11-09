@@ -1,0 +1,36 @@
+{
+  "id": "docs-at-hand-path",
+  "type": "task",
+  "title": "路径提醒并进经验行，组件文档一个文件",
+  "why": "动手的 agent 一读改文件就看到该组件的决定、没做完的活与踩过的坑",
+  "status": "approved",
+  "parent": "docs-at-hand",
+  "kind": "implement",
+  "acceptance": [
+    "经验行第二个 tools/post-execute 监听器：成功的 read、write、edit 之后一条提醒，含按路径匹配的经验、组件 AGENTS.md 列的决策在图上的现状、开着的活；DSH 没送达时补组件 AGENTS.md 正文，GLM 与非 GLM 路由都判对",
+    "不新增行、文件格式、规则；L2、L3（glm-lessons-path、non-glm-lessons-path）通过，经验行出厂启用，桌面版 L4 待批次",
+    "格式写进 ORCHESTRATION.md §8.7"
+  ],
+  "writeScope": [
+    "src/lessons/",
+    "tests/lessons-docs.spec.ts",
+    "tests/lessons-path.spec.ts",
+    "scripts/probe/run-probe.mjs"
+  ],
+  "edges": [
+    {
+      "type": "source",
+      "to": "docs-at-hand"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-06T19:09:02.164Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "设计 0.3 第二件加第一件的格式：路径提醒并进经验行，组件文档只有一个 AGENTS.md",
+      "relay": "你自己把握好这个度吧反正，尽量融合进我们的流程内而不是加越来越多的东西",
+      "to": "approved"
+    }
+  ]
+}

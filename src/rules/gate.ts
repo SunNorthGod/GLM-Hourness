@@ -15,8 +15,10 @@
  *    so it holds when the state cannot be read.
  * 3. The call's events are built (`gateEvents`: `gate.tool-call` always,
  *    `gate.dispatch` for the native dispatch tools; `gate.trunk-advance` is
- *    declared and never pushed, nothing reports it yet) and judged with the
- *    same `judgeInput`, `judge` and table of rules `checkCall` uses.
+ *    declared and not pushed: the execute row reports a passing local trunk
+ *    advance through `glmHournessExecute.trunkAdvanceFor(callId)` since M7
+ *    E7, and this gate does not read it yet) and judged with the same
+ *    `judgeInput`, `judge` and table of rules `checkCall` uses.
  * 4. A rule that blocks refuses the call with the four-part text; a rule that
  *    records lets it run and leaves a line; informing rules change nothing. A
  *    rule of the person that queues refuses the call once with a ticket, and

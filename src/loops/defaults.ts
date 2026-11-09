@@ -1,10 +1,10 @@
 /**
- * The four entries the loop row brings itself (docs/ORCHESTRATION.md §18.5; loop
+ * The five entries the loop row brings itself (docs/ORCHESTRATION.md §18.5; loop
  * board design 0.6 §5.2): they are the loop row's data, shown on the page as it
  * is and not changeable (`d-defaults-readonly`). Nothing here belongs to another
- * row: the events of the first entry are M7's, the event of the other two is the
- * GLM channel's, and an entry whose event nobody declares is listed greyed
- * until someone does (src/loops/registry.ts).
+ * row: the events of the first entry are M7's, the event of the two peak entries is
+ * the GLM channel's, the daily check listens to no event, and an entry whose event
+ * nobody declares is listed greyed until someone does (src/loops/registry.ts).
  *
  * The words to the main agent are English; the first line of each message,
  * `Loop board: <id> (default of <plugin>).`, is written when the message is
@@ -70,6 +70,18 @@ export const LOOP_DEFAULTS: readonly LoopEntryDefinition[] = [
     },
     limits: { debounceSeconds: 60, maxPerHour: 1 },
     quiet: { from: '22:00', to: '08:00' },
+  },
+  {
+    id: 'loops.unsynced-daily',
+    title: '每天下班前：查有没有没提交、没推送的改动',
+    why: '改完没提交、提交了没推送的东西容易被忘，这一项每天傍晚叫主 Agent 查一遍，有东西才告诉你',
+    // 18:05 is after the GLM peak (14:00-18:00), so the wake-up request is not made inside it. A time entry takes no quiet hours.
+    when: { kind: 'daily', time: '18:05' },
+    action: {
+      kind: 'tell-main',
+      text: 'End-of-day check: look in this project for work that is not committed or not pushed. Read only: run git worktree list; in the main checkout and each listed worktree run git --no-optional-locks status --short (the task worktrees under .worktrees/hz-* belong to running dispatches, list them as such and do not count them); run git branch -vv for branches ahead of their upstream and for branches with no upstream whose commits are on no remote; run git stash list. If everything is committed and pushed, end your turn without telling the human anything. Otherwise tell the human in one short list what is left and whether it looks finished. Do not commit or push because of this reminder; the human decides. If this project is not a git repository, end your turn.',
+      wake: true,
+    },
   },
   {
     id: PEAK_START_ENTRY,

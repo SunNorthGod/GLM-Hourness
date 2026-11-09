@@ -14,7 +14,7 @@
  * output schema take them from the context, because those come from the
  * handback and schema code of later steps; this file invents neither.
  */
-import { MODULE_READERS, directionsOf, goalLayer, isDesignReview, isPostRelease, sentBack, type ModuleReaders, type ReleaseResult } from '../graph/execute-stage.ts'
+import { MODULE_READERS, directionsOf, goalLayer, isDesignReview, isPostRelease, scopedTasks, sentBack, type ModuleReaders, type ReleaseResult } from '../graph/execute-stage.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { ancestorsOf, childrenIndex, subtreeOf, waitsForHuman } from '../graph/projection.ts'
 import { ID_PATTERN, type GraphNode } from '../graph/schema.ts'
@@ -116,6 +116,8 @@ interface Refusal {
   readonly code: RefusalCode
   readonly message: string
   readonly hint: string
+  /** The GLM peak cap refused the call: the cap and the GLM subagents running (§3.16 `execute.peak-cap`). */
+  readonly peakCap?: { readonly cap: number, readonly running: number }
 }
 
 /** What a `dispatch_task` call names. */
@@ -151,6 +153,8 @@ export interface BriefContext {
   /** The provider's catalog, for the model hint of an invalid call. */
   readonly catalog?: readonly CatalogEntry[]
   readonly readers?: ModuleReaders
+  /** The goal already has an acceptance-review round at the current trunk commit (§3.9.4): its review is `busy`. Goals only. */
+  readonly acceptedAtTrunk?: boolean
 }
 
 function refuse(code: RefusalCode, message: string, hint: string): Refusal {
@@ -316,6 +320,9 @@ export function briefGate(graph: LoadedGraph, node: GraphNode, ctx: BriefContext
     ? [...graph.nodes.values()].filter(entry => entry.parent === node.id && isDesignReview(graph, entry, readers)).flatMap(entry => runningOn(ctx.running, entry.id))
     : runningOn(ctx.running, node.id)
   if (holders.length > 0) return refuse('busy', `${node.id} already has a running dispatch.`, `Running: ${holders.map(attempt => attempt.childId).join(', ')}.`)
+  if (subject === 'goal' && ctx.acceptedAtTrunk === true) {
+    return refuse('busy', `Goal ${node.id} already has an acceptance review at the current trunk commit.`, 'Its round comment on the goal is the verdict; dispatch the acceptance review again after the trunk moves.')
+  }
 
   if (subject === 'write') {
     const workers = runningWorkers(ctx.running)
@@ -331,8 +338,9 @@ export function briefGate(graph: LoadedGraph, node: GraphNode, ctx: BriefContext
     const glm = runningGlm(ctx.running)
     const { cap, until } = ctx.glmWorkerCap
     if (glm.length >= cap) {
-      return refuse('slots_full', `GLM peak, reduce: at most ${cap} GLM subagent${cap === 1 ? '' : 's'} at a time${until === undefined ? '' : ` until ${until}`}.`,
+      const refusal = refuse('slots_full', `GLM peak, reduce: at most ${cap} GLM subagent${cap === 1 ? '' : 's'} at a time${until === undefined ? '' : ` until ${until}`}.`,
         `Running GLM subagents: ${describeRunning(glm)}. A non-GLM model is not limited.`)
+      return { ...refusal, peakCap: { cap, running: glm.length } }
     }
   }
   if (subject === 'write' && !ctx.outputSchemaOk) return refuse('bad_schema', `The outputSchema of task ${node.id} does not resolve.`, 'Name a built-in schema or a JSON file in the repository that holds an object schema.')
@@ -372,7 +380,7 @@ export interface BriefInput {
   /** An approved plan carried over from an earlier dispatch (§3.3.4), as `readPlanSection` gives it. */
   readonly plan?: { readonly version: number, readonly steps: string }
   /** The dispatch was `quick` and needs no plan. */
-  readonly quick: boolean
+  readonly quick?: boolean
   /** Lessons that match the task, one line each; at most five are used. */
   readonly lessons?: readonly string[]
   /** The rules board's lines for this session, when the rules row is on. */
@@ -493,4 +501,193 @@ export function renderBrief(input: BriefInput): Brief {
   }
   const digest = digest12(text)
   return { text: `${text}\n\nbrief ${digest} · graph ${input.graph.revision}`, digest, truncated: [...cut] }
+}
+
+// ---- the design review's brief (§3.7.5) ----
+
+const DECISION_TEXT_LIMIT = 400
+
+export interface DesignReviewInput {
+  readonly graph: LoadedGraph
+  readonly childId: string
+  /** The main agent's agent id. */
+  readonly parent: string
+  /** The review task; its module is read from the graph. */
+  readonly task: GraphNode
+}
+
+/**
+ * The brief of a module's design review (§3.7.5): the shape of §3.5.2, the
+ * goal line naming the module, the context carrying the design decisions
+ * under review with their reason text, the module's acceptance and non-goals,
+ * the planning already under the module, and the direction list as numbered
+ * `direction:<i>` items. The reviewer writes nothing but the report; the
+ * blocking criteria gain `direction:<i>`, and `checked` must cover every
+ * direction and every acceptance item.
+ */
+export function renderDesignReviewBrief(input: DesignReviewInput): Brief {
+  const readers = MODULE_READERS
+  const module = readers.moduleOf(input.graph, input.task)
+  // The gate guarantees a module under every design review it passes; a miss is a bug, not a brief.
+  if (module === undefined) throw new TypeError(`the review task ${input.task.id} is under no module`)
+  const sources = (input.task.edges ?? []).filter(edge => edge.type === 'source').flatMap(edge => {
+    const decision = input.graph.nodes.get(edge.to)
+    return decision === undefined ? [] : [decision]
+  })
+  const directions = directionsOf(input.graph)?.acceptance ?? []
+  const planned = [...input.graph.nodes.values()].filter(entry => entry.parent === module.id && (entry.type === 'feature' || entry.type === 'task') && entry.id !== input.task.id)
+  const lines: string[] = [
+    `# Design review ${input.task.id}: module ${module.id} "${module.title}"`,
+    `You are a reviewer dispatched by the main agent (agent id "${input.parent}") for exactly one review of the project graph.`,
+    '',
+    '## Goal',
+    `Review the design of module ${module.id} "${module.title}" against the direction list.`,
+    `Decisions it follows: ${sources.map(decisionLine).join('; ') || 'none recorded'}.`,
+    '',
+    '## Context',
+    '- Workspace: your working directory is the main checkout of the repository.',
+    '- The design decisions under review:',
+    ...sources.map(decision => `  - ${decision.id} "${decision.title}"${decision.body === undefined || decision.body.trim() === '' ? '' : ` — ${decision.body.trim().slice(0, DECISION_TEXT_LIMIT)}`}`),
+    `- The module's acceptance: ${(module.acceptance ?? []).join('; ') || 'none recorded'}.`,
+    `- Not in scope: ${(module.nonGoals ?? []).join('; ') || 'nothing recorded'}.`,
+    ...(planned.length > 0 ? ['- Planning already under the module:', ...planned.map(entry => `  - ${entry.type} "${entry.title}"${(entry.acceptance ?? []).length > 0 ? ` (acceptance: ${(entry.acceptance ?? []).join('; ')})` : ''}`)] : []),
+    '- The direction list:',
+    ...directions.map((direction, index) => `  - direction:${index} ${direction}`),
+    '',
+    '## Constraints',
+    '- You write nothing except your report under .hourness/ in your working directory.',
+    '- Questions that need the main agent: ask_main (state the assumption you will use if no answer comes). Do not end your turn to wait.',
+    '- A finding blocks only when it hangs on acceptance:<i> of the module, on irreversible-loss, on failure-plan, or on direction:<i> when the design violates direction item <i>. Everything else is not blocking.',
+    '- checked must cover every direction:<i> above and every acceptance:<i> of the module, each with the evidence you looked at.',
+    '',
+    '## Done when',
+    `- Hand back by calling structured_output once (verdict, commit, findings, checked, lessons). Write the long report to ".hourness/${input.childId}.md" in your working directory and give the path in "report".`,
+  ]
+  const text = lines.join('\n')
+  const digest = digest12(text)
+  return { text: `${text}\n\nbrief ${digest} · graph ${input.graph.revision}`, digest, truncated: [] }
+}
+
+// ---- the task review's brief (§3.7.1) ----
+
+export interface ReviewBriefInput {
+  readonly graph: LoadedGraph
+  /** The review task. */
+  readonly task: GraphNode
+  /** The reviewed task, the parent of the review task. */
+  readonly reviewed: GraphNode
+  readonly childId: string
+  readonly depth: 'full' | 'light'
+  /** The done handback under review, as the task's comment carries it. */
+  readonly handback?: { readonly head?: string, readonly base?: string, readonly status: string }
+  /** The previous round's blocking findings, one line each (§3.7.3). */
+  readonly findings?: readonly string[]
+  /** The commands of `norm-merge-gate`, for context. */
+  readonly gateCommands: readonly string[]
+}
+
+/**
+ * The text a task reviewer starts from (§3.7.1): the reviewed commit and
+ * base, the handback's facts, the previous round's findings, and the depth's
+ * own instruction. The reviewer writes nothing but the verdict.
+ */
+export function renderReviewBrief(input: ReviewBriefInput): Brief {
+  const { graph, reviewed } = input
+  const chain = [...ancestorsOf(graph, reviewed)].reverse().map(node => `"${node.title}"`)
+  const base = input.handback?.base ?? 'unknown'
+  const head = input.handback?.head ?? 'unknown'
+  const depthLine = input.depth === 'full'
+    ? 'Check every acceptance item; "checked" must list every acceptance:<i> with the evidence you looked at.'
+    : 'Read the change; report only findings that meet one of the three blocking criteria, the rest as non-blocking.'
+  const lines: string[] = [
+    `# Task ${input.task.id}: ${input.task.title}`,
+    `You are a reviewer dispatched by the main agent for exactly one review (dispatch id "${input.childId}").`,
+    '',
+    '## Goal',
+    `Review the work of task ${reviewed.id} "${reviewed.title}" at the declared depth: ${input.depth === 'full' ? 'full — against every acceptance item' : 'light — a scan of the change'}. Why the task exists: ${[...chain, 'this task'].join(' > ')}.`,
+    '',
+    '## Context',
+    `- Reviewed: commit ${head}, made from base ${base}. Read the change with git diff ${base}..${head} in the worktree.`,
+    `- The handback status was ${input.handback?.status ?? 'unknown'}; the task body carries its summary comment and the plan section.`,
+    ...(input.findings === undefined || input.findings.length === 0 ? [] : ['- Findings of the previous round (these come first):', ...input.findings.map(finding => `  - ${finding}`)]),
+    `- Project checks for context: ${input.gateCommands.length === 0 ? 'none recorded' : input.gateCommands.join(' ; ')}.`,
+    '',
+    '## Constraints',
+    `- You write nothing: the worktree is read-only for you. Long notes go to ".hourness/${input.childId}.md"; only the verdict comes back.`,
+    '- Questions that need the main agent: ask_main (state the assumption you will use if no answer comes).',
+    '- Blocking criteria (docs/DEVELOPMENT.md §1.1): acceptance:<i> names the unmet acceptance item of the reviewed task; irreversible-loss; failure-plan. A finding that names none of the three does not block.',
+    `- How far this round goes: ${depthLine}`,
+    '',
+    '## Done when',
+    '1. verdict APPROVED only when nothing blocks; CHANGES_REQUESTED with the blocking findings otherwise (the verdict follows the findings).',
+    '2. commit names the reviewed commit; every finding carries id, blocking, criterion, where, what and fix; checked lists what you looked at.',
+    '- Hand back by calling structured_output once with the hourness-review-v1 verdict.',
+  ]
+  const text = lines.join('\n')
+  const digest = digest12(text)
+  return { text: `${text}\n\nbrief ${digest} · graph ${input.graph.revision}`, digest, truncated: [] }
+}
+
+// ---- the acceptance review's brief (§3.9.4) ----
+
+export interface AcceptanceBriefInput {
+  readonly graph: LoadedGraph
+  readonly goal: GraphNode
+  readonly childId: string
+  /** The trunk branch and the commit of it under review (40 hex digits). */
+  readonly trunk: { readonly branch: string, readonly sha: string }
+  /** The commands of `norm-merge-gate`, for context. */
+  readonly gateCommands: readonly string[]
+}
+
+/**
+ * The text the reviewer of a whole goal starts from (§3.9.4, design 0.2
+ * §3.9.4), in the shape of §3.5.2: the goal line names the trunk commit, the
+ * done-when list is the goal's acceptance as numbered `acceptance:<i>`
+ * items, a finding blocks only on one of them, and `checked` must hold every
+ * item with the evidence it rests on. The reviewer writes nothing but its
+ * report under `.hourness/` of the main checkout.
+ */
+export function renderAcceptanceBrief(input: AcceptanceBriefInput): Brief {
+  const { graph, goal } = input
+  const trunk12 = input.trunk.sha.slice(0, 12)
+  const acceptance = goal.acceptance ?? []
+  let scoped: GraphNode[]
+  try {
+    scoped = scopedTasks(graph, goal)
+  }
+  catch {
+    // A module structure that cannot be read leaves the list out; the reviewer reads the graph itself.
+    scoped = []
+  }
+  const tasks = scoped.map((task) => {
+    const commit = task.evidence?.find(item => item.kind === 'commit')?.ref
+    return `  - ${task.id} "${task.title}" (${task.status}${commit === undefined ? '' : `, trunk commit ${commit.slice(0, 12)}`})`
+  })
+  const lines: string[] = [
+    `# Acceptance review of goal ${goal.id}: ${goal.title}`,
+    `You are a reviewer dispatched by the main agent for exactly one review of the whole goal (dispatch id "${input.childId}").`,
+    '',
+    '## Goal',
+    `Review goal ${goal.id} at commit ${trunk12} against its acceptance.`,
+    '',
+    '## Context',
+    `- Workspace: your working directory is the main checkout; review branch ${input.trunk.branch} at commit ${trunk12} (git show, git log and git diff read it).`,
+    ...(tasks.length > 0 ? ['- The work of the goal:', ...tasks] : []),
+    `- Not in scope: ${(goal.nonGoals ?? []).join('; ') || 'nothing recorded'}.`,
+    `- Project checks for context: ${input.gateCommands.length === 0 ? 'none recorded' : input.gateCommands.join(' ; ')}.`,
+    '',
+    '## Constraints',
+    `- You write nothing except your report ".hourness/${input.childId}.md" in your working directory.`,
+    '- Questions that need the main agent: ask_main (state the assumption you will use if no answer comes). Do not end your turn to wait.',
+    '- A finding blocks only when its criterion is acceptance:<i>, the item of the goal it shows unmet. Everything else is not blocking.',
+    '- checked must hold one entry per item below, written "acceptance:<i> <evidence>": the commit, the check log or the file you looked at.',
+    '',
+    '## Done when',
+    ...acceptance.map((item, index) => `- acceptance:${index} ${item}`),
+    `- Hand back by calling structured_output once with the hourness-review-v1 verdict (verdict, commit ${trunk12}, findings, checked, lessons). Write the long report to ".hourness/${input.childId}.md" and give the path in "report".`,
+  ]
+  const text = lines.join('\n')
+  const digest = digest12(text)
+  return { text: `${text}\n\nbrief ${digest} · graph ${graph.revision}`, digest, truncated: [] }
 }

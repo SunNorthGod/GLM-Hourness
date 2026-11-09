@@ -155,7 +155,7 @@ export function editedGroups(targets: readonly string[], outsideGit?: string): r
 }
 
 /** The session's working directory as the file tools resolve against it (the `workingDirectory` service, as the guard reads it), else the recorded one. */
-function sessionDirectory(ctx: ServiceLookup, session: SessionLike): string | undefined {
+export function sessionDirectory(ctx: ServiceLookup, session: SessionLike): string | undefined {
   try {
     const service: unknown = typeof ctx.get === 'function' ? ctx.get('workingDirectory') : undefined
     const current = isRecord(service) && typeof service.get === 'function' ? (service as unknown as WorkingDirectoryService).get(session) : undefined

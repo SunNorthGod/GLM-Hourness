@@ -21,17 +21,22 @@
  * put to the human, and the release that comes next. The user graph (user
  * graph design 0.4.1 §5.1–§5.4) adds a line at the interview, the design and
  * after the release, and one line that sums up its gaps while it has any.
+ * While the execute row's service is present (M7 design 0.6 §3.9.2, §3.8.1,
+ * §3.8.5), the release line says the drive has started and the derived
+ * stage's segment (decompose, execute, merge) follows, a module back in
+ * design says what that stops, and the design stage asks for
+ * norm-merge-gate and norm-review-floor when the graph has neither.
  *
  * Reading the graph can fail; the step then goes without the reminder, the
  * failure is warned once per process and the session's row health says so.
  */
 import { changeReason, digestOf, isGoalRound, noticeHistory, type DigestFacts } from '../graph/digest-notice.ts'
-import { sentBack } from '../graph/execute-stage.ts'
+import { derivedStage, sentBack } from '../graph/execute-stage.ts'
 import { isReleased, isSplit, modulesOf, moduleOf } from '../graph/modules.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import type { GraphFocusService } from '../graph/service.ts'
-import { bigLoopSet, goalOf, moduleReleaseGate, releaseSet, stageStatus, type GateItem } from '../graph/stage.ts'
+import { bigLoopSet, effectiveStage, goalOf, moduleReleaseGate, releaseSet, stageStatus, type GateItem } from '../graph/stage.ts'
 import { loadGraph } from '../graph/store.ts'
 import { userGraphOf, type Gap, type GapKey } from '../graph/user-graph.ts'
 import { createUserNotice, type AgentLike, type DerivedMessage, type UserNotice } from '../shared/dsh-min.ts'
@@ -39,6 +44,7 @@ import { DELEGATIONS_ID, DELEGATION_LIMIT, delegationKindOf } from '../shared/an
 import type { HealthState } from '../shared/health.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
+import { DRIVE_START_MARK } from '../execute/tiers.ts'
 
 /** Source kind of the persisted stage reminder. */
 export const STAGE_SOURCE = 'glm-design-stage'
@@ -121,6 +127,52 @@ const RELEASED_LINE = 'The design is released. Tell the human in one line; decom
 const MODULES_RELEASED_LINE = `The framework, the module list and the directions are released. Each module starts in design: write its decisions and plan under it, check them against every direction in norm-directions, and put it to the human with propose_to_human (kind release, module <id>, page). Nothing under a module is built before that module is released. ${DISPATCH_FOCUS}`
 
 const MODULE_RELEASED_LINE = 'This module is released. Tell the human in one line; decomposition and dispatch of this module come next.'
+
+// ---- the lines of the execute row (M7 design 0.6 §3.9.2, §3.8.1, §3.8.5), only while its service is present ----
+
+/** The release line once the drive runs (§3.9.2). */
+const DRIVE_RELEASED_LINE = 'The design is released and the harness has started the drive: decompose into tasks with dispatch attributes and dispatch them; do not wait for the person.'
+
+/** Authored (M7 E8 D9): the derived stage decompose. */
+const DECOMPOSE_LINE = 'Stage decompose: nothing here is ready to dispatch. Split the released work into tasks under it (graph_propose type task, each with acceptance, kind, writeScope and worktree; depends edges where order matters), then dispatch the ready ones with dispatch_task, choosing a model and saying why.'
+
+/** Authored (M7 E8 D9): the derived stage execute. */
+const EXECUTE_LINE = 'Stage execute: dispatch the ready tasks with dispatch_task (choose a model and say why), answer worker requests with answer_worker, and dispatch the review of each task that is handed back; the dispatch status notice lists what runs and what waits.'
+
+/** The merge stage (§3.9.2, verbatim); `<trunk>` is filled in. */
+const mergeLine = (trunk: string): string => `To integrate a reviewed task: in its worktree rebase onto ${trunk} (dispatch a worker if it conflicts), squash into one commit whose message starts with "<id>: <title>" and ends with "Hourness-Task: <id>", run check_commit on it, then git merge --ff-only it in the main checkout and push without --force. Several tasks may share one commit with one trailer line each. Commit the graph files you changed through the graph tools the same way (on a branch, check_commit, fast-forward); when norm-merge-gate has an only line that covers docs/graph/, you may commit them on ${trunk} directly. To take in commits pushed elsewhere: git fetch <upstream>, run check_commit on <upstream>/${trunk}, then git merge --ff-only it; git pull on ${trunk} is refused.`
+
+/** A module back in design (§3.9.2, verbatim). */
+const moduleBackLine = (id: string): string => `Module ${id} went back to design: write its decisions and plan again and put its release page to the person; nothing in it is dispatched until then.`
+
+/** §3.8.1, verbatim: a graph without norm-merge-gate. */
+const MERGE_GATE_LINE = 'Before release, propose norm-merge-gate under the goal: read the project\'s build and test setup and list each command as `$ <command>`.'
+
+/** Authored (M7 E8 D9, §3.8.5): a graph without norm-review-floor. */
+const REVIEW_FLOOR_LINE = 'Before release, propose norm-review-floor under the goal: one acceptance item per kind of change that must be fully reviewed, in plain words, each ending with its form in backticks: `files <paths>`, `deletes`, `commands <commands>` or `outside`.'
+
+/** The trunk the drive named in its newest start comment (「自动推进已开始 … · 主干 <branch>」), else `the main branch`. */
+function trunkOf(goal: GraphNode): string {
+  const start = goal.history.filter(entry => entry.op === 'comment' && entry.text?.includes(DRIVE_START_MARK) === true).at(-1)
+  return /· 主干 (\S+)/.exec(start?.text ?? '')?.[1] ?? 'the main branch'
+}
+
+/** The segment of a derived stage (§3.9.2); none for the others. */
+function stageSegment(graph: LoadedGraph, goal: GraphNode, node: GraphNode): string[] {
+  const stage = derivedStage(graph, node)
+  if (stage === 'decompose') return [DECOMPOSE_LINE]
+  if (stage === 'execute') return [EXECUTE_LINE]
+  if (stage === 'merge') return [mergeLine(trunkOf(goal))]
+  return []
+}
+
+/** The two norm sentences of the design stage: one for each norm node the graph does not have. */
+function normLines(graph: LoadedGraph): string[] {
+  return [...graph.nodes.has('norm-merge-gate') ? [] : [MERGE_GATE_LINE], ...graph.nodes.has('norm-review-floor') ? [] : [REVIEW_FLOOR_LINE]]
+}
+
+/** A module that went back to design and is still there. */
+const backInDesign = (module: GraphNode): boolean => effectiveStage(module) === 'design' && sentBack(module)
 
 /** The module lines the reminder lists at most. */
 const MODULE_LINES = 8
@@ -240,8 +292,8 @@ function moduleLines(modules: readonly GraphNode[]): string[] {
  * module the focus is in. The release gates of the two loops are not read
  * here; a design stage lists the gate of an unsplit goal only.
  */
-export function stageReminder(graph: LoadedGraph, focus: string | undefined): StageReminder {
-  const reminder = reminderFor(graph, focus)
+export function stageReminder(graph: LoadedGraph, focus: string | undefined, executeOn = false): StageReminder {
+  const reminder = reminderFor(graph, focus, executeOn)
   const { line, degraded } = delegationsLine(graph)
   return { ...reminder, ...line === undefined ? {} : { text: `${reminder.text}\n${line}` }, ...degraded === undefined ? {} : { degraded } }
 }
@@ -262,7 +314,14 @@ function delegationsLine(graph: LoadedGraph): { readonly line?: string, readonly
   return { line: `The human told you to decide these kinds yourself and only report them, while the matter can still be undone: ${kinds.join('；')}. To take one back, record_human_answer kind delegation with undo: true, that kind and their words.` }
 }
 
-function reminderFor(graph: LoadedGraph, focus: string | undefined): StageReminder {
+/**
+ * With the execute row on (`executeOn`, M7 E8 D10): the release line says
+ * the drive has started and the derived stage's segment follows; a module
+ * back in design says so; a hand-written decompose, execute or merge stage
+ * reads like a release; the design stage asks for the norm nodes the graph
+ * lacks. Without it every text is the design loop's own.
+ */
+function reminderFor(graph: LoadedGraph, focus: string | undefined, executeOn: boolean): StageReminder {
   const node = focus === undefined ? undefined : graph.nodes.get(focus)
   const goal = node === undefined ? undefined : goalOf(graph, node.id)
   if (node === undefined || goal === undefined) return noGoal(focus, graph)
@@ -280,16 +339,22 @@ function reminderFor(graph: LoadedGraph, focus: string | undefined): StageRemind
   }
   const split = isSplit(graph, goal)
   if (stage === 'design') {
-    return done(stage, [`${head} is at stage design.`, ...designLines(graph, goal, status.items, status.exitReady, split), ...userGraphLines(graph, goal, 'design')])
+    return done(stage, [`${head} is at stage design.`, ...designLines(graph, goal, status.items, status.exitReady, split), ...executeOn ? normLines(graph) : [], ...userGraphLines(graph, goal, 'design')])
   }
-  if (stage === 'release') {
+  if (stage === 'release' || (executeOn && (stage === 'decompose' || stage === 'execute' || stage === 'merge'))) {
     const module = moduleOf(graph, node)
     const user = userGraphLines(graph, goal, 'release')
     if (module !== undefined && modulesOf(graph, goal).includes(module)) {
-      const lines = isReleased(module) ? [MODULE_RELEASED_LINE] : moduleDesignLines(graph, goal, module)
+      const back = executeOn && backInDesign(module) ? [moduleBackLine(module.id)] : []
+      const lines = isReleased(module) ? [MODULE_RELEASED_LINE, ...executeOn ? stageSegment(graph, goal, module) : []] : [...back, ...moduleDesignLines(graph, goal, module)]
       return done(stage, [`${head} is released; you work in module ${module.id} ${quoted(module.title)}, which is ${isReleased(module) ? 'released' : 'in design'}.`, ...lines, ...user])
     }
-    if (split) return done(stage, [`${head} is at stage release.`, MODULES_RELEASED_LINE, ...moduleLines(modulesOf(graph, goal)), ...user])
+    if (split) {
+      const modules = modulesOf(graph, goal)
+      const back = executeOn ? modules.filter(backInDesign).map(entry => moduleBackLine(entry.id)) : []
+      return done(stage, [`${head} is at stage ${stage}.`, MODULES_RELEASED_LINE, ...moduleLines(modules), ...back, ...user])
+    }
+    if (executeOn) return done(stage, [`${head} is at stage ${stage}.`, DRIVE_RELEASED_LINE, ...stageSegment(graph, goal, goal), ...user])
     return done(stage, [`${head} is at stage release.`, RELEASED_LINE, ...user])
   }
   return done(stage, [`${head} is at stage ${stage}, which does not belong to the design loop.`])
@@ -328,6 +393,8 @@ export interface StageNoticeDeps {
   readonly holds: (cwd: string, goalId: string) => boolean
   /** Report the row health of the agent's session. */
   readonly report: (agent: AgentLike, state: HealthState, reason: string) => void
+  /** Whether the execute row's service is present (M7 E8 D10); read per step, the row can load later. */
+  readonly executeOn: () => boolean
 }
 
 let warnedRead = false
@@ -370,7 +437,7 @@ export function installStageNotice(agent: AgentLike, deps: StageNoticeDeps): (()
       const graph = deps.graph()
       const dir = graph?.dirFor(session.header.cwd)
       if (graph === undefined || dir === undefined) throw new Error('the graph row does not say where the project graph is or what the session has in focus')
-      const reminder = stageReminder(await loadGraph(dir), graph.focusOf(session))
+      const reminder = stageReminder(await loadGraph(dir), graph.focusOf(session), deps.executeOn())
       if (reminder.degraded !== undefined) deps.report(agent, 'degraded', reminder.degraded)
       if (takeoverSteers(deps, agent, session.header.cwd, reminder)) return undefined
       return stageNotice(history, admitted, reminder)
