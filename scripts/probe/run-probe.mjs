@@ -2393,7 +2393,7 @@ const designQuestion = designScenario(QUESTION, 'glm-5.3', () => [
 // (scenarioWorkspace), so an empty one is a new project by path rule 4 and
 // the git init of rule 2 is left to L2.
 const BOOTSTRAP_ROW = ['- id: glm-hourness/bootstrap', '  disabled: false']
-const bsRead = ws => ({ name: 'Read', arguments: { file_path: join(ws, 'README.md') } })
+const bsRead = ws => ({ tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } } })
 const bootstrapNew = designScenario('bootstrap-new', 'glm-5.3', ws => [
   bsRead(ws),
   { tool: { name: 'graph_propose', arguments: { node: { type: 'goal', title: '读气象站数据画图的小工具', stage: 'interview', body: '需求：读气象站数据画图' }, reason: 'probe: interview step 1' } } },
@@ -2401,8 +2401,8 @@ const bootstrapNew = designScenario('bootstrap-new', 'glm-5.3', ws => [
   { text: 'done', status: true },
 ], { wish: true, extra: BOOTSTRAP_ROW })
 const bootstrapReopen = designScenario('bootstrap-reopen', 'glm-5.3', ws => [
-  { tool: bsRead(ws), line: '/hourness-init off' },
-  { tool: bsRead(ws), line: '/wish' },
+  { ...bsRead(ws), line: '/hourness-init off' },
+  { ...bsRead(ws), line: '/wish' },
   { text: 'done' },
 ], { wish: true, extra: BOOTSTRAP_ROW })
 // An existing graph that lacks env: the three norm templates, the merge gate and the floor are there, approved.
@@ -2413,10 +2413,10 @@ const bootstrapGapsGraph = await stageGraph(BOOTSTRAP_GAPS, [
 ])
 const bootstrapGapsBefore = (await loadGraph(bootstrapGapsGraph)).revisions
 const bootstrapGaps = designScenario(BOOTSTRAP_GAPS, 'glm-5.3', ws => [
-  { tool: bsRead(ws), line: '/hourness-init' },
-  { tool: bsRead(ws) },
-  { tool: bsRead(ws) },
-  { tool: bsRead(ws) },
+  { ...bsRead(ws), line: '/hourness-init' },
+  { ...bsRead(ws) },
+  { ...bsRead(ws) },
+  { ...bsRead(ws) },
   { text: 'done', status: true },
 ], { wish: true, extra: BOOTSTRAP_ROW })
 // An existing project, committed before the run (a test that costs money, a vendored directory): the person's /wish with words opens it as
@@ -2448,7 +2448,7 @@ const bootstrapExisting = designScenario(BOOTSTRAP_EXISTING, 'glm-5.3', ws => [
   ...bsAsks.map(({ which, ask }) => ({ tool: { name: 'propose_to_human', arguments: { kind: 'question', form: 'recommend', parent: 'goal-1', ...ask, attach: `bootstrap:{takeover}:${which}` } } })),
   { text: bsAsks.map(({ ask }, index) => renderAsk(ask.text, index + 1)).join('\n\n') },
   ...bsAsks.map(({ ask }, index) => ({ tool: { name: 'record_human_answer', arguments: { kind: 'question', question: `question-${index + 1}`, answer: 'agree', words: [BS_AGREE], recordedAs: ask.proposal } } })),
-  { tool: bsRead(ws), line: '/hourness-init status' },
+  { ...bsRead(ws), line: '/hourness-init status' },
   { text: 'done' },
 ], { wish: BS_WISH, extra: BOOTSTRAP_ROW, human: { replies: { question: [BS_AGREE] }, maxReplies: 1 } })
 // The trial under rc.3's real sandbox (takeover design 0.6 §6, §15.2; U1, U4, U7, U8, U9): a committed project whose CI lists four
@@ -2484,7 +2484,7 @@ const bootstrapTrial = designScenario(BOOTSTRAP_TRIAL, 'glm-5.3', ws => [
   { tool: { name: 'graph_propose', arguments: { node: { type: 'goal', title: '探针项目要做成什么' }, reason: 'probe: the anchor of the takeover' } } },
   { tool: { name: 'graph_propose', arguments: { node: { type: 'norm', id: 'norm-merge-gate', title: '合入前的检查', parent: 'goal-1', acceptance: BS_TRIAL_COMMANDS.map(command => `\`$ ${command}\``) }, reason: 'probe: the project\'s CI commands' } } },
   { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 60', timeout: 120000 } } },
-  { tool: bsRead(ws), line: '/hourness-init status' },
+  { ...bsRead(ws), line: '/hourness-init status' },
   { text: 'done' },
 ], { wish: true, extra: BOOTSTRAP_ROW })
 if (bsTrialTokenBefore === undefined) delete process.env.GITHUB_TOKEN
