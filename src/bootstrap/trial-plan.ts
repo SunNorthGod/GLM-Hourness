@@ -12,14 +12,15 @@
  * danger, long-running and multi-line marks; 5 and 6 (the sandbox, the total
  * time) are the runner's.
  *
- * The gate lines are read here with the basic forms of M7 §3.8.1 (`$`,
- * `setup $`, `when`, `patrol $`); M7's `parseGateNorm` replaces this reader
- * once it is on main (plan B7), the same way the floor's round trip waits.
+ * The gate lines are read with M7's parser (src/execute/gate-norm.ts
+ * `parseGateNorm`, plan B7's round trip): the forms M7 does not know are
+ * prose and the trial skips them, exactly as its gate will.
  */
 import { createHash } from 'node:crypto'
 import { isEnvTool, nodeChecks } from '../env/branch.ts'
 import { fillCheckArgv } from '../env/check-entry.ts'
 import type { GraphNode } from '../graph/schema.ts'
+import { parseGateNorm } from '../execute/gate-norm.ts'
 import { matchesFilter } from '../loops/trigger.ts'
 import { dangerOf, longRunningOf } from './danger.ts'
 import { DEFAULT_KEYS, DEFAULTS_VERSION, ecosystemDefaults, toolNodeDraft, type DefaultKey } from './defaults.ts'
@@ -62,21 +63,6 @@ export interface TrialCommand {
 const idOf = (text: string): string => createHash('sha256').update(text).digest('hex').slice(0, 12)
 
 const MERGE_GATE_ID = 'norm-merge-gate'
-
-/** One command line of the gate (M7 §3.8.1, basic forms): undefined for prose, `push` and `only`. */
-function gateLine(line: string): { readonly kind: 'setup' | 'gate' | 'when' | 'patrol', readonly command: string } | undefined {
-  const inner = /^\s*`([^`]*)`\s*$/.exec(line)?.[1]?.trim()
-  if (inner === undefined) return undefined
-  const [body = '', when] = inner.split(/\s+when\s+/)
-  const forms: ReadonlyArray<readonly [string, 'setup' | 'gate' | 'patrol']> = [['setup $ ', 'setup'], ['patrol $ ', 'patrol'], ['$ ', 'gate']]
-  for (const [prefix, kind] of forms) {
-    if (!body.startsWith(prefix)) continue
-    const command = body.slice(prefix.length).trim()
-    if (command === '') return undefined
-    return { kind: kind === 'gate' && when !== undefined ? 'when' : kind, command }
-  }
-  return undefined
-}
 
 /** The texts the default table gives this project (setup, gate and check commands of the recognised ecosystems; every row for a new one). */
 export function defaultTexts(scan: ScanResult, files: readonly string[], platform: NodeJS.Platform, fresh: boolean): ReadonlySet<string> {
@@ -131,10 +117,9 @@ const CHECK_FILES = 3
  */
 export function trialCommands(gate: GraphNode | undefined, tools: readonly GraphNode[], files: readonly string[], sources: TrialSources): TrialCommand[] {
   const commands: TrialCommand[] = []
-  for (const line of gate?.acceptance ?? []) {
-    const read = gateLine(line)
-    if (read === undefined) continue
-    commands.push({ id: idOf(read.command), text: read.command, kind: read.kind, cls: CLASS_OF[read.kind], node: MERGE_GATE_ID, ...eligibility(read.command, sources, MERGE_GATE_ID) })
+  for (const command of parseGateNorm(gate).commands) {
+    const kind: TrialKind = command.kind === 'setup' ? 'setup' : command.kind === 'patrol' ? 'patrol' : command.when !== undefined ? 'when' : 'gate'
+    commands.push({ id: idOf(command.command), text: command.command, kind, cls: CLASS_OF[kind], node: MERGE_GATE_ID, ...eligibility(command.command, sources, MERGE_GATE_ID) })
   }
   for (const tool of tools) {
     if (!isEnvTool(tool)) continue

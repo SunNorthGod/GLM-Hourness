@@ -17,7 +17,7 @@
  * (§3.1, last part).
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import { projectOf } from '../data/project-root.ts'
 import type { Attachable, AttachService } from '../design/attach.ts'
 import { openEngine } from '../graph/engine.ts'
@@ -270,7 +270,7 @@ export function bootstrapRuntime(deps: BootstrapDeps): BootstrapRuntime {
       try {
         const dir = takeoverDir(root, takeover.id)
         await writeScan(dir, scan)
-        await writeDraft(root, takeover.id, 'defaults.md', defaultsMarkdown(scan.scan, scan.files, takeover.path === 'new'))
+        await writeDraft(root, takeover.id, 'defaults.md', defaultsMarkdown(scan.scan, scan.files, takeover.path === 'new', process.platform, relative(root, graphDir)))
         await writeDraft(root, takeover.id, 'questions.md', questionsMarkdown(questionsDraft(scan.scan, scan.files, deps.rulesWhole(), thingsAsked(graph, takeover)), takeover.id))
         await writeDraft(root, takeover.id, 'floor.md', floorMarkdown(floorDraft(scan.scan, scan.files)))
         await appendTakeover(root, takeover.id, [...settled.setup, { op: 'scan', data: { files: scan.files.length, truncated: [...scan.scan.truncated], ms: scan.scan.ms } }], by)

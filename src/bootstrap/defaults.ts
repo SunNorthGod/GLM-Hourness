@@ -26,9 +26,11 @@
  * which the `lines` format reads; no reporter of knip 6.43.0 prints a line
  * any format reads, so knip's output reads in none (design §5.6 item 4).
  *
- * The gate draft takes M7's basic forms only (`$`, `setup $`); the `only`
- * line joins when M7's `GATE_LINE_FORMS` is on main (plan B7).
+ * The gate draft takes the forms M7's `GATE_LINE_FORMS` knows; since M7 is
+ * on main the draft carries the `only <graph dir>/` line (plan B7), so
+ * graph-only commits pass the merge checks without running the commands.
  */
+import { GATE_LINE_FORMS } from '../execute/gate-norm.ts'
 import type { CommandCandidate } from './extract.ts'
 import type { ScanResult, Stack } from './scan.ts'
 
@@ -313,7 +315,7 @@ function readsIn(row: EcosystemDefaults, item: GateItem): string {
 /** On an existing project a dead-code or duplicate default may fail on the code as it is (§5.6): until M7 gates only new findings, it then stays out. */
 const RED_ON_HEAD_NOTE = 'A dead-code or duplicate default that fails on the current code stays out of norm-merge-gate for now: propose a task "让 <command> 在现在的代码上通过" instead (design §5.6 item 4).'
 
-function rowMarkdown(row: EcosystemDefaults, candidates: readonly CommandCandidate[], missing: boolean, fresh: boolean): string[] {
+function rowMarkdown(row: EcosystemDefaults, candidates: readonly CommandCandidate[], missing: boolean, fresh: boolean, graphDir: string): string[] {
   const gate = gateDraft(row, candidates)
   const added = gate.some(item => item.from === undefined && (item.kind === 'dead-code' || item.kind === 'duplicate'))
   return [
@@ -321,6 +323,9 @@ function rowMarkdown(row: EcosystemDefaults, candidates: readonly CommandCandida
     '',
     'norm-merge-gate acceptance, one line each:',
     ...gate.length === 0 ? ['- (none by default: copy only the project\'s own commands)'] : gate.map(item => `- ${gateLine(item)}${item.from === undefined ? '' : `  (the project's own, ${item.from.file}:${item.from.line})`}${readsIn(row, item)}`),
+    // M7's own-forms table carries `only <paths>` (plan B7): a commit that touches
+    // nothing but the graph runs no command, which is how the graph itself is committed.
+    ...GATE_LINE_FORMS.some(form => form.startsWith('only')) ? [`- \`only ${graphDir}/\`  (a commit that touches only the graph directory runs no command)`] : [],
     ...missing && gate.some(item => item.kind === 'test' && item.from === undefined) ? ['', TESTS_MISSING_NOTE] : [],
     ...!fresh && added ? ['', RED_ON_HEAD_NOTE] : [],
     ...row.devTools.length === 0 ? [] : ['', `Development dependencies the lines run: ${row.devTools.join(', ')}${fresh ? ' (the task 检查器配置 installs them)' : '; a default whose tool the project lacks needs a task that adds it'}.`],
@@ -339,9 +344,11 @@ function rowMarkdown(row: EcosystemDefaults, candidates: readonly CommandCandida
 /**
  * `defaults.md`: for an existing project the rows of the ecosystems the
  * scan recognised, the project's own commands in place of the defaults;
- * for a new project every row, for the main agent to pick one with the human.
+ * for a new project every row, for the main agent to pick one with the
+ * human. `graphDir` is the project's graph directory relative to the root
+ * (the `only` line names it); the default is the usual one.
  */
-export function defaultsMarkdown(scan: ScanResult, files: readonly string[], fresh: boolean, platform: NodeJS.Platform = process.platform): string {
+export function defaultsMarkdown(scan: ScanResult, files: readonly string[], fresh: boolean, platform: NodeJS.Platform = process.platform, graphDir = 'docs/graph'): string {
   const facts: DefaultFacts = { platform, files, fresh }
   const stacks: readonly Stack[] = fresh ? DEFAULT_KEYS : scan.stacks
   const rows = stacks.map(stack => ({ stack, row: ecosystemDefaults(stack, facts) }))
@@ -354,7 +361,7 @@ export function defaultsMarkdown(scan: ScanResult, files: readonly string[], fre
       : 'The ecosystems the scan recognised. A gate line marked as the project\'s own is copied from its manifest; the others are defaults for what it lacks. Every gate keeps one test command.',
     'A check line starts a program without a shell. Do not add an estimate such as `8s` to a check line yourself.',
     '',
-    ...rows.flatMap(({ stack, row }) => row === undefined ? [`## ${stack}`, '', 'No default for this ecosystem: copy only the project\'s own commands.', ''] : rowMarkdown(row, fresh ? [] : scan.candidates, missing, fresh)),
+    ...rows.flatMap(({ stack, row }) => row === undefined ? [`## ${stack}`, '', 'No default for this ecosystem: copy only the project\'s own commands.', ''] : rowMarkdown(row, fresh ? [] : scan.candidates, missing, fresh, graphDir)),
     ...rows.length === 0 ? ['No ecosystem was recognised: copy only the project\'s own commands. With none at all, propose norm-merge-gate without commands and a task "定下合入前的检查".', ''] : [],
   ].join('\n')
 }

@@ -20,6 +20,8 @@ import {
 } from '../src/bootstrap/extract.ts'
 import { FLOOR_BODY, FLOOR_GENERAL, floorDraft, floorMarkdown, mergeToLimit } from '../src/bootstrap/floor.ts'
 import { decidePath, hasProjectGraph, isProjectGraph, type PathDecision } from '../src/bootstrap/path.ts'
+import { parseFloor } from '../src/execute/floor.ts'
+import type { GraphNode } from '../src/graph/schema.ts'
 import { SCAN_GIT_FLAGS, scanWorkspace, withoutUserInfo, writeScan, type ScanOutput, type ScanResult } from '../src/bootstrap/scan.ts'
 import { touchPaths } from '../src/bootstrap/touch.ts'
 import { scanFixture } from './bootstrap-host.ts'
@@ -419,23 +421,9 @@ test('touchPaths: repository paths, outside paths, the norm-only marker, 无, an
 
 // ---------------------------------------------------------------- scan #5, the format part: the floor draft
 
-/** The judgement forms of M7 §3.8.5 as written there: trailing backtick segments, each `files <paths>`, `deletes`, `commands <words>, …` or `outside`; paths repository-relative, no `..`, no wildcard, no backslash or drive. */
-function floorForms(line: string): readonly string[] | undefined {
-  const segments: string[] = []
-  let rest = line.trimEnd()
-  while (rest.endsWith('`')) {
-    const opening = rest.lastIndexOf('`', rest.length - 2)
-    if (opening < 0) break
-    segments.unshift(rest.slice(opening + 1, -1))
-    rest = rest.slice(0, opening).trimEnd()
-  }
-  if (segments.length === 0) return undefined
-  const pathOk = (path: string): boolean => path.length > 0 && !/[*?[\\]/.test(path) && !/^[A-Za-z]:/.test(path)
-    && (path.endsWith('/') ? path.slice(0, -1) : path).split('/').every(part => part.length > 0 && part !== '.' && part !== '..')
-  const ok = segments.every(segment => segment === 'deletes' || segment === 'outside'
-    || (segment.startsWith('files ') && segment.slice(6).split(',').map(path => path.trim()).every(pathOk))
-    || (segment.startsWith('commands ') && segment.slice(9).split(',').every(words => words.trim().length > 0)))
-  return ok ? segments : undefined
+/** The round trip plan B7 owes (F42): every draft line reads in M7's own floor parser, nothing lands in `unparsed`. */
+function floorUnparsed(lines: readonly string[]): readonly number[] {
+  return parseFloor({ acceptance: lines } as GraphNode).unparsed
 }
 
 test('floor: every line of the draft carries judgement forms M7 can read; only classes with paths appear, plus the two general ones', async () => {
@@ -462,7 +450,7 @@ test('floor: every line of the draft carries judgement forms M7 can read; only c
     '改到不许碰的地方：generated/、vendor/ `files generated/, vendor/`',
     ...FLOOR_GENERAL,
   ])
-  for (const line of draft.acceptance) assert.notEqual(floorForms(line), undefined, line)
+  assert.deepEqual(floorUnparsed(draft.acceptance), [], 'every line of the floor draft reads in M7\'s parser (plan B7 round trip)')
   // floor.md lists the same lines, one `- ` item each, so the count read back equals the count written.
   const markdown = floorMarkdown(draft)
   const listed = markdown.split('\n').slice(markdown.split('\n').indexOf('acceptance:') + 1).filter(line => line.startsWith('- ')).map(line => line.slice(2))
@@ -484,7 +472,7 @@ test('floor: more than 40 paths merge into their shared parent directories; the 
   const draft = floorDraft(scanFixture({}), Array.from({ length: 9 }, (_, index) => `guard${index}/x.ts`))
   const [line = ''] = draft.acceptance
   assert.match(line, /^改到拦截与权限：guard0\/、guard1\/、guard2\/、guard3\/、guard4\/、guard5\/ 等 3 处 `files /)
-  assert.notEqual(floorForms(line), undefined)
+  assert.deepEqual(floorUnparsed(draft.acceptance), [])
 })
 
 test('floor: the template and the general classes hold nothing of this repository', () => {

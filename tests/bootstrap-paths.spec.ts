@@ -18,6 +18,8 @@ import {
 } from '../src/bootstrap/defaults.ts'
 import { packageJsonCandidates } from '../src/bootstrap/extract.ts'
 import { uncheckedExtensions } from '../src/bootstrap/gaps.ts'
+import { GATE_LINE_FORMS, parseGateNorm } from '../src/execute/gate-norm.ts'
+import type { GraphNode } from '../src/graph/schema.ts'
 import { reminderText, type ReminderFacts } from '../src/bootstrap/notice.ts'
 import { BOTH_GUESS, askRefusal, questionsDraft, questionsMarkdown } from '../src/bootstrap/present.ts'
 import type { ScanResult } from '../src/bootstrap/scan.ts'
@@ -63,6 +65,27 @@ test('every recognised ecosystem\'s gate draft has exactly one test command; She
   assert.deepEqual(tests.map(item => [item.command, item.from?.file]), [['pnpm test', 'package.json']])
   assert.equal(gateLine(tests[0]), '`$ pnpm test`')
   assert.equal(gateLine(draft[0]), '`setup $ pnpm install --frozen-lockfile`')
+})
+
+test('the default gate drafts read in M7\'s own parser with nothing left as prose, and the only line names the graph directory (F42, plan B7 round trip)', () => {
+  assert.ok(GATE_LINE_FORMS.some(form => form.startsWith('only')), 'M7 is on main: the forms table knows only <paths>')
+  for (const key of DEFAULT_KEYS) {
+    const row = rowOf(key, facts('linux', true))
+    const items = gateDraft(row, [])
+    const lines = [
+      ...items.map(item => gateLine(item)),
+      `\`only docs/graph/\``,
+    ]
+    const parsed = parseGateNorm({ acceptance: lines } as GraphNode)
+    const readCommands = parsed.commands.map(command => command.command)
+    assert.deepEqual(readCommands, items.map(item => item.command), `${key}: every written command reads back, in order`)
+    assert.deepEqual(parsed.only, ['docs/graph/'], `${key}: the only line reads as the graph directory`)
+    assert.deepEqual(parsed.prose, [], `${key}: no written line falls to prose; the forms M7 knows are ${GATE_LINE_FORMS.join(', ')}`)
+    assert.ok(parsed.push === false)
+  }
+  // The markdown names the only line once per row, with the graph directory the takeover passed.
+  const markdown = defaultsMarkdown(scanFixture({ stacks: ['node-npm'] }), ['package.json'], false, 'linux', 'meta/graph')
+  assert.equal(markdown.split('\n').filter(line => line.includes('`only meta/graph/`')).length, 1)
 })
 
 test('the dead-code and duplicate checks of ORCHESTRATION §7.5 (d-habits-into-framework): knip and jscpd for Node, vulture for Python, none for Rust, Go says it is not covered', () => {
