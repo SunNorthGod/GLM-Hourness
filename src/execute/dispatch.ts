@@ -538,14 +538,14 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
             ...(parsed.quick === true ? { quick: true } : {}),
             gateCommands,
           })
-        : taskReview
+          : taskReview
           ? renderReviewBrief({
               graph: targetGraph,
               task: target,
               reviewed: reviewed!,
               childId,
               depth,
-              ...(reviewHandback === undefined ? {} : { handback: { ...(reviewHandback.head === undefined ? {} : { head: reviewHandback.head }), ...(reviewHandback.base === undefined ? {} : { base: reviewHandback.base }), status: reviewHandback.status } }),
+              ...(reviewHandback === undefined ? {} : { handback: { ...(reviewHandback.head === undefined ? {} : { head: reviewHandback.head }), ...(reviewHandback.base === undefined ? {} : { base: reviewHandback.base }), status: reviewHandback.status, ...(reviewHandback.docs === undefined || reviewHandback.docs.length === 0 ? {} : { docs: reviewHandback.docs }) } }),
               gateCommands,
             })
           : reviewedTrunk !== undefined

@@ -362,6 +362,8 @@ export interface HandbackComment {
   readonly depth?: '全审' | '轻审'
   /** The floor hit that made the depth full, one line. */
   readonly floorHit?: string
+  /** The component-doc lines (docs-at-hand design 0.3 §6.2): the worker's own `docs` line verbatim, then one sentence per gap. Rendered each with the `Docs: ` prefix. */
+  readonly docs?: readonly string[]
   /** The semantic-validation problems, one line each. */
   readonly problems: readonly string[]
 }
@@ -372,6 +374,7 @@ export function renderHandbackComment(entry: HandbackComment): string {
     `提交 ${entry.commits} 个${entry.head === undefined ? '' : `（最新 ${entry.head}）`} · 文件 ${entry.files} 个 · 报告 ${entry.report ?? '无'}${entry.base === undefined ? '' : ` · 基线 ${entry.base}`}`,
     `问题 ${entry.questions} · 假设 ${entry.assumptions} · 问了 ${entry.asked} 次（答 ${entry.answered}、超时 ${entry.timeouts}）· 计划 ${entry.plans} 版 · 主 Agent 发来 ${entry.incoming} 条 · 候选经验 ${entry.lessons} 条${entry.lessonsRejected === undefined ? '' : `（拒 ${entry.lessonsRejected}）`}`,
     ...(entry.depth === undefined ? [] : [`有效深浅 ${entry.depth}${entry.floorHit === undefined ? '' : `（${entry.floorHit}）`}`]),
+    ...(entry.docs ?? []).map(line => `Docs: ${line}`),
     ...entry.problems.map(problem => `校验不过：${problem}`),
   ]
   return lines.join('\n')
@@ -391,6 +394,8 @@ export function parseHandbackComment(text: string): HandbackComment | undefined 
   const counts = HANDBACK_COUNTS.exec(lines[2] ?? '')
   if (commits === null || counts === null) return undefined
   const depth = lines.length > 3 ? HANDBACK_DEPTH.exec(lines[3]) : null
+  const tail = lines.slice(depth === null ? 3 : 4)
+  const docs = tail.filter(line => line.startsWith('Docs: ')).map(line => line.slice('Docs: '.length))
   return {
     attempt: Number(head[1]),
     status: head[2],
@@ -410,7 +415,8 @@ export function parseHandbackComment(text: string): HandbackComment | undefined 
     lessons: Number(counts[8]),
     ...(counts[9] === undefined ? {} : { lessonsRejected: Number(counts[9]) }),
     ...(depth === null || depth === undefined ? {} : { depth: depth[1] as '全审' | '轻审', ...(depth[2] === undefined ? {} : { floorHit: depth[2] }) }),
-    problems: lines.slice(depth === null ? 3 : 4).filter(line => line.startsWith('校验不过：')).map(line => line.slice('校验不过：'.length)),
+    ...(docs.length > 0 ? { docs } : {}),
+    problems: tail.filter(line => line.startsWith('校验不过：')).map(line => line.slice('校验不过：'.length)),
   }
 }
 

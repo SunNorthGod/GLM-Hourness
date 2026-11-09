@@ -186,8 +186,7 @@ const listLine = (label: string, items: readonly string[], more: number): string
  * there is nothing to say. The body is cut so that the whole stays within
  * `NOTICE_MAX`; the other lines are short by their own limits.
  */
-export function pathNotice(parts: NoticeParts): string | undefined {
-  const where = parts.component === undefined ? '' : ` (component ${parts.component})`
+export function pathNotice(parts: NoticeParts): string | undefined {  const where = parts.component === undefined ? '' : ` (component ${parts.component})`
   const rest = [
     listLine('Decisions on this path (project graph)', parts.decisions, parts.decisionsMore),
     listLine('Open work on this path', parts.work, parts.workMore),
@@ -204,4 +203,54 @@ export function pathNotice(parts: NoticeParts): string | undefined {
     ? []
     : [`${parts.component}/AGENTS.md:`, parts.body.length <= room ? parts.body.trimEnd() : `${parts.body.slice(0, room).trimEnd()}${cut}`]
   return wrapSystemReminder([head, ...body, ...rest].join('\n'))
+}
+
+// ---- the docs gaps of a handback (docs-at-hand design 0.3 §6) ----
+
+/**
+ * The components a handback's change touched whose `AGENTS.md` the change did
+ * not: for every changed file (added, modified, deleted; a rename arrives as
+ * a delete and an add, `--no-renames`) the nearest component `componentAt`
+ * names, the component's own `AGENTS.md` excepted. A file with no component,
+ * and a project with no component documents at all, leaves no gap. Pure; the
+ * caller decides which components exist — for the handback it is the head
+ * commit's tree, not the worktree (§6.1).
+ */
+export function docsGaps(paths: readonly string[], componentAt: (file: string) => string | undefined): readonly string[] {
+  const touched = new Set<string>()
+  const candidates: string[] = []
+  for (const file of paths) {
+    const component = componentAt(file)
+    if (component === undefined) continue
+    if (file === `${component}/AGENTS.md`) touched.add(component)
+    else if (!candidates.includes(component)) candidates.push(component)
+  }
+  return candidates.filter(component => !touched.has(component))
+}
+
+/** Whether `text` names the component path, bounded by characters that cannot extend a path segment. */
+function mentions(text: string | undefined, component: string): boolean {
+  if (text === undefined) return false
+  const escaped = component.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?:^|[^A-Za-z0-9-])${escaped}(?![A-Za-z0-9-])`).test(text)
+}
+
+/**
+ * The `Docs:` lines of one handback (§6.2), without the prefix the summary
+ * comment renders them with: the worker's own `docs` line verbatim, then one
+ * sentence per gap the worker's line does not name — or, when the gaps could
+ * not be computed (`gaps` undefined), the one line that says so with the
+ * reason. Nothing to say leaves no line.
+ */
+export function docsLines(gaps: readonly string[] | undefined, docs: string | undefined, whyNot: string | undefined): readonly string[] {
+  const lines: string[] = []
+  if (docs !== undefined) lines.push(docs)
+  if (gaps === undefined) {
+    if (whyNot !== undefined) lines.push(`文档缺口没算成：${whyNot}`)
+    return lines
+  }
+  for (const component of gaps) {
+    if (!mentions(docs, component)) lines.push(`${component} changed code but its AGENTS.md was not touched and the handback says nothing about it.`)
+  }
+  return lines
 }

@@ -55,13 +55,24 @@ const git = (root: string, args: readonly string[]): string => {
   return run.stdout
 }
 
-/** A repository with a released goal over one task, a worktree on the task's branch, and one commit on top of the base. */
-async function presetProject(): Promise<Project> {
+/**
+ * A repository with a released goal over one task, a worktree on the task's
+ * branch, and one commit on top of the base; with `docs`, the base also
+ * carries a component document at `src/guarded/AGENTS.md`, so it exists at
+ * the handback's head (docs-at-hand design 0.3 §6.1).
+ */
+async function presetProject(options: { readonly docs?: boolean } = {}): Promise<Project> {
   const root = mkdtempSync(join(tmpdir(), 'glm-hourness-handback-'))
   mkdirSync(join(root, 'docs', 'graph'), { recursive: true })
   const graphDir = join(root, 'docs', 'graph')
   await seedGoalTask(graphDir, { title: 'Guard the writer', writeScope: ['src/guarded/'], acceptance: ['the writer is guarded', 'the guard is tested'], worktree: true })
   gitSeed(root)
+  if (options.docs === true) {
+    mkdirSync(join(root, 'src', 'guarded'), { recursive: true })
+    writeFileSync(join(root, 'src', 'guarded', 'AGENTS.md'), '# Guarded\nWhat the writer may do.\n')
+    git(root, ['add', 'src/guarded/AGENTS.md'])
+    git(root, ['commit', '-q', '-m', 'component doc'])
+  }
   const baseSha = git(root, ['rev-parse', 'HEAD']).trim()
   git(root, ['worktree', 'add', '--quiet', join('.worktrees', 'hz-task-1'), '-b', 'hz/task-1'])
   const worktree = join(root, '.worktrees', 'hz-task-1')
@@ -72,6 +83,9 @@ async function presetProject(): Promise<Project> {
   const commit = git(worktree, ['rev-parse', 'HEAD']).trim()
   return { root, graphDir, worktree, commit, baseSha }
 }
+
+/** The docs-gap fixtures: the same project with the component document on the base. */
+const presetDocsProject = (): Promise<Project> => presetProject({ docs: true })
 
 interface Rig {
   readonly project: Project
@@ -85,7 +99,7 @@ interface Rig {
   readonly registered: Attempt
 }
 
-async function rig(project: Project, attempt: Attempt): Promise<Rig> {
+async function rig(project: Project, attempt: Attempt, overrides: Partial<HandbackDeps> = {}): Promise<Rig> {
   const { lookup, sent } = noticeHost(project)
   const cache = createGraphCache(() => {})
   const graph = await cache.load(project.graphDir)
@@ -107,6 +121,7 @@ async function rig(project: Project, attempt: Attempt): Promise<Rig> {
       return Promise.resolve(true)
     },
     emit: seam.emit,
+    ...overrides,
   }
   const registered: Attempt = { ...attempt, graphDir: project.graphDir, pins }
   return { project, cache, deps, sent, emitted: seam.emitted, redispatches, registered }
@@ -221,6 +236,68 @@ test('a floor hit upgrades a light dispatch; the comment names the hit and the r
     const event = rig1.emitted.find(item => item.event === 'hourness.handback')
     assert.equal(event?.payload.depth, 'full', 'the event carries the raised depth')
     assert.match(String(event?.payload.floorHit), /^\d+$/, 'the event names the class that was hit')
+  }
+  finally {
+    forgetAttempt(attempt.childId)
+    rmSync(project.root, { recursive: true, force: true })
+  }
+})
+
+// ---- the docs gaps of a done handback (docs-at-hand design 0.3 §6) ----
+
+test('a done handback whose change touched a component with an AGENTS.md says the gap in the summary comment and the notice', async () => {
+  const project = await presetDocsProject()
+  const attempt = workerAttempt(project, 'hz-task-1-a1-dddddd')
+  const rig1 = await rig(project, attempt)
+  try {
+    const { comment } = await runDoneHandback(rig1, project, attempt.childId)
+    assert.deepEqual(comment.docs, ['src/guarded changed code but its AGENTS.md was not touched and the handback says nothing about it.'])
+    const notice = rig1.sent.at(-1)
+    assert.ok(notice !== undefined && notice.content[0].text.includes('Docs: src/guarded changed code but its AGENTS.md was not touched and the handback says nothing about it.'), String(notice?.content[0].text ?? 'no notice').slice(0, 200))
+  }
+  finally {
+    forgetAttempt(attempt.childId)
+    rmSync(project.root, { recursive: true, force: true })
+  }
+})
+
+test('a handback with the docs line records it verbatim; a line that names another component still says the gap', async () => {
+  const project = await presetDocsProject()
+  const attempt = workerAttempt(project, 'hz-task-1-a1-eeeeee')
+  const rig1 = await rig(project, attempt)
+  try {
+    const { comment } = await runDoneHandback(rig1, project, attempt.childId, { docs: 'still true: src/guarded' })
+    assert.deepEqual(comment.docs, ['still true: src/guarded'], 'the component named is the one answered')
+  }
+  finally {
+    forgetAttempt(attempt.childId)
+    rmSync(project.root, { recursive: true, force: true })
+  }
+  const other = await presetDocsProject()
+  const second = workerAttempt(other, 'hz-task-1-a1-ffffff')
+  const rig2 = await rig(other, second)
+  try {
+    const { comment } = await runDoneHandback(rig2, other, second.childId, { docs: 'updated: elsewhere' })
+    assert.deepEqual(comment.docs, ['updated: elsewhere', 'src/guarded changed code but its AGENTS.md was not touched and the handback says nothing about it.'])
+  }
+  finally {
+    forgetAttempt(second.childId)
+    rmSync(other.root, { recursive: true, force: true })
+  }
+})
+
+test('a git that will not say whether a component document exists leaves the gaps uncomputed, once, degraded', async () => {
+  const project = await presetDocsProject()
+  const attempt = workerAttempt(project, 'hz-task-1-a1-gggggg')
+  const degraded: string[] = []
+  const rig1 = await rig(project, attempt, {
+    report: (_s, state, reason) => { if (state === 'degraded') degraded.push(reason) },
+    git: { ...createGit(), entryAt: () => Promise.resolve({ ok: false as const, reason: 'git gone' }) },
+  })
+  try {
+    const { comment } = await runDoneHandback(rig1, project, attempt.childId)
+    assert.deepEqual(comment.docs, ['文档缺口没算成：git 没说出组件的 AGENTS.md 在不在（git gone）'])
+    assert.ok(degraded.some(reason => reason.includes('文档缺口没算成')), degraded.join(' | '))
   }
   finally {
     forgetAttempt(attempt.childId)

@@ -584,8 +584,8 @@ export interface ReviewBriefInput {
   readonly reviewed: GraphNode
   readonly childId: string
   readonly depth: 'full' | 'light'
-  /** The done handback under review, as the task's comment carries it. */
-  readonly handback?: { readonly head?: string, readonly base?: string, readonly status: string }
+  /** The done handback under review, as the task's comment carries it; `docs` are its component-doc lines (docs-at-hand design 0.3 §6.2). */
+  readonly handback?: { readonly head?: string, readonly base?: string, readonly status: string, readonly docs?: readonly string[] }
   /** The previous round's blocking findings, one line each (§3.7.3). */
   readonly findings?: readonly string[]
   /** The commands of `norm-merge-gate`, for context. */
@@ -615,6 +615,7 @@ export function renderReviewBrief(input: ReviewBriefInput): Brief {
     '## Context',
     `- Reviewed: commit ${head}, made from base ${base}. Read the change with git diff ${base}..${head} in the worktree.`,
     `- The handback status was ${input.handback?.status ?? 'unknown'}; the task body carries its summary comment and the plan section.`,
+    ...(input.handback?.docs !== undefined && input.handback.docs.length > 0 ? ['- The handback says of the component docs:', ...input.handback.docs.map(line => `  - ${line}`)] : []),
     ...(input.findings === undefined || input.findings.length === 0 ? [] : ['- Findings of the previous round (these come first):', ...input.findings.map(finding => `  - ${finding}`)]),
     `- Project checks for context: ${input.gateCommands.length === 0 ? 'none recorded' : input.gateCommands.join(' ; ')}.`,
     '',
@@ -622,6 +623,7 @@ export function renderReviewBrief(input: ReviewBriefInput): Brief {
     `- You write nothing: the worktree is read-only for you. Long notes go to ".hourness/${input.childId}.md"; only the verdict comes back.`,
     '- Questions that need the main agent: ask_main (state the assumption you will use if no answer comes).',
     '- Blocking criteria (docs/DEVELOPMENT.md §1.1): acceptance:<i> names the unmet acceptance item of the reviewed task; irreversible-loss; failure-plan. A finding that names none of the three does not block.',
+    '- Component docs: if the handback names a component whose AGENTS.md was not updated, check that "still true" holds; a doc that carries a to-do list, progress or decision conclusions is misplaced. A stale doc is a non-blocking finding unless an acceptance item covers docs.',
     `- How far this round goes: ${depthLine}`,
     '',
     '## Done when',

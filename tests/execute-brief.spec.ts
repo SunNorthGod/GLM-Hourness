@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Attempt } from '../src/execute/attempts.ts'
-import { BRIEF_LIMIT, briefGate, parseDispatchArgs, renderAcceptanceBrief, renderBrief, type BriefContext, type BriefInput, type GateResult } from '../src/execute/brief.ts'
+import { BRIEF_LIMIT, briefGate, parseDispatchArgs, renderAcceptanceBrief, renderBrief, renderReviewBrief, type BriefContext, type BriefInput, type GateResult } from '../src/execute/brief.ts'
 import { digest12 } from '../src/execute/digest.ts'
 import { releaseOf } from '../src/graph/execute-stage.ts'
 import type { LoadedGraph } from '../src/graph/parse.ts'
@@ -479,4 +479,24 @@ test('renderBrief: a task with no source decisions, no non-goals and no write sc
   assert.ok(text.includes('- Not in scope: nothing recorded'))
   assert.ok(text.includes('- Write only inside: nothing. Writes elsewhere are refused.'))
   assert.ok(text.includes('Why it exists: "goal-1" > this task.'))
+})
+
+test('renderReviewBrief: the handback\'s docs lines ride in the context, and the checklist carries the component-docs rule verbatim (docs-at-hand design 0.3 §6.2)', () => {
+  const graph = plain()
+  const input = (docs?: readonly string[]) => ({
+    graph,
+    task: get(graph, 'review-1'),
+    reviewed: get(graph, 'task-1'),
+    childId: 'hz-review-1-a1-k3x9ab',
+    depth: 'full' as const,
+    handback: { head: 'abc123def456', base: 'aaa111bbb222', status: 'done', ...(docs === undefined ? {} : { docs }) },
+    gateCommands: [] as readonly string[],
+  })
+  const CHECKLIST = '- Component docs: if the handback names a component whose AGENTS.md was not updated, check that "still true" holds; a doc that carries a to-do list, progress or decision conclusions is misplaced. A stale doc is a non-blocking finding unless an acceptance item covers docs.'
+  const brief = renderReviewBrief(input(['src changed code but its AGENTS.md was not touched and the handback says nothing about it.', 'still true: site']))
+  assert.ok(brief.text.includes('- The handback says of the component docs:\n  - src changed code but its AGENTS.md was not touched and the handback says nothing about it.\n  - still true: site'))
+  assert.ok(brief.text.includes(CHECKLIST))
+  const bare = renderReviewBrief(input())
+  assert.ok(!bare.text.includes('The handback says of the component docs'), 'no docs line in the handback, nothing to carry')
+  assert.ok(bare.text.includes(CHECKLIST), 'the checklist item is a standing rule')
 })
