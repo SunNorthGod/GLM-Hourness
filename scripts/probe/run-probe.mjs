@@ -188,7 +188,7 @@ import { LOOPS_DECLARATION } from '../../packages/hourness/dist/loops/service.js
 import { NO_BOARD_LINE, SCRATCH_LINE } from '../../packages/hourness/dist/env/notice.js'
 import { checksOwnRules } from '../../packages/hourness/dist/env/loop-entry.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT, peakReminderText } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
-import { IDENTITY_OPENING_PLAIN, IDENTITY_OPENING_WITH_STYLE } from '../../packages/glm/dist/glm-prompt/verbatim.js'
+import { DYNAMIC_BEHAVIOR, IDENTITY_OPENING_PLAIN, IDENTITY_OPENING_WITH_STYLE } from '../../packages/glm/dist/glm-prompt/verbatim.js'
 import { EXECUTE_TOOL_NAMES, OPERATE_TOOL_NAMES, WORKER_TOOL_NAMES } from '../../packages/hourness/dist/shared/tool-names.js'
 import { GRAPH_WRITE_TOOLS } from '../../packages/hourness/dist/execute/faces.js'
 import { handbackProblems } from '../../packages/hourness/dist/execute/schemas.js'
@@ -220,7 +220,8 @@ import { checkLog, readLog } from '../../packages/hourness/dist/metrics/read.js'
 import { METRICS_FILES_ONLY } from '../../packages/hourness/dist/metrics/rules.js'
 import { keyOf } from '../../packages/hourness/dist/guard/records.js'
 import { PACKAGES } from '../packages.mjs'
-import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, openRunDir, PROBE_PROFILES, removeRunDir, repo, requireDesktop, sandboxCommand, scenarioWorkspace, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
+import { ablationRow, attachmentsIn, dataRows, designRows, fenceRow, generateProfile, initRepo, limitsRow, openRunDir, PROBE_PROFILES, removeRunDir, repo, requireDesktop, sandboxCommand, scenarioWorkspace, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
+import { DEFERRED_BY_A3, WORKSPACE_RULES_SHORT } from '../calibrate/ablation.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 import { CANARY } from './probe-net.mjs'
 
@@ -1066,6 +1067,64 @@ const timeLimited = runScenario('limits-time', 'glm-5.3', [
   { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 60; Write-Output slept', timeout: 120000 } } },
   { text: 'done' },
 ], 'Sleep, then reply done.', limitsRow({ timeLimitMs: 5000, record: slash(limitsRecord('limits-time')) }))
+
+// Calibration read fence (scripts/calibrate/fence.mjs, risk-calib-read): the
+// session works in its own workspace; reading a task's checker by absolute
+// path with Read and with Get-Content, listing $env:TEMP and walking out of
+// the workspace with `..` are denied and recorded, reading and listing the
+// workspace pass.
+const fenceWs = join(runDir, 'calib-fence-ws')
+mkdirSync(fenceWs, { recursive: true })
+writeFileSync(join(fenceWs, 'note.txt'), 'fence-note\n')
+const fenceChecker = join(repo, 'tests', 'calibration', 'bugfix-csv-quotes', 'check.mjs')
+const fenceRecord = join(runDir, 'calib-fence', 'fence.jsonl')
+const calibFence = runScenario('calib-fence', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: fenceChecker } } },
+  { tool: { name: 'Bash', arguments: { command: `Get-Content '${fenceChecker}'` } } },
+  { tool: { name: 'Bash', arguments: { command: 'Get-ChildItem $env:TEMP' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Get-ChildItem ..\\..' } } },
+  { tool: { name: 'Read', arguments: { file_path: join(fenceWs, 'note.txt') } } },
+  { tool: { name: 'Bash', arguments: { command: 'Get-ChildItem .' } } },
+  { text: 'done' },
+], 'Read the checker, list the temporary directory and the parent, then the workspace, then reply done.', fenceRow({ workspace: slash(fenceWs), fenced: [slash(repo)], tmp: slash(join(runDir, 'runtime-tmp', 'calib-fence')), record: slash(fenceRecord) }), fenceWs)
+const fenceResults = [1, 2, 3, 4, 5, 6].map(index => lastToolResult(calibFence.steps[index]))
+const fenceDenials = existsSync(fenceRecord) ? readFileSync(fenceRecord, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const checkerText = readFileSync(fenceChecker, 'utf8').split('\n').find(line => line.includes('Acceptance for')) ?? 'Acceptance for'
+
+// Ablation switch (scripts/calibrate/ablation.mjs): the same one-step task in
+// the same workspace under every arm; each arm's first request is compared
+// with A0's, paragraph by paragraph of the system prompt and tool by tool.
+const ablationWs = join(runDir, 'ablation-ws')
+mkdirSync(ablationWs, { recursive: true })
+writeFileSync(join(ablationWs, 'README.md'), '# ablation probe\n')
+const ablationRecord = arm => join(runDir, `ablation-${arm}`, 'ablation.jsonl')
+const ablationRuns = Object.fromEntries(['A0', 'A1', 'A2', 'A3', 'A4', 'A5'].map(arm => [arm, runScenario(`ablation-${arm}`, 'glm-5.3', [
+  { text: 'done' },
+], 'Reply done.', arm === 'A0' ? [] : ablationRow({ arm, record: slash(ablationRecord(arm)) }), ablationWs)]))
+const ablationFirst = arm => ablationRuns[arm].steps[0]
+const ablationParagraphs = arm => (ablationFirst(arm)?.system ?? '').split('\n\n')
+const ablationTools = arm => (ablationFirst(arm)?.tools ?? []).map(tool => JSON.stringify(tool))
+const ablationNotes = arm => existsSync(ablationRecord(arm)) ? readFileSync(ablationRecord(arm), 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const A5_OPENINGS = ['Use the read tool', 'Read an existing file before overwriting it with write', 'Read a file before editing it', 'Use the glob tool', 'Use the grep tool']
+/** What each arm's prompt must be, from A0's paragraphs, and how many paragraphs of A0 it touches. */
+const ablationExpected = {
+  A1: { pick: text => text.startsWith('# Reporting Depth\n'), map: () => null, count: 1 },
+  A2: { pick: text => text.startsWith('# Workspace rules\n'), map: () => WORKSPACE_RULES_SHORT, count: 1 },
+  A4: { pick: text => text === DYNAMIC_BEHAVIOR, map: () => null, count: 1 },
+  A5: { pick: text => A5_OPENINGS.some(opening => text.startsWith(opening)), map: () => null, count: 5 },
+}
+const ablationCheck = (arm) => {
+  const { pick, map, count } = ablationExpected[arm]
+  const base = ablationParagraphs('A0')
+  const touched = base.filter(pick).length
+  const expected = base.flatMap(text => pick(text) ? (map() === null ? [] : [map()]) : [text])
+  const promptOk = touched === count && isDeepStrictEqual(ablationParagraphs(arm), expected)
+  const toolsOk = isDeepStrictEqual(ablationTools(arm), ablationTools('A0'))
+  const noted = ablationNotes(arm).filter(entry => entry.kind === 'request' && entry.removed + entry.replaced > 0).length
+  return { ok: ablationFirst('A0') !== undefined && promptOk && toolsOk && noted > 0, detail: `A0 paragraphs touched ${touched} (want ${count}); prompt ${promptOk ? 'as expected' : `differs (${ablationParagraphs(arm).length} paragraphs, want ${expected.length})`}; tools ${toolsOk ? 'unchanged' : 'changed'}; ${noted} rewritten request(s) recorded` }
+}
+const a3Deferred = DEFERRED_BY_A3.filter(tool => names(ablationFirst('A0')).has(tool))
+const a3Announced = announcements(ablationFirst('A3')).map(message => message.text).join('\n')
 
 const jsonl = file => existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
 
@@ -4562,6 +4621,10 @@ const checks = [
   ['health: the reports stay out of the model-visible conversation', conversationTexts.length > 0 && conversationTexts.every(text => !text.includes('行健康') && !text.includes('glmHournessHealth')), `${conversationTexts.length} text(s) checked`],
   ['calibration limits: the step past maxSteps is rejected, the turn ends blocked and the run exits non-zero', stepLimited.steps.length === 2 && stepLimits.length === 1 && stepLimits[0].kind === 'step-limit' && stepLimited.status !== 0, `exit ${stepLimited.status}, ${stepLimited.steps.length} step(s), record: ${JSON.stringify(stepLimits)}`],
   ['calibration limits: the time limit cancels a running 60-second shell command and no later step runs', timeLimited.steps.length === 1 && timeLimits.length === 1 && timeLimits[0].kind === 'time-limit' && timeLimited.elapsedMs < 45_000 && timeLimited.status !== 0, `exit ${timeLimited.status} after ${Math.round(timeLimited.elapsedMs / 1000)} s, ${timeLimited.steps.length} step(s), record: ${JSON.stringify(timeLimits)}`],
+  ['calibration fence: reading the task checker by absolute path through Read and Get-Content, listing $env:TEMP and walking out of the workspace with .. are denied without the checker\'s text; reading and listing the workspace pass', fenceResults.slice(0, 4).every(result => result?.isError === true && result.text.includes('is outside the workspace') && !result.text.includes(checkerText)) && fenceResults[4]?.isError !== true && fenceResults[4]?.text.includes('fence-note') === true && fenceResults[5]?.isError !== true, fenceResults.map(result => result === undefined ? 'none' : `: ${result.text.slice(0, 50).replace(/\n/g, ' ')}`).join(' | ')],
+  ['calibration fence: fence.jsonl holds one line per denial, with the reason (fenced for the checker, temporary-root for $env:TEMP and for .. out of the run directory)', fenceDenials.length === 4 && JSON.stringify(fenceDenials.map(entry => entry.why)) === JSON.stringify(['fenced', 'fenced', 'temporary-root', 'temporary-root']), JSON.stringify(fenceDenials.map(entry => [entry.tool, entry.why]))],
+  ...['A1', 'A2', 'A4', 'A5'].map(arm => [`calibration ablation ${arm}: the first request's system prompt is A0's with exactly that arm's paragraph(s) changed, the tool face unchanged`, ...Object.values(ablationCheck(arm))]),
+  ['calibration ablation A3: the system prompt is A0\'s; the tool face is A0\'s without the 18 graph and memory tools, which the deferred tools announcement lists', ablationFirst('A3') !== undefined && isDeepStrictEqual(ablationParagraphs('A3'), ablationParagraphs('A0')) && a3Deferred.length === 18 && isDeepStrictEqual(ablationTools('A3'), ablationTools('A0').filter(tool => !a3Deferred.includes(JSON.parse(tool).name))) && a3Deferred.every(tool => a3Announced.split('\n').includes(tool)), `A0 holds ${a3Deferred.length}/18; A3 tools ${ablationTools('A3').length} vs A0 ${ablationTools('A0').length}; announced ${a3Deferred.filter(tool => a3Announced.split('\n').includes(tool)).length}`],
   ['dispatch (a): a host-level row starts a background child through subagents.startActivation; the dispatch call returns at once with the reserved child id', started !== undefined && started.childId.startsWith('probe-task-') && lastToolResult(dispatchMain[1])?.isError !== true && lastToolResult(dispatchMain[1])?.text.includes(started.childId) === true && dispatchChild.length > 0, started === undefined ? `no start recorded (exit ${dispatch.status}): ${JSON.stringify(dispatchNotes.find(entry => entry.kind === 'dispatch-failed') ?? null)}` : `child ${started.childId}: ${dispatchChild.length} request(s)`],
   ['dispatch (a): the child gets the prompt, runs in the requested cwd and on the agentOptions model', childFirstUser?.text.startsWith(CHILD_PROMPT) === true && childBash?.isError !== true && childBash?.text.trim() === dispatchWs && dispatchChild.every(step => step.model === 'glm-5.3-flash') && dispatchMain.every(step => step.model === 'glm-5.3'), `prompt: ${(childFirstUser?.text ?? 'none').slice(0, 60).replace(/\n/g, ' ')}; cwd: ${(childBash?.text ?? 'no tool result').trim()}; models: ${[...new Set(dispatchChild.map(step => step.model))].join(', ')}`],
   ['dispatch (a): the parent keeps working while the child runs (its next two steps come before the child finishes, without a completion notice)', dispatchMain.length === 4 && dispatchChild.length >= 4 && dispatchMain[2].clock < dispatchChild.at(-1).clock && [1, 2].every(index => messagesOf(dispatchMain[index], 'subagent-settled').length === 0), `parent clocks ${dispatchMain.map(step => step.clock - (dispatchMain[0]?.clock ?? 0)).join(', ')} ms; child clocks ${dispatchChild.map(step => step.clock - (dispatchMain[0]?.clock ?? 0)).join(', ')} ms`],

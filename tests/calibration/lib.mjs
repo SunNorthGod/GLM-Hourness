@@ -58,7 +58,23 @@ export const countTests = dir => testSources(dir).match(/\b(?:test|it)\s*\(/g)?.
 export const textOf = (dir, file) => existsSync(join(dir, file)) ? readFileSync(join(dir, file), 'utf8') : ''
 
 /** Copy a workspace without its git directory. */
-export const copyWorkspace = (from, to) => cpSync(from, to, { recursive: true, filter: source => !isGitPath(source.slice(from.length)) })
+const copyWorkspace = (from, to) => cpSync(from, to, { recursive: true, filter: source => !isGitPath(source.slice(from.length)) })
+
+/** The two checks of a bug fix's test: the workspace has more tests than the fixture, and they fail when the fixture's original src/ is put back (the test reproduces the bug). */
+export const reproducingTestChecks = (workspace, fixture, scratch) => [
+  ['a test was added', () => {
+    const before = countTests(fixture)
+    const after = countTests(workspace)
+    return { ok: after > before, detail: `${before} -> ${after} test(s)` }
+  }],
+  ['the workspace tests fail on the original code', () => {
+    const original = join(scratch, 'original-src')
+    copyWorkspace(workspace, original)
+    copyWorkspace(join(fixture, 'src'), join(original, 'src'))
+    const run = runTests(original)
+    return { ok: !run.ok, detail: run.detail }
+  }],
+]
 
 /** Compare a value with the expectation; the detail shows what came back. */
 export const same = (actual, expected) => ({ ok: isDeepStrictEqual(actual, expected), detail: inspect(actual, { depth: 4 }) })
