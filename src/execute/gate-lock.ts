@@ -73,7 +73,7 @@ function settledWithin(done: Promise<void>, ms: number): Promise<boolean> {
  * the directory stays out of git where the project's own ignore rules do
  * not cover `.llm/`. An existing file is left alone.
  */
-async function ensureExecDir(execDir: string): Promise<void> {
+export async function ensureExecDir(execDir: string): Promise<void> {
   await mkdir(execDir, { recursive: true })
   await writeFile(join(execDir, '.gitignore'), '*\n', { flag: 'wx' }).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== 'EEXIST') throw error

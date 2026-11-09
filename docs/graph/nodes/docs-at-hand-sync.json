@@ -1,0 +1,37 @@
+{
+  "id": "docs-at-hand-sync",
+  "type": "task",
+  "title": "同步核对：交回一行与审查一条（等 M7）",
+  "why": "改了代码而组件文档没动时，交回里有一行说明、审查有一条核对",
+  "status": "approved",
+  "parent": "docs-at-hand",
+  "kind": "implement",
+  "acceptance": [
+    "交回结构加可选的 docs 一行，缺口时往交回摘要批注写一句，审查清单一条；不加规则、不拒绝交回",
+    "L2；L3 随 M7 执行探针（glm-exec-docs）"
+  ],
+  "writeScope": [
+    "src/execute/",
+    "src/lessons/docs.ts"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m7"
+    },
+    {
+      "type": "source",
+      "to": "docs-at-hand"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-06T19:09:02.400Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "设计 0.3 第三件：同步核对并进交回结构与审查清单，等 M7 合入 main",
+      "relay": "你自己把握好这个度吧反正，尽量融合进我们的流程内而不是加越来越多的东西",
+      "to": "approved"
+    }
+  ]
+}

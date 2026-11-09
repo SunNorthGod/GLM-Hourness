@@ -1,0 +1,36 @@
+{
+  "id": "docs-at-hand-gen",
+  "type": "task",
+  "title": "组件文档的生成：简报与接管（等 M7）",
+  "why": "组件文档由接管之后的活与 worker 随改动写出来，而不是靠人想起",
+  "status": "approved",
+  "parent": "docs-at-hand",
+  "kind": "implement",
+  "acceptance": [
+    "M7 简报在写入范围碰到组件时带一句；接管结束的提醒与 execute.release 的提示各一句（对已放行设计的请求，记批注）",
+    "L2；L3 随 M7 执行探针"
+  ],
+  "writeScope": [
+    "src/execute/brief.ts"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m7"
+    },
+    {
+      "type": "source",
+      "to": "docs-at-hand"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-06T19:09:02.650Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "设计 0.3 第一件的生成部分：worker 简报一句、接管后与新项目的 kind: docs 任务，等 M7 合入 main",
+      "relay": "你自己把握好这个度吧反正，尽量融合进我们的流程内而不是加越来越多的东西",
+      "to": "approved"
+    }
+  ]
+}

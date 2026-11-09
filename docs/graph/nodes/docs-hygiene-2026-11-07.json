@@ -1,0 +1,73 @@
+{
+  "id": "docs-hygiene-2026-11-07",
+  "type": "task",
+  "title": "文稿入库、工作树与分支清理（2026-11-07）",
+  "why": "换机器或换人时设计与评审文稿都在仓库里，已合入的旧工作树和分支不再占地方",
+  "status": "done",
+  "parent": "orch",
+  "kind": "docs",
+  "body": "做了什么。一、.agents/tasks/ 下 57 份未跟踪的任务文稿入库（4eb29f4d；docs-at-hand 目录不动，那条线在读）；.gitignore 加 wire-run 运行目录与仓库根的 .llm-*.log（d3d766bf）；入库前 gitleaks 与模式扫描没有发现密钥。主检出里同名文件逐字节核对后移走再快进（55 份字节相同，2 份只差行尾 CRLF 与 LF，按 .gitattributes 的 eol=lf 入库）；快进后在主检出 npm run build，build-info 的 commit 等于 main HEAD。二、m5 的 design-0.6.md 与 metrics 的 5 份 S7 评审入库（08d1e9a7）；m5 的 impl-plan.md、14 份评审与 m4 的 impl-progress.md 与 main 逐字相同，m5 的 impl/progress.md 比 main 的旧、不复制。删除已合入的工作树 loopsr、m4、m5、metrics、panel、rules-board-page、status-hub、ug 与它们的本地分支，删除 origin 上严格已合入的 26 个分支（glm-context-window、lessons-4、loops-machine、loops-runner、m3、m3-metrics-wiring、m4、m4-checks、m4-checks-loop-details、m4-reanchor-violations、m4-rest、m5-habit-rule、m5-memory-lessons、m5-rest、m5-rule-expected-effect、m6-followups、m6-metrics-events、metrics、panel、panel-2、rules-board-page-rebased-3、s12、status-hub、status-hub-2、status-hub-3、user-graph；每个的顶端提交都在 main 里，随时可以按提交号恢复）。删之前把各工作树 .llm/ 里除 probe-runs 以外的内容与被忽略的散件（m4 的 g2-wip 补丁、m5 与 metrics 的 json）拷到仓库外的 C:\\Users\\29596\\Desktop\\Project\\_worktree-salvage-2026-11-07\\（约 80 MB）；probe-runs 与 node_modules 等运行产物随工作树删除。留给人定。一、m3-flow：工作树与分支保留，有 1 个没合入的提交 49f5d3ed（feat(m3-6) 流程条与 /wish 入口，origin/m3-flow 与 github/m3-flow 上也有）。二、origin/rules-board-page 有 1 个没合入的提交 6ae1157a（fix(rules) 规则页计入守卫行写的项目流水）；origin/rules-board-page-rebased 与 -rebased-2 靠改基后的等价提交才算合入（git cherry 全是 -，git log 非空），都没删。三、本地分支 m3、m4、m5-memory-lessons、status-hub 没有工作树，没动；GitHub 上的旧工作分支 m3、m3-flow、m4、m5-memory-lessons 没动。四、仓库外的 _worktree-salvage-2026-11-07 删不删。五、.worktrees/ 下有一批空目录（compact-recall、guide-metrics-line、loops-machine、m3-metrics-wiring、m4-checks、m4-reanchor-violations、m5-habit-rule、m5-rest、m5-rule-expected-effect、m7、panel-2）和只剩两项的 status-hub-run，git 里没有登记，不是本次清理的对象，没动。六、指标流水一天大小与验收第 16 条：11-06 不算干净的一天，见 metrics 节点同日批注，等下一个完整日。",
+  "acceptance": [
+    "57 份任务文稿与 m5、metrics 里只在工作树的文稿入库，主检出里同名文件逐字节核对后才移走，快进后文件齐全、内容不变，主检出 build 通过",
+    "已合入的工作树与远端分支删净，没合入的留着并列在本节点留给人定的清单里"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "d3d766bf",
+      "note": ".gitignore: wire-run 目录与根目录 .llm-*.log"
+    },
+    {
+      "kind": "commit",
+      "ref": "4eb29f4d",
+      "note": "57 份任务文稿入库"
+    },
+    {
+      "kind": "commit",
+      "ref": "08d1e9a7",
+      "note": "m5 design-0.6 与 metrics 5 份 S7 评审入库；三个提交都已在 origin/main 与 github/main"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-06T18:26:40.853Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "编排方在人睡觉期间做的文档与图的卫生线（agent 定，可推翻）：d-docs-tracked-for-handover 要求的任务文稿入库补做、只在工作树里的文稿抢救、已合入工作树与分支清理。",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-06T18:26:46.267Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "开工：编排方在人睡觉期间做这一线",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-06T18:26:54.844Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "入库、抢救与清理做完：三个文稿提交在 origin/main 与 github/main（ls-remote 一致），主检出 build 通过（build-info commit 08d1e9a，无已跟踪改动），工作树与远端分支按本节点正文的清单处理，没合入的留给人定；一天流水大小留给下一个完整日（metrics 节点批注）。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "d3d766bf",
+          "note": ".gitignore: wire-run 目录与根目录 .llm-*.log"
+        },
+        {
+          "kind": "commit",
+          "ref": "4eb29f4d",
+          "note": "57 份任务文稿入库"
+        },
+        {
+          "kind": "commit",
+          "ref": "08d1e9a7",
+          "note": "m5 design-0.6 与 metrics 5 份 S7 评审入库；三个提交都已在 origin/main 与 github/main"
+        }
+      ]
+    }
+  ]
+}

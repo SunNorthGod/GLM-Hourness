@@ -1,0 +1,104 @@
+# glm-context-window desktop (L4) check
+
+Workflow: wf_f773f9cedc7b4708, step: desktop check
+Started: 2026-11-05 21:39
+Repo HEAD at start: cf0ed57 (main, contains 7560058 and c452b17)
+
+## Log
+
+- 21:39 report file created.
+- 21:39 lock .llm/desktop-lock taken (directory did not exist); owner.txt: "wf_f773f9cedc7b4708 desktop-check (glm-context-window L4)". Rewritten 21:48.
+- 21:39 process check before start: no desktop GUI instance. Three DeepSeek Harness.exe processes (78176, 20288, 20360, later 44616, 75032, 65676 ...) are headless probe runs: command line `bin.js --profile probe-full --patch <.worktrees/m3/.llm/probe-runs/2026-11-05T13-36-22-052Z/...>`, parent node.exe 58592 `scripts/probe/run-probe.mjs` (holder of .llm/probe-lock-2: "m7-e8 FEAT-005 dry run 2"). They do not use the desktop userData. restart.ps1's CloseMainWindow/Stop-Process part would hit them, so only the Start-Process part is used; no process is stopped.
+- 21:39 port 9333: no answer. userData `%APPDATA%\@deepseek-ai\dsh-desktop`: no lockfile; DevToolsActivePort dated 15:41 (left by the exited instance 72104). Crash logs in userData\logs: newest 2026-11-03T16-46-59 (none from today).
+- Human profile `~/.dsh/profiles/desktop` (read only): cordis.patch.yml SHA256 610FB115...58FF, package.json SHA256 CF7D775A...CC85 (taken before start). agent-default-model: provider glm-zcode, model glm-5.3-flash, reasoningEffort max. Row `glm-hourness/glm-llm` has `disabled: false` and no config (so contextWindow is the default). Bundles dsh-glm-zcode and dsh-hourness are junctions to the main checkout `packages/glm` and `packages/hourness`.
+
+### Build loaded by the human's desktop (orchestrator note 21:47)
+
+- Main checkout HEAD at 21:49: 7d9355e (origin/main, github/main); contains cf0ed57 (m6-metrics-events) and c452b17 (glm-context-window).
+- Main checkout `packages/glm/dist/build-info.json` and `packages/hourness/dist/build-info.json`: `{"version":"0.3.1","commit":"3a835b7","dirty":true}`, written 2026-11-05 15:40:33. 3a835b7 (15:38, "graph: lessons-4 review approved") does not contain c452b17 or cf0ed57.
+- The main checkout dist has no contextWindow config: `packages/glm/dist/glm-llm/zcode.js:350` is the literal `context: { contextWindow: 512_000 }`; `dist/glm-llm/index.js` has no `contextWindowOf`. The source `src/glm-llm/index.ts` at HEAD does have it.
+- Consequence: the human's desktop loads a build that does not match main HEAD and does not contain the change under test. Per the orchestrator note, the main checkout is not rebuilt. Check A on the human's profile can show only that the rows of build 3a835b7 load; it cannot show the glm-context-window or m6-metrics-events code loading.
+- A clean build of c452b17 exists in worktree `.worktrees/m4-checks-loop-details` (`dist/build-info.json` commit c452b17, dirty false, 20:26:45). No worktree has a dist of cf0ed57 or 7d9355e.
+
+### Desktop start
+
+- 21:52:26 started `DeepSeek Harness.exe --remote-debugging-port=9333` (Start-Process part of restart.ps1 only; stdout/stderr to this task directory). Main process 80892 (window title "DeepSeek Harness"), children gpu 73060, network 43540, renderer 40244, host 82600, all with the default user-data-dir `%APPDATA%\@deepseek-ai/dsh-desktop`. 9333 `/json/version`: `@deepseek-ai/dsh-desktop/0.2.1-rc.3`, Electron 44.7.0. No new crash log in userData\logs after start.
+- Lock refresher (background, rewrites owner.txt every 5 min after checking the first line is still this owner) started 21:54.
+
+### Orchestrator decision 21:5x: rebuild main checkout dist, then Check A
+
+- Before this step the main checkout dist was 3a835b7 (dirty build, 15:40:33): landings after 3a835b7 (among them c452b17 glm-context-window and cf0ed57 m6-metrics-events) were not installed on the human's desktop.
+- Pre-build git state: `git status --porcelain --untracked-files=no` empty (no tracked changes); untracked task directories and `.llm-merge2-*.log` from other steps exist and are left alone. After `git fetch origin main`: HEAD = origin/main = b923210 ("graph: main checkout dist stale at 3a835b7, landing steps rebuild it before desktop restart"); no pull needed.
+- The desktop-close investigation report (.agents/tasks/desktop-close-2026-11-05/report.md) has no conclusion yet (only Q1, shell and install location).
+- Build in main checkout (after the desktop exited; no non-worktree DSH process running): `npm run build`, exit 0. `packages/glm/dist/build-info.json` and `packages/hourness/dist/build-info.json`: `{"version":"0.3.1","commit":"b923210","dirty":true}` = main HEAD b923210. `dirty: true` comes from `scripts/build-info.mjs:24` using `git status --porcelain` including untracked files (the untracked task directories and `.llm-merge2-*.log`); `git status --porcelain --untracked-files=no` is empty before and after the build, so no tracked file changed. The new dist has `contextWindowOf` (`dist/glm-llm/index.js:74`) and `zcode.js:366` `context: { contextWindow: this.contextWindow() }`.
+- 21:58:14 Browser.close sent over 9333 to the browser target (`browser-close.mjs`); the socket closed with code 1006 right after (no reply message). 21:58:51 port 9333 no answer, no `lockfile` in userData. 21:59:25 no non-probe `DeepSeek Harness.exe` process remains (80892 and its children gone). No kill used. This instance had been started by this step at 21:52:26 and ran about 6 minutes.
+- 22:00:51 started the desktop again on 9333 (main 46188, gpu 59944, network 13900, renderer 57340, host 33632; default userData), on build b923210. stdout (`dsh-out-2.txt`, local web URL masked here): updater "Found version 0.2.2-rc.1" (not installed; exe FileVersion still 0.2.1-rc.3), `[llm-deepseek-account] model listing ... loaded 2 model(s)`. No new crash log. First DOM read 22:02 (`a-overview.out.json`): page visible and focused, 1280x822; composer model button "GLM-5.3-Flash Max"; context button "上下文已用 5%" whose popover reads "~26.5K / 512K". The page showed the existing session "未命名" in workspace glmh-l4-ws (session-1e8476c6, left by the loops L4); nothing was typed.
+- 22:07:56 port 9333 refused connections; 46188 and its children were gone, no `lockfile`, no new crash log. The orchestrator relayed at 22:1x that the human closed the desktop by hand. This step sent no Browser.close to 46188.
+- 22:08:45 state: HEAD = origin/main = b923210, `git status --untracked-files=no` empty, dist build-info b923210. No rebuild: the dist built at 22:00 is already main HEAD.
+- 22:10 the orchestrator's graph commit was in progress in the main checkout (tracked `docs/graph/*` modified, then committed as b0c1df4 at 22:11:37, pushed). `git diff --stat b923210 b0c1df4`: 4 files, all under `docs/graph/`. So the dist built from b923210 has the same code as main HEAD b0c1df4; not rebuilt again (a rebuild cleans `dist/` under a running desktop).
+- 22:11:14 started the human's desktop on 9333 (Start-Process part of restart.ps1; no `lockfile` before start): main 39012, gpu 52280, network 76320, renderer 67180, host 14640, default userData. `/json/version`: dsh-desktop 0.2.1-rc.3, Electron 44.7.0. stdout `dsh-out-3.txt` (updater found 0.2.2-rc.1, not installed; deepseek-account model listing loaded 2). stderr only the "DevTools listening" line. No new crash log (newest still crash-2026-11-03T16-46-59-757Z-host.log).
+- Lock owner.txt rewritten by the refresher at 21:54, 21:59, 22:04, 22:09 (first line checked each time).
+
+### Check A evidence (instance 39012, build b923210 = code of main HEAD b0c1df4)
+
+- CDP driver: `cdp.mjs` in this directory (copy of `.llm/l4-batch-2026-11-05/cdp.mjs`: Runtime.evaluate, Input.dispatchMouseEvent on element centres, guarded insertText; console and exceptions recorded to `cdp-log.jsonl`). Known host noise filtered as before: `ws://127.0.0.1:9230/ingest` (inspector) and `dsh-app://app/plugins/events` ERR_FAILED.
+- 22:2x screenshot `shots/a-01-start.png` (1920x1233, taken while the window had focus): the page opened on session "未命名" (session-1e8476c6, workspace glmh-l4-ws, loops L4 leftover), composer model "GLM-5.3-Flash Max", right sidebar 项目图 tab with the onboarding page, footer 规则板/循环板/经验/指标/上手说明/整张图. Later screenshots timed out (window not in front; known host fact, FACTS.md §3); remaining evidence is DOM text.
+- Plugins page (clicked 插件 in the sidebar, then the card):
+  - GLM ZCode 通道 v0.3.1 (dsh-glm-zcode): "共 5 个 · 5 运行中": glm-hourness/glm-llm 运行中, glm-login 运行中, glm-prompt 运行中, glm-compact 运行中, glm-ui 运行中. 代码来源 `link:C:\Users\29596\Desktop\Project\GLM-Hourness\packages\glm`, 当前版本 0.3.1.
+  - Hourness 编排层 v0.3.1 (dsh-hourness): "共 15 个 · 13 运行中 · 2 已停用": data, guard, memory, workflow, hourness, graph, graph-panel, rules, design, loops, metrics, env, ui 运行中; lessons and transcript 已关闭 (factory `disabled: true`, same as the 15:41 batch L4). 代码来源 `link:...\packages\hourness`.
+- Console over CDP from 22:12 to 22:2x (accumulated across driver runs, 156 entries at the last read): all entries are the two known host items; 0 other errors, 0 exceptions, 0 entries naming dsh-glm-zcode / dsh-hourness / glm-hourness.
+- Temp session for the row-health read: 22:31:23 clicked 新会话 (aria-label 新建会话) with workspace glmh-l4-ws selected; new session `session-7d761363-5ed0-4e51-a52a-6d1e1d1114c8` (directory created 22:31:23 under `~/.dsh/sessions/--C-Users-29596-AppData-Local-Temp-glmh-l4-ws--`). Guard checked session id and workspace label glmh-l4-ws before typing. Typed only `/glm-status` + Enter (22:32:44). No model turn was run.
+- `/glm-status` output (session log, `cmds.mjs`; key prefix and account masked): 已登录（套餐 coding-plan）; 高峰 not now; quota read at 22:32. Row health, all rows of both packages present, none failed:
+  - dsh-glm-zcode glm-llm 已加载，本会话未触发: "已注册路由 glm-zcode（套餐 coding-plan，凭证目录 C:\Users\29596\.dsh\glm-hourness，上下文窗口 512000）". The "上下文窗口 512000" clause is new in c452b17 (`src/glm-llm/index.ts:74`); the 3a835b7 build's reason ended after the credential directory (seen in the older `/hourness-status` output in session-1e8476c6 on the 22:02 overview). So the loaded glm-llm row is the glm-context-window code, row `active` (not degraded) with the default 512000 because the human's profile gives the row no config.
+  - glm-login 生效 (now also "额度：读于 22:32"), glm-prompt / glm-compact 已加载.
+  - dsh-hourness: data 部分生效 (project dir not configured, as before), guard / memory / workflow / hourness / graph (15 tools) / design 已加载, graph-panel / rules / loops / env 生效, metrics 部分生效 ("今天 4 条；上次自查有发现：4 个进程没有正常退出"; inferred, not traced in the self-check code: these are the four earlier writers in today's journal, abecceed, aa32971e, 8d68bf1e (host of 80892, closed by Browser.close) and f68b3f3f (host of 46188, closed by the human)), lessons / transcript 未加载 (factory-disabled).
+- Context window seen by DSH: the composer's context popover on the 22:00 instance (same b923210 dist) read "~26.5K / 512K".
+- m6-metrics-events (cf0ed57) on this build: the temp project's journal `C:\Users\29596\AppData\Local\Temp\glmh-l4-ws\.llm\metrics\events-2026-11-05.jsonl` (`a-metrics.mjs`, read only):
+  - `start` lines carry the writer's build: 13:52:30Z writer 8d68bf1e pid 82600 `v=0.3.1+3a835b7.dirty` (the 21:52 instance before the rebuild); 14:00:56Z writer f68b3f3f pid 33632 `v=0.3.1+b923210.dirty`; 14:11:18Z writer 4dad1d7a pid 14640 (host of 39012) `v=0.3.1+b923210.dirty`.
+  - 14:32:45.453Z `by=glm k=glm.quota-read` writer 4dad1d7a, body `{"ok":true,"ms":555,"by":"command","windows":{"five-hour":6,"weekly":35},"dropped":0}`, between the `command` start/end lines of the `/glm-status` run. `glm.quota-read` is one of the four GLM kinds added by 133a876 (`src/shared/metrics.ts:248`); no earlier line in this file has `by=glm`. The other three kinds (`glm.upstream-limit`, `glm.login-rejected`, `glm.peak-reminder`) need a rate limit, a rejected login or a peak start and were not triggered.
+- Check A result: on the human's desktop, build b923210 (code = main HEAD b0c1df4, contains c452b17 and cf0ed57) loads both bundles with every enabled row running, no row failed, no console error or exception from our packages, no new crash log; glm-llm reports context window 512000 and DSH shows 512K; the metrics journal gets a `glm.quota-read` event from the new code.
+
+### Check B, first attempt (isolated instance, 9339)
+
+- Scripts in `.llm/glm-cw-l4/` (ignored by `.gitignore` `.llm/`): `launch.ps1` (own `--user-data-dir`, own `DSH_HOME`, CDP 9339, marker `--glm-hourness-cw-l4`; restores the caller's `DSH_HOME` after start; stops nothing) and `close.mjs` (Browser.close on 9339 only, refuses unless exactly one marked main process).
+- 23:06:50 started. Main 61320 with gpu, network, two renderers and host 42532, all carrying the isolated user-data-dir. 9339 `/json/version`: dsh-desktop 0.2.1-rc.3, Electron 44.7.0. The new DSH home got a fresh desktop profile (bundles `@deepseek-ai/dsh-base`, `@deepseek-ai/dsh-web-app` only, empty `cordis.patch.yml`), one workspace `default-workspace` (the shared path `~\Documents\deepseek-harness\default-workspace`, folder not written since 2026-10-26) and one blank session `session-6b594ac9-…` (349 bytes, 23:06:50). Our bundles were not installed yet.
+- 23:11:24 before any close or install: no process carries the marker or the directory, 9339 does not answer, no `lockfile` in the isolated user-data-dir. The last writes in that user-data-dir are 23:10:24–23:10:25 (`Session Storage`, `Network`, `DIPS`). stdout: updater found 0.2.2-rc.1 (fresh staging id), nothing else; stderr only the DevTools line (no `desktop quit: task inspection unavailable`); no crash log in the isolated user-data-dir or DSH home. This step sent nothing to 9339 and stopped no process. Cause not found; one possibility (not verified) is that the window that opened on the human's screen was closed by hand.
+- Nothing changed in the human's profile: `cordis.patch.yml` 610FB115…, `package.json` CF7D775A… (23:13), same as before start.
+
+### State at 23:25 (orchestrator note 23:2x: "the human's desktop is closed now; rebuild at main HEAD and start it")
+
+- The human's desktop is not exited: main 39012 (started by this step 22:11:14) and its gpu, network, renderer and host 14640 are running; `%APPDATA%\@deepseek-ai\dsh-desktop\lockfile` exists; 9333 answers with page `dsh-app://app/`. Its top-level windows (EnumWindows, read only): `Chrome_WidgetWin_1` "DeepSeek Harness" `visible=False`, plus IME helpers; no `#32770` window. Reading (inferred): the window was closed with ×, which the shell turns into hide-to-tray (report Q2, "排除掉的" first item); the app keeps running.
+- main HEAD is 61adacb. `git diff --stat b923210 61adacb` outside `docs/graph` is empty, so the dist on disk (build-info b923210) already is main HEAD's code. A rebuild would change nothing and would clean `dist/` under the running host 14640.
+- Not done: no rebuild, no Browser.close to 9333, no new start. The last input to 9333 was `/glm-status` (a command that answers, not an injection) in session-7d761363.
+
+### Orchestrator decision 23:2x: option 1
+
+- 39012 stays as the human's desktop on 9333; no close, no rebuild, no restart. Check A stands as passed on 39012 with build-info b923210, which contains c452b17 (glm-context-window) and cf0ed57 (m6-metrics-events) (`git merge-base --is-ancestor`, both exit 0), so it covers both.
+- The human allowed free use of the desktop (2026-11-05, "你以后随便用就行了，只要不抢我鼠标无所谓的"). Check B retried once on 9339; if the isolated instance disappears again without a close from this step, Check B is not done, cause unknown, no third attempt.
+
+### Check B, second attempt (isolated instance, 9339)
+
+- Preparation while no marked process ran (checked: 0 processes, no `lockfile` in the isolated user-data-dir):
+  - `seed-workspace.mjs`: added a temp workspace `glm-cw-l4-ws` (`%TEMP%\glm-cw-l4-ws`, empty) to the isolated `storages/workspace.json` and made it the default (backup `workspace.json.bak-1793893967671`), so isolated sessions do not run in the shared `~\Documents\deepseek-harness\default-workspace`.
+  - `install-bundles.mjs`: only `dsh-glm-zcode` (Check B is about glm-llm; leaving the orchestration layer out keeps loops/design injections out of the isolated sessions). Desktop CLI `plugin --profile desktop install --no-frozen-lockfile` with `DSH_HOME` = isolated home: exit 0, no rejection, no warning (`install-1793893967733.txt`); junction `node_modules/dsh-glm-zcode` → main checkout `packages/glm`, target verified. `packages/glm` listing unchanged before and after (no `node_modules` written into the checkout).
+  - Isolated `cordis.patch.yml` (backup `.bak-1793894005044`): `agent-default-model` glm-zcode / glm-5.3-flash / high, and `glm-hourness/glm-llm` `disabled: false` with `config.contextWindow: 200000` (a legal value in 128000..1000000). The isolated DSH home has no GLM login, so no model request could be sent.
+- 23:55:23 started (run 2): main 66264 with gpu 18124, network 18020, renderers 43388 / 83704 and host 76120, all marked. stderr: the DevTools line for 9339 only. stdout: updater found 0.2.2-rc.1 (same staging id as run 1), `dsh web` line, nothing else.
+- About 23:56 the first CDP call to 9339 got ECONNREFUSED; no marked process remained, no `lockfile`. Last writes in the isolated user-data-dir 23:55:42.6–23:55:42.7 (GPU/shader caches, `Network/Cookies`), about 19 s after start. In the isolated DSH home the host wrote `cordis.yml` 23:55:19.763 and the blank session `session-6b594ac9-…` got one more event `session/end-seed` at 23:55:23.066; no row-health or command record, no crash log in either directory, no `background-close-confirmed` marker in the isolated user-data-dir. Windows Application log: no DeepSeek Harness entry since 23:00. This step sent nothing to 9339 (not even a DOM read) and stopped no process.
+- Result: the isolated instance exited by itself about 20 s after start, before any check. As agreed, Check B stops here: **not done, cause unknown**. Run 1 (23:06:50 → gone by 23:11:24) and run 2 (23:55:23 → gone about 23:55:43) have the same signature: no crash log, no quit line on stderr, no close from this step. Not verified: whether the window was closed by hand, or the shell exits on its own with a fresh `--user-data-dir` on this machine (the panel-2 and m5r-l4 isolated instances on 2026-11-04/05 stayed up, so it is not a general property).
+- What stays pinned only at L2 / L3: a legal `contextWindow` changing the declared value, and an out-of-range value degrading the row to 512000 with the reason in row health (`tests/` for glm-llm and the probe; review.md "不挡路的记录" first item).
+
+### Close-out
+
+- Isolated instance: no process with the marker at 23:59:00; 9339 does not answer. No Browser.close was needed (nothing to close), so no quit-dialog check arose.
+- Cleanup: the isolated profile's junction to `packages/glm` removed (unlinked, target untouched; `packages/glm/dist/glm-llm/index.js` still present). Empty temp workspace folder `%TEMP%\glm-cw-l4-ws` removed. The isolated `user-data-dir` and `dsh-home` stay under `.llm/glm-cw-l4/` (ignored by `.gitignore`).
+- Human's desktop: 39012 and host 14640 still running at 23:59 on build b923210, window hidden to tray; not touched after Check A. Human profile unchanged: `cordis.patch.yml` 610FB115…, `package.json` CF7D775A… (23:52 and 23:59). No new crash log in the human's userData (newest still 2026-11-03).
+- Main checkout: `git status --porcelain --untracked-files=no` empty; no rebuild after 22:00.
+- Lock: refresher stopped 23:59:03 (last rewrite 23:54:14); `.llm/desktop-lock` deleted 23:59:19 (owner line was this step's).
+
+
+### Orchestrator note 23:59 (crossed with the second attempt)
+
+- The note asked to retake the lock and retry Check B now. It crossed with this step's work: the second attempt had already run at 23:55:23 (bundles installed into the isolated DSH home, legal `contextWindow: 200000`) and the instance vanished about 20 s later without a close from this step; the lock was released 23:59:19. Under the rule in the same note ("disappears again ... do not retry a third time, and finish") no third attempt was made and the lock was not retaken.
+- Window state of the isolated instance: not seen in run 2. The first CDP call (about 23:56) already found no marked process, so no top-level window could be listed; in run 1 the processes were also gone before the first look (23:11:24).
+- 00:01:54 state: no marked process, 9339 does not answer. Human's desktop 39012: top-level window `Chrome_WidgetWin_1` "DeepSeek Harness" `visible=False` plus IME helpers, no `#32770` window (EnumWindows, read only); left running.
+- Graph: not written by this step; the result (Check A passed on b923210 covering c452b17 and cf0ed57; Check B not done, cause unknown) is for the orchestrator to record on `glm-context-window`.

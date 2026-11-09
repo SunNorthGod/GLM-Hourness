@@ -484,6 +484,7 @@ async function savedState(world: World, ready: (state: SavedState) => boolean): 
     await new Promise(resolve => setTimeout(resolve, 20))
   }
 }
+
 /** Hand the restart event over, wait out the debounce, and wait for the run to reach `outcome`. */
 async function emitAndSettle(world: World, entry: string, outcome: string, ms = 31_000): Promise<void> {
   await emitRestart(world)

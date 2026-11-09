@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   latestDispatch,
+  lostChildOf,
   makeChildId,
   nextAttempt,
   parseChildId,
   parseDispatchComment,
   renderDispatchComment,
+  renderLostComment,
   runningGlm,
   runningOn,
   runningWorkers,
@@ -74,7 +76,24 @@ test('the dispatch comment: one line of facts, then the pins line; it reads back
     '第 2 次派发 · hz-task-12-a2-k3x9ab · 基线 main@abc1234 · 模型 example/example-model-large high，理由：one directory with a check · 审查：轻审，理由：adds one file · 简报 3fa91c0b2d44',
     'pins: task-12@111111111111 goal-1@222222222222',
   ].join('\n'))
-  assert.deepEqual(parseDispatchComment(text), { attempt: 2, childId: 'hz-task-12-a2-k3x9ab', pins: 'pins: task-12@111111111111 goal-1@222222222222' })
+  // The reconcile rebuilds a lost dispatch from these parts (§3.9.6 step 3).
+  assert.deepEqual(parseDispatchComment(text), {
+    attempt: 2,
+    childId: 'hz-task-12-a2-k3x9ab',
+    pins: 'pins: task-12@111111111111 goal-1@222222222222',
+    base: { branch: 'main', sha: 'abc1234' },
+    provider: 'example',
+    model: 'example-model-large',
+    reasoningEffort: 'high',
+    why: 'one directory with a check',
+    review: 'light',
+  })
+})
+
+test('the lost comment names the attempt and the child id, and reads back', () => {
+  assert.equal(renderLostComment(3, 'hz-task-1-a3-abcdef'), '第 3 次在宿主重启时丢失 · hz-task-1-a3-abcdef')
+  assert.equal(lostChildOf(renderLostComment(3, 'hz-task-1-a3-abcdef')), 'hz-task-1-a3-abcdef')
+  assert.equal(lostChildOf('第 3 次结束：error · hz-task-1-a3-abcdef'), undefined)
 })
 
 test('the dispatch comment: optional parts leave out their words, and a note is appended', () => {
@@ -100,7 +119,7 @@ test('nextAttempt and latestDispatch count only the harness\'s own dispatch comm
   assert.equal(latestDispatch(fresh), undefined)
   const dispatched = node({ id: 't', type: 'task' }, 0, 'llm', [comment(1, first), comment(2, '审查第 1 轮：挡路 1'), comment(3, second)])
   assert.equal(nextAttempt(dispatched), 3)
-  assert.deepEqual(latestDispatch(dispatched), { attempt: 2, childId: 'hz-t-a2-000001', pins: 'pins: t@111111111111' })
+  assert.deepEqual(latestDispatch(dispatched), { attempt: 2, childId: 'hz-t-a2-000001', pins: 'pins: t@111111111111', provider: 'p', model: 'm', why: 'w' })
   // A model that writes a comment shaped like a dispatch comment does not count.
   const forged = node({ id: 't', type: 'task' }, 0, 'llm', [comment(1, first, 'llm')])
   assert.equal(nextAttempt(forged), 1)

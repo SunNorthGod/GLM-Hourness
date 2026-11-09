@@ -7,6 +7,12 @@
   "parent": "orch",
   "verification": "unverified",
   "body": "人 2026-10-31：「你把能派的活都派出去，需要我审查的给我」「现在不用省积分了，能开工的都开开」。取代 d-dogfood-scope 里「自举之前只做 M3 与 M7 骨架（加规则板最小一片）」的限制：凡是已放行、依赖已在主干的步骤都开工；被未完成模块挡着的步骤列出来等。编排方据此在 2026-10-31 派出 impl-rules-loops-boards（wf_e3f665460875b14b，规则板 0.10 余下部分与循环板 0.6，先由规划步分出能开工与被挡的步骤）与 design-decisions-apply-1031（wf_8180e53b6019bc5a，把本日两条人定的决定落进未放行的设计、修完接管 0.5、按新格式重写一页稿、改宪章）。d-subagent-sonnet 照旧。",
+  "edges": [
+    {
+      "type": "supersedes",
+      "to": "d-dogfood-scope"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-31T05:20:25.139Z",
@@ -27,6 +33,17 @@
           "from": null,
           "to": "已放行、前面的活已在主干的设计都开工，不再只做最小骨架，整体做得更快"
         }
+      }
+    },
+    {
+      "at": "2026-11-06T18:24:39.693Z",
+      "actor": "llm",
+      "op": "supersede",
+      "reason": "d-dogfood-scope 的限制（自举之前只做 M3 与 M7 骨架）在 2026-10-31T05:20 的批注里已写明被 d-build-all-released 取代，当时没有连线；按 d-no-run-cap 取代 d-five-runs 的写法补一条 supersedes。d-build-all-released 是人 2026-10-31 定的：能开工的都开工，不再只做自举骨架。",
+      "relay": "你把能派的活都派出去，需要我审查的给我；现在不用省积分了，能开工的都开开",
+      "edge": {
+        "type": "supersedes",
+        "to": "d-dogfood-scope"
       }
     }
   ]

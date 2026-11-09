@@ -113,6 +113,20 @@ export async function withRow(body: (row: Row) => Promise<void> | void, options:
   await runRow(runtime, row, dispose, root, body)
 }
 
+/** Register a tool of the host that answers each call with what `produce` returns; an Error it returns is thrown by the call. */
+export function fakeTool(row: Row, name: string, produce: () => unknown = () => ({ ok: true })): void {
+  row.runtime.ctx.tools.register({
+    name,
+    description: `fake ${name}`,
+    parameters: { type: 'object', properties: {} },
+    output: { schema: { type: 'object' }, render: () => [{ type: 'text', text: 'output' }] },
+    execute: () => {
+      const outcome = produce()
+      return outcome instanceof Error ? Promise.reject(outcome) : Promise.resolve(outcome)
+    },
+  })
+}
+
 export const rowHealth = (row: Row, sessionId?: string) => healthOf(row.runtime, 'lessons', sessionId)
 export const kinds = (notices: readonly UserNotice[]): string[] => notices.map(notice => notice.source.kind)
 export const proposeFrom = (row: Row, session: string, candidate: object = CANDIDATE) => row.service.propose(candidate as never, { session: { id: session, header: { id: session }, deriveMessages: () => [] }, task: 'task-3' })

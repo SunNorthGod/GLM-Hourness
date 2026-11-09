@@ -9,6 +9,7 @@
  * does.
  */
 import type { GraphNode } from '../graph/schema.ts'
+import type { PlanStatus } from './attempts.ts'
 import { digest12 } from './digest.ts'
 import { isScopePath, within } from './scope.ts'
 
@@ -179,6 +180,22 @@ export function approvePlanSection(body: string | undefined): string | undefined
   return lines.join('\n')
 }
 
+/**
+ * The union of the paths a rendered plan section's step lines carry, in
+ * first-seen order (§3.3.4): what the write gate reads from the register
+ * while the dispatch carries the approved plan (§3.2.1's `within` judges the
+ * paths against it). A step with no paths contributes none.
+ */
+export function planPathsOfSection(steps: string): readonly string[] {
+  const seen = new Set<string>()
+  for (const line of steps.split(/\r?\n/)) {
+    const match = /^\s*路径：(.+?)(?: · 验证：|$)/.exec(line)
+    if (match === null || match[1] === '无') continue
+    for (const path of match[1].split('、')) if (path !== '') seen.add(path)
+  }
+  return [...seen]
+}
+
 const APPROVAL_PATTERN = /^计划第 (\d+) 版已批 · 摘要 ([0-9a-f]{12}) · (\S+) · (\S+)$/
 
 /** The comment written on the task when the main agent approves a plan version. */
@@ -213,4 +230,10 @@ export function carriedPlan(task: GraphNode): PlanApproval | undefined {
   }).at(-1)
   const section = readPlanSection(task.body)
   return approval !== undefined && section !== undefined && section.state === 'approved' && section.digest === approval.digest ? approval : undefined
+}
+
+/** The `plan` word of a dispatch's summary (§3.1.1): an approved plan carried over, a `quick` dispatch without one, else a plan is required. */
+export function planStatusOf(task: GraphNode, quick: boolean | undefined): PlanStatus {
+  if (carriedPlan(task) !== undefined) return 'approved'
+  return quick === true ? 'skipped' : 'required'
 }

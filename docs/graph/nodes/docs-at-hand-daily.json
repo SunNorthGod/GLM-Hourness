@@ -1,0 +1,36 @@
+{
+  "id": "docs-at-hand-daily",
+  "type": "task",
+  "title": "每日漏提交漏推送提醒（循环板默认条目）",
+  "why": "改完忘提交、忘推送的东西，每天傍晚由主 Agent 查一遍告诉你",
+  "status": "approved",
+  "parent": "docs-at-hand",
+  "kind": "implement",
+  "acceptance": [
+    "循环行带一项 daily 18:05 的默认条目 loops.unsynced-daily，tell-main、wake，文字只读并写明不提交不推送，干净不出声",
+    "不新增事件、不新增扫描代码；L2 通过",
+    "桌面版到点叫醒空闲的主 Agent 待 L4"
+  ],
+  "writeScope": [
+    "src/loops/defaults.ts",
+    "tests/loops-registry.spec.ts",
+    "tests/loops-bind.spec.ts",
+    "tests/loops-row.spec.ts"
+  ],
+  "edges": [
+    {
+      "type": "source",
+      "to": "docs-at-hand"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-06T19:09:01.903Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "设计 0.3 第四件：每日 18:05 的默认时间条目，叫主 Agent 只读地查没提交没推送的改动",
+      "relay": "你自己把握好这个度吧反正，尽量融合进我们的流程内而不是加越来越多的东西",
+      "to": "approved"
+    }
+  ]
+}

@@ -75,6 +75,7 @@ import { dialectNames, dialectService, dialectWarner, type DialectProblem } from
 import { LOOPS_DECLARATION } from '../loops/service.ts'
 import { HABIT_ASK_FIRST, HABIT_RULE_DECLARATION } from '../memory/habit-rule.ts'
 import { rulesService } from '../rules/service.ts'
+import { executeService } from '../shared/execute-service.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
 import { assemblyRoute, sessionRoute } from '../shared/route.ts'
@@ -116,7 +117,7 @@ export interface GuardConfig {
  * where every fact is unknown and the fact-needing rules would pass — the
  * ids are what those callers read.
  */
-export function activeRules(config: GuardConfig & { workspaceRoots: readonly string[] | undefined, base?: string | undefined }, per?: { readonly context?: RuleContext, readonly ref?: string, readonly cwd?: string | undefined, readonly ask?: { readonly exception: string, readonly ref: string } }): readonly GuardRule[] {
+export function activeRules(config: GuardConfig & { workspaceRoots: readonly string[] | undefined, base?: string | undefined }, per?: { readonly context?: RuleContext, readonly ref?: string, readonly cwd?: string | undefined, readonly ask?: { readonly exception: string, readonly ref: string }, readonly approvedScope?: boolean }): readonly GuardRule[] {
   const context = per?.context ?? {}
   const ref = per?.ref ?? ''
   return [
@@ -125,7 +126,7 @@ export function activeRules(config: GuardConfig & { workspaceRoots: readonly str
     fileToolsOnly,
     suppressionOnly(context),
     checkerConfigOnly(context, ref),
-    scratchOnly(config.workspaceRoots ?? [], context, ref),
+    scratchOnly(config.workspaceRoots ?? [], context, ref, per?.approvedScope === true),
     liftFilesOnly(per?.cwd),
     ...(config.rules ?? []),
   ]
@@ -149,6 +150,16 @@ function absoluteTargetOf(call: ToolCall, base: string | undefined, roots: reado
   if (isAbsolute(target)) return target
   const from = base ?? roots?.[0]
   return from === undefined ? undefined : resolve(from, target)
+}
+
+/** Whether the execute row says the agent is a registered worker with an approved plan writing `target` inside its scope; false without the row or when the service throws. */
+function approvedWorkerScope(ctx: ServiceLookup, agentId: string, target: string): boolean {
+  try {
+    return executeService(ctx)?.inApprovedScope(agentId, target) === true
+  }
+  catch {
+    return false
+  }
 }
 
 /** Containment roots for one agent: config wins, else the agent's session directory. */
@@ -427,8 +438,11 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
       const target = absoluteTargetOf(call, base, roots)
       const context = await prepareContext(target, cwd)
       const via = viaOf(payload.agent)
+      // scratch-only's one exemption (M7 design 0.6 §3.2.1): the execute row vouches for a registered worker's planned file.
+      const agentId = payload.agent?.id
+      const approvedScope = agentId !== undefined && target !== undefined && approvedWorkerScope(ctx, agentId, target)
       return {
-        rules: activeRules({ ...config, workspaceRoots: roots, base }, { context, ref, cwd, ask: { exception: exceptionOf(via, ref), ref } }),
+        rules: activeRules({ ...config, workspaceRoots: roots, base }, { context, ref, cwd, ask: { exception: exceptionOf(via, ref), ref }, approvedScope }),
         face: names ?? NATIVE_FACE,
         origin: originOf(names !== undefined, route),
       }

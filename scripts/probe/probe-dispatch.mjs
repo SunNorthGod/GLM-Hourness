@@ -42,6 +42,19 @@
  * (e) `probe_propose` hands a candidate lesson to the lessons service the way
  *     the dispatch of work does when a worker's handback carries one (M5
  *     design §8.1), so the lessons scenarios see `propose` on the real runtime.
+ * (f) `probe_wait_goal` keeps the headless root inside one call while the
+ *     other root session of its working directory runs its goal (M7 E8,
+ *     glm-exec-drive): for each step it waits until that session is idle with
+ *     its goal in the named phase (and blocked code), optionally waits longer,
+ *     and then sends it the person's words. With `config.watch` (a session id
+ *     prefix) every goal change of a matching session is recorded with its
+ *     objective and blocked reason.
+ * (g) `probe_human_write` applies one graph mutation as the person (actor
+ *     human) to the session's project graph, the way the person's own write
+ *     lands (M7 E8, glm-exec-modules: releases and returns of the design).
+ * (h) With `config.breakReaders`, the execution layer's module reader
+ *     `MODULE_READERS.moduleOf` throws for the life of the row, the way a
+ *     changed export would (M7 design §6.6 (g), R5-F3).
  *
  * Every observation is one JSON line in `config.record`.
  */
@@ -49,6 +62,8 @@ import { appendFileSync, existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { createUserNotice } from '../../packages/hourness/dist/shared/dsh-min.js'
+import { openEngine } from '../../packages/hourness/dist/graph/engine.js'
+import { MODULE_READERS } from '../../packages/hourness/dist/graph/execute-stage.js'
 
 export const name = 'glm-hourness-probe/dispatch'
 export const inject = ['subagents', 'goals', 'agents', 'tools']
@@ -88,6 +103,9 @@ const within = (root, target) => {
 const goalView = goal => goal === undefined
   ? null
   : { id: goal.id, revision: goal.revision, phase: goal.phase, roundsStarted: goal.roundsStarted, maxGoalRounds: goal.maxGoalRounds, activation: goal.activation }
+
+/** The goal view of a watched session, with what the checks of the drive read: the objective and the blocked reason. */
+const watchView = goal => goal === undefined ? null : { ...goalView(goal), objective: goal.objective, blockedReason: goal.blockedReason ?? null }
 
 const textOf = value => ({ type: 'text', text: JSON.stringify(value) })
 
@@ -302,8 +320,74 @@ export function apply(ctx, config = {}) {
     },
   }))
 
+  disposers.push(ctx.tools.register({
+    name: 'probe_wait_goal',
+    description: 'Probe only: watch the other root session of this working directory; for each step wait until it is idle with its goal in `phase` (and blocked with `code` when given), wait `holdMs` more, then send it `say` as the person.',
+    parameters: {
+      type: 'object',
+      properties: {
+        steps: { type: 'array', items: { type: 'object' } },
+        timeoutMs: { type: 'number' },
+      },
+      required: ['steps'],
+    },
+    output: JSON_OUTPUT,
+    async execute(args, exec) {
+      const root = callerOf(exec, 'probe_wait_goal')
+      const cwd = root.session.header.cwd
+      const target = ctx.agents.roots().find(agent => agent !== root && agent.session?.header?.cwd === cwd)
+      if (target === undefined) throw new Error('probe_wait_goal: no other root session in this working directory')
+      const deadline = Date.now() + (args.timeoutMs ?? 120_000)
+      const reached = []
+      for (const step of args.steps) {
+        const matches = () => {
+          const goal = ctx.goals.get(target)
+          return target.status === 'idle' && goal?.phase === step.phase && (step.code === undefined || goal.blockedReason?.code === step.code)
+        }
+        const ok = await until(matches, Math.max(0, deadline - Date.now()), exec.signal)
+        note({ kind: 'wait-goal', agentId: target.id, phase: step.phase, code: step.code ?? null, ok, goal: watchView(ctx.goals.get(target)) })
+        reached.push({ phase: step.phase, ok })
+        if (!ok) break
+        if (typeof step.holdMs === 'number') {
+          await new Promise(resolveWait => setTimeout(resolveWait, step.holdMs))
+          note({ kind: 'wait-goal-held', agentId: target.id, phase: step.phase, status: target.status, goal: watchView(ctx.goals.get(target)) })
+        }
+        if (typeof step.say === 'string') target.followup({ id: randomUUID(), role: 'user', content: [{ type: 'text', text: step.say }], source: { kind: 'user' } })
+      }
+      return { agentId: target.id, reached }
+    },
+  }))
+
+  disposers.push(ctx.tools.register({
+    name: 'probe_human_write',
+    description: 'Probe only: apply graph mutation `mutation` as the person to the project graph of this session (docs/graph under its working directory); an edit or status mutation gets the node\'s current revision.',
+    parameters: {
+      type: 'object',
+      properties: { mutation: { type: 'object' } },
+      required: ['mutation'],
+    },
+    output: JSON_OUTPUT,
+    async execute(args, exec) {
+      const engine = openEngine(join(callerOf(exec, 'probe_human_write').session.header.cwd, 'docs', 'graph'))
+      const current = await engine.load()
+      const mutation = args.mutation
+      const rev = mutation.op === 'comment' ? {} : { rev: current.revisions.get(mutation.id) }
+      const written = await engine.apply('human', { ...rev, ...mutation })
+      note({ kind: 'human-write', mutation, ok: written.ok, ...(written.ok ? {} : { error: written.error }) })
+      if (!written.ok) throw new Error(`probe_human_write: ${JSON.stringify(written.error)}`)
+      return { ok: true, id: mutation.id }
+    },
+  }))
+
+  if (config.breakReaders === true) {
+    const moduleOf = MODULE_READERS.moduleOf
+    MODULE_READERS.moduleOf = () => { throw new TypeError('probe: moduleOf is not a function') }
+    disposers.push(() => { MODULE_READERS.moduleOf = moduleOf })
+  }
+
   disposers.push(ctx.on('goal/changed', ({ agent, change }) => {
     if (goalAgents.has(agent.id) || stopAgents.has(agent.id)) note({ kind: 'goal-changed', agentId: agent.id, operation: change?.operation ?? null, status: agent.status, goal: goalView(ctx.goals.get(agent)) })
+    if (typeof config.watch === 'string' && agent.id.startsWith(config.watch)) note({ kind: 'watch-goal', agentId: agent.id, operation: change?.operation ?? null, status: agent.status, goal: watchView(ctx.goals.get(agent)) })
   }))
 
   disposers.push(ctx.on('tools/pre-execute', async (payload, next) => {

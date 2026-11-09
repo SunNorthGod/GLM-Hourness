@@ -5,8 +5,7 @@
  * original src/ is put back (the test reproduces the bug). Usage: see
  * tests/calibration/lib.mjs.
  */
-import { join } from 'node:path'
-import { checkerArgs, copyWorkspace, countTests, importFrom, report, runTests, same } from '../lib.mjs'
+import { checkerArgs, importFrom, report, reproducingTestChecks, runTests, same } from '../lib.mjs'
 
 const { workspace, fixture, scratch } = checkerArgs()
 const { namespace: csv, error } = await importFrom(workspace, 'src/csv.js')
@@ -34,16 +33,5 @@ await report([
     [...UNCHANGED.map(([, fields]) => fields), ['a', 'b;c'], [['a', 'b'], ['c', 'd']]],
   )],
   ['the workspace test suite passes', () => runTests(workspace)],
-  ['a test was added', () => {
-    const before = countTests(fixture)
-    const after = countTests(workspace)
-    return { ok: after > before, detail: `${before} -> ${after} test(s)` }
-  }],
-  ['the workspace tests fail on the original code', () => {
-    const original = join(scratch, 'original-src')
-    copyWorkspace(workspace, original)
-    copyWorkspace(join(fixture, 'src'), join(original, 'src'))
-    const run = runTests(original)
-    return { ok: !run.ok, detail: run.detail }
-  }],
+  ...reproducingTestChecks(workspace, fixture, scratch),
 ])

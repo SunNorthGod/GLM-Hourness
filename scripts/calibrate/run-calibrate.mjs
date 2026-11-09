@@ -41,12 +41,15 @@
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { homedir, tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { parseArgs } from 'node:util'
 // The GLM credit plan (docs/FACTS.md §2.4) the glm-login row serves to the usage panel.
 import { chargedCredits, CREDIT_RATES, creditPricing, fullCredits, peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
 import { gateOnRules } from '../rules-gate.mjs'
-import { attachmentsIn, dataRows, designRows, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
+import { ablationRow, attachmentsIn, dataRows, designRows, fenceRow, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
+import { ARMS } from './ablation.mjs'
+import { fencedPathOf } from './fence.mjs'
 import { closeBatch, collectBatch, openBatch, openRun } from './run-dir.mjs'
 
 const TASKS_DIR = join(repo, 'tests', 'calibration')
@@ -73,6 +76,7 @@ const { values: options } = parseArgs({
     'max-steps': { type: 'string' },
     'minutes': { type: 'string' },
     'permission': { type: 'string', default: 'danger-full-access' },
+    'arm': { type: 'string', default: 'A0' },
     'collect': { type: 'string' },
   },
 })
@@ -117,6 +121,12 @@ if (models.length === 0) fail('--models is empty')
 const PERMISSION_MODES = ['read-only', 'workspace-write', 'danger-full-access']
 const permission = options.permission
 if (!PERMISSION_MODES.includes(permission)) fail(`--permission must be one of ${PERMISSION_MODES.join(', ')}`)
+// The ablation arm (scripts/calibrate/ablation.mjs): A0 runs the prompt as it is, every other arm inserts the switch row.
+const arm = options.arm
+if (!ARMS.includes(arm)) fail(`--arm must be one of ${ARMS.join(', ')}`)
+// What the read fence keeps the model under test from (scripts/calibrate/fence.mjs): this checkout, its main checkout (a work tree sits inside it), the user's DSH home and the one the run boots with.
+const commonDir = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: repo, encoding: 'utf8' }).stdout?.trim() ?? ''
+const FENCED = [...new Set([repo, ...(commonDir.length > 0 ? [dirname(commonDir)] : []), join(homedir(), '.dsh'), ...(process.env.DSH_HOME === undefined ? [] : [process.env.DSH_HOME])])]
 const tasks = taskIds.map((id) => {
   const dir = join(TASKS_DIR, id)
   const task = { id, dir, fixture: join(dir, 'fixture'), prompt: readFileSync(join(dir, 'prompt.md'), 'utf8'), ...JSON.parse(readFileSync(join(dir, 'task.json'), 'utf8')) }
@@ -149,6 +159,8 @@ function runHeadless(dir, ws, task, model) {
     ...dataRows(dir),
     ...attachmentsIn(dir),
     ...limitsRow({ maxSteps, timeLimitMs, record: slash(join(dir, 'limits.jsonl')) }),
+    ...fenceRow({ workspace: slash(ws), fenced: FENCED.map(slash), tmp: slash(tmpdir()), record: slash(join(dir, 'fence.jsonl')) }),
+    ...arm === 'A0' ? [] : ablationRow({ arm, record: slash(join(dir, 'ablation.jsonl')) }),
     ...workspaceChangesRow('glm-hourness-calibrate/workspace-changes'),
     ...task.kind === 'interview' ? designRows({ record: slash(join(dir, 'human.jsonl')), ...task.human }) : [],
     '',
@@ -286,6 +298,8 @@ async function calibrate(task, model, index) {
   const run = await runHeadless(dir, ws, task, model)
   writeFileSync(join(dir, 'event-times.json'), JSON.stringify(run.times))
   const limits = jsonl(join(dir, 'limits.jsonl'))
+  const fenced = jsonl(join(dir, 'fence.jsonl'))
+  const ablation = jsonl(join(dir, 'ablation.jsonl'))
   const usage = jsonl(join(dir, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
   const guard = jsonl(join(dir, 'home', 'audit', 'violations.jsonl'))
   // What the simulated human said (an interview task): each turn it answered is one interruption of the person.
@@ -294,6 +308,8 @@ async function calibrate(task, model, index) {
   const phases = phase => events('status').filter(event => event.phase === phase)
   const calls = events('tool_call')
   const results = new Map(events('tool_result').map(result => [result.callId, result]))
+  const places = { workspace: ws, fenced: FENCED, tmp: tmpdir() }
+  const outside = calls.filter(call => fencedPathOf(call.input, places) !== undefined)
   const turnEnd = phases('turn_end').at(-1)?.reason
   const stop = run.killed ? 'killed' : limits.some(entry => entry.kind === 'time-limit') ? 'time-limit' : limits.some(entry => entry.kind === 'step-limit') ? 'step-limit' : turnEnd?.kind ?? 'no-turn-end'
   // An interview task's checker also prints the numbers step 12(a) counts (tests/calibration/interview-metrics.mjs): they go to result.json as `interview`, apart from the verdict.
@@ -302,6 +318,7 @@ async function calibrate(task, model, index) {
   const result = {
     task: task.id,
     kind: task.kind,
+    arm,
     model,
     provider: PROVIDER,
     run: index + 1,
@@ -331,6 +348,13 @@ async function calibrate(task, model, index) {
     tokens: tokensOf(usage),
     credits: creditsOf(usage),
     peakCalls: usage.filter(record => isPeak(record.at)).length,
+    // Calls the read fence denied.
+    fence: fenced.filter(entry => entry.kind === 'denied').length,
+    // The scan of the event stream after the run: calls whose arguments name a path outside the fence, and those of them that ran (should be none).
+    outsideCalls: outside.length,
+    outsideRan: outside.filter(call => results.get(call.callId)?.status === 'completed').map(call => ({ tool: call.tool, ...fencedPathOf(call.input, places) })),
+    // The ablation switch: requests it looked at, and those it changed nothing in (A3 defers once on activation and looks at no request).
+    ...arm === 'A0' ? {} : { ablation: { requests: ablation.filter(entry => entry.kind === 'request').length, unchanged: ablation.filter(entry => entry.kind === 'request' && entry.removed + entry.replaced === 0).length, deferred: ablation.find(entry => entry.kind === 'deferred')?.names.length ?? 0 } },
     finalText: (events('final').at(-1)?.text ?? '').slice(0, 2000),
     ...metrics === undefined ? {} : { interview: metrics },
   }
@@ -353,6 +377,8 @@ function summarize(runs) {
     forbiddenCalls: sum(run => run.forbiddenCalls),
     violations: sum(run => run.violations),
     strayFiles: sum(run => run.strayFiles.length),
+    fence: sum(run => run.fence),
+    outsideRan: sum(run => run.outsideRan.length),
     boundaryTooTight: sum(run => run.boundaryTooTight ? 1 : 0),
     creditsCharged: mean(run => run.credits.charged),
     creditsRaw: mean(run => run.credits.raw),
@@ -368,7 +394,7 @@ const writeResults = () => {
     date: new Date().toISOString(),
     commit,
     dirty,
-    options: { tasks: taskIds, models, repeat, bounds: Object.fromEntries(tasks.map(task => [task.id, { maxSteps: task.bounds.maxSteps, minutes: task.bounds.minutes }])), permission },
+    options: { arm, tasks: taskIds, models, repeat, bounds: Object.fromEntries(tasks.map(task => [task.id, { maxSteps: task.bounds.maxSteps, minutes: task.bounds.minutes }])), permission },
     summary: { byTaskAndModel: groups(run => `${run.task} ${run.model}`), byModel: groups(run => run.model) },
     runs,
   }, null, 2)}\n`)

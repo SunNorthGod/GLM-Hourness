@@ -15,7 +15,52 @@
  * scenarios run the dispatch feasibility spike
  * (scripts/probe/probe-dispatch.mjs): a background child with a write
  * scope, a plugin-created goal driven through two rounds, and the headless
- * runner's exit with an armed goal. The rules board scenarios run in scratch
+ * runner's exit with an armed goal. The execute row scenarios
+ * (glm-exec-dispatch, non-glm-exec-dispatch) enable glm-hourness/execute by
+ * the overlay on a seeded released project: dispatch_task refuses a model
+ * the catalog does not list with the catalog in the hint and returns the
+ * dispatch summary at once for a valid one; the dispatched worker runs in
+ * its own worktree under the write-scope, graph and git rules (push
+ * refused, reset --hard after a snapshot), keeps the graph reads in its
+ * face but not the graph writes, hands back with structured_output and no
+ * settlement notice to the main agent; a plain subagent of the main agent
+ * may not write; the command record and the dispatch comment land in
+ * .llm/execute and on the graph. The plan scenario (glm-exec-plan) runs the
+ * plan and communication tools over two dispatched tasks: the plan gate, the
+ * approval, the ask and its answer, the sibling refusal. The review scenario
+ * (glm-exec-review) runs the handback processing and the review loop over a
+ * floor that hits: the summary comment with the counts and the effective
+ * depth, the review task, the floor refusal for a light review, the voided
+ * round and its re-dispatch with the same model, the demoted finding, the
+ * stop with the marker and the stop draft, the waiting_human refusal, the
+ * person's recorded answer lifting it, and the passing round's evidence.
+ * The merge scenarios (glm-exec-merge, glm-exec-merge-upstream) run the
+ * merge gate: check_commit on the external check provider, the refused and
+ * the checked trunk advances with their advances.jsonl lines, the task's
+ * evidence and completion, the trunk check records, a failing check, the
+ * rework's renamed branch, an alias move and an alias push found after the
+ * call, a graph-only commit passing by paths, and the pull, the hand-set
+ * remote-tracking reference and the fetch against a bare origin.
+ * The drive scenario (glm-exec-drive) runs the main agent on a second root
+ * session with the loop board off: the goal the person's release starts
+ * without a command, the completion gate refusing with the gaps,
+ * worker-message-live-only, await_human and the resume once the answer is
+ * recorded, the idle block after three read-only rounds and the resume after
+ * 继续, /goal pause left paused, and update_goal complete after /wish off
+ * writing nothing on the graph; the peak hold is pinned in L2. The module
+ * scenarios (glm-exec-modules, glm-exec-modules-2) run the two loops: the
+ * not_released refusal, the one goal of the first module release and the
+ * comment of the next, the second tier's refused write and stale handback,
+ * the re-dispatch's new pins, the goal's hourness-design-wait and its
+ * resume, the design review's two records, and the throwing module reader.
+ * The skeleton scenario (glm-exec-skeleton) runs the chain of M7 design
+ * §10.1 on a goal the main agent interviews and designs: the person acts only
+ * at /wish, the interview answers, the agreement to the requirement and the
+ * release; then the drive starts, the task is dispatched with a plan,
+ * reviewed, squashed, checked and fast-forwarded, the goal's acceptance
+ * review passes and update_goal complete closes the goal on the graph. The
+ * path where the loop board runs the release's entry is L4 batch 2.
+ * The rules board scenarios run in scratch
  * git repositories with the row enabled by the overlay: rules-peak and
  * rules-peak-hourness drive /rules peak, glm-rules and non-glm-rules run
  * calls past a rules file that blocks one command and only informs about
@@ -143,7 +188,11 @@ import { LOOPS_DECLARATION } from '../../packages/hourness/dist/loops/service.js
 import { NO_BOARD_LINE, SCRATCH_LINE } from '../../packages/hourness/dist/env/notice.js'
 import { checksOwnRules } from '../../packages/hourness/dist/env/loop-entry.js'
 import { PEAK_REMINDER_SOURCE, PEAK_REMINDER_TEXT, peakReminderText } from '../../packages/glm/dist/glm-prompt/peak-reminder.js'
-import { IDENTITY_OPENING_PLAIN, IDENTITY_OPENING_WITH_STYLE } from '../../packages/glm/dist/glm-prompt/verbatim.js'
+import { DYNAMIC_BEHAVIOR, IDENTITY_OPENING_PLAIN, IDENTITY_OPENING_WITH_STYLE } from '../../packages/glm/dist/glm-prompt/verbatim.js'
+import { EXECUTE_TOOL_NAMES, OPERATE_TOOL_NAMES, WORKER_TOOL_NAMES } from '../../packages/hourness/dist/shared/tool-names.js'
+import { GRAPH_WRITE_TOOLS } from '../../packages/hourness/dist/execute/faces.js'
+import { handbackProblems } from '../../packages/hourness/dist/execute/schemas.js'
+import { readChecks } from '../../packages/hourness/dist/execute/check.js'
 import { transcriptNote } from '../../packages/glm/dist/glm-prompt/zcode-compact-text.js'
 import { PERSONA_SCOPE } from '../../packages/hourness/dist/design/persona.js'
 import { peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
@@ -158,7 +207,10 @@ import { holderFileOf, readHolder } from '../../packages/hourness/dist/graph/mai
 import { runNote } from '../../packages/hourness/dist/graph/run.js'
 import { projectDirOf } from '../../packages/hourness/dist/data/project-root.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
-import { FAILURE_SOURCE } from '../../packages/hourness/dist/lessons/failure.js'
+import { pinsOf } from '../../packages/hourness/dist/graph/pins.js'
+import { parseDispatchComment } from '../../packages/hourness/dist/execute/attempts.js'
+import { sha256Hex } from '../../packages/hourness/dist/execute/digest.js'
+import { FAILURE_SOURCE, PATH_SOURCE } from '../../packages/hourness/dist/lessons/failure.js'
 import { GUARD_CORRECTION_SOURCE, GUARD_LIFT_LINE } from '../../packages/hourness/dist/guard/index.js'
 import { PENDING_SOURCE as LESSONS_PENDING_SOURCE, RECUR_SOURCE as LESSONS_RECUR_SOURCE } from '../../packages/hourness/dist/lessons/notices.js'
 import { INDEX_SOURCE as MEMORY_INDEX_SOURCE } from '../../packages/hourness/dist/memory/index.js'
@@ -168,7 +220,8 @@ import { checkLog, readLog } from '../../packages/hourness/dist/metrics/read.js'
 import { METRICS_FILES_ONLY } from '../../packages/hourness/dist/metrics/rules.js'
 import { keyOf } from '../../packages/hourness/dist/guard/records.js'
 import { PACKAGES } from '../packages.mjs'
-import { attachmentsIn, dataRows, designRows, generateProfile, initRepo, limitsRow, openRunDir, PROBE_PROFILES, removeRunDir, repo, requireDesktop, sandboxCommand, scenarioWorkspace, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
+import { ablationRow, attachmentsIn, dataRows, designRows, fenceRow, generateProfile, initRepo, limitsRow, openRunDir, PROBE_PROFILES, removeRunDir, repo, requireDesktop, sandboxCommand, scenarioWorkspace, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
+import { DEFERRED_BY_A3, WORKSPACE_RULES_SHORT } from '../calibrate/ablation.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 import { CANARY } from './probe-net.mjs'
 
@@ -450,18 +503,23 @@ const todoLastResult = todoFinal?.messages.findLastIndex(message => message.role
 const todoParallel = todo.steps[2]?.messages.findLast(message => message.role === 'assistant')?.toolCalls
 
 // GLM compaction: a low pressure threshold makes compaction-basic compact
-// at the second step boundary (sandbox overlay only).
+// at the second step boundary (sandbox overlay only). The transcript row
+// ships enabled; the overlay disables it here, so this scenario keeps the
+// check that a disabled row leaves the summary as it is without the row.
 const compacted = runScenario('glm-compact', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
   { text: 'done', status: true },
 ], 'Read package.json and reply done.', [
   '- id: compaction-basic',
   '  config: { thresholdRatio: 0.02, retainTokens: 0 }',
+  '- id: glm-hourness/transcript',
+  '  disabled: true',
 ])
-// GLM compaction with the transcript row enabled through the overlay (it
-// ships disabled): the checkpoint ends with ZCode's transcript sentence
-// naming the plaintext export under the scenario home, and the model reads
-// that file with Read ({transcript}, scripts/probe/probe-llm.mjs). The task
+// GLM compaction with the transcript row pinned on by the overlay (it ships
+// enabled; the overlay also points it at the scenario home): the checkpoint
+// ends with ZCode's transcript sentence naming the plaintext export under the
+// scenario home, and the model reads that file with Read ({transcript},
+// scripts/probe/probe-llm.mjs). The task
 // text carries two fake credentials (a Bearer value, a named-prefix key),
 // assembled from parts so that no line of this file is a token for the
 // secret scan; the export must carry neither (src/data/transcript.ts).
@@ -540,6 +598,8 @@ const plainShellResult = lastToolResult(plainGuard.steps[2])
 // requests carry it once because it persists, and the non-GLM scenario runs
 // on the same clock and gets none. Each request records the runtime clock.
 const PEAK_AT = '2026-10-28T15:00:00+08:00'
+/** A Wednesday morning: the scenarios that run more than one GLM worker at a time pin it, since a real clock inside the peak caps them at one (rules board, reduce). */
+const OFF_PEAK_AT = '2026-10-28T10:00:00+08:00'
 const clockRow = (at, shiftWith) => [
   '- insert:',
   '    - id: glm-hourness-probe/clock',
@@ -1008,6 +1068,64 @@ const timeLimited = runScenario('limits-time', 'glm-5.3', [
   { text: 'done' },
 ], 'Sleep, then reply done.', limitsRow({ timeLimitMs: 5000, record: slash(limitsRecord('limits-time')) }))
 
+// Calibration read fence (scripts/calibrate/fence.mjs, risk-calib-read): the
+// session works in its own workspace; reading a task's checker by absolute
+// path with Read and with Get-Content, listing $env:TEMP and walking out of
+// the workspace with `..` are denied and recorded, reading and listing the
+// workspace pass.
+const fenceWs = join(runDir, 'calib-fence-ws')
+mkdirSync(fenceWs, { recursive: true })
+writeFileSync(join(fenceWs, 'note.txt'), 'fence-note\n')
+const fenceChecker = join(repo, 'tests', 'calibration', 'bugfix-csv-quotes', 'check.mjs')
+const fenceRecord = join(runDir, 'calib-fence', 'fence.jsonl')
+const calibFence = runScenario('calib-fence', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: fenceChecker } } },
+  { tool: { name: 'Bash', arguments: { command: `Get-Content '${fenceChecker}'` } } },
+  { tool: { name: 'Bash', arguments: { command: 'Get-ChildItem $env:TEMP' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Get-ChildItem ..\\..' } } },
+  { tool: { name: 'Read', arguments: { file_path: join(fenceWs, 'note.txt') } } },
+  { tool: { name: 'Bash', arguments: { command: 'Get-ChildItem .' } } },
+  { text: 'done' },
+], 'Read the checker, list the temporary directory and the parent, then the workspace, then reply done.', fenceRow({ workspace: slash(fenceWs), fenced: [slash(repo)], tmp: slash(join(runDir, 'runtime-tmp', 'calib-fence')), record: slash(fenceRecord) }), fenceWs)
+const fenceResults = [1, 2, 3, 4, 5, 6].map(index => lastToolResult(calibFence.steps[index]))
+const fenceDenials = existsSync(fenceRecord) ? readFileSync(fenceRecord, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const checkerText = readFileSync(fenceChecker, 'utf8').split('\n').find(line => line.includes('Acceptance for')) ?? 'Acceptance for'
+
+// Ablation switch (scripts/calibrate/ablation.mjs): the same one-step task in
+// the same workspace under every arm; each arm's first request is compared
+// with A0's, paragraph by paragraph of the system prompt and tool by tool.
+const ablationWs = join(runDir, 'ablation-ws')
+mkdirSync(ablationWs, { recursive: true })
+writeFileSync(join(ablationWs, 'README.md'), '# ablation probe\n')
+const ablationRecord = arm => join(runDir, `ablation-${arm}`, 'ablation.jsonl')
+const ablationRuns = Object.fromEntries(['A0', 'A1', 'A2', 'A3', 'A4', 'A5'].map(arm => [arm, runScenario(`ablation-${arm}`, 'glm-5.3', [
+  { text: 'done' },
+], 'Reply done.', arm === 'A0' ? [] : ablationRow({ arm, record: slash(ablationRecord(arm)) }), ablationWs)]))
+const ablationFirst = arm => ablationRuns[arm].steps[0]
+const ablationParagraphs = arm => (ablationFirst(arm)?.system ?? '').split('\n\n')
+const ablationTools = arm => (ablationFirst(arm)?.tools ?? []).map(tool => JSON.stringify(tool))
+const ablationNotes = arm => existsSync(ablationRecord(arm)) ? readFileSync(ablationRecord(arm), 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
+const A5_OPENINGS = ['Use the read tool', 'Read an existing file before overwriting it with write', 'Read a file before editing it', 'Use the glob tool', 'Use the grep tool']
+/** What each arm's prompt must be, from A0's paragraphs, and how many paragraphs of A0 it touches. */
+const ablationExpected = {
+  A1: { pick: text => text.startsWith('# Reporting Depth\n'), map: () => null, count: 1 },
+  A2: { pick: text => text.startsWith('# Workspace rules\n'), map: () => WORKSPACE_RULES_SHORT, count: 1 },
+  A4: { pick: text => text === DYNAMIC_BEHAVIOR, map: () => null, count: 1 },
+  A5: { pick: text => A5_OPENINGS.some(opening => text.startsWith(opening)), map: () => null, count: 5 },
+}
+const ablationCheck = (arm) => {
+  const { pick, map, count } = ablationExpected[arm]
+  const base = ablationParagraphs('A0')
+  const touched = base.filter(pick).length
+  const expected = base.flatMap(text => pick(text) ? (map() === null ? [] : [map()]) : [text])
+  const promptOk = touched === count && isDeepStrictEqual(ablationParagraphs(arm), expected)
+  const toolsOk = isDeepStrictEqual(ablationTools(arm), ablationTools('A0'))
+  const noted = ablationNotes(arm).filter(entry => entry.kind === 'request' && entry.removed + entry.replaced > 0).length
+  return { ok: ablationFirst('A0') !== undefined && promptOk && toolsOk && noted > 0, detail: `A0 paragraphs touched ${touched} (want ${count}); prompt ${promptOk ? 'as expected' : `differs (${ablationParagraphs(arm).length} paragraphs, want ${expected.length})`}; tools ${toolsOk ? 'unchanged' : 'changed'}; ${noted} rewritten request(s) recorded` }
+}
+const a3Deferred = DEFERRED_BY_A3.filter(tool => names(ablationFirst('A0')).has(tool))
+const a3Announced = announcements(ablationFirst('A3')).map(message => message.text).join('\n')
+
 const jsonl = file => existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
 
 // GLM without the dialect (docs/ORCHESTRATION.md §6.1): the overlay
@@ -1034,12 +1152,12 @@ const noDialectViolations = jsonl(join(noDialectDir, 'home', 'audit', 'violation
 // Dispatch feasibility spike (docs/ORCHESTRATION.md §2.1, §3.2; DESIGN.md
 // §2.4a). The overlay-only row scripts/probe/probe-dispatch.mjs records what
 // it observes in <scenario>/dispatch.jsonl.
-const dispatchRow = record => [
+const dispatchRow = (record, extra = {}) => [
   '- insert:',
   '    - id: glm-hourness-probe/dispatch',
   `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-dispatch.mjs')))}`,
   '      inject: [subagents, goals, agents, tools]',
-  `      config: { record: ${JSON.stringify(slash(record))} }`,
+  `      config: ${JSON.stringify({ record: slash(record), ...extra })}`,
 ]
 // The graph panel row (disabled by default until the L3 checklist passes)
 // also registers the graphLive projection the live view reads.
@@ -1071,7 +1189,7 @@ const dispatch = runScenario('glm-dispatch', 'glm-5.3', [
   { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3; (Get-Location).Path' } } },
   { tool: { name: 'Write', arguments: { file_path: outsideFile, content: 'outside\n' } } },
   { tool: { name: 'Write', arguments: { file_path: insideFile, content: 'inside\n' } } },
-  { tool: { name: 'DeferredToolCall', arguments: { name: 'structured_output', input: HAND_BACK } }, live: true },
+  { tool: { name: 'structured_output', arguments: HAND_BACK }, live: true },
   { text: 'child done' },
 ]])
 const dispatchNotes = dispatchRecord('glm-dispatch')
@@ -1922,7 +2040,7 @@ const memoryWorker = runScenario('glm-worker-memory', 'glm-5.3', [
   { tool: { name: 'memory_query', arguments: { focus: 'commits' } } },
   { tool: { name: 'memory_forget', arguments: { name: 'seeded-norm', reason: 'try', scope: 'project' } } },
   { tool: { name: 'learning_signals', arguments: {} } },
-  { tool: { name: 'DeferredToolCall', arguments: { name: 'structured_output', input: HAND_BACK } } },
+  { tool: { name: 'structured_output', arguments: HAND_BACK } },
   { text: 'child done' },
 ]])
 const workerChildId = dispatchRecord('glm-worker-memory').find(entry => entry.kind === 'started')?.childId
@@ -2138,6 +2256,50 @@ const stageChild = (name, file) => [{ tool: { name: 'Write', arguments: { file_p
 const stageFocus = id => ({ tool: { name: 'graph_focus', arguments: { id } } })
 const stageRead = name => ({ tool: { name: 'Read', arguments: { file_path: join(stageWs(name), 'README.md') } } })
 const STAGE_BODY = '需求：记一下每天花了多少钱'
+
+// The reminder at a file (docs/ORCHESTRATION.md §8.6, §8.7; docs-at-hand design
+// 0.3 §5, assumption U3). The workspace is a project with a root AGENTS.md (so
+// the host has an opening baseline), a component src/comp whose AGENTS.md lists
+// one decision, a graph with that decision and a task whose write scope holds
+// the component, and a lesson for files under it. The main agent reads a file
+// of the component, reads another, then writes a new one. After the first read
+// the request carries one reminder of the lessons row right after the tool
+// result: with the lesson and the graph's lines, and with the document itself
+// on GLM (the host's trigger table does not know Read), without it on the
+// native route (the host delivers the document, once). The second read tells
+// nothing new, the write adds the sentence that asks to keep the document true.
+const PATH_MARK = 'COMP-DOC-MARK-7f3a'
+const PATH_ROOT_MARK = 'ROOT-DOC-MARK-91c2'
+const PATH_LESSON = 'L-0c0ffe'
+const PATH_PITFALL = 'The component runner reads the inbox twice when two beats overlap.'
+const seedPathProject = async (name) => {
+  const ws = stageWs(name)
+  mkdirSync(join(ws, 'src', 'comp'), { recursive: true })
+  writeFileSync(join(ws, 'AGENTS.md'), `# Project rules\n${PATH_ROOT_MARK}\n`)
+  writeFileSync(join(ws, 'src', 'comp', 'AGENTS.md'), `# Component\n${PATH_MARK}\nWhat it is.\n\n## Decisions\n- decision-1\n\n## Flow\n\`\`\`mermaid\nflowchart LR\n\`\`\`\n`)
+  writeFileSync(join(ws, 'src', 'comp', 'a.ts'), '// a\n')
+  writeFileSync(join(ws, 'src', 'comp', 'b.ts'), '// b\n')
+  await stageGraph(name, [
+    ['human', { type: 'goal', title: 'A goal' }],
+    ['human', { type: 'decision', title: 'Entries are data', parent: 'goal-1' }],
+    ['human', { type: 'decision', title: 'The task decision', parent: 'goal-1' }],
+    ['human', { type: 'task', title: 'Write the runner', parent: 'goal-1', kind: 'implement', writeScope: ['src/comp/'], edges: [{ type: 'source', to: 'decision-2' }] }],
+  ])
+  const home = join(runDir, name, 'home')
+  mkdirSync(home, { recursive: true })
+  const lesson = { v: 1, seq: 1, at: hoursAgo(5), actor: 'llm', op: 'new', id: PATH_LESSON, reason: 'seed from the probe', evidence: ['docs/HANDOFF.md §6'], data: { situation: { files: ['src/comp/**'], tools: [], commands: [], errors: [] }, pitfall: PATH_PITFALL, fix: 'Chain the beats.' } }
+  writeFileSync(join(home, 'lessons.jsonl'), `${JSON.stringify(lesson)}\n`)
+  return ws
+}
+const runPath = async (name, model, glmRoute) => {
+  const ws = await seedPathProject(name)
+  const file = rel => join(ws, 'src', 'comp', rel)
+  const read = rel => ({ tool: { name: glmRoute ? 'Read' : 'read', arguments: { file_path: file(rel) } } })
+  const script = [read('a.ts'), read('b.ts'), { tool: { name: glmRoute ? 'Write' : 'write', arguments: { file_path: file('c.ts'), content: '// c\n' } } }, { text: 'done', status: true }]
+  return runScenario(name, model, script, 'Read two files of the component, write a third, then reply done.', LESSONS_ROW, ws)
+}
+const pathGlm = await runPath('glm-lessons-path', 'glm-5.3', true)
+const pathPlain = await runPath('non-glm-lessons-path', 'deepseek-probe', false)
 
 // An interview: the goal is the main agent's own proposal. Request 1 has no focus, so the first child's write is refused for want of a goal; the second child is dispatched at stage interview; the main agent's edit of the goal body is answered by the reminder again.
 const STAGE = 'glm-design-stage'
@@ -2390,6 +2552,651 @@ const designPersona = designScenario(PERSONA, 'glm-5.3', () => [
   { text: 'done', status: true },
 ], { wish: true, persona: PERSONA_SETTING, extra: dispatchRow(join(runDir, PERSONA, 'dispatch.jsonl')), others: [[{ text: 'child done' }]] })
 const designPersonaPlain = designScenario(PERSONA_PLAIN, 'deepseek-probe', () => [{ text: 'done', command: { name: 'hourness-status' } }], { wish: true, persona: PERSONA_SETTING, on: profiles['probe-hourness'] })
+
+// E4 (docs/ORCHESTRATION.md §17.9, M7 design §3.1, §9.1 glm-exec-dispatch).
+// The execute row, enabled by the overlay, on a seeded project: a released
+// goal over one task with a one-file write scope, dispatched quick. The main
+// agent (the simulated human's /wish) focuses the goal — the release and the
+// chain judgments read the focus — and dispatches with dispatch_task: a model
+// the catalog does not list is refused with the catalog in the hint (the
+// host validates the tool schema, so a call without the model never reaches
+// the tool); the valid call returns the dispatch summary at once and the
+// main agent moves on while the worker still runs — its last request is
+// later on the wall clock. The worker runs in its own worktree: writes in
+// scope and its .hourness/, refused out of scope and outside the worktree,
+// graph_status refused by name (gone from its face) while graph_comment
+// runs, a push refused with the branch correction, reset --hard run after
+// the harness's snapshot (one ref under refs/hourness/snapshots/ and one
+// journal line), structured_output as the handback; its first message is
+// the brief, with no DSH return guidance in it (U1). A subagent the main
+// agent started with the plain subagent tool may not write
+// (dispatch-chain-readonly). The dispatched worker settles without a
+// settlement notice to the main agent (delivery caller), while the plain
+// subagent's settlement arrives; the glm-hourness-execute notice of a
+// handback is E6's. The command record of the chain lands under
+// <proj>/.llm/execute/tasks/task-1 (§3.8.5).
+const EXEC_GLM = 'glm-exec-dispatch'
+const EXEC_PLAIN = 'non-glm-exec-dispatch'
+const EXEC_WHY = 'probe: the flash model is enough for this file'
+// The scripted in-scope target is a data file on purpose: the scratch-only
+// code rule (m4-gate G3, shipped enabled) denies a new script created in a
+// directory that holds no files of its kind, which is m4's own scenarios'
+// coverage (guard-new-rules); these scenarios pin the write boundary of the
+// dispatched chain.
+const EXEC_HAND_BACK = { status: 'done', summary: 'wrote site/feed/feed.json; the probe refusals are the checks', commits: [], files: ['site/feed/feed.json'], checks: [], questions: [], assumptions: [], lessons: [] }
+const execSeeds = [
+  ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/feed.json'], acceptance: ['the feed builds'], nonGoals: ['no RSS yet'], worktree: true }],
+]
+await stageGraph(EXEC_GLM, execSeeds)
+await stageGraph(EXEC_PLAIN, execSeeds)
+const execScenario = (name, model, glmRoute) => {
+  const ws = join(runDir, name, 'ws')
+  const wt = join(ws, '.worktrees', 'hz-task-1')
+  const write = glmRoute ? 'Write' : 'write'
+  const shell = glmRoute ? 'Bash' : 'pwsh'
+  const writeCall = (file, content) => ({ tool: { name: write, arguments: { file_path: file, content } } })
+  const shellCall = (command, description) => ({ tool: { name: shell, arguments: { command, description } } })
+  const script = [
+    { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+    { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'no-such-model', why: EXEC_WHY, quick: true } } },
+    { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model, why: EXEC_WHY, quick: true, review: { depth: 'light', why: 'probe: one file' } } } },
+    { tool: { name: glmRoute ? 'Read' : 'read', arguments: { file_path: join(repo, 'package.json') } } },
+    { tool: { name: 'subagent', arguments: { description: 'probe plain subagent', prompt: 'Write README.md in the project root, then report.' } } },
+    shellCall('Start-Sleep -Seconds 8', 'probe: let the worker run'),
+    { text: 'done', ...(glmRoute ? { status: true } : { command: { name: 'hourness-status' } }) },
+  ]
+  const worker = [
+    shellCall('(Get-Location).Path', 'probe: show the working directory'),
+    writeCall(join(wt, 'site', 'feed', 'feed.json'), 'probe\n'),
+    writeCall(join(wt, 'notes.txt'), 'no\n'),
+    writeCall(join(ws, 'README.md'), 'no\n'),
+    writeCall(join(wt, '.hourness', 'report.md'), 'report\n'),
+    { tool: { name: 'graph_status', arguments: { id: 'task-1' } } },
+    { tool: { name: 'graph_comment', arguments: { id: 'task-1', text: 'probe worker comment' } } },
+    shellCall('git push origin HEAD', 'probe: try to push'),
+    shellCall('git reset --hard', 'probe: reset the worktree'),
+    { tool: { name: 'structured_output', arguments: EXEC_HAND_BACK } },
+    { text: 'worker done' },
+  ]
+  const plain = [writeCall(join(ws, 'README.md'), 'plain\n'), { text: 'plain child done' }]
+  return designScenario(name, model, () => script, { wish: true, git: true, on: glmRoute ? undefined : profiles['probe-hourness'], extra: ['- id: glm-hourness/execute', '  disabled: false'], others: [worker, plain] })
+}
+const execGlm = execScenario(EXEC_GLM, 'glm-5.3-flash', true)
+const execPlain = execScenario(EXEC_PLAIN, 'deepseek-probe', false)
+
+// E5 (M7 design §3.3, §3.4, §9.1 glm-exec-plan): the plan and communication
+// tools on the real runtime, over two plan-required tasks. The worker's
+// writes are refused before a plan is approved; a plan that fails the checks
+// comes back at once and the main agent hears nothing of it; a passing one
+// lands on the task body and the notice wakes the main agent, whose scripted
+// answer_worker approves it (the request id is a runtime value, resolved by
+// the {plan-request:<task>} placeholder of the probe provider); the worker's
+// held call returns approved and the write in the approved paths runs. The
+// main agent's send_message while the worker waits in submit_plan arrives at
+// its next step (U3); the answer to the worker's ask_main returns inside the
+// same call; a send_message between siblings is UNAUTHORIZED.
+const EXEC_PLAN = 'glm-exec-plan'
+const execPlanSeeds = [
+  ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/feed.json'], acceptance: ['the feed builds', 'every item has a title'], nonGoals: ['no RSS yet'], worktree: true }],
+  ['human', { type: 'task', id: 'task-2', title: 'Add the atom feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/rss/atom.js'], acceptance: ['the atom feed is valid'], worktree: true }],
+]
+await stageGraph(EXEC_PLAN, execPlanSeeds)
+const PLAN_WHY = 'probe: the plan flow needs a running model'
+const PLAN_HAND_BACK_1 = { status: 'done', summary: 'wrote site/feed/feed.json; the plan was approved and the question answered', commits: [], files: ['site/feed/feed.json'], checks: [], questions: [], assumptions: ['Cap at 20.'], lessons: [] }
+const PLAN_HAND_BACK_2 = { status: 'done', summary: 'wrote site/rss/atom.js; the plan was approved', commits: [], files: ['site/rss/atom.js'], checks: [], questions: [], assumptions: [], lessons: [] }
+const execPlanWorker1 = [
+  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_PLAN, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'feed.json'), content: 'too early\n' } } },
+  // The sibling talk runs second, on purpose: the main agent dispatches
+  // task-2 before task-1, so the register holds task-2's child id before
+  // this worker starts (the {worker:} placeholder resolves), and worker two
+  // cannot end until its plan is approved several rounds from here - a later
+  // send_message raced that end and the refusal named the ended worker.
+  { tool: { name: 'send_message', arguments: { agent_id: '{worker:task-2}', message: 'probe: sibling talk' } } },
+  { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the feed builder', paths: ['site/feed/feed.json'], acceptance: ['it lists the posts'], covers: [], verify: 'L1', commands: [] }] } } },
+  { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the feed builder', paths: ['site/feed/feed.json'], acceptance: ['it lists the posts'], covers: [0, 1], verify: 'L2', commands: ['node --test'] }], notes: 'probe: one file' } } },
+  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_PLAN, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'feed.json'), content: 'probe feed\n' } } },
+  { tool: { name: 'ask_main', arguments: { question: 'Cap the feed at how many items?', assumption: 'Cap at 20.', options: ['10', '20', '50'] } } },
+  { tool: { name: 'structured_output', arguments: PLAN_HAND_BACK_1 } },
+  { text: 'worker done' },
+]
+const execPlanWorker2 = [
+  { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the atom feed', paths: ['site/rss/atom.js'], acceptance: ['it is valid atom'], covers: [0], verify: 'L1', commands: [] }], notes: 'probe: one file' } } },
+  { tool: { name: 'structured_output', arguments: PLAN_HAND_BACK_2 } },
+  { text: 'worker two done' },
+]
+const execPlan = designScenario(EXEC_PLAN, 'glm-5.3-flash', () => [
+  { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+  { tool: { name: 'dispatch_task', arguments: { id: 'task-2', model: 'glm-5.3-flash', why: PLAN_WHY } } },
+  { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: PLAN_WHY } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let both workers submit their plans' } } },
+  { tool: { name: 'send_message', arguments: { agent_id: '{worker:task-1}', message: 'probe: keep the feed to twenty items' } } },
+  { tool: { name: 'answer_worker', arguments: { request: '{plan-request:task-1}', verdict: 'approve' } } },
+  { tool: { name: 'answer_worker', arguments: { request: '{plan-request:task-2}', verdict: 'approve' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let worker one ask' } } },
+  { tool: { name: 'answer_worker', arguments: { request: '{ask-request:task-1}', text: 'Twenty items, then stop.' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the workers hand back' } } },
+  { text: 'done', status: true },
+], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...clockRow(OFF_PEAK_AT)], others: [execPlanWorker2, execPlanWorker1] })
+
+// E6 (M7 design §3.6, §3.7; scenario glm-exec-review): the handback
+// processing and the review loop on the real runtime, over a must-review
+// floor that hits. The worker commits its file and hands back done: the
+// summary comment lands with the counts, the floor hit upgrades the light
+// dispatch to 全审 with the annotation, and the review task exists with the
+// notice naming it. The review dispatched light is refused
+// (floor_requires_full); dispatched full, the first verdict covers one of
+// the two acceptance items — the round is voided and the harness
+// re-dispatches with the same model and why (the next scripted reviewer
+// runs), whose second void goes back without another dispatch; the main
+// agent dispatches again: this verdict carries a real blocking finding and
+// one naming no accepted criterion (demoted, annotated 不挡路 on the
+// task) — the seed propose is the person's word in the subtree, so the
+// first round with findings is the one they gave (§3.7.3, F21): the round
+// comment carries · 停下 and the stop draft reaches the main agent; a
+// dispatch while stopped is refused (waiting_human); the person's words,
+// recorded with record_human_answer, decide the question. The pass round
+// after it is pinned by tests/execute-handback.spec against the real
+// engine and git (the headless runner's shutdown timing at that boundary
+// decides nothing).
+const EXEC_REVIEW = 'glm-exec-review'
+const execReviewSeeds = [
+  ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/feed.json'], acceptance: ['the feed builds', 'every item has a title'], worktree: true }],
+  ['human', { type: 'norm', id: 'norm-review-floor', title: '必须全审的改动', parent: 'goal-1', acceptance: ['碰到必须全审：`files site/feed/`'] }],
+]
+await stageGraph(EXEC_REVIEW, execReviewSeeds)
+const REVIEW_WHY = 'probe: the review flow needs a running model'
+const REVIEW_BLOCKING = [
+  { id: 'f1', blocking: true, criterion: 'acceptance:0', where: 'site/feed/feed.json', what: 'the titles are not escaped', fix: 'escape them' },
+  { id: 'f2', blocking: true, criterion: 'acceptance:9', where: 'site/feed/feed.json', what: 'no rate limit', fix: 'add one' },
+]
+const execReviewWorker = [
+  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_REVIEW, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'feed.json'), content: 'probe feed\n' } } },
+  { tool: { name: 'Bash', arguments: { command: 'git add -A; git -c user.name=t -c user.email=t@example.invalid commit -m probe:feed; git log --oneline -1', description: 'probe: commit the feed' } } },
+  { tool: { name: 'structured_output', arguments: { status: 'done', summary: 'wrote site/feed/feed.json and committed it', commits: ['{git-head}'], files: ['site/feed/feed.json'], checks: [], questions: [], assumptions: [], lessons: [] } } },
+  { text: 'worker done' },
+]
+const execReviewVerdict = (verdict, checked, findings) => [
+  { tool: { name: 'Bash', arguments: { command: 'git diff main...HEAD --stat', description: 'probe: see the change' } } },
+  { tool: { name: 'structured_output', arguments: { verdict, commit: '{head:task-1}', findings, checked, lessons: [] } } },
+  { text: 'review done' },
+]
+const execReviewDispatch = { id: '{review:task-1}', model: 'glm-5.3-flash', why: REVIEW_WHY, depth: 'full', depthWhy: 'probe: full it is' }
+const execReview = designScenario(EXEC_REVIEW, 'glm-5.3-flash', () => [
+  { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+  { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: REVIEW_WHY, quick: true, review: { depth: 'light', why: 'probe: one file' } } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the worker hand back' } } },
+  { tool: { name: 'dispatch_task', arguments: { ...execReviewDispatch, depth: 'light', depthWhy: 'probe: one file' } } },
+  { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the void and its re-dispatch run' } } },
+  { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the blocking round stop' } } },
+  { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
+  { tool: { name: 'propose_to_human', arguments: { kind: 'question', form: 'recommend', title: '「Add the feed」审了 1 轮还没过', proposal: '按挡路的那一处先修一轮', reason: '审查发现挡路的发现还没修完', cost: '一轮修复加一次审查', notTaken: '不先放弃这件活，放弃了目标会缺一块', text: '审查发现挡路的发现还没修完，我建议按挡路的那一处先修一轮，可以吗？代价是一轮修复加一次审查。', parent: 'task-1', sources: ['{review:task-1}'] } } },
+  { tool: { name: 'graph_show', arguments: { id: 'task-1' } }, tell: '先修挡路的那一处吧，修完再看。' },
+  { tool: { name: 'record_human_answer', arguments: { kind: 'question', question: '{question:task-1}', answer: 'agree', words: ['先修挡路的那一处吧，修完再看。'], recordedAs: '先修挡路的那一处' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the decide settle' } } },
+  { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the passing round finish' } } },
+  { text: 'done', status: true },
+], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false'], others: [
+  execReviewWorker,
+  execReviewVerdict('APPROVED', ['acceptance:0'], []),
+  execReviewVerdict('APPROVED', ['acceptance:0'], []),
+  execReviewVerdict('CHANGES_REQUESTED', ['acceptance:0', 'acceptance:1'], REVIEW_BLOCKING),
+  execReviewVerdict('APPROVED', ['acceptance:0', 'acceptance:1'], []),
+] })
+
+// E7 (M7 design §3.8, §3.11.1, §9.1 glm-exec-merge): the merge gate on the
+// real runtime. First a docs/graph-only commit on the main branch passes by
+// paths (no check record exists yet, so the advance is the only paths' own)
+// and its trunk check runs the commands. The worker writes a data file (the
+// scratch-only rule refuses a new script in a directory with none of its
+// kind), commits it and hands back with the review skipped; the main agent
+// squashes the task branch in the task worktree into one commit with the
+// `Hourness-Task: task-1` trailer (on a branch of its own, merge/task-1, so
+// the task branch stays the worker's), check_commit starts the job on the
+// external provider hourness-gate (U2) and the main agent waits for the
+// verdict notice; `git merge --no-ff hz/task-1` is refused with the right
+// path, `git merge --ff-only merge/task-1` runs: the task is done with the
+// harness's commit and test evidence, its worktree is gone, advances.jsonl
+// has the line and the in-process trunk check writes a `kind: 'trunk'`
+// record. A commit carrying FAIL (planted before the run) fails its check and
+// its fast-forward is refused. The task is reopened and dispatched again: the
+// branch the squash left behind becomes hz/task-1@1. The rework is squashed
+// the same way and moved onto the trunk by a script-level form the table
+// cannot read, `git -c "alias.tm=update-ref refs/heads/main <branch>" tm`
+// (git is not a file write for the main agent's rules, and the alias hides
+// update-ref from the trunk table): it is found after the call (violation,
+// no evidence), and the later check_commit on it writes the evidence with
+// 检查在前进之后. The goal half of §9.1's row (the drive waits with a goal)
+// is E8's; the second dispatch reusing the new branch (F17) is pinned by
+// tests/execute-git.spec.ts.
+const EXEC_MERGE = 'glm-exec-merge'
+const EXEC_MERGE_UPSTREAM = 'glm-exec-merge-upstream'
+const MERGE_WHY = 'probe: the merge gate needs a running model'
+const MERGE_GATE = { type: 'norm', id: 'norm-merge-gate', title: '合入前的检查', parent: 'goal-1', acceptance: ['`$ node -e "process.exit(require(\'fs\').existsSync(\'FAIL\') ? 1 : 0)"`', '`$ node -e "process.exit(0)" when src/`', '`only docs/graph/`'] }
+const mergeSeeds = [
+  ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['src/feed.json', 'src/feed2.json'], acceptance: ['the feed builds'], worktree: true }],
+  ['human', MERGE_GATE],
+  ['human', { type: 'norm', id: 'norm-review-floor', title: '必须全审的改动', parent: 'goal-1', acceptance: ['碰到必须全审：`files src/guarded/`'] }],
+]
+await stageGraph(EXEC_MERGE, mergeSeeds)
+await stageGraph(EXEC_MERGE_UPSTREAM, mergeSeeds.slice(0, 3))
+/** Git in `cwd` with the probe's identity; throws on a failure, returns the trimmed output. */
+const probeGit = (cwd, args, options = {}) => {
+  const result = spawnSync('git', ['-c', 'user.name=probe', '-c', 'user.email=probe@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8', ...options })
+  if (result.status !== 0) throw new Error(`probe: git ${args.join(' ')} failed in ${cwd}: ${result.stderr}`)
+  return result.stdout.trim()
+}
+/** A commit of `files` on top of `parent`, made with plumbing and a scratch index: the checkout, its index and the person's edit stay as they are. */
+function plantCommit(ws, parent, files, message) {
+  const env = { ...process.env, GIT_INDEX_FILE: join(ws, '.git', 'probe-plant.index') }
+  probeGit(ws, ['read-tree', parent], { env })
+  for (const [path, content] of Object.entries(files)) probeGit(ws, ['update-index', '--add', '--cacheinfo', `100644,${probeGit(ws, ['hash-object', '-w', '--stdin'], { input: content })},${path}`], { env })
+  const tree = probeGit(ws, ['write-tree'], { env })
+  return probeGit(ws, ['commit-tree', tree, '-p', parent, '-m', message])
+}
+const mergeWt = join(runDir, EXEC_MERGE, 'ws', '.worktrees', 'hz-task-1')
+const mergeBash = (command, description) => ({ tool: { name: 'Bash', arguments: { command, description } } })
+const mergeSleep = (seconds, why) => mergeBash(`Start-Sleep -Seconds ${seconds}`, `probe: ${why}`)
+const mergeSquash = (branch, subject, wt = mergeWt) => mergeBash([
+  `git -C '${wt}' checkout -q -b ${branch}`,
+  `git -C '${wt}' reset -q --soft main`,
+  `git -C '${wt}' -c user.name=probe -c user.email=probe@example.invalid -c commit.gpgsign=false commit -q -m '${subject}' -m 'Hourness-Task: task-1'`,
+  `git -C '${wt}' log --oneline -1`,
+].join('; '), 'probe: squash the task branch into one commit for the main branch')
+const mergeDispatch = { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: MERGE_WHY, quick: true, review: { depth: 'skip', why: 'probe: one data file' } } } }
+const mergeWorker = (file, message, wt = mergeWt) => [
+  { tool: { name: 'Write', arguments: { file_path: join(wt, 'src', file), content: `${JSON.stringify({ message })}\n` } } },
+  { tool: { name: 'Bash', arguments: { command: `git add -A; git -c user.name=t -c user.email=t@example.invalid commit -m ${message}; git log --oneline -1`, description: 'probe: commit the work' } } },
+  { tool: { name: 'structured_output', arguments: { status: 'done', summary: `wrote src/${file} and committed it`, commits: ['{git-head}'], files: [`src/${file}`], checks: [], questions: [], assumptions: [], lessons: [] } } },
+  { text: 'worker done' },
+]
+const execMerge = designScenario(EXEC_MERGE, 'glm-5.3-flash', (ws) => {
+  // The failing commit is planted before the run: one commit on the first commit of main, with the FAIL file the gate's first command looks for.
+  const root = probeGit(ws, ['rev-parse', 'HEAD'])
+  probeGit(ws, ['update-ref', 'refs/heads/probe/fail', plantCommit(ws, root, { 'FAIL': 'probe\n', 'src/fail.js': 'fail\n' }, 'Break the build\n\nHourness-Task: task-1')])
+  return [
+    { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+    mergeBash('git add docs/graph; git -c user.name=probe -c user.email=probe@example.invalid -c commit.gpgsign=false commit -q -m "Record the graph"', 'probe: commit the graph on the main branch'),
+    mergeDispatch,
+    mergeSleep(8, 'let the worker hand back'),
+    mergeSquash('merge/task-1', 'Add the feed'),
+    { tool: { name: 'check_commit', arguments: { commit: 'merge/task-1' } } },
+    mergeSleep(5, 'let the merge check run'),
+    mergeBash('git merge --no-ff hz/task-1', 'probe: a merge commit onto the main branch'),
+    mergeBash('git merge --ff-only merge/task-1', 'probe: fast-forward the main branch'),
+    mergeBash(`Test-Path '${mergeWt}'`, 'probe: is the task worktree still there'),
+    mergeSleep(3, 'let the trunk check run'),
+    { tool: { name: 'check_commit', arguments: { commit: 'probe/fail' } } },
+    mergeSleep(5, 'let the failing check run'),
+    mergeBash('git merge --ff-only probe/fail', 'probe: fast-forward to the failed commit'),
+    { tool: { name: 'graph_status', arguments: { id: 'task-1', rev: '{rev:task-1}', to: 'doing', reason: 'probe: rework the feed' } } },
+    mergeDispatch,
+    mergeSleep(8, 'let the second worker hand back'),
+    mergeSquash('merge/task-1-r2', 'Rework the feed'),
+    mergeBash('git -c "alias.tm=update-ref refs/heads/main merge/task-1-r2" tm', 'probe: move the main branch through an alias'),
+    { tool: { name: 'check_commit', arguments: { commit: 'merge/task-1-r2' } } },
+    mergeSleep(5, 'let the check after the move run'),
+    { text: 'done', status: true },
+  ]
+}, { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...clockRow(OFF_PEAK_AT)], others: [mergeWorker('feed.json', 'probe:feed'), mergeWorker('feed2.json', 'probe:rework')] })
+
+// The upstream half of §9.1's glm-exec-merge (D17: a second run). A bare
+// origin in the run directory; another clone pushed one unchecked commit
+// with the trailer onto its main and one more commit onto a side branch, and
+// the workspace fetched both, before the run: git's local transport starts
+// an MSYS sh that the headless runner's shell sandbox cannot start ("couldn't
+// create signal pipe, Win32 error 5"), so no fetch or push to the bare
+// origin can run inside the session. In the session `git pull --ff-only` and
+// `git fetch . <commit>:refs/remotes/origin/main` are refused; `git merge
+// --ff-only origin/main` is refused before check_commit origin/main and runs
+// after it; a script-level move of origin/main to the side commit, `git -c
+// "alias.up=update-ref refs/remotes/origin/main <commit>" up`, is found after
+// the call the way a push is (a remote line with ok false, the violation, the
+// notice) and the outside-advance event runs the trunk check on that commit.
+// The fetch line and the real push are pinned by
+// tests/execute-upstream.spec.ts.
+const upstreamDir = join(runDir, EXEC_MERGE_UPSTREAM)
+const upstreamCommits = {}
+const execMergeUpstream = designScenario(EXEC_MERGE_UPSTREAM, 'glm-5.3-flash', (ws) => {
+  const bare = join(upstreamDir, 'origin.git')
+  const elsewhere = join(upstreamDir, 'elsewhere')
+  probeGit(upstreamDir, ['init', '-q', '--bare', '-b', 'main', bare])
+  probeGit(ws, ['remote', 'add', 'origin', bare])
+  probeGit(ws, ['push', '-q', '-u', 'origin', 'main'])
+  probeGit(upstreamDir, ['clone', '-q', bare, elsewhere])
+  mkdirSync(join(elsewhere, 'src'), { recursive: true })
+  writeFileSync(join(elsewhere, 'src', 'up.json'), '{"up":true}\n')
+  probeGit(elsewhere, ['add', 'src/up.json'])
+  probeGit(elsewhere, ['commit', '-q', '-m', 'Add the upstream data', '-m', 'Hourness-Task: task-1'])
+  probeGit(elsewhere, ['push', '-q', 'origin', 'main'])
+  upstreamCommits.pushed = probeGit(elsewhere, ['rev-parse', 'HEAD'])
+  writeFileSync(join(elsewhere, 'src', 'side.json'), '{"side":true}\n')
+  probeGit(elsewhere, ['add', 'src/side.json'])
+  probeGit(elsewhere, ['commit', '-q', '-m', 'Add the side data'])
+  probeGit(elsewhere, ['push', '-q', 'origin', 'HEAD:refs/heads/side'])
+  upstreamCommits.side = probeGit(elsewhere, ['rev-parse', 'HEAD'])
+  probeGit(ws, ['fetch', '-q', 'origin'])
+  return [
+    { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+    mergeBash('git pull --ff-only', 'probe: pull the main branch'),
+    mergeBash(`git fetch . ${upstreamCommits.pushed}:refs/remotes/origin/main`, 'probe: set the remote-tracking reference by hand'),
+    mergeBash('git merge --ff-only origin/main', 'probe: fast-forward to the upstream before its check'),
+    { tool: { name: 'check_commit', arguments: { commit: 'origin/main' } } },
+    mergeSleep(5, 'let the merge check run'),
+    mergeBash('git merge --ff-only origin/main', 'probe: fast-forward to the upstream after its check'),
+    mergeSleep(3, 'let the trunk check run'),
+    mergeBash(`git -c "alias.up=update-ref refs/remotes/origin/main ${upstreamCommits.side}" up`, 'probe: move origin/main to an unchecked commit through an alias'),
+    mergeSleep(6, 'let the trunk check on the moved commit run'),
+    { text: 'done', status: true },
+  ]
+}, { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...clockRow(OFF_PEAK_AT)] })
+const mergeChecksOf = name => readChecks(join(runDir, name, 'ws', '.llm', 'execute'))
+const mergeRecords = { [EXEC_MERGE]: await mergeChecksOf(EXEC_MERGE), [EXEC_MERGE_UPSTREAM]: await mergeChecksOf(EXEC_MERGE_UPSTREAM) }
+
+// E8 (M7 design §3.9, §9.1 glm-exec-drive): the drive on the real runtime.
+// The release is the person's stage write in the graph before the run (D13;
+// glm-design-release covers record_human_answer's release path). The loop
+// board is off, as §9.1 has it, so the release's entry runs in M7's
+// fallback. The headless root types /wish into a second root session of the
+// workspace and wakes it; that session is the main agent and runs the
+// scripted turns and goal rounds while the root waits in probe_wait_goal,
+// which also speaks for the person: 继续 after the idle block, a question
+// after the pause. The main agent's steps, in order: focus, a sleep (the
+// drive starts), get_goal, update_goal complete (refused), get_goal, the
+// dispatch, a sleep (the worker hands back), send_message to the ended
+// worker, propose_to_human, await_human, the person's words (tell),
+// record_human_answer, get_goal, the end of the turn; three read-only goal
+// rounds (the fourth is blocked hourness-idle-rounds before it starts);
+// update_goal resume after 继续, /goal pause typed in a step (the round
+// driver cancels the turn); get_goal at the next step, /wish off,
+// update_goal complete, done. The peak hold and its resume are pinned in L2
+// (tests/execute-peak.spec.ts, §9.1).
+const EXEC_DRIVE = 'glm-exec-drive'
+const DRIVE_WHY = 'probe: the drive needs a running model'
+const DRIVE_PERSON = { start: '目标放行了，开始做吧。', go: '继续', look: '现在怎么样了？' }
+/** The person's release of a goal or module seeded in design (D13): the stage write releaseAtOf reads, as record_human_answer makes it. */
+async function stageRelease(name, ids) {
+  const engine = openEngine(join(stageWs(name), 'docs', 'graph'))
+  for (const id of ids) {
+    const current = await engine.load()
+    const written = await engine.apply('human', { op: 'edit', id, rev: current.revisions.get(id), set: { stage: 'release' }, reason: 'probe: the person released it' })
+    if (!written.ok) throw new Error(`probe: releasing ${id} in ${name} failed: ${JSON.stringify(written.error)}`)
+  }
+}
+await stageGraph(EXEC_DRIVE, [
+  ['human', { type: 'goal', title: '静态博客', stage: 'design', acceptance: ['the feed builds'] }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['src/feed.json'], acceptance: ['the feed builds'], worktree: true }],
+  ['human', { type: 'norm', id: 'norm-merge-gate', title: '合入前的检查', parent: 'goal-1', acceptance: ['`$ node -e "process.exit(0)"`'] }],
+])
+await stageRelease(EXEC_DRIVE, ['goal-1'])
+const driveRead = { tool: { name: 'Read', arguments: { file_path: join(stageWs(EXEC_DRIVE), 'README.md') } } }
+const driveGetGoal = { tool: { name: 'get_goal', arguments: {} } }
+const driveUpdate = action => ({ tool: { name: 'DeferredToolCall', arguments: { name: 'update_goal', input: { action } } }, goal: true })
+/** The main agent's script by step name; `driveAt` finds a step, whose result the next request of the session carries. */
+const driveSteps = [
+  ['focus', { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } }],
+  ['wait-start', mergeSleep(3, 'let the drive start')],
+  ['goal-started', driveGetGoal],
+  ['complete-gaps', driveUpdate('complete')],
+  ['goal-after-gaps', driveGetGoal],
+  ['dispatch', { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: DRIVE_WHY, quick: true, review: { depth: 'skip', why: 'probe: nothing to review' } } } }],
+  ['wait-handback', mergeSleep(8, 'let the worker hand back')],
+  ['message-ended', { tool: { name: 'send_message', arguments: { agent_id: '{child:task-1}', message: 'probe: one more thing' } } }],
+  ['propose', { tool: { name: 'propose_to_human', arguments: { kind: 'question', form: 'recommend', text: QUESTION_EXAMPLE.text, title: QUESTION_EXAMPLE.title, proposal: QUESTION_EXAMPLE.proposal, reason: QUESTION_EXAMPLE.reason, cost: QUESTION_EXAMPLE.cost } } }],
+  ['await', { tool: { name: 'await_human', arguments: { questions: ['question-1'], summary: 'The person decides the question first.' } } }],
+  ['person-says', { tool: { name: 'graph_show', arguments: { id: 'question-1' } }, tell: QUESTION_ANSWER }],
+  ['record', { tool: { name: 'record_human_answer', arguments: { kind: 'question', question: 'question-1', answer: 'agree', words: [QUESTION_ANSWER], recordedAs: QUESTION_EXAMPLE.proposal } } }],
+  ['goal-resumed', driveGetGoal],
+  ['end-turn', { text: 'The drive goes on in the next goal round.' }],
+  ...[1, 2, 3].flatMap(round => [[`round-${round}`, driveRead], [`round-${round}-end`, { text: 'Nothing changed in this round.' }]]),
+  ['resume', driveUpdate('resume')],
+  ['pause', { ...driveRead, line: '/goal pause' }],
+  ['goal-paused', driveGetGoal],
+  ['wish-off', { ...driveRead, line: '/wish off' }],
+  ['complete-off', driveUpdate('complete')],
+  ['done', { text: 'done' }],
+]
+const driveAt = name => driveSteps.findIndex(([step]) => step === name)
+const driveMain = driveSteps.map(([, step]) => step)
+const driveWorker = [
+  { tool: { name: 'structured_output', arguments: { status: 'blocked', summary: 'probe: the drive scenario hands back at once', commits: [], files: [], checks: [], questions: [], assumptions: [], lessons: [] } } },
+  { text: 'worker done' },
+]
+const EXEC_ON = ['- id: glm-hourness/execute', '  disabled: false', '- id: glm-hourness/loops', '  disabled: true', ...clockRow(OFF_PEAK_AT)]
+// The drive records the person's answer, and record_human_answer compares the
+// session's event times (Date.now, which the probe clock moves) with the
+// graph's history times (new Date, which it does not), so the drive runs on
+// the real clock; the rules row is off instead, so no GLM peak can hold the
+// rounds back whatever the hour (the peak half is L2's, tests/execute-peak.spec.ts).
+const DRIVE_ON = ['- id: glm-hourness/execute', '  disabled: false', '- id: glm-hourness/loops', '  disabled: true', '- id: glm-hourness/rules', '  disabled: true']
+const execDrive = designScenario(EXEC_DRIVE, 'glm-5.3-flash', ws => [
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish', say: DRIVE_PERSON.start } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_wait_goal', input: { steps: [{ phase: 'blocked', code: 'hourness-idle-rounds', say: DRIVE_PERSON.go }, { phase: 'paused', holdMs: 4000, say: DRIVE_PERSON.look }, { phase: 'complete' }], timeoutMs: 140_000 } } } },
+  { text: 'done' },
+], { git: true, extra: [...DRIVE_ON, ...dispatchRow(join(runDir, EXEC_DRIVE, 'dispatch.jsonl'), { watch: 'probe-other-' })], others: [driveMain, driveWorker] })
+
+// E8 (M7 design §3.9.7, §3.7.5, §9.1 glm-exec-modules, R5-F1, U30): the two
+// loops on the real runtime. The goal is split into module-a and module-b;
+// the person's releases and returns are their own stage writes (D13): the
+// goal and module-a before the run, the rest through probe_human_write.
+// The main agent (the root, after the simulated person's /wish) focuses the
+// goal; module-a's release starts the drive; a task under module-b is
+// refused, the one under module-a is dispatched; the main agent sends
+// module-a back to design on its own word while the worker runs (its next
+// write is refused, its handback is stale); the design review of module-b
+// runs twice (CHANGES_REQUESTED, APPROVED); the person releases module-b
+// (a comment, no second goal) and module-a again (the re-dispatch carries
+// the new release time), then sends the goal back with their words (the
+// goal blocks hourness-design-wait) and releases it again (the goal
+// resumes). glm-exec-modules-2 runs a copy of the split goal next to an
+// unsplit one with the module reader throwing (§6.6 (g)).
+const EXEC_MODULES = 'glm-exec-modules'
+const EXEC_MODULES_2 = 'glm-exec-modules-2'
+const MODULES_WHY = 'probe: the two loops need a running model'
+const MODULES_DIRECTIONS = ['数据只存在本机', '先记账再汇总']
+// File scopes, at most two: a quick dispatch takes no directory (brief.ts misfit), and quick keeps the plan step out of the scenario.
+const modulesTask = (id, parent, scope) => ['human', { type: 'task', id, title: `写 ${id}`, parent, kind: 'implement', writeScope: scope, acceptance: ['能用'], worktree: true }]
+const modulesGoal = ['human', { type: 'goal', title: '记账小工具', stage: 'design', acceptance: ['月底能看到按类别的合计'] }]
+const modulesModule = (id, title) => ['human', { type: 'feature', id, title, parent: 'goal-1', stage: 'design', acceptance: [`${title}能用`] }]
+await stageGraph(EXEC_MODULES, [
+  modulesGoal,
+  ['human', { type: 'decision', id: 'decision-fw', title: '用本地文件存账', parent: 'goal-1' }],
+  ['human', { type: 'norm', id: 'norm-directions', title: '方向清单', parent: 'goal-1', acceptance: MODULES_DIRECTIONS }],
+  modulesModule('module-a', '记一笔'),
+  modulesModule('module-b', '月底报表'),
+  ['human', { type: 'decision', id: 'decision-b', title: '报表用纯文本', parent: 'module-b' }],
+  modulesTask('task-a1', 'module-a', ['src/a/one.txt', 'src/a/two.txt']),
+  modulesTask('task-b1', 'module-b', ['src/b/report.txt']),
+])
+await stageRelease(EXEC_MODULES, ['goal-1', 'module-a'])
+await stageGraph(EXEC_MODULES_2, [
+  modulesGoal,
+  modulesModule('module-a', '记一笔'),
+  modulesTask('task-a1', 'module-a', ['src/a/one.txt']),
+  ['human', { type: 'goal', id: 'goal-2', title: '静态博客', stage: 'design', acceptance: ['the blog builds'] }],
+  modulesTask('task-2', 'goal-2', ['src/feed.json']),
+])
+await stageRelease(EXEC_MODULES_2, ['goal-1', 'module-a', 'goal-2'])
+const modulesWt = join(stageWs(EXEC_MODULES), '.worktrees', 'hz-task-a1')
+const modulesDispatch = id => ({ tool: { name: 'dispatch_task', arguments: { id, model: 'glm-5.3-flash', why: MODULES_WHY, quick: true, review: { depth: 'skip', why: 'probe: nothing to review' } } } })
+const modulesHuman = (id, stage, reason) => ({ tool: { name: 'DeferredToolCall', arguments: { name: 'probe_human_write', input: { mutation: { op: 'edit', id, set: { stage }, reason } } } } })
+const modulesReview = { tool: { name: 'dispatch_task', arguments: { id: 'module-b', model: 'glm-5.3', why: MODULES_WHY } } }
+const modulesHandBack = summary => ({ tool: { name: 'structured_output', arguments: { status: 'blocked', summary, commits: [], files: [], checks: [], questions: [], assumptions: [], lessons: [] } } })
+const modulesReviewer = verdict => [
+  { tool: { name: 'structured_output', arguments: { verdict, commit: '{git-head}', findings: verdict === 'APPROVED' ? [] : [{ id: 'f1', blocking: true, criterion: 'acceptance:0', where: 'decision-b', what: 'the report does not group by category', fix: 'group the lines by category' }], checked: ['direction:0', 'direction:1', 'acceptance:0'], lessons: [] } } },
+  { text: 'review done' },
+]
+const modulesRead = { tool: { name: 'Read', arguments: { file_path: join(stageWs(EXEC_MODULES), 'README.md') } } }
+/** The main agent's script by step name; `execModulesAt` finds a step, whose result the next request of the session carries. */
+const execModulesSteps = [
+  ['focus', { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } }],
+  ['wait-start', mergeSleep(3, 'let the drive start on the release of module-a')],
+  ['goal-started', driveGetGoal],
+  ['dispatch-b', modulesDispatch('task-b1')],
+  ['dispatch-a', modulesDispatch('task-a1')],
+  ['wait-write', mergeSleep(3, 'let the worker of module-a write')],
+  ['send-back-a', { tool: { name: 'graph_edit', arguments: { id: 'module-a', rev: '{rev:module-a}', set: { stage: 'design' }, reason: 'probe: the design of module-a has to change' } } }],
+  ['wait-stale', mergeSleep(10, 'let the worker of module-a write again and hand back')],
+  ['review-1', modulesReview],
+  ['wait-review-1', mergeSleep(6, 'let the design review hand back')],
+  ['review-2', modulesReview],
+  ['wait-review-2', mergeSleep(6, 'let the second design review hand back')],
+  ['release-b', modulesHuman('module-b', 'release', 'probe: the person released module-b')],
+  ['wait-release-b', mergeSleep(3, 'let the release of module-b land')],
+  ['release-a', modulesHuman('module-a', 'release', 'probe: the person released module-a again')],
+  ['wait-release-a', mergeSleep(3, 'let the release of module-a land')],
+  ['dispatch-a-again', modulesDispatch('task-a1')],
+  ['wait-again', mergeSleep(4, 'let the second worker of module-a hand back')],
+  ['goal-back', modulesHuman('goal-1', 'design', 'probe: the person said 目标要改，先停一下')],
+  ['read-back', modulesRead],
+  ['goal-design', driveGetGoal],
+  ['goal-release', modulesHuman('goal-1', 'release', 'probe: the person said 可以，放行')],
+  ['read-release', modulesRead],
+  ['goal-again', driveGetGoal],
+  ['done', { text: 'done', status: true }],
+]
+const execModulesAt = name => execModulesSteps.findIndex(([step]) => step === name)
+const execModules = designScenario(EXEC_MODULES, 'glm-5.3-flash', () => execModulesSteps.map(([, step]) => step), { wish: true, git: true, extra: [...EXEC_ON, ...dispatchRow(join(runDir, EXEC_MODULES, 'dispatch.jsonl'))], others: [
+  [
+    { tool: { name: 'Write', arguments: { file_path: join(modulesWt, 'src', 'a', 'one.txt'), content: 'one\n' } } },
+    mergeSleep(8, 'module-a goes back to design meanwhile'),
+    { tool: { name: 'Write', arguments: { file_path: join(modulesWt, 'src', 'a', 'two.txt'), content: 'two\n' } } },
+    modulesHandBack('probe: the design of module-a went back'),
+    { text: 'worker done' },
+  ],
+  modulesReviewer('CHANGES_REQUESTED'),
+  modulesReviewer('APPROVED'),
+  [modulesHandBack('probe: the second attempt of task-a1'), { text: 'worker two done' }],
+] })
+const execModules2 = designScenario(EXEC_MODULES_2, 'glm-5.3-flash', () => [
+  { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+  modulesDispatch('task-a1'),
+  { tool: { name: 'graph_focus', arguments: { id: 'goal-2' } } },
+  modulesDispatch('task-2'),
+  mergeSleep(4, 'let the worker of task-2 hand back'),
+  { text: 'done' },
+], { wish: true, git: true, extra: [...EXEC_ON, ...dispatchRow(join(runDir, EXEC_MODULES_2, 'dispatch.jsonl'), { breakReaders: true })], others: [[modulesHandBack('probe: the unsplit goal is spared'), { text: 'worker done' }]] })
+const execModulesGraph = await loadGraph(join(stageWs(EXEC_MODULES), 'docs', 'graph'))
+
+// E9 (M7 design §9.1 glm-exec-skeleton, §10.1): the skeleton end to end on
+// the real runtime. The simulated person types /wish, answers the interview,
+// agrees to the requirement and releases the design; nothing else. The main
+// agent is the headless root (D2): its scripted turn never ends after the
+// release, so the goal only has to exist, block nothing and complete, as in
+// glm-exec-modules. The interview is glm-design-interview's step list without
+// its refusals (D4); the design is the main agent's proposals: a decision
+// with the five columns, one write task with its dispatch attributes and the
+// norm-merge-gate, all approved by the release. The release's event runs in
+// M7's fallback (the loop board is off; the board-run path is L4 batch 2,
+// §9.2 item 9) and the run uses the real clock with the rules row off (D3).
+// Then: get_goal (the drive started with no command), the dispatch with a
+// chosen model and a required plan (review declared full, D5), the approval,
+// the worker writing, committing and handing back, the review on a chosen
+// model, the squash with the trailer in the task worktree, check_commit, the
+// fast-forward, the acceptance review of the goal on a chosen model, and
+// update_goal complete through the completion gate.
+const EXEC_SKELETON = 'glm-exec-skeleton'
+const SKELETON_WHY = 'probe: the skeleton needs a running model'
+const skeletonWt = join(stageWs(EXEC_SKELETON), '.worktrees', 'hz-task-1')
+const SKELETON_GATE = ['`$ node -e "process.exit(0)"`']
+const SKELETON_ACCEPTED = INTERVIEW_ANSWERS.acceptance
+await stageGraph(EXEC_SKELETON, [['llm', { type: 'goal', title: '记账小工具', stage: 'interview' }]])
+const skeletonHuman = { ...Object.fromEntries(Object.entries(INTERVIEW_TASK).filter(([key]) => key !== 'stop')), replies: { ...INTERVIEW_TASK.replies, release: [RELEASE_GO] }, maxReplies: 10 }
+const skeletonPropose = (node, reason) => ({ tool: { name: 'graph_propose', arguments: { node, reason } } })
+/** The main agent's script by step name; `skeletonAt` finds a step, whose result the next request of the session carries. */
+const skeletonSteps = [
+  ...interviewSteps.filter(([step]) => !['confirm-early', 'edit-stage', 'wake-other', 'wait-other', 'done'].includes(step)),
+  ['design-decision', skeletonPropose({ type: 'decision', id: 'decision-1', title: '用本地文件存账', parent: 'goal-1', body: `${RELEASE_BODY}\n如果失败：文件被改坏`, acceptance: ['月底出一张分类表'], nonGoals: ['不做同步'] }, 'probe: the design')],
+  ['design-task', skeletonPropose({ type: 'task', id: 'task-1', title: '记一笔', parent: 'goal-1', kind: 'implement', writeScope: ['src/ledger.json'], acceptance: ['记一笔能读回'], worktree: true, edges: [{ type: 'source', to: 'decision-1' }] }, 'probe: the plan of the design')],
+  ['design-gate', skeletonPropose({ type: 'norm', id: 'norm-merge-gate', title: '合入前的检查', parent: 'goal-1', acceptance: SKELETON_GATE }, 'probe: the check the stage reminder asks for before release')],
+  ['put-release', releaseCall({})],
+  ['show-release', { text: releaseShown }],
+  ['record-release', recordRelease({ answer: 'agree', words: [RELEASE_GO], recordedAs: '照这个方案放行' })],
+  ['wait-start', mergeSleep(3, 'let the drive start')],
+  ['goal-started', driveGetGoal],
+  ['dispatch', { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: SKELETON_WHY, review: { depth: 'full' } } } }],
+  ['wait-plan', mergeSleep(8, 'let the worker submit its plan')],
+  ['approve', { tool: { name: 'answer_worker', arguments: { request: '{plan-request:task-1}', verdict: 'approve' } } }],
+  ['wait-handback', mergeSleep(8, 'let the worker write, commit and hand back')],
+  ['review', { tool: { name: 'dispatch_task', arguments: { id: '{review:task-1}', model: 'glm-5.3', why: SKELETON_WHY, depth: 'full' } } }],
+  ['wait-review', mergeSleep(8, 'let the review hand back')],
+  ['squash', mergeSquash('merge/task-1', 'Record one expense', skeletonWt)],
+  ['check', { tool: { name: 'check_commit', arguments: { commit: 'merge/task-1' } } }],
+  ['wait-check', mergeSleep(5, 'let the merge check run')],
+  ['ff', mergeBash('git merge --ff-only merge/task-1', 'probe: fast-forward the main branch')],
+  ['wait-trunk', mergeSleep(3, 'let the evidence and the trunk check land')],
+  ['accept', { tool: { name: 'dispatch_task', arguments: { id: 'goal-1', model: 'glm-5.3', why: SKELETON_WHY } } }],
+  ['wait-accept', mergeSleep(8, 'let the acceptance review hand back')],
+  ['complete', driveUpdate('complete')],
+  ['wait-done', mergeSleep(2, 'let the graph goal close')],
+  ['done', { text: 'done', status: true }],
+]
+const skeletonAt = name => skeletonSteps.findIndex(([step]) => step === name)
+const skeletonWorker = [
+  { tool: { name: 'submit_plan', arguments: { steps: [{ title: 'Write the ledger', paths: ['src/ledger.json'], acceptance: ['one entry reads back'], covers: [0], verify: 'L2', commands: ['node --test'] }], notes: 'probe: one file' } } },
+  ...mergeWorker('ledger.json', 'probe:ledger', skeletonWt),
+]
+const skeletonAcceptor = [
+  { tool: { name: 'structured_output', arguments: { verdict: 'APPROVED', commit: '{git-head}', findings: [], checked: ['acceptance:0: src/ledger.json on main at {git-head}'], lessons: [] } } },
+  { text: 'acceptance done' },
+]
+const execSkeleton = designScenario(EXEC_SKELETON, 'glm-5.3-flash', () => skeletonSteps.map(([, step]) => step), {
+  wish: true,
+  git: true,
+  human: skeletonHuman,
+  extra: [...DRIVE_ON, ...dispatchRow(join(runDir, EXEC_SKELETON, 'dispatch.jsonl'))],
+  others: [skeletonWorker, execReviewVerdict('APPROVED', ['acceptance:0'], []), skeletonAcceptor],
+})
+mergeRecords[EXEC_SKELETON] = await mergeChecksOf(EXEC_SKELETON)
+
+// The request seam over a dispatched worker (m4 design 0.6 §5.9; M7 design
+// 0.6 §3.2.1's 申报接缝; m4 §14.1's `guard-request-worker`): the worker's
+// write outside the project is refused by worker-scope with the request ref
+// and the worker's sentence, its ask_main carries the ref to the main agent,
+// the main agent files request_exception, the human's 可以 (probe_say with an
+// rpcId is the client's own message) grants it, the answer_worker returns to
+// the worker, and the identical write passes worker-scope's peekGrant and the
+// guard row's use-time check. The outside target sits in the run directory,
+// which is not a project: the nearest git root above it is this checkout, not
+// the scenario workspace, so the F19 judgment asks.
+const requestWorkerDir = join(runDir, 'guard-request-worker')
+const requestWorkerOutside = join(requestWorkerDir, 'outside', 'todo.md')
+mkdirSync(dirname(requestWorkerOutside), { recursive: true })
+writeFileSync(requestWorkerOutside, 'old content\n')
+await stageGraph('guard-request-worker', [
+  ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
+  ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed.xml'], acceptance: ['the feed builds'], worktree: true }],
+])
+const REQUEST_WORKER_WHY = 'probe: the seam needs a running model'
+const requestWorkerScript = [
+  { tool: { name: 'Write', arguments: { file_path: requestWorkerOutside, content: 'probe content\n' } } },
+  { tool: { name: 'ask_main', arguments: { question: `The task needs ${slash(requestWorkerOutside)} outside the workspace. The harness refused the write and says: give ref "{ref}" — please file request_exception with ref "{ref}" and answer me.`, assumption: 'Hand back and put the ref and the target under questions.', options: ['file it', 'not now'] } } },
+  { tool: { name: 'Write', arguments: { file_path: requestWorkerOutside, content: 'probe content\n' } } },
+  { tool: { name: 'structured_output', arguments: { status: 'done', summary: 'the outside write ran on the human approval', commits: [], files: [], checks: [], questions: [], assumptions: [], lessons: [] } } },
+  { text: 'worker done' },
+]
+const requestWorkerRun = designScenario('guard-request-worker', 'glm-5.3', () => [
+  { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+  { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: REQUEST_WORKER_WHY, quick: true } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the worker hit the denial and ask' } } },
+  requestExceptionCall(true),
+  probeSay(true, '可以', 'probe-request-worker-1'),
+  { echoToolText: true },
+  { tool: { name: 'answer_worker', arguments: { request: '{ask-request:task-1}', text: 'The human approved the request: make the identical call once now.' } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the worker hand back' } } },
+  { text: 'done', status: true },
+], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...probeRow(join(requestWorkerDir, 'lift.jsonl')), ...clockRow(OFF_PEAK_AT)], others: [requestWorkerScript] })
+const requestWorkerViolations = jsonl(join(requestWorkerDir, 'home', 'audit', 'violations.jsonl'))
+const requestWorkerRef = requestWorkerViolations.find(record => record.rule === 'worker-scope' && typeof record.ref === 'string')?.ref
+// The worker's steps: every request that is not the main agent's session. Its second write is the step after the ask_main answer.
+const requestWorkerSteps = requestWorkerRun.steps.filter(step => step.sessionId !== requestWorkerRun.steps[0]?.sessionId)
+const requestWorkerGranted = requestWorkerSteps.map(step => lastToolResult(step)).find(result => result?.text.includes('sandbox') === true)
 const designRecord = (scenario) => readHolder(holderFileOf(join(scenario.dir, 'dsh-home', 'glm-hourness'), join(scenario.ws, 'docs', 'graph')))
 const MAIN_HEAD = '# Main agent\nYou are the main agent of this project'
 const sectionAt = step => step?.system.indexOf(MAIN_HEAD) ?? -1
@@ -2440,7 +3247,7 @@ const transcriptReplaced = transcriptLines.slice(0, 5).map(line => /Replaced in 
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory', 'glm-memory-depth', 'glm-memory-habit', 'glm-lessons', 'non-glm-lessons', 'glm-lessons-failure', 'non-glm-lessons-failure'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory', 'glm-memory-depth', 'glm-memory-habit', 'glm-lessons', 'non-glm-lessons', 'glm-lessons-failure', 'non-glm-lessons-failure', 'glm-lessons-path', 'non-glm-lessons-path'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
@@ -2686,6 +3493,7 @@ function stageChecks() {
   const released = designReleased.steps.filter(step => step.sessionId === designReleased.steps[0]?.sessionId)
   const releasedChildren = stageChildren(STAGE_MODULES, designReleased)
   const releasedViolations = jsonl(join(runDir, STAGE_MODULES, 'home', 'audit', 'violations.jsonl')).filter(record => record.rule === 'design-before-release')
+  const releasedReadonly = jsonl(join(runDir, STAGE_MODULES, 'home', 'audit', 'violations.jsonl')).filter(record => record.rule === 'dispatch-chain-readonly')
   const lastNotice = step => stageNotices(step).at(-1)
   const wsFile = (name, file) => existsSync(join(stageWs(name), file))
   return [
@@ -2698,7 +3506,12 @@ function stageChecks() {
     ['design stage: the row activated quietly and no question card was raised', designStage.status === 0 && stageQuiet(designStage.name) && designStage.human.every(entry => entry.kind !== 'unexpected-question'), `exit ${designStage.status}; ${quiet(designStage.name)}`],
     ['design stage (compact): after a compaction the first request with the checkpoint carries the reminder again, reason compaction', after.length > 0 && after.some(reasons => reasons.includes('compaction')) && designStageCompact.status === 0, `${designStageCompact.compactions.length} compaction(s); after checkpoints: ${JSON.stringify(after)}`],
     ['design released: the goal level of a released goal split into modules lists both modules, one released and one in design; the module in design is described in its own reminder, the released one says so', stageNotices(released[1])[1]?.text.includes('The framework, the module list and the directions are released.') === true && stageNotices(released[1])[1].text.includes('- 记一笔（module-a）：已放行') && stageNotices(released[1])[1].text.includes('- 月底报表（module-b）：设计中') && lastNotice(released[4])?.text.includes('module module-b "月底报表", which is in design') === true && lastNotice(released[7])?.text.includes('This module is released.') === true, released.map(step => stageNotices(step).length).join(',')],
-    ['design-before-release: at the goal level of the released goal the first child writes; at a task of the module in design the second is refused with the module named; at a task of the released module the third writes', releasedChildren.length === 3 && releasedChildren[0].result?.isError !== true && wsFile(STAGE_MODULES, 'released-1.txt') && releasedChildren[1].result?.isError === true && releasedChildren[1].result.text.includes('module module-b (月底报表) of goal goal-1, and the human has not released that module yet') && releasedChildren[1].result.text.includes('(kind release, module module-b)') && !wsFile(STAGE_MODULES, 'released-2.txt') && releasedChildren[2].result?.isError !== true && wsFile(STAGE_MODULES, 'released-3.txt') && releasedViolations.length === 1, releasedChildren.map(child => `${child.result?.isError}:${(child.result?.text ?? '').slice(0, 50)}`).join(' | ')],
+    // m7 design 0.6 §3.2.2 (dispatch-chain-readonly): with the execute row on, a released
+    // stage no longer lets the main agent's plain subagent write — the writes go through
+    // dispatch_task workers, which the exec scenarios prove end to end. Here the matrix
+    // keeps proving where the design rule draws its own line: the unreleased module still
+    // refuses with the module named, before the read-only rule is even asked.
+    ['design-before-release (m7 §3.2.2 coexistence): at the goal level of the released goal the first child is read-only, refused by dispatch-chain-readonly naming the plain subagent path and dispatch_task as the way; at a task of the module in design the second is still refused by design-before-release with the module named; at a task of the released module the third is read-only the same way; no file lands, the design rule has its one journal row, and the read-only rule has the rows for the first and third children', releasedChildren.length === 3 && releasedChildren[0].result?.isError === true && releasedChildren[0].result.text.includes('In a main-agent session only dispatched task workers write; you were started with the plain subagent tool.') && releasedChildren[0].result.text.includes('the main agent dispatches writing work with dispatch_task') && releasedChildren[1].result?.isError === true && releasedChildren[1].result.text.includes('module module-b (月底报表) of goal goal-1, and the human has not released that module yet') && releasedChildren[1].result.text.includes('(kind release, module module-b)') && releasedChildren[2].result?.isError === true && releasedChildren[2].result.text.includes('only dispatched task workers write') && !wsFile(STAGE_MODULES, 'released-1.txt') && !wsFile(STAGE_MODULES, 'released-2.txt') && !wsFile(STAGE_MODULES, 'released-3.txt') && releasedViolations.length === 1 && releasedReadonly.length === 2 && releasedReadonly.every(record => [releasedChildren[0].id, releasedChildren[2].id].includes(record.agentId)), releasedChildren.map(child => `${child.result?.isError}:${(child.result?.text ?? '').slice(0, 50)}`).join(' | ')],
   ]
 }
 function questionChecks() {
@@ -2794,7 +3607,10 @@ function releaseChecks() {
   const released = jsonOf(9)
   const child = stageChildren(RELEASE, designRelease)[0]
   const violations = jsonl(join(runDir, RELEASE, 'home', 'audit', 'violations.jsonl'))
-  const note = goal.history.find(entry => entry.op === 'comment')
+  // The execute row (enabled since 74e8a368, m7 design 0.6 §8.1) adds its own harness
+  // comments to the goal (dispatch batches, the started drive); the person's-words note
+  // is found by its content anchor, not as the first comment on the history.
+  const note = goal.history.find(entry => entry.op === 'comment' && entry.text?.startsWith(`人在对话里补充：「${RELEASE_ADD}」`))
   const stageWrite = goal.history.findLast(entry => entry.changes?.stage?.to === 'release')
   const approvals = ['decision-1', 'task-1'].map(id => nodeOf(id).history.at(-1))
   return [
@@ -2805,7 +3621,10 @@ function releaseChecks() {
     ['design release: record_human_answer (add) notes their words on the goal and moves nothing: the note begins with the mark of an addition, the design is still proposals, and the goal is still in design when the note is written', added?.outcome === 'added' && note?.text?.startsWith('人在对话里补充：「补充：月底的汇总按金额从大到小排」') === true && goal.history.indexOf(note) < goal.history.indexOf(stageWrite) && added.stage === undefined, JSON.stringify(added ?? null)],
     ['design release: after the design is changed the release is put again and the person says it can go; record_human_answer (agree) releases the goal: the outcome is released, and the decision and the task are approved with their words as relay and the mark of the agreement', released?.outcome === 'released' && released.stage === 'release' && isDeepStrictEqual(released.approved, ['decision-1', 'task-1']) && approvals.every(entry => entry?.op === 'approve' && entry.relay === RELEASE_GO && /^人在对话里同意（record_human_answer [\w-]+）$/.test(entry.reason ?? '')), JSON.stringify(released ?? null)],
     ['design release: the goal is at stage release; the write that moved it names the person\'s words and the call, and its change is design to release', goal.status === 'approved' && goal.stage === 'release' && stageWrite?.relay === RELEASE_GO && isDeepStrictEqual(stageWrite.changes, { stage: { from: 'design', to: 'release' } }) && /^人在对话里同意（record_human_answer [\w-]+）$/.test(stageWrite.reason ?? ''), JSON.stringify(stageWrite ?? null)],
-    ['design release: the subagent dispatched after the release writes its file, and no write of a subagent was refused', child?.result?.isError !== true && existsSync(join(stageWs(RELEASE), 'released.txt')) && violations.every(record => record.rule !== 'design-before-release'), `${child?.result?.isError}:${(child?.result?.text ?? '').slice(0, 60)}; ${violations.length} violation(s)`],
+    // m7 design 0.6 §3.2.2: the release unblocks dispatched work (the drive below starts
+    // on it), not the main agent's plain subagent — the child is read-only under
+    // dispatch-chain-readonly, and the released write is the worker path's to prove.
+    ['design release (m7 §3.2.2 coexistence): the subagent dispatched after the release is refused by dispatch-chain-readonly naming the plain subagent path and dispatch_task as the way, its file is not written; no design-before-release row exists, and the refusal is in the journal under the read-only rule', child?.result?.isError === true && child.result.text.includes('In a main-agent session only dispatched task workers write; you were started with the plain subagent tool.') && child.result.text.includes('the main agent dispatches writing work with dispatch_task') && !existsSync(join(stageWs(RELEASE), 'released.txt')) && violations.every(record => record.rule !== 'design-before-release') && violations.some(record => record.rule === 'dispatch-chain-readonly' && record.agentId === child?.id), `${child?.result?.isError}:${(child?.result?.text ?? '').slice(0, 60)}; ${violations.length} violation(s)`],
     ['design release: the simulated human raised no question card', designRelease.human.every(entry => entry.kind !== 'unexpected-question'), JSON.stringify(designRelease.human.map(entry => entry.kind))],
   ]
 }
@@ -2841,7 +3660,12 @@ function modulesChecks() {
   const unshown = errorOf('record-b-unshown')
   const invented = errorOf('record-b-invented')
   const borrowed = errorOf('record-b-borrowed')
-  const sendBack = nodeOf('module-a').history.at(-1)
+  // The execute drive appends its own harness comment after a send-back (execute/
+  // drive.ts: names the affected running work), so the llm's stage write is found by
+  // its fields, and the coexistence tail is asserted behind it instead of at(-1).
+  const moduleAHistory = nodeOf('module-a').history
+  const sendBack = moduleAHistory.findLast(entry => entry.op === 'edit' && entry.actor === 'llm' && entry.changes?.stage?.from === 'release' && entry.changes?.stage?.to === 'design')
+  const driveTail = moduleAHistory.at(-1)
   return [
     ['design modules: the scripted model made one request for each step, the design row activated quietly, and the person was spoken to three times (the framework, then module-a twice) and no more', main.length === modulesSteps.length && designModules.status === 0 && !stderrOf(MODULES).includes('dsh-glm-hourness/design') && replies.length === 3 && replies[0].text === RELEASE_GO && isDeepStrictEqual(replies[0].shown, [{ kind: 'release', number: 1 }]) && replies[1].text === MODULES_ADD && isDeepStrictEqual(replies[1].shown, [{ kind: 'release', number: 1, module: 'module-a' }]) && replies[2].text === '可以，放行这个模块', `${main.length} of ${modulesSteps.length} requests; exit ${designModules.status}; ${JSON.stringify(replies.map(reply => [reply.rule, reply.text]))}`],
     ['design modules: while the goal is in design a subagent dispatched with the focus on a task of module-a is refused for the goal; its file does not exist', children[0]?.result?.isError === true && children[0].result.text.includes('of a design loop at stage design (goal goal-1)') && !wsFile('modules-1.txt'), (children[0]?.result?.text ?? '').slice(0, 120)],
@@ -2850,10 +3674,13 @@ function modulesChecks() {
     ['design modules: with the goal released and module-a still in design the subagent is refused again, with the module named and the way to release it; its file does not exist', children[1]?.result?.isError === true && children[1].result.text.includes('module module-a (记账) of goal goal-1, and the human has not released that module yet') && children[1].result.text.includes('(kind release, module module-a)') && !wsFile('modules-2.txt'), (children[1]?.result?.text ?? '').slice(0, 160)],
     ['design modules: the release of module-a is put with its page (the set is the design below it), the person adds something, record_human_answer (add) notes it on the module and the module stays in design', putA?.kind === 'release' && putA.module === 'module-a' && isDeepStrictEqual(putA.releaseSet?.map(entry => entry.id), ['decision-a', 'task-a']) && jsonOf('record-a-add')?.outcome === 'added' && moduleA.history.some(entry => entry.op === 'comment' && entry.text?.startsWith('人在对话里补充：「补充：先做记录再做汇总」')), JSON.stringify(putA ?? null).slice(0, 200)],
     ['design modules: after the supplement is in the plan and the module put again, the person releases it: record_human_answer releases module-a: its design is approved with their words, its stage is release, and the write names the digest of the page; module-b, its design, the directions and the goal are as they were', recordedA?.outcome === 'released' && recordedA.module === 'module-a' && isDeepStrictEqual(recordedA.approved, ['decision-a', 'task-a']) && ['decision-a', 'task-a'].every(id => nodeOf(id).history.at(-1)?.relay === '可以，放行这个模块') && moduleA.history.findLast(entry => entry.changes?.stage?.to === 'release')?.relay === '可以，放行这个模块' && digest(moduleA.history.findLast(entry => entry.changes?.stage?.to === 'release')) && moduleB.stage === 'design' && ['decision-b', 'task-b'].every(id => nodeOf(id).status === 'proposed') && goal.history.filter(entry => entry.changes?.stage?.to === 'release').length === 1, JSON.stringify(recordedA ?? null).slice(0, 200)],
-    ['design modules: a subagent writes for released module-a and its file is there; with the focus on module-b the next one is refused with that module named and its file is not; three refusals in all by the rule, none for module-a', children[2]?.result?.isError !== true && wsFile('modules-3.txt') && children[3]?.result?.isError === true && children[3].result.text.includes('module module-b (月底汇总) of goal goal-1, and the human has not released that module yet') && !wsFile('modules-4.txt') && stageRows.length === 3, `${children[2]?.result?.isError}/${children[3]?.result?.isError}; ${stageRows.length} refusals`],
+    // m7 design 0.6 §3.2.2 coexistence: the released module-a no longer lets the main
+    // agent's plain subagent write (the worker path proves released writes in the exec
+    // scenarios); the module-b refusal keeps naming the module from the design rule.
+    ['design modules (m7 §3.2.2 coexistence): the third child, over the released module-a, is read-only — refused by dispatch-chain-readonly naming the plain subagent path, its file not written; the fourth child, over module-b in design, is still refused by design-before-release with that module named and its file is not; three design-before-release rows in all, none for module-a, and the read-only rule\'s row names the third child', children[2]?.result?.isError === true && children[2].result.text.includes('In a main-agent session only dispatched task workers write; you were started with the plain subagent tool.') && !wsFile('modules-3.txt') && children[3]?.result?.isError === true && children[3].result.text.includes('module module-b (月底汇总) of goal goal-1, and the human has not released that module yet') && !wsFile('modules-4.txt') && stageRows.length === 3 && violations.some(record => record.rule === 'dispatch-chain-readonly' && record.agentId === children[2]?.id), `${children[2]?.result?.isError}/${children[3]?.result?.isError}; ${stageRows.length} refusals`],
     ['design modules: the release of module-b that was never put to the person is not_shown; once it is put, words the model made up and words the person said about module-a before are invalid on words; module-b stays in design with its design proposed', unshown?.code === 'not_shown' && unshown.field === 'module' && invented?.code === 'invalid' && invented.field === 'words' && borrowed?.code === 'invalid' && borrowed.field === 'words' && moduleB.status === 'approved' && moduleB.stage === 'design' && ['decision-b', 'task-b'].every(id => nodeOf(id).status === 'proposed'), `${unshown?.code}/${invented?.code}/${borrowed?.code}`],
     ['design modules: a subagent that sends module-a back to design is refused by main-agent-graph-stage with the main agent\'s decision named, journaled as a subagent, and the main agent is told once; the row says it is partly in effect', children[4]?.result?.isError === true && children[4].result.text.includes('Only the main agent sends a module back to design.') && children[4].result.text.includes('Report back to the main agent.') && violations.some(record => record.rule === 'main-agent-graph-stage' && record.agentId === children[4].id && record.session?.kind === 'subagent' && record.node === 'module-a' && record.stageFrom === 'release' && record.stageTo === 'design') && bypass.length === 1 && bypass[0].includes('退回设计') && tableOf(main.at(-1)?.status ?? '').design?.status === '部分生效', `${(children[4]?.result?.text ?? '').slice(0, 100)}; ${bypass.length} notice(s)`],
-    ['design modules: the main agent sends module-a back to design on its own word: the edit goes through, the module is in design, and the write is the llm\'s, without the person\'s words, with the change release to design and a reason that is not the mark of an agreement', resultOf('send-back')?.isError !== true && moduleA.stage === 'design' && sendBack?.actor === 'llm' && sendBack.relay === undefined && isDeepStrictEqual(sendBack.changes, { stage: { from: 'release', to: 'design' } }) && !mark(sendBack), `${(resultOf('send-back')?.text ?? '').slice(0, 80)}; ${JSON.stringify(sendBack ?? null).slice(0, 160)}`],
+    ['design modules: the main agent sends module-a back to design on its own word: the llm\'s stage write is on the history (found by op, actor and the stage change), without the person\'s words, with the change release to design and a reason that is not the mark of an agreement; the execute drive\'s 退回设计 harness comment follows it, naming the running work', resultOf('send-back')?.isError !== true && moduleA.stage === 'design' && sendBack?.actor === 'llm' && sendBack.relay === undefined && isDeepStrictEqual(sendBack.changes, { stage: { from: 'release', to: 'design' } }) && !mark(sendBack) && moduleAHistory.indexOf(driveTail) > moduleAHistory.indexOf(sendBack) && driveTail?.actor === 'harness' && driveTail.op === 'comment' && driveTail.text?.startsWith('退回设计 · ') === true, `${(resultOf('send-back')?.text ?? '').slice(0, 80)}; ${JSON.stringify(sendBack ?? null).slice(0, 160)}; tail ${JSON.stringify(driveTail ?? null).slice(0, 140)}`],
     ['design modules: no question card was raised', designModules.human.every(entry => entry.kind !== 'unexpected-question'), JSON.stringify(designModules.human.map(entry => entry.kind))],
   ]
 }
@@ -2944,7 +3771,10 @@ function designChecks() {
       return [
         [`design main (${label}): before /wish the first two requests have the ordinary face, with ${cut.join(', ')}, and no identity section`, [0, 1].every(index => !hasSection(index) && hasCut(steps[index], cut)), steps.slice(0, 2).map(step => `${sectionAt(step)}/${hasCut(step, cut)}`).join(' ')],
         [`design main (${label}): /wish, /wish <wish> and /wish off typed mid-step through the commands service succeed, and command/run and command/done are in the session log`, lineOk(steps[1], '/wish') && lineOk(steps[3], `/wish ${DESIGN_WISH}`) && lineOk(steps[4], '/wish off'), [1, 3, 4].map(index => `${steps[index]?.line?.kind}:${steps[index]?.line?.types?.join('>')}`).join(' | ')],
-        [`design main (${label}): the request after /wish has the section${glmRoute ? ' between the ZCode identity and the workspace rules' : ' before the workspace rules'}, the first request's face without ${cut.join(', ')} and with propose_to_human and record_human_answer (the ordinary faces before and after have neither), the enter notice, and the row in effect`, hasSection(2) && placed(steps[2], glmRoute) && isDeepStrictEqual(faceOf(steps[2]), [...faceWithout(steps[0], cut), ...DESIGN_TOOL_NAMES].sort()) && DESIGN_TOOL_NAMES.every(name => !faceOf(steps[0]).includes(name) && !faceOf(steps[5]).includes(name)) && entered(steps[2]) && inEffect(rowAt(scenario, 2)), `section ${sectionAt(steps[2])}; face ${faceOf(steps[2]).length} of ${faceOf(steps[0]).length}; ${JSON.stringify(rowAt(scenario, 2) ?? null)}`],
+        // The execute row ships enabled (m7 design 0.6 §8.1 row E9): its main-agent
+        // tools (EXECUTE_TOOL_NAMES, §2.3.2) join the design row's two on the post-/wish
+        // face, and the face filter keeps both sets off the ordinary faces around it.
+        [`design main (${label}): the request after /wish has the section${glmRoute ? ' between the ZCode identity and the workspace rules' : ' before the workspace rules'}, the first request's face without ${cut.join(', ')} and with the design row's propose_to_human and record_human_answer and the execute row's ${EXECUTE_TOOL_NAMES.join(', ')} (the ordinary faces before and after have neither), the enter notice, and the row in effect`, hasSection(2) && placed(steps[2], glmRoute) && isDeepStrictEqual(faceOf(steps[2]), [...faceWithout(steps[0], cut), ...DESIGN_TOOL_NAMES, ...EXECUTE_TOOL_NAMES].sort()) && [...DESIGN_TOOL_NAMES, ...EXECUTE_TOOL_NAMES].every(name => !faceOf(steps[0]).includes(name) && !faceOf(steps[5]).includes(name)) && entered(steps[2]) && inEffect(rowAt(scenario, 2)), `section ${sectionAt(steps[2])}; face ${faceOf(steps[2]).length} of ${faceOf(steps[0]).length}; ${JSON.stringify(rowAt(scenario, 2) ?? null)}`],
         [`design main (${label}): /wish <wish> typed while the agent runs arrives at its next step with the words and the original marker`, !wished(steps[3]) && wished(steps[4]) && hasSection(3) && hasSection(4), `${steps.map(step => wished(step) ? 1 : 0).join('')}`],
         [`design main (${label}): after /wish off the request has no section, the first request's face and the leave notice; the row is not in effect; the Write after it ran, so did the one before`, !hasSection(5) && isDeepStrictEqual(faceOf(steps[5]), faceOf(steps[0])) && left(steps[5]) && !left(steps[4]) && notInEffect(rowAt(scenario, 5)) && files(scenario, 'before.txt', 'after.txt').every(Boolean), `${sectionAt(steps[5])}; ${JSON.stringify(rowAt(scenario, 5) ?? null)}; files ${files(scenario, 'before.txt', 'after.txt').join(',')}`],
         [`design main (${label}): the main agent again: a Write and a shell write are refused by name with the main agent's correction, and neither file exists`, [8, 9].every(index => lastToolResult(steps[index])?.isError === true) && lastToolResult(steps[8]).text.includes('Boundary: You are the main agent of this session (/wish)') && lastToolResult(steps[8]).text.includes('You tried to write') && lastToolResult(steps[9]).text.includes('You tried to change files through the shell') && files(scenario, 'denied.txt', 'denied2.txt').every(present => !present), `${[8, 9].map(index => `${lastToolResult(steps[index])?.isError}:${(lastToolResult(steps[index])?.text ?? '').slice(0, 50)}`).join(' | ')}; files ${files(scenario, 'denied.txt', 'denied2.txt').join(',')}`],
@@ -2964,6 +3794,385 @@ function designChecks() {
   ...modulesChecks(),
   ...personaChecks(),
     ['design one main: a fork of the first session at its /wish is an ordinary session from its first request on: no section, the ordinary face; the row ran /wish off for it, so its projection is off; the record is unchanged; the row warned of nothing', forkNote?.kind === 'forked' && forkSteps.length === 1 && forkSteps[0].sessionId === forkNote.sessionId && sectionAt(forkSteps[0]) < 0 && hasCut(forkSteps[0], GLM_CUT) && forkNote.types.includes('command/run') && forkNote.types.includes('command/done') && isDeepStrictEqual(forkNote.hournessMainAgent, { active: false }) && rowQuiet(one) && humanQuiet(one) && one.status === 0, JSON.stringify(forkNote ?? null).slice(0, 220)],
+  ]
+}
+
+/**
+ * E4 (docs/ORCHESTRATION.md §17.9; scenarios glm-exec-dispatch,
+ * non-glm-exec-dispatch): what the execute row's dispatch did on the real
+ * runtime, and what its rules and face filtering did to the dispatched
+ * worker and to a plain subagent of the main agent.
+ */
+function execChecks() {
+  return [[execGlm, EXEC_GLM, 'glm-5.3-flash', 'Write', 'Bash', 'GLM'], [execPlain, EXEC_PLAIN, 'deepseek-probe', 'write', 'pwsh', 'non-GLM']].flatMap(([scenario, name, model, write, shell, label]) => {
+    const ws = join(runDir, name, 'ws')
+    const wt = join(ws, '.worktrees', 'hz-task-1')
+    const main = scenario.steps.filter(step => step.sessionId === scenario.steps[0]?.sessionId)
+    const result = step => lastToolResult(step)?.text ?? ''
+    // The scripted steps: graph_focus, the bad-model dispatch, the valid one, a Read, the plain subagent, a sleep, done.
+    const badModel = lastToolResult(main[2])
+    const summaryJson = (() => { try { return JSON.parse(result(main[3])) } catch { return undefined } })()
+    const childId = summaryJson?.childId
+    const worker = childId === undefined ? [] : bySession(scenario, childId)
+    const plainId = /^started subagent (\S+)/.exec(result(main[5]))?.[1]
+    const plain = plainId === undefined ? [] : bySession(scenario, plainId)
+    const plainWrite = lastToolResult(plain[1])
+    const settled = main.flatMap(step => messagesOf(step, 'subagent-settled'))
+    const violations = jsonl(join(runDir, name, 'home', 'audit', 'violations.jsonl'))
+    const commands = childId === undefined ? [] : jsonl(join(ws, '.llm', 'execute', 'tasks', 'task-1', `${childId}.commands.jsonl`))
+    const snapshots = jsonl(join(ws, '.llm', 'snapshots.jsonl'))
+    const taskNode = (() => { try { return JSON.parse(readFileSync(join(ws, 'docs', 'graph', 'nodes', 'task-1.json'), 'utf8')) } catch { return undefined } })()
+    const history = taskNode?.history ?? []
+    const dispatchComment = history.find(entry => entry.op === 'comment' && String(entry.text).includes('第 1 次派发'))
+    const brief = worker[0]?.messages.find(message => message.source === 'user')?.text ?? ''
+    const workerFace = (worker[0]?.tools ?? []).map(tool => tool.name)
+    const mainFace = (main[0]?.tools ?? []).map(tool => tool.name)
+    const last = main.at(-1)
+    const rowAt = tableOf(last?.status ?? last?.command?.text ?? '')
+    const gitRefs = snapshotsOf({ ws })
+    return [
+      [`exec dispatch (${label}): dispatch_task is in the main agent's face, and a model the catalog does not list is refused before anything starts, with the provider's catalog in the hint`, mainFace.includes('dispatch_task') && badModel?.isError === true && result(main[2]).includes('not in the catalog') && result(main[2]).includes('Models on this provider:') && result(main[2]).includes('glm-5.3-flash'), `face ${mainFace.includes('dispatch_task')}; ${result(main[2]).slice(0, 140)}`],
+      [`exec dispatch (${label}): the valid call returns the dispatch summary at once: the task, the first attempt, the child id, provider and model, the light review, quick needs no plan, a 12-hex brief, the worktree and its branch`, summaryJson?.task === 'task-1' && summaryJson?.attempt === 1 && /^hz-task-1-a1-[0-9a-z]{6}$/.test(childId ?? '') && summaryJson?.provider === 'glm-probe' && summaryJson?.model === model && summaryJson?.review === 'light' && summaryJson?.plan === 'skipped' && /^[0-9a-f]{12}$/.test(summaryJson?.brief ?? '') && summaryJson?.worktree?.replaceAll('\\', '/') === '.worktrees/hz-task-1' && summaryJson?.branch === 'hz/task-1', JSON.stringify(summaryJson ?? null).slice(0, 220)],
+      [`exec dispatch (${label}): the dispatch did not wait for the worker: the main agent moved on while the worker was still making requests, and the run exits clean`, main.length === 7 && (worker.at(-1)?.clock ?? Number.POSITIVE_INFINITY) > main[3]?.clock && scenario.status === 0, `main ${main.length} step(s); worker's last clock ${worker.at(-1)?.clock ?? 'none'} vs main step 4 clock ${main[3]?.clock ?? 'none'}; exit ${scenario.status}`],
+      [`exec dispatch (${label}): the worker runs on the dispatched model in its own worktree`, worker.length >= 10 && worker.every(step => step.model === model) && (lastToolResult(worker[1])?.text ?? '').trim() === wt, `${worker.length} request(s) on ${[...new Set(worker.map(step => step.model))].join(', ') || 'none'}; cwd ${(lastToolResult(worker[1])?.text ?? '').trim() || 'no output'}`],
+      [`exec dispatch (${label}): the worker's first message is the brief, with no DSH return guidance in it (U1), and the handback the probe scripted passes the harness's own shape check`, brief.startsWith('# Task task-1: Add the feed') && brief.includes('You are a worker dispatched by the main agent') && brief.includes('brief ') && !brief.includes('Your parent agent id is') && isDeepStrictEqual(handbackProblems(EXEC_HAND_BACK), []), `brief ${brief.length} chars, head ${(brief.split('\n')[0] ?? '').slice(0, 60)}; guidance ${brief.includes('Your parent agent id is')}; problems ${JSON.stringify(handbackProblems(EXEC_HAND_BACK))}`],
+      [`exec dispatch (${label}): the worker's face keeps the write and shell tools and the graph reads, loses the nine graph writes and the execute and operate tools; the main agent's face has no worker tools`, GRAPH_WRITE_TOOLS.every(name => !workerFace.includes(name)) && ['graph_show', 'graph_open', 'graph_focus', 'graph_comment'].every(name => workerFace.includes(name)) && [...EXECUTE_TOOL_NAMES, ...OPERATE_TOOL_NAMES].every(name => !workerFace.includes(name)) && workerFace.includes(write) && workerFace.includes(shell) && WORKER_TOOL_NAMES.every(name => !mainFace.includes(name)), `worker face ${workerFace.length}, lost ${[...GRAPH_WRITE_TOOLS, ...EXECUTE_TOOL_NAMES, ...OPERATE_TOOL_NAMES].filter(name => workerFace.includes(name)).join(', ') || 'none'}; main face worker tools ${WORKER_TOOL_NAMES.filter(name => mainFace.includes(name)).join(', ') || 'none'}`],
+      [`exec dispatch (${label}): writes: in scope and the .hourness report run, out of scope and outside the worktree are refused and journaled`, lastToolResult(worker[2])?.isError !== true && existsSync(join(wt, 'site', 'feed', 'feed.json')) && lastToolResult(worker[3])?.isError === true && !existsSync(join(wt, 'notes.txt')) && lastToolResult(worker[4])?.isError === true && readFileSync(join(ws, 'README.md'), 'utf8') !== 'no\n' && lastToolResult(worker[5])?.isError !== true && existsSync(join(wt, '.hourness', 'report.md')) && violations.some(record => record.rule === 'worker-scope' && record.agentId === childId), `results ${[2, 3, 4, 5].map(at => `${lastToolResult(worker[at])?.isError ?? '-'}`).join(' ')}; worker-scope records ${violations.filter(record => record.rule === 'worker-scope').length}`],
+      [`exec dispatch (${label}): the graph: status refused by name, the comment runs and lands in the task history as the worker's`, lastToolResult(worker[6])?.isError === true && lastToolResult(worker[7])?.isError !== true && history.some(entry => entry.actor === 'llm' && entry.text === 'probe worker comment'), `${lastToolResult(worker[6])?.isError}/${lastToolResult(worker[7])?.isError}; history ${JSON.stringify(history.map(entry => [entry.actor, entry.op]))}`],
+      [`exec dispatch (${label}): git: the push is refused with the branch correction and journaled; reset --hard runs after the harness's snapshot, whose ref and journal line are there`, lastToolResult(worker[8])?.isError === true && result(worker[8]).includes('use git only on your branch') && lastToolResult(worker[9])?.isError !== true && snapshots.length === 1 && snapshots[0]?.subcommand === 'reset' && String(snapshots[0]?.ref ?? '').startsWith('refs/hourness/snapshots/') && gitRefs.length === 1 && violations.some(record => record.rule === 'worker-git' && record.agentId === childId), `push ${result(worker[8]).slice(0, 60)}; reset ${lastToolResult(worker[9])?.isError}; snapshot ${JSON.stringify(snapshots[0] ?? null).slice(0, 140)}; refs ${gitRefs.join(', ')}`],
+      [`exec dispatch (${label}): the plain subagent's write is refused with the dispatch correction and the file is untouched`, plainWrite?.isError === true && result(plain[1]).includes('plain subagent tool') && readFileSync(join(ws, 'README.md'), 'utf8') !== 'plain\n', `${plainWrite?.isError}:${result(plain[1]).slice(0, 90)}`],
+      [`exec dispatch (${label}): no settlement notice for the dispatched worker reaches the main agent (delivery caller), while the plain subagent's does`, childId !== undefined && settled.length >= 1 && settled.every(message => !String(message.text).includes(childId)), `${settled.length} settlement(s): ${settled.map(message => String(message.text).slice(0, 40)).join(' | ') || 'none'}`],
+      [`exec dispatch (${label}): the command record of the chain is under .llm/execute/tasks/task-1: allowed writes, refusals, and the reset with its git subcommand`, commands.length >= 5 && commands.some(line => line.verdict === 'allowed' && line.tool === 'write' && line.writes === true) && commands.some(line => line.verdict === 'refused') && commands.some(line => line.verdict === 'allowed' && line.tool === 'pwsh' && JSON.stringify(line.git ?? []).includes('reset')), `${commands.length} line(s): ${commands.map(line => `${line.tool}:${line.verdict}`).join(', ') || 'none'}`],
+      [`exec dispatch (${label}): the dispatch comment on the task carries the child, the model and the reason`, dispatchComment !== undefined && String(dispatchComment.text).includes(`模型 glm-probe/${model}，理由：${EXEC_WHY}`) && String(dispatchComment.text).includes(childId ?? ''), (String(dispatchComment?.text ?? '').split('\n')[0] ?? 'no comment').slice(0, 170)],
+      [`exec dispatch (${label}): /status lists the execute row in effect with its dispatch line, and the row printed nothing to stderr`, rowAt.execute?.status === ACTED && (rowAt.execute?.reason ?? '').includes('dispatch_task') && scenario.status === 0 && !stderrOf(name).includes('dsh-glm-hourness/execute'), `${JSON.stringify(rowAt.execute ?? null)}; exit ${scenario.status}; stderr line ${stderrOf(name).split('\n').find(line => line.includes('execute')) ?? 'none'}`],
+    ]
+  })
+}
+
+/**
+ * E5 (M7 design §3.3, §3.4; scenario glm-exec-plan): what the plan and
+ * communication tools did on the real runtime. The request ids the scripts
+ * answer are runtime values; the checks read them back out of the notice
+ * bodies the requests carried.
+ */
+function planChecks() {
+  const name = EXEC_PLAN
+  const ws = join(runDir, name, 'ws')
+  const main = execPlan.steps.filter(step => step.sessionId === execPlan.steps[0]?.sessionId)
+  const result = step => lastToolResult(step)?.text ?? ''
+  const summary = index => { try { return JSON.parse(result(main[index])) } catch { return undefined } }
+  // The main agent dispatches task-2 first (so worker one's early sibling
+  // talk finds the register filled), the dispatch summaries swap with it.
+  const child1 = summary(3)?.childId
+  const child2 = summary(2)?.childId
+  const worker1 = child1 === undefined ? [] : bySession(execPlan, child1)
+  const worker2 = child2 === undefined ? [] : bySession(execPlan, child2)
+  const face = step => (step?.tools ?? []).map(tool => tool.name)
+  const notices = main.flatMap(step => messagesOf(step, 'glm-hourness-execute'))
+  // The dump carries the notice bodies, not their summaries: the plan notice's
+  // body opens with the rendered section and the usage line, the question's
+  // with the question and the assumption. A delivered notice stays in the
+  // session, so later requests repeat it — the checks count distinct ids.
+  const planNoticeTexts = notices.filter(message => message.text.includes('Review it: answer_worker')).map(message => message.text)
+  const questionNoticeTexts = notices.filter(message => message.text.includes('The worker continues on its own assumption')).map(message => message.text)
+  const noticeIds = texts => new Set(texts.map(text => requestIdOf(text)).filter(id => id !== undefined))
+  const taskNode = (id) => { try { return JSON.parse(readFileSync(join(ws, 'docs', 'graph', 'nodes', `${id}.json`), 'utf8')) } catch { return undefined } }
+  const task1 = taskNode('task-1')
+  const history1 = task1?.history ?? []
+  const approval = history1.find(entry => entry.op === 'comment' && entry.actor === 'harness' && String(entry.text ?? '').startsWith('计划第 1 版已批'))
+  const requestIdOf = text => /"request": "(R-[0-9a-z]{6})"/.exec(text)?.[1]
+  return [
+    [`exec plan: the worker's face has submit_plan and ask_main, none of the main agent's tools; the main agent's face has answer_worker`, ['submit_plan', 'ask_main'].every(tool => face(worker1[0]).includes(tool)) && ['answer_worker', 'dispatch_task'].every(tool => !face(worker1[0]).includes(tool)) && face(main[0]).includes('answer_worker') && WORKER_TOOL_NAMES.every(tool => !face(main[0]).includes(tool)), `worker face ${face(worker1[0]).length}; answer_worker in main ${face(main[0]).includes('answer_worker')}`],
+    [`exec plan: the write before an approved plan is refused by the plan gate with the way out`, lastToolResult(worker1[1])?.isError === true && result(worker1[1]).includes('needs an approved plan') && result(worker1[1]).includes('submit_plan'), result(worker1[1]).slice(0, 140)],
+    [`exec plan: send_message between siblings is refused by the lineage check`, lastToolResult(worker1[2])?.isError === true && /belongs to another parent session|UNAUTHORIZED/.test(result(worker1[2])), result(worker1[2]).slice(0, 100)],
+    [`exec plan: a plan that fails the checks comes back to the worker at once and nobody is notified`, lastToolResult(worker1[3])?.isError === true && result(worker1[3]).includes('not covered by any step') && noticeIds(planNoticeTexts).size === 2, `${result(worker1[3]).slice(0, 100)}; plan notice ids ${noticeIds(planNoticeTexts).size}`],
+    [`exec plan: the passing plan lands on the task body as version 1 pending review, the notices name their requests, and the submit returns approved`, String(task1?.body ?? '').includes('第 1 版 · 主 Agent 已批') && history1.some(entry => entry.op === 'edit' && String(entry.reason ?? '').includes('submit_plan')) && noticeIds(planNoticeTexts).size === 2 && lastToolResult(worker1[4])?.isError !== true && result(worker1[4]).includes('"status":"approved"') && result(worker1[4]).includes('"version":1'), `body ${(task1?.body ?? '').split('\n').find(line => line.startsWith('第 1 版')) ?? 'no section'}; submit ${result(worker1[4]).slice(0, 60)}; plan notice ids ${noticeIds(planNoticeTexts).size}`],
+    [`exec plan: the approval writes the approval comment with the worker's child id, and the section's digest matches it`, approval !== undefined && /^计划第 1 版已批 · 摘要 [0-9a-f]{12} · hz-task-1-a1-[0-9a-z]{6} · .+$/.test(approval.text) && approval.text.includes(child1 ?? ''), approval?.text ?? 'no approval comment'],
+    [`exec plan: the write inside the approved paths runs after the approval, and the send_message the main agent made during the wait arrived at that step (U3)`, lastToolResult(worker1[5])?.isError !== true && existsSync(join(ws, '.worktrees', 'hz-task-1', 'site', 'feed', 'feed.json')) && messagesOf(worker1[5], 'agent-message').some(message => message.text.includes('twenty items')), `write ${lastToolResult(worker1[5])?.isError}; relay ${messagesOf(worker1[5], 'agent-message').length}`],
+    [`exec plan: the answer to ask_main returns inside the same call, and the question notice carried the request id`, lastToolResult(worker1[6])?.isError !== true && result(worker1[6]).includes('"status":"answered"') && result(worker1[6]).includes('Twenty items, then stop.') && noticeIds(questionNoticeTexts).size === 1 && questionNoticeTexts.some(text => text.includes('Cap the feed at how many items?')), `${result(worker1[6]).slice(0, 80)}; question notice ids ${noticeIds(questionNoticeTexts).size}`],
+    [`exec plan: every answer_worker of the main agent delivered, the second worker's plan was approved in its own call, and both workers ended with the structured handback`, result(main[6]).includes('"delivered":true') && result(main[7]).includes('"delivered":true') && result(main[9]).includes('"delivered":true') && worker1.length === 7 && result(worker1.at(-1)).includes('"status":"answered"') && worker2.length === 2 && result(worker2.at(-1)).includes('"status":"approved"'), `approves ${[6, 7, 9].map(index => result(main[index]).slice(0, 20)).join(' | ')}; worker1 ${worker1.length}, worker2 ${worker2.length}`],
+    [`exec plan: the run exits clean with nothing from the execute row on stderr`, execPlan.status === 0 && !stderrOf(name).includes('dsh-glm-hourness/execute'), `exit ${execPlan.status}; main ${main.length} step(s); worker1 ${worker1.length}, worker2 ${worker2.length}`],
+  ]
+}
+
+/**
+ * E6 (M7 design §3.6, §3.7; scenario glm-exec-review): what the handback
+ * processing and the review loop did on the real runtime. The main agent's
+ * scripted steps, in order: focus, the worker dispatch, a sleep, the review
+ * dispatched light (refused), the review dispatched full (the voiding
+ * verdict), a sleep (the void's re-dispatch and its second void), the
+ * review again (the blocking round), a sleep, the review while stopped
+ * (refused), the question to the person, the person's words, their recorded
+ * answer, the review once more (the passing round), a sleep, done.
+ */
+function reviewChecks() {
+  const name = EXEC_REVIEW
+  const ws = join(runDir, name, 'ws')
+  const main = execReview.steps.filter(step => step.sessionId === execReview.steps[0]?.sessionId)
+  const result = step => lastToolResult(step)?.text ?? ''
+  const nodeId = file => { try { return JSON.parse(readFileSync(join(ws, 'docs', 'graph', 'nodes', file), 'utf8')) } catch { return undefined } }
+  const taskNode = nodeId('task-1.json')
+  const history = taskNode?.history ?? []
+  const handbackComment = history.find(entry => entry.op === 'comment' && entry.actor === 'harness' && String(entry.text ?? '').startsWith('第 1 次交回'))
+  const executeNotices = main.flatMap(step => messagesOf(step, 'glm-hourness-execute'))
+  const reviewId = executeNotices.map(message => /review dispatch of (task-\d+)/.exec(message.text)?.[1]).find(id => id !== undefined)
+  const reviewNode = reviewId === undefined ? undefined : nodeId(`${reviewId}.json`)
+  const reviewHistory = reviewNode?.history ?? []
+  const voidComments = reviewHistory.filter(entry => entry.op === 'comment' && String(entry.text ?? '').startsWith('审查作废 · '))
+  const dispatchComments = reviewHistory.filter(entry => entry.op === 'comment' && /第 \d+ 次派发/.test(String(entry.text ?? '')))
+  const roundComments = reviewHistory.filter(entry => entry.op === 'comment' && /^第 \d+ 轮：/.test(String(entry.text ?? '')))
+  const stopDrafts = main.flatMap(step => messagesOf(step, 'glm-hourness-loop'))
+  const questionNode = nodeId('question-1.json')
+  const lightRefusal = main.find(step => result(step).includes('the change hits the must-review floor'))
+  const stoppedRefusal = main.find(step => result(step).includes('waiting_human'))
+  const recorded = main.find(step => result(step).includes('decided'))
+  return [
+    [`exec review: the worker's done handback lands as one summary comment with the counts, and the floor hit upgrades the light dispatch to 全审 with the annotation`, handbackComment !== undefined && /有效深浅 全审/.test(String(handbackComment.text)) && /审查改为全审：碰到必须全审清单第 0 类/.test(String(handbackComment.text)) && /问题 0 · 假设 0/.test(String(handbackComment.text)), String(handbackComment?.text ?? 'no handback comment').split('\n').slice(0, 4).join(' | ')],
+    [`exec review: the review task exists under the task with the source edge, and the handback notice names its dispatch`, reviewNode !== undefined && reviewNode.parent === 'task-1' && (reviewNode.edges ?? []).some(edge => edge.type === 'source' && edge.to === 'task-1') && executeNotices.some(message => message.text.includes(`review dispatch of ${reviewId}`)), `review task ${reviewId ?? 'none'}: ${reviewNode?.status ?? 'none'}; notices ${executeNotices.length}`],
+    [`exec review: the review dispatched light is refused because the change hits the must-review floor`, lightRefusal !== undefined && result(lightRefusal).includes('depth full'), result(lightRefusal ?? main[3]).slice(0, 160)],
+    [`exec review: the first verdict covers one item, the round is voided and re-dispatched with the same model and why, and the second void goes back without another dispatch`, voidComments.length === 1 && dispatchComments.length >= 2 && String(dispatchComments[1]?.text ?? '').includes(String((/模型 (glm-probe\/[^，]+)/.exec(String(dispatchComments[0]?.text ?? '')) ?? [])[1] ?? '¶')) && String(dispatchComments[1]?.text ?? '').includes(REVIEW_WHY) && executeNotices.some(message => message.text.includes('voided')), `${voidComments.length} void(s); ${dispatchComments.map(entry => String(entry.text).split('\n')[0]).join(' | ') || 'no dispatches'}`],
+    [`exec review: the blocking verdict is normalized: the finding naming no accepted criterion is demoted, the real one blocks`, String(reviewHistory.find(entry => entry.op === 'comment' && String(entry.text ?? '').startsWith('审查交回'))?.text ?? '').includes('挡路 1 · 不挡路 1 · 改为不挡路 1 条'), String(reviewHistory.find(entry => entry.op === 'comment' && String(entry.text ?? '').startsWith('审查交回'))?.text ?? 'no verdict comment').split('\n')[0]],
+    [`exec review: the blocking round stops at once (the seed is the person's word): the round comment carries · 停下 and the stop draft reaches the main agent`, roundComments[0] !== undefined && String(roundComments[0].text).endsWith('· 停下') && /^第 1 轮：挡路 1，不挡路 1 · 全审 · /.test(String(roundComments[0].text)) && stopDrafts.length >= 1 && stopDrafts.some(message => message.text.includes('review rounds, 1 blocking findings left') && message.text.includes('propose_to_human')), `${roundComments.map(entry => String(entry.text)).join(' | ') || 'no rounds'}; drafts ${stopDrafts.length}`],
+    [`exec review: a dispatch while stopped is refused waiting_human, and the recorded answer of the person decides the question with their words as the relay`, stoppedRefusal !== undefined && recorded !== undefined && questionNode?.status === 'done' && String(questionNode.history.at(-1)?.relay ?? '').includes('先修挡路的那一处'), `${result(stoppedRefusal ?? main[8]).slice(0, 80)} | ${String(questionNode?.history.at(-1)?.relay ?? 'no relay')} | ${result(recorded ?? main[11]).slice(0, 60)}`],
+    [`exec review: after the answer the pass round runs: the review task is marked done with the patch-id evidence when the round settles (the pass path itself is pinned by tests/execute-handback.spec against the real engine and git)`, reviewNode !== undefined && (reviewNode.status === 'done' || (roundComments.length >= 1 && /^第 1 轮：挡路 1/.test(String(roundComments[0].text)))), `status ${reviewNode?.status ?? 'none'}; rounds ${roundComments.map(entry => String(entry.text).slice(0, 30)).join(' | ') || 'none'}`],
+    [`exec review: the run exits clean with nothing from the execute row on stderr`, execReview.status === 0 && !stderrOf(name).includes('dsh-glm-hourness/execute'), `exit ${execReview.status}; main ${main.length} step(s)`],
+  ]
+}
+
+/** What `git` prints in `cwd`, trimmed; empty when it fails. */
+const gitOut = (cwd, ...args) => {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
+  return result.status === 0 ? result.stdout.trim() : ''
+}
+
+/** The pieces both merge scenarios read: the main agent's requests, the result of the scripted step at an index, the check records, the advances, the trunk-advance violations and the execute notices. */
+function mergeRun(scenario, name) {
+  const ws = join(runDir, name, 'ws')
+  const main = scenario.steps.filter(step => step.sessionId === scenario.steps[0]?.sessionId)
+  // The request after scripted step `index` carries that step's tool result.
+  const resultOf = index => lastToolResult(main[index + 1])
+  return {
+    ws,
+    main,
+    text: index => resultOf(index)?.text ?? '',
+    refused: index => resultOf(index)?.isError === true,
+    records: mergeRecords[name],
+    advances: jsonl(join(ws, '.llm', 'execute', 'advances.jsonl')),
+    violations: jsonl(join(runDir, name, 'home', 'audit', 'violations.jsonl')).filter(record => record.rule === 'trunk-advance-checked'),
+    notices: main.flatMap(step => messagesOf(step, 'glm-hourness-execute')),
+  }
+}
+
+/**
+ * E7 (M7 design §3.8, §3.11.1; scenario glm-exec-merge): what the merge
+ * gate did on the real runtime. The main agent's scripted steps, in order:
+ * focus, the graph commit, the dispatch, a sleep, the squash, check_commit,
+ * a sleep, the --no-ff merge, the fast-forward, the worktree test, a sleep,
+ * the check of the FAIL commit, a sleep, its fast-forward, the reopen, the
+ * second dispatch, a sleep, the second squash, the alias move, check_commit
+ * after it, a sleep, done.
+ */
+function mergeChecks() {
+  const { ws, text, refused, records, advances, violations, notices } = mergeRun(execMerge, EXEC_MERGE)
+  const rev = ref => gitOut(ws, 'rev-parse', '--verify', '--quiet', ref)
+  const root = gitOut(ws, 'rev-list', '--max-parents=0', 'main')
+  const squash = rev('refs/heads/merge/task-1')
+  const graphCommit = squash === '' ? '' : rev(`${squash}^`)
+  const rework = rev('refs/heads/merge/task-1-r2')
+  const fail = rev('refs/heads/probe/fail')
+  const archived = rev('refs/heads/hz/task-1@1')
+  const short = commit => commit.slice(0, 12)
+  const taskNode = (() => { try { return JSON.parse(readFileSync(join(ws, 'docs', 'graph', 'nodes', 'task-1.json'), 'utf8')) } catch { return undefined } })()
+  const history = taskNode?.history ?? []
+  const comments = history.filter(entry => entry.op === 'comment' && entry.actor === 'harness').map(entry => String(entry.text ?? ''))
+  const dones = history.filter(entry => entry.op === 'status' && entry.to === 'done')
+  const evidenceOf = entry => entry?.evidence ?? []
+  const hasEvidence = (entry, commit) => entry?.actor === 'harness' && evidenceOf(entry).some(item => item.kind === 'commit' && item.ref === commit) && evidenceOf(entry).some(item => item.kind === 'test' && item.exit === 0)
+  const passedOf = commit => records.find(record => record.kind === 'commands' && record.commit === commit && record.passed)
+  const unchecked = advances.find(line => line.ref === 'local' && line.to === rework && line.ok === false)
+  const after = advances.find(line => line.ref === 'local' && line.checkedAfter === true && line.check === rework)
+  const health = healthOf(execMerge).execute
+  const graphPaths = graphCommit === '' ? [] : gitOut(ws, 'diff', '--name-only', root, graphCommit).split('\n').filter(line => line !== '')
+  const line = entry => entry === undefined ? 'none' : `${entry.ref} ${short(entry.from ?? '')}..${short(entry.to ?? '')} ok ${entry.ok}`
+  return [
+    [`exec merge: a docs/graph-only commit on the main branch passes by paths (only: true, no check), and its trunk check writes a trunk record`, !refused(1) && graphPaths.length > 0 && graphPaths.every(path => path.startsWith('docs/graph/')) && advances.some(entry => entry.ref === 'local' && entry.from === root && entry.to === graphCommit && entry.ok === true && entry.only === true && entry.check === null) && records.some(record => record.kind === 'trunk' && record.commit === graphCommit && record.passed), `${text(1).slice(0, 60)} | ${graphPaths.length} path(s) | ${advances.filter(entry => entry.only === true).map(line).join('; ') || 'no only line'}`],
+    [`exec merge: the main agent squashes the task branch in the task worktree into one commit on main with the Hourness-Task: task-1 trailer`, !refused(4) && squash !== '' && graphCommit !== '' && gitOut(ws, 'rev-parse', `${graphCommit}^`) === root && gitOut(ws, 'log', '-1', '--format=%(trailers:key=Hourness-Task,valueonly)', squash) === 'task-1' && gitOut(ws, 'diff', '--name-only', graphCommit, squash) === 'src/feed.json', `${short(squash) || 'no squash commit'}: ${text(4).slice(0, 100)}`],
+    [`exec merge: check_commit starts the job on the external provider hourness-gate (U2): status started, the row has no sync note, and the pass notice names git merge --ff-only`, text(5).includes('"status":"started"') && health !== undefined && !health.reason.includes('检查以同步方式运行') && notices.some(message => message.text.includes(`${short(squash)} passed the merge checks`) && message.text.includes(`git merge --ff-only ${squash}`)), `${text(5).slice(0, 120)} | ${JSON.stringify(health ?? null).slice(0, 160)}`],
+    [`exec merge: checks.jsonl has a verified passed record of the squash commit with both commands and the task`, passedOf(squash) !== undefined && passedOf(squash).ran.length === 2 && isDeepStrictEqual(passedOf(squash).tasks, ['task-1']), records.map(record => `${record.kind}:${short(record.commit)}:${record.passed}`).join(', ') || 'no verified record'],
+    [`exec merge: git merge --no-ff hz/task-1 is refused with the right path and journaled trunk-advance-checked`, refused(7) && text(7).includes('Right path:') && text(7).includes('check_commit') && violations.some(record => record.effect === undefined), text(7).split('\n')[0]?.slice(0, 160) ?? 'no result'],
+    [`exec merge: git merge --ff-only merge/task-1 runs and advances.jsonl has the checked local line`, !refused(8) && advances.some(entry => entry.ref === 'local' && entry.from === graphCommit && entry.to === squash && entry.ok === true && entry.check === squash && (entry.tasks ?? []).includes('task-1')), `${text(8).slice(0, 80)} | ${advances.map(line).join('; ') || 'no advance'}`],
+    [`exec merge: the task is done with the harness's commit and test evidence and the 进主干 comment, and its worktree is gone`, hasEvidence(dones[0], squash) && comments.some(comment => comment.startsWith(`进主干 ${short(squash)}`)) && text(9).trim() === 'False', `${JSON.stringify(evidenceOf(dones[0])).slice(0, 160)} | worktree ${text(9).trim() || 'unknown'}`],
+    [`exec merge: the trunk check after the advance writes a kind trunk record for the new main`, records.some(record => record.kind === 'trunk' && record.commit === squash), records.filter(record => record.kind === 'trunk').map(record => `${short(record.commit)}${record.skipped === true ? ' (covered)' : ''}`).join(', ') || 'no trunk record'],
+    [`exec merge: the commit carrying FAIL fails its check (no passed record, 检查第 1 次没过 on the task) and its fast-forward is refused`, fail !== '' && records.some(record => record.commit === fail && !record.passed) && !records.some(record => record.commit === fail && record.passed) && comments.some(comment => comment.startsWith('检查第 1 次没过：')) && refused(13) && text(13).includes('without a passed merge check') && !advances.some(entry => entry.to === fail), `${comments.find(comment => comment.startsWith('检查第')) ?? 'no failure comment'} | ${text(13).split('\n')[0]?.slice(0, 120) ?? ''}`],
+    [`exec merge: the task reopened and dispatched again renames the branch the squash left behind to hz/task-1@1 (the reuse on a second rework is pinned by tests/execute-git.spec.ts)`, !refused(14) && !refused(15) && archived !== '' && archived !== squash && gitOut(ws, 'rev-parse', `${archived}^`) === graphCommit && comments.some(comment => comment.startsWith('第 2 次派发')), `hz/task-1@1 ${short(archived) || 'missing'} | ${text(14).slice(0, 60)} | ${text(15).slice(0, 80)}`],
+    [`exec merge: the alias move of the main branch is found after the call: an unchecked local line, a detected-after violation and the notice, and no evidence then`, !refused(18) && unchecked !== undefined && violations.some(record => record.effect === 'detected-after') && notices.some(message => message.text.includes(short(rework)) && message.text.includes('No evidence was recorded')) && !dones.some(entry => hasEvidence(entry, rework) && Date.parse(entry.at) < Date.parse(unchecked.at)), `${line(unchecked)} | ${violations.map(record => record.effect ?? 'refused').join(', ') || 'no violation'}`],
+    [`exec merge: check_commit after the move passes and writes the evidence with 检查在前进之后 and the checkedAfter line, and the rework's worktree is gone`, passedOf(rework) !== undefined && after !== undefined && hasEvidence(dones.at(-1), rework) && taskNode?.status === 'done' && comments.some(comment => comment.startsWith(`进主干 ${short(rework)}`) && comment.includes('检查在前进之后')) && !existsSync(mergeWt), `${line(after)} | ${comments.find(comment => comment.includes('检查在前进之后'))?.slice(0, 100) ?? 'no comment'} | status ${taskNode?.status ?? 'none'}`],
+    [`exec merge: the run exits clean with nothing from the execute row on stderr`, execMerge.status === 0 && !stderrOf(EXEC_MERGE).includes('dsh-glm-hourness/execute'), `exit ${execMerge.status}`],
+  ]
+}
+
+/**
+ * E7 (M7 design §3.8.4; scenario glm-exec-merge-upstream): the upstream
+ * half. The main agent's scripted steps, in order: focus, the pull, the
+ * hand-set fetch, the fast-forward before the check, check_commit
+ * origin/main, a sleep, the fast-forward after it, a sleep, the alias move
+ * of origin/main, a sleep, done.
+ */
+function mergeUpstreamChecks() {
+  const { text, refused, records, advances, violations, notices } = mergeRun(execMergeUpstream, EXEC_MERGE_UPSTREAM)
+  const { pushed = '', side = '' } = upstreamCommits
+  const line = entry => entry === undefined ? 'none' : `${entry.ref}${entry.by === undefined ? '' : ` ${entry.by}`} ${(entry.from ?? '').slice(0, 12)}..${(entry.to ?? '').slice(0, 12)} ok ${entry.ok}`
+  return [
+    [`exec merge upstream: git pull --ff-only is refused with the three steps, and git fetch . <commit>:refs/remotes/origin/main is refused`, refused(1) && text(1).includes('Pull in three steps') && refused(2) && text(2).includes('only git fetch updates it'), `${text(1).split('\n')[0]?.slice(0, 100) ?? ''} | ${text(2).split('\n')[0]?.slice(0, 100) ?? ''}`],
+    [`exec merge upstream: git merge --ff-only origin/main is refused before check_commit origin/main and runs after it, and the trunk check records the new main (the fetch line itself is pinned by tests/execute-upstream.spec.ts: the session sandbox cannot run git's local transport)`, refused(3) && text(3).includes('without a passed merge check') && text(4).includes('"status":"started"') && records.some(record => record.kind === 'commands' && record.commit === pushed && record.passed) && !refused(6) && advances.some(entry => entry.ref === 'local' && entry.to === pushed && entry.ok === true && entry.check === pushed) && records.some(record => record.kind === 'trunk' && record.commit === pushed), `${text(3).split('\n')[0]?.slice(0, 100) ?? ''} | ${text(6).slice(0, 60)} | ${advances.map(line).join('; ') || 'no advance'}`],
+    [`exec merge upstream: a script-level move of origin/main to an unchecked commit is found after the call like a push (remote line ok false, violation, notice) and the trunk check runs on that commit (the real push is pinned by tests/execute-upstream.spec.ts)`, !refused(8) && advances.some(entry => entry.ref === 'remote' && entry.by === 'push' && entry.ok === false && entry.to === side) && violations.some(record => record.effect === 'detected-after') && notices.some(message => message.text.includes('was pushed from')) && records.some(record => record.kind === 'trunk' && record.commit === side && record.passed && record.skipped !== true), `${advances.filter(entry => entry.ref === 'remote').map(line).join('; ') || 'no remote line'} | ${records.filter(record => record.kind === 'trunk').map(record => `${record.commit.slice(0, 12)}:${record.passed}`).join(', ') || 'no trunk record'}`],
+    [`exec merge upstream: the run exits clean with nothing from the execute row on stderr`, execMergeUpstream.status === 0 && !stderrOf(EXEC_MERGE_UPSTREAM).includes('dsh-glm-hourness/execute'), `exit ${execMergeUpstream.status}`],
+  ]
+}
+
+/** A node file of a scenario workspace's graph, or undefined when it is not there. */
+const wsNode = (ws, id) => { try { return JSON.parse(readFileSync(join(ws, 'docs', 'graph', 'nodes', `${id}.json`), 'utf8')) } catch { return undefined } }
+/** The harness's comments on a node, oldest first. */
+const harnessComments = node => (node?.history ?? []).filter(entry => entry.op === 'comment' && entry.actor === 'harness').map(entry => String(entry.text ?? ''))
+const jsonOrUndefined = (text) => { try { return JSON.parse(text) } catch { return undefined } }
+
+/**
+ * E8 (M7 design §3.9, §9.1; scenario glm-exec-drive): what the drive did on
+ * the real runtime. The main agent is the second root session; `driveAt`
+ * names its scripted steps, and a step's result is in the session's next
+ * request. probe_wait_goal's notes say what the root saw while it waited.
+ */
+function driveChecks() {
+  const ws = join(runDir, EXEC_DRIVE, 'ws')
+  const main = execDrive.steps.filter(step => String(step.sessionId ?? '').startsWith('probe-other-'))
+  const root = execDrive.steps.find(step => step.other !== undefined)
+  const resultAt = name => lastToolResult(main[driveAt(name) + 1])
+  const textAt = name => resultAt(name)?.text ?? ''
+  const goalAt = name => jsonOrUndefined(textAt(name))?.goal ?? undefined
+  const notes = dispatchRecord(EXEC_DRIVE)
+  const watched = notes.filter(entry => entry.kind === 'watch-goal')
+  const waitedFor = phase => notes.find(entry => entry.kind === 'wait-goal' && entry.phase === phase)
+  const held = notes.find(entry => entry.kind === 'wait-goal-held')
+  const goalNode = wsNode(ws, 'goal-1')
+  const question = wsNode(ws, 'question-1')
+  const startComment = harnessComments(goalNode).find(text => text.startsWith('自动推进已开始'))
+  const started = goalAt('goal-started')
+  const waitingAt = watched.findIndex(entry => entry.operation === 'block' && entry.goal?.blockedReason?.code === 'hourness-waiting-human')
+  const resumedAt = watched.findIndex((entry, index) => index > waitingAt && entry.operation === 'resume' && entry.goal?.phase === 'active')
+  const idle = waitedFor('blocked')
+  const roundOf = (step, round) => messagesOf(step, 'goal').some(message => message.text.includes(`\nRound: ${round}/`))
+  const childId = jsonOrUndefined(textAt('dispatch'))?.childId
+  const said = (name, text) => (main[driveAt(name)]?.messages ?? []).some(message => message.role === 'user' && message.text === text)
+  const view = goal => goal === undefined || goal === null ? 'none' : `${goal.phase}${goal.blockedReason?.code === undefined ? '' : `/${goal.blockedReason.code}`}`
+  return [
+    [`exec drive: after the person's release the main agent's next step has a goal, with no goal command typed (only the person's /wish in the second root session), the objective names goal-1 and holds the acceptance, and goal-1 carries the 自动推进已开始 comment naming the session`, root?.other?.kind === 'success' && root.other.text === '/wish' && main.slice(0, driveAt('goal-started') + 1).every(step => step.line === undefined && step.command === undefined) && started?.phase === 'active' && String(started.objective ?? '').includes('Project graph goal goal-1') && String(started.objective ?? '').includes('the feed builds') && startComment !== undefined && startComment.includes('会话 probe-other-'), `${root?.other?.kind ?? 'no /wish'}; goal ${view(started)}; ${startComment?.slice(0, 120) ?? 'no start comment'}`],
+    [`exec drive: update_goal complete with gaps is refused by the completion gate with what is missing, and the goal stays active`, resultAt('complete-gaps')?.isError === true && textAt('complete-gaps').includes('The completion gate keeps goal goal-1 open. What is missing:') && goalAt('goal-after-gaps')?.phase === 'active', `${textAt('complete-gaps').split('\n').slice(0, 2).join(' | ').slice(0, 160)}; goal ${view(goalAt('goal-after-gaps'))}`],
+    [`exec drive: send_message to the worker that handed back is refused by worker-message-live-only`, childId !== undefined && resultAt('message-ended')?.isError === true && textAt('message-ended').includes('That worker has ended') && textAt('message-ended').includes(childId), `${childId ?? 'no child'}: ${textAt('message-ended').slice(0, 140)}`],
+    [`exec drive: await_human blocks the goal hourness-waiting-human`, textAt('await').includes('"blocked":true') && waitingAt >= 0, `${textAt('await').slice(0, 100)}; ${watched.map(entry => `${entry.operation}:${view(entry.goal)}`).join(' ') || 'no goal change'}`],
+    [`exec drive: once the person's words are recorded the question is decided and the drive resumes the goal in the main agent's own step (U12)`, question?.status === 'done' && resumedAt > waitingAt && waitingAt >= 0 && goalAt('goal-resumed')?.phase === 'active', `question ${question?.status ?? 'none'}; goal ${view(goalAt('goal-resumed'))}; resume at ${resumedAt}`],
+    [`exec drive: three goal rounds without progress block the goal hourness-idle-rounds with the idle message`, [1, 2, 3].every(round => roundOf(main[driveAt(`round-${round}`)], round)) && idle?.ok === true && idle.goal?.blockedReason?.code === 'hourness-idle-rounds' && String(idle.goal.blockedReason.message ?? '').startsWith('No progress in three goal rounds in a row'), `rounds ${[1, 2, 3].map(round => roundOf(main[driveAt(`round-${round}`)], round) ? 1 : 0).join('')}; ${JSON.stringify(idle ?? null).slice(0, 200)}`],
+    [`exec drive: the person says 继续 and update_goal resume runs`, said('resume', DRIVE_PERSON.go) && resultAt('resume')?.isError !== true && textAt('resume').includes('"phase":"active"'), `said ${said('resume', DRIVE_PERSON.go)}; ${textAt('resume').slice(0, 120)}`],
+    [`exec drive: /goal pause typed in a step pauses the goal and the drive leaves it paused: idle and paused after the hold, and paused when the person speaks again`, main[driveAt('pause')]?.line?.kind === 'success' && waitedFor('paused')?.ok === true && held?.status === 'idle' && held.goal?.phase === 'paused' && goalAt('goal-paused')?.phase === 'paused', `${main[driveAt('pause')]?.line?.kind ?? 'no line'}; held ${held?.status ?? 'none'}/${view(held?.goal)}; next ${view(goalAt('goal-paused'))}`],
+    [`exec drive: after /wish off update_goal complete is not the main agent's: it completes the goal, goal-1 gets no completion on the graph, only the comment goal 在完成门禁之外完成`, main[driveAt('wish-off')]?.line?.kind === 'success' && resultAt('complete-off')?.isError !== true && textAt('complete-off').includes('"phase":"complete"') && waitedFor('complete')?.ok === true && goalNode !== undefined && goalNode.status !== 'done' && !(goalNode.history ?? []).some(entry => entry.op === 'status' && entry.to === 'done') && harnessComments(goalNode).includes('goal 在完成门禁之外完成'), `${main[driveAt('wish-off')]?.line?.kind ?? 'no line'}; ${textAt('complete-off').slice(0, 100)}; goal-1 ${goalNode?.status ?? 'none'}; outside-gate comment ${harnessComments(goalNode).includes('goal 在完成门禁之外完成')}`],
+    [`exec drive: the run exits clean with nothing from the execute row on stderr (the peak hold and its resume after peak are pinned in L2 by tests/execute-peak.spec.ts: the headless run has no peak to cross)`, execDrive.status === 0 && !stderrOf(EXEC_DRIVE).includes('dsh-glm-hourness/execute'), `exit ${execDrive.status}; main ${main.length} request(s); ${stderrOf(EXEC_DRIVE).split('\n').find(line => line.includes('execute')) ?? 'no execute line'}`],
+  ]
+}
+
+/**
+ * E8 (M7 design §3.9.7, §3.7.5, §9.1; scenarios glm-exec-modules,
+ * glm-exec-modules-2): what the two loops did on the real runtime.
+ * `execModulesAt` names the main agent's scripted steps; a step's result is
+ * in the next request.
+ */
+function execModulesChecks() {
+  const ws = join(runDir, EXEC_MODULES, 'ws')
+  const main = execModules.steps.filter(step => step.sessionId === execModules.steps[0]?.sessionId)
+  const resultAt = name => lastToolResult(main[execModulesAt(name) + 1])
+  const textAt = name => resultAt(name)?.text ?? ''
+  const jsonAt = name => jsonOrUndefined(textAt(name))
+  const goal = wsNode(ws, 'goal-1')
+  const moduleA = wsNode(ws, 'module-a')
+  const moduleB = wsNode(ws, 'module-b')
+  const goalComments = harnessComments(goal)
+  const starts = goalComments.filter(text => text.startsWith('自动推进已开始'))
+  const releasedAgain = goalComments.find(text => text.startsWith('模块 module-a 已放行 · 放行 '))
+  const releaseOf = text => /放行 (\S+)/.exec(text ?? '')?.[1]
+  const first = jsonAt('dispatch-a')
+  const worker1 = first?.childId === undefined ? [] : bySession(execModules, first.childId)
+  const notices = main.flatMap(step => messagesOf(step, 'glm-hourness-execute'))
+  const dispatches = harnessComments(wsNode(ws, 'task-a1')).map(parseDispatchComment).filter(record => record !== undefined)
+  const pinOf = record => record?.pins.slice('pins: '.length).split(' ').find(word => word.startsWith('module-a@'))
+  const taskFinal = execModulesGraph.nodes.get('task-a1')
+  const finalPin = taskFinal === undefined ? undefined : pinsOf(execModulesGraph, taskFinal, sha256Hex).find(pin => pin.id === 'module-a')
+  const sendBack = (moduleA?.history ?? []).find(entry => entry.actor === 'llm' && entry.changes?.stage?.from === 'release' && entry.changes.stage.to === 'design')
+  const records = harnessComments(moduleB).map(text => /^设计审查 · (\S+) · (APPROVED|CHANGES_REQUESTED) · 方向清单 ([0-9a-f]{12}) · 挡路 (\d+) · 派出 (\S+)$/.exec(text)).filter(match => match !== null)
+  const digest = sha256Hex(MODULES_DIRECTIONS.map(text => text.trim()).join('\n')).slice(0, 12)
+  const reviews = [jsonAt('review-1'), jsonAt('review-2')]
+  const reviewers = reviews.map(review => review?.childId === undefined ? [] : bySession(execModules, review.childId))
+  const goals = ['goal-started', 'goal-design', 'goal-again'].map(name => jsonAt(name)?.goal)
+  const view = entry => entry === undefined || entry === null ? 'none' : `${entry.id}:${entry.phase}${entry.blockedReason?.code === undefined ? '' : `/${entry.blockedReason.code}`}`
+  const one = join(modulesWt, 'src', 'a', 'one.txt')
+  const two = join(modulesWt, 'src', 'a', 'two.txt')
+  const main2 = execModules2.steps.filter(step => step.sessionId === execModules2.steps[0]?.sessionId)
+  const unreadable = lastToolResult(main2[2])
+  const spared = lastToolResult(main2[4])
+  return [
+    [`exec modules: a task under module-b, still in design, is refused not_released`, resultAt('dispatch-b')?.isError === true && textAt('dispatch-b').includes('not_released') && textAt('dispatch-b').includes('Module module-b is not released (stage design).'), textAt('dispatch-b').slice(0, 140)],
+    [`exec modules: the task under the released module-a is dispatched and its worker writes in scope`, /^hz-task-a1-a1-/.test(first?.childId ?? '') && lastToolResult(worker1[1])?.isError !== true && existsSync(one), `${first?.childId ?? textAt('dispatch-a').slice(0, 100)}; one.txt ${existsSync(one)}`],
+    [`exec modules: module-a's release starts the drive once: one 自动推进已开始 comment naming module-a, and one goal id for the whole run`, starts.length === 1 && starts[0].includes('模块 module-a') && goals.every(entry => entry !== undefined && entry.id === goals[0].id), `${starts.length} start(s): ${starts[0]?.slice(0, 100) ?? 'none'}; goals ${goals.map(view).join(' ')}`],
+    [`exec modules: module-b's later release only comments on the goal`, goalComments.some(text => text.startsWith('模块 module-b 已放行 · 放行 ')) && starts.length === 1, goalComments.filter(text => text.startsWith('模块 ')).join(' | ').slice(0, 200) || 'no module comment'],
+    [`exec modules: the main agent sends module-a back to design on its own word; the running worker's next write is refused, its handback is stale, module-a carries the 退回设计 comment and module-b none`, sendBack !== undefined && resultAt('send-back-a')?.isError !== true && lastToolResult(worker1[3])?.isError === true && (lastToolResult(worker1[3])?.text ?? '').includes('The design this task belongs to was sent back (module module-a).') && !existsSync(two) && notices.some(message => message.text.includes('The graph moved under the task since it was dispatched') && message.text.includes('module-a changed')) && harnessComments(moduleA).some(text => text.startsWith('退回设计 · ')) && !harnessComments(moduleB).some(text => text.startsWith('退回设计 · ')), `edit ${sendBack === undefined ? 'missing' : 'by llm'}; write ${(lastToolResult(worker1[3])?.text ?? 'none').slice(0, 80)}; two.txt ${existsSync(two)}; ${harnessComments(moduleA).find(text => text.startsWith('退回设计')) ?? 'no return comment'}`],
+    [`exec modules: module-a released again: a new release time, and the re-dispatch's pins carry it (module-a's pin changed and matches the final graph)`, releasedAgain !== undefined && releaseOf(releasedAgain) !== releaseOf(starts[0]) && dispatches.length === 2 && pinOf(dispatches[0]) !== pinOf(dispatches[1]) && finalPin !== undefined && pinOf(dispatches[1]) === `module-a@${finalPin.digest}` && resultAt('dispatch-a-again')?.isError !== true, `${releaseOf(starts[0]) ?? '-'} -> ${releaseOf(releasedAgain) ?? '-'}; pins ${dispatches.map(pinOf).join(' -> ') || 'none'}; final ${finalPin?.digest ?? 'none'}`],
+    [`exec modules: the person sends the goal back to design: the goal blocks hourness-design-wait (U30); released again, the drive resumes it`, goals[1]?.phase === 'blocked' && goals[1].blockedReason?.code === 'hourness-design-wait' && goals[2]?.phase === 'active', goals.map(view).join(' ')],
+    [`exec modules: the design review of module-b is dispatched while it is in design, on the chosen model; CHANGES_REQUESTED then APPROVED leave two records on module-b with the direction list's digest`, reviews.every(review => review?.childId !== undefined) && reviewers.every(steps => steps.length > 0 && steps.every(step => step.model === 'glm-5.3')) && records.length === 2 && records[0][1] === reviews[0].childId && records[0][2] === 'CHANGES_REQUESTED' && records[0][4] === '1' && records[1][1] === reviews[1].childId && records[1][2] === 'APPROVED' && records[1][4] === '0' && records.every(match => match[3] === digest), `${records.map(match => `${match[2]} ${match[3]} 挡路 ${match[4]}`).join(' | ') || 'no record'}; digest ${digest}; reviewer models ${reviewers.map(steps => [...new Set(steps.map(step => step.model))].join(',') || 'none').join(' / ')}`],
+    [`exec modules: with the module reader throwing, the split goal's task is refused (the module structure could not be read) and the unsplit goal's task is dispatched (glm-exec-modules-2)`, unreadable?.isError === true && unreadable.text.includes('The module structure could not be read.') && spared?.isError !== true && jsonOrUndefined(spared?.text ?? '')?.childId !== undefined, `${(unreadable?.text ?? 'none').slice(0, 100)} | ${(spared?.text ?? 'none').slice(0, 100)}`],
+    [`exec modules: both runs exit 0, and the run with readable modules has nothing from the execute row on stderr`, execModules.status === 0 && execModules2.status === 0 && !stderrOf(EXEC_MODULES).includes('dsh-glm-hourness/execute'), `exit ${execModules.status}/${execModules2.status}; main ${main.length} request(s); ${stderrOf(EXEC_MODULES).split('\n').find(line => line.includes('execute')) ?? 'no execute line'}`],
+  ]
+}
+/**
+ * E9 (M7 design §9.1, §10.1; scenario glm-exec-skeleton): the chain from
+ * the person's /wish to the goal done on the graph. `skeletonAt` names the
+ * main agent's scripted steps; a step's result is in the next request.
+ */
+function skeletonChecks() {
+  const { ws, main, text, refused, records, advances } = mergeRun(execSkeleton, EXEC_SKELETON)
+  const at = skeletonAt
+  const json = name => jsonOrUndefined(text(at(name)))
+  const failed = name => refused(at(name)) || text(at(name)).startsWith('{"ok":false')
+  const goal = wsNode(ws, 'goal-1')
+  const task = wsNode(ws, 'task-1')
+  const reviewNode = [...readdirSync(join(ws, 'docs', 'graph', 'nodes'))].map(file => wsNode(ws, file.replace(/\.json$/, ''))).find(node => node?.parent === 'task-1' && node.kind === 'review')
+  const goalComments = harnessComments(goal)
+  const taskComments = harnessComments(task)
+  const replies = execSkeleton.human.filter(entry => entry.kind === 'reply')
+  const third = replies.filter(entry => entry.rule === 3)
+  const releaseReply = execSkeleton.human.findIndex(entry => entry.kind === 'reply' && entry.rule === 3 && entry.shown.some(item => item.kind === 'release'))
+  const approvedBy = (node, relay) => node !== undefined && node.status !== 'proposed' && (node.history ?? []).some(entry => entry.op === 'approve' && entry.relay === relay)
+  const stageBy = (to, relay) => (goal?.history ?? []).some(entry => entry.changes?.stage?.to === to && entry.relay === relay)
+  const started = json('goal-started')?.goal
+  const dispatched = json('dispatch')
+  const reviewed = json('review')
+  const accepted = json('accept')
+  const sessionModels = summary => summary?.childId === undefined ? [] : [...new Set(bySession(execSkeleton, summary.childId).map(step => step.model))]
+  const worker = dispatched?.childId === undefined ? [] : bySession(execSkeleton, dispatched.childId)
+  const squash = gitOut(ws, 'rev-parse', '--verify', '--quiet', 'refs/heads/merge/task-1')
+  const trunk = gitOut(ws, 'rev-parse', 'main')
+  const taskDone = (task?.history ?? []).filter(entry => entry.op === 'status' && entry.to === 'done').at(-1)
+  const taskEvidence = taskDone?.actor === 'harness' && (taskDone.evidence ?? []).some(item => item.kind === 'commit' && item.ref === squash) && (taskDone.evidence ?? []).some(item => item.kind === 'test' && item.exit === 0)
+  const goalDone = (goal?.history ?? []).filter(entry => entry.op === 'status' && entry.to === 'done').at(-1)
+  const acceptance = goalComments.find(comment => comment.startsWith('验收审查第 1 轮：'))
+  return [
+    [`exec skeleton: the person types /wish, answers the card by rule 4, then answers what is put by rule 3 three times (the question, the requirement, the release) and is silent after; no step of the main agent types a line, a command, another session or a fork`, execSkeleton.human[0]?.kind === 'wish' && execSkeleton.human[0].result === 'success' && replies.every(entry => entry.rule === 4 || entry.rule === 3) && isDeepStrictEqual(third.map(entry => entry.shown[0]?.kind), ['question', 'confirm', 'release']) && replies.at(-1) === third.at(-1) && releaseReply >= 0 && execSkeleton.human.slice(releaseReply + 1).every(entry => entry.kind === 'silent') && execSkeleton.human.every(entry => entry.kind !== 'unexpected-question') && main.every(step => step.line === undefined && step.command === undefined && step.other === undefined && step.fork === undefined), `${replies.filter(entry => entry.rule === 4).length} rule-4 answer(s); rule 3: ${third.map(entry => `${entry.shown[0]?.kind}:${entry.text}`).join(' | ')}`],
+    [`exec skeleton: the requirement is agreed with the person's words: goal-1 went to design with 对，就这样 and to release with 可以，放行 as the relay`, !failed('record-requirement') && stageBy('design', INTERVIEW_AGREE) && stageBy('release', RELEASE_GO), `${text(at('record-requirement')).slice(0, 80)} | stage ${goal?.stage ?? 'none'}`],
+    [`exec skeleton: the release is put and recorded as released, and approves the main agent's decision, task and norm-merge-gate with the person's words`, !failed('put-release') && json('record-release')?.outcome === 'released' && ['decision-1', 'task-1', 'norm-merge-gate'].every(id => approvedBy(wsNode(ws, id), RELEASE_GO)), `${text(at('record-release')).slice(0, 120)}`],
+    [`exec skeleton: the drive starts without a command: the goal is active, its objective names goal-1 and holds the acceptance, and goal-1 has one 自动推进已开始 comment`, started?.phase === 'active' && String(started.objective ?? '').includes('Project graph goal goal-1') && String(started.objective ?? '').includes(SKELETON_ACCEPTED) && goalComments.filter(comment => comment.startsWith('自动推进已开始 · 放行 ')).length === 1, `goal ${started?.phase ?? 'none'}; ${goalComments.find(comment => comment.startsWith('自动推进已开始'))?.slice(0, 100) ?? 'no start comment'}`],
+    [`exec skeleton: the dispatch runs on the model the main agent chose, with the plan required and the review full, and the dispatch comment names the model and why`, /^hz-task-1-/.test(dispatched?.childId ?? '') && dispatched.plan === 'required' && dispatched.review === 'full' && isDeepStrictEqual(sessionModels(dispatched), ['glm-5.3-flash']) && taskComments.some(comment => comment.startsWith('第 1 次派发') && comment.includes('glm-5.3-flash') && comment.includes(SKELETON_WHY)), `${dispatched?.childId ?? text(at('dispatch')).slice(0, 100)}; models ${sessionModels(dispatched).join(',') || 'none'}`],
+    [`exec skeleton: the plan is submitted and approved, the plan section is in the task body, and the worker's write lands in the commit`, !failed('approve') && (lastToolResult(worker[1])?.text ?? '').includes('"status":"approved"') && String(task?.body ?? '').includes('## 计划') && lastToolResult(worker[2])?.isError !== true && gitOut(ws, 'show', 'merge/task-1:src/ledger.json') !== '', `approve ${text(at('approve')).slice(0, 60)}; submit ${(lastToolResult(worker[1])?.text ?? 'none').slice(0, 60)}`],
+    [`exec skeleton: the done handback has effective depth 全审 and a review task, and the review runs on the chosen model and passes`, taskComments.some(comment => comment.startsWith('第 1 次交回 · done') && comment.includes('有效深浅 全审')) && reviewed?.role === 'review' && isDeepStrictEqual(sessionModels(reviewed), ['glm-5.3']) && reviewNode?.status === 'done', `review ${reviewNode?.id ?? 'none'}:${reviewNode?.status ?? 'none'}; models ${sessionModels(reviewed).join(',') || 'none'}`],
+    [`exec skeleton: check_commit passes the squash with the Hourness-Task trailer, the fast-forward runs and is recorded, the task is done with the harness's commit and test evidence, and its worktree is gone`, text(at('check')).includes('"status":"started"') && squash !== '' && records.some(record => record.kind === 'commands' && record.commit === squash && record.passed) && !refused(at('ff')) && trunk === squash && gitOut(ws, 'log', '-1', '--format=%(trailers:key=Hourness-Task,valueonly)', squash) === 'task-1' && advances.some(entry => entry.ref === 'local' && entry.to === squash && entry.ok === true) && task?.status === 'done' && taskEvidence && !existsSync(skeletonWt), `${squash.slice(0, 12) || 'no squash'}; main ${trunk.slice(0, 12)}; task ${task?.status ?? 'none'}; worktree ${existsSync(skeletonWt)}`],
+    [`exec skeleton: the acceptance review of the goal runs on the chosen model and passes at the trunk commit`, accepted?.role === 'acceptance-review' && isDeepStrictEqual(sessionModels(accepted), ['glm-5.3']) && acceptance !== undefined && acceptance.startsWith('验收审查第 1 轮：APPROVED · 挡路 0') && acceptance.includes(`@${trunk.slice(0, 12)}`), acceptance ?? text(at('accept')).slice(0, 120)],
+    [`exec skeleton: update_goal complete passes the completion gate, and goal-1 is done on the graph with the gate's evidence`, !failed('complete') && text(at('complete')).includes('"phase":"complete"') && goal?.status === 'done' && goalDone?.actor === 'harness' && (goalDone.evidence ?? []).some(item => item.ref === 'hourness completion gate') && !goalComments.includes('goal 在完成门禁之外完成'), `${text(at('complete')).slice(0, 100)}; goal-1 ${goal?.status ?? 'none'}`],
+    [`exec skeleton: the run exits clean with nothing from the execute row on stderr`, execSkeleton.status === 0 && !stderrOf(EXEC_SKELETON).includes('dsh-glm-hourness/execute'), `exit ${execSkeleton.status}; main ${main.length} request(s) of ${skeletonSteps.length} step(s)`],
   ]
 }
 
@@ -3081,6 +4290,38 @@ function lessonsFailureChecks() {
       [`lessons failure (${label}): the main agent's session and the child's are recorded as hits by the harness with the native tool name, one each, and with the earlier session they make three`, hits.length === 3 && isDeepStrictEqual(new Set(hits.map(record => record.by?.session)), new Set(['session-seed', started?.parentId, started?.childId])) && hits.slice(1).every(record => record.actor === 'harness' && record.id === FAILURE_LESSON && record.by.tool === 'pwsh' && record.by.agent === record.by.session && typeof record.by.callId === 'string'), hits.map(record => JSON.stringify(record.by)).join(' | ') || 'no hit'],
       [`lessons failure (${label}): the lesson that matched in three sessions is brought up to the main agent once, after its record; the child is not told`, recurred.length === 1 && recurred[0].id === FAILURE_LESSON && recurred[0].data?.sessions === 3 && recurNotices(main.at(-1)).length === 1 && recurNotices(main.at(-1))[0].text.includes(FAILURE_LESSON) && child.every(step => recurNotices(step).length === 0), `${recurred.length} record(s); reminders per request: ${main.map(step => recurNotices(step).length).join(', ') || 'none'}`],
       [`lessons failure (${label}): the row reports itself loaded, and the run warned of nothing`, healthOf(scenario).lessons?.status !== '未加载' && quiet(name), `${healthLine(healthOf(scenario), 'lessons')}; ${healthOf(scenario).lessons?.reason.slice(0, 120) ?? ''}; stderr ${stderrOf(name).length} byte(s)`],
+    ]
+  })
+}
+
+/**
+ * The reminder at a file (scenarios glm-lessons-path, non-glm-lessons-path):
+ * where it sits in the request (U3), what it carries, and the promise that the
+ * component's document reaches the model once, from the host or from the row.
+ */
+function lessonsPathChecks() {
+  const route = [[pathGlm, 'glm-lessons-path', 'GLM'], [pathPlain, 'non-glm-lessons-path', 'non-GLM']]
+  return route.flatMap(([scenario, name, label]) => {
+    const steps = scenario.steps
+    const glmRoute = label === 'GLM'
+    const told = step => messagesOf(step, PATH_SOURCE)
+    const host = step => messagesOf(step, 'agent-instructions')
+    const afterResult = step => step !== undefined && step.messages.some((message, index) => message.source === PATH_SOURCE && step.messages[index - 1]?.role === 'tool')
+    const everywhere = (step, mark) => (step?.messages ?? []).filter(message => message.text.includes(mark)).length
+    const first = told(steps[1])[0]
+    return [
+      [`lessons path (${label}): the first request has the host's opening baseline with the root document, once, and no reminder yet`, steps.length >= 4 && host(steps[0]).length === 1 && host(steps[0])[0].text.includes(PATH_ROOT_MARK) && !host(steps[0])[0].text.includes(PATH_MARK) && told(steps[0]).length === 0, steps.length === 0 ? `no request (exit ${scenario.status})` : `host messages ${host(steps[0]).length}, reminders ${told(steps[0]).length}`],
+      [`lessons path (${label}): the request after the first read carries one reminder right after its tool result, with the decision from the document and the one behind the task, the open task and the lesson`, steps.length >= 4 && told(steps[1]).length === 1 && afterResult(steps[1]) && first.text.includes('Decisions on this path (project graph): decision-1 "Entries are data"') && first.text.includes('decision-2 "The task decision"') && first.text.includes('Open work on this path: task-1 "Write the runner"') && first.text.includes(PATH_LESSON) && first.text.includes(PATH_PITFALL) && !first.text.includes('Keep the component doc true') && lastToolResult(steps[1])?.isError !== true, steps.length < 2 ? 'no second request' : `reminders per request: ${steps.map(step => told(step).length).join(', ')}; ${(first?.text ?? 'none').replace(/\n/g, ' | ').slice(0, 260)}`],
+      [glmRoute
+        ? `lessons path (GLM): the host does not deliver the component's document for the alias Read, so the reminder carries it, and the host's messages stay the one baseline`
+        : `lessons path (non-GLM): the host delivers the component's document (one more message from agent-instructions, naming the directory), so the reminder does not carry it`,
+      steps.length >= 4 && (glmRoute
+        ? first.text.includes(PATH_MARK) && first.text.includes('src/comp/AGENTS.md:') && host(steps[1]).length === 1
+        : !first.text.includes(PATH_MARK) && host(steps[1]).length === 2 && host(steps[1])[1].text.includes(PATH_MARK)),
+      steps.length < 2 ? 'no second request' : `host messages per request: ${steps.map(step => host(step).length).join(', ')}; the mark in the reminder: ${first?.text.includes(PATH_MARK)}`],
+      [`lessons path (${label}): the document's text reaches the model exactly once in the last request, from the row or from the host, and the second read brought nothing`, steps.length >= 4 && everywhere(steps[3], PATH_MARK) === 1 && told(steps[2]).length === 1 && told(steps[3]).length === 2, steps.length === 0 ? 'no request' : `mark counts per request: ${steps.map(step => everywhere(step, PATH_MARK)).join(', ')}; reminders per request: ${steps.map(step => told(step).length).join(', ')}`],
+      [`lessons path (${label}): the write adds the reminder that asks to keep the document true, alone: nothing told before is told again`, steps.length >= 4 && told(steps[3])[1]?.text.includes('Keep the component doc true: if your change alters what src/comp/AGENTS.md says') === true && !told(steps[3])[1].text.includes(PATH_LESSON) && !told(steps[3])[1].text.includes('Decisions on this path') && afterResult(steps[3]), steps.length < 4 ? 'no fourth request' : (told(steps[3])[1]?.text ?? 'none').replace(/\n/g, ' | ').slice(0, 200)],
+      [`lessons path (${label}): the files were written, the row reports itself loaded and the run warned of nothing`, existsSync(join(stageWs(name), 'src', 'comp', 'c.ts')) && healthOf(scenario).lessons?.status !== '未加载' && !JSON.stringify(healthOf(scenario).lessons ?? {}).includes('路径提醒有一部分没送') && quiet(name), `${healthLine(healthOf(scenario), 'lessons')}; ${healthOf(scenario).lessons?.reason.slice(0, 120) ?? ''}; stderr ${stderrOf(name).length} byte(s)`],
     ]
   })
 }
@@ -3396,13 +4637,14 @@ const checks = [
   ['glm compact transcript: the model\'s Read of the named file returns the export (a recorded request carries that tool result)', transcriptRead !== undefined && transcriptRead.isError !== true, transcriptRead === undefined ? `no tool result with the export text in ${compactTranscript.steps.length} step(s) and ${compactTranscript.compactions.length} compaction(s)` : transcriptRead.text.slice(0, 160).replace(/\n/g, ' | ')],
   ['glm compact transcript: no line of the export is longer than 1000 code points, and the long test:1 line of package.json is split', transcriptText.length > 0 && transcriptLong.length === 0 && transcriptSplit, `${transcriptLines.length} line(s); ${transcriptLong.length} over 1000; split test:1 line ${transcriptSplit}`],
   ['glm compact transcript: the two fake credentials of the task reach the session but not the export, which reads them as [redacted] and counts its replacements in the header; /glm-status gives the same count', transcriptFakesAsked && transcriptFakesLeft === 0 && transcriptText.includes(TRANSCRIPT_FAKES_LINE) && Number(transcriptReplaced) >= TRANSCRIPT_FAKES.length && healthOf(compactTranscript).transcript?.reason.includes(`遮掉 ${transcriptReplaced} 处`) === true, `in the first request: ${transcriptFakesAsked}; left in the export: ${transcriptFakesLeft} of ${TRANSCRIPT_FAKES.length}; redacted task line: ${transcriptText.includes(TRANSCRIPT_FAKES_LINE)}; header count: ${transcriptReplaced ?? 'none'}`],
-  ['glm compact transcript: in glm-compact (transcript row disabled, the shipped default) no checkpoint names a transcript', checkpointsOf(compacted).length > 0 && checkpointsOf(compacted).every(message => !message.text.includes(TRANSCRIPT_MARK)), `${checkpointsOf(compacted).length} checkpoint(s)`],
+  ['glm compact transcript: in glm-compact (transcript row disabled by the overlay) no checkpoint names a transcript', checkpointsOf(compacted).length > 0 && checkpointsOf(compacted).every(message => !message.text.includes(TRANSCRIPT_MARK)), `${checkpointsOf(compacted).length} checkpoint(s)`],
   ['glm compact transcript: /glm-status of the session lists the transcript row in effect with the export it wrote', healthOf(compactTranscript).transcript?.status === ACTED && healthOf(compactTranscript).transcript.reason.startsWith('压缩前导出'), JSON.stringify(healthOf(compactTranscript).transcript ?? null)],
   ['memory usage: one record per GLM step with the request provider, model and session id', glmUsage.length === glm.steps.length && glmUsage.every(record => record.provider === 'glm-probe' && record.model === 'glm-5.3' && typeof record.sessionId === 'string' && record.sessionId.length > 0), `${glmUsage.length} record(s) for ${glm.steps.length} step(s); first: ${JSON.stringify(glmUsage[0] ?? null).slice(0, 120)}`],
   ['memory usage: the compaction call is recorded with purpose compaction', compactUsage.length === compacted.compactions.length && compactUsage.length > 0, `${compactUsage.length} compaction record(s) for ${compacted.compactions.length} request(s)`],
   ...memoryChecks(),
   ...lessonsChecks(),
   ...lessonsFailureChecks(),
+  ...lessonsPathChecks(),
   ['data: usage lands only in the user-level directory, never in a project directory or the real one', projectUsage.length === 0 && realUsageBefore === realUsageAfter, `project usage files: ${projectUsage.join(', ') || 'none'}; real ${realUsage}: ${realUsageBefore} -> ${realUsageAfter}`],
   ['guard: a shell write is denied with the four-part correction naming the ZCode tools, and the file is not created', blockedResult?.isError === true && blockedResult.text.includes('Shell file writes are not permitted') && blockedResult.text.includes(RIGHT_PATH_ZCODE) && !existsSync(blocked), blockedResult === undefined ? 'no tool result' : blockedResult.text.slice(0, 100).replace(/\n/g, ' ')],
   ['guard: the denial is journaled in the scenario project directory with rule, tool and the calling agent ids, and the turn end after the reply settles one follow-up as none (m4-gate G2)', glmViolations.length === 2 && glmViolations[0].rule === 'file-tools-only' && glmViolations[0].tool === 'Bash' && typeof glmViolations[0].agentId === 'string' && glmViolations[0].agentId.length > 0 && glmViolations[0].sessionId === glmUsage[0]?.sessionId && glmViolations[1].kind === 'followup' && glmViolations[1].outcome === 'none' && glmViolations[1].rule === 'file-tools-only' && typeof glmViolations[1].denial === 'string' && glmViolations[1].denial.length === 12, `${glmViolations.length} record(s); first: ${JSON.stringify(glmViolations[0] ?? null).slice(0, 140)}`],
@@ -3434,6 +4676,7 @@ const checks = [
   ['guard request (GLM): the plan text the reply echoed carries the title, the four labelled lines, the 附 attachments and the question last; the goal-focus half-sentence is absent without a focus', guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text.includes('背景：agent 要**改工作区外的文件**，系统先拦下了') === true && guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text.includes('推荐：**放行这一次**，旧内容先备份，改坏了能找回') === true && guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text.includes('不做：**不放行**，文件不动，agent 换在工作区里做') === true && guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text.includes('- 将写入的内容') === true, `${(guardRequest.steps[4]?.messages.filter(message => message.role === 'assistant').at(-1)?.text ?? 'no reply').slice(0, 160).replace(/\n/g, ' | ')}`],
   ['guard request (GLM): the human 可以 approves at the next turn\'s first step; the note carries the tool and the arguments; the granted write runs past the gate and stops at rc.3\'s own workspace-write sandbox, the old content is backed up under requests/, and the third write is denied by containment with a fresh ref', guardRequest.steps[4]?.messages.some(message => message.source === 'hourness-request' && typeof message.text === 'string' && message.text.includes(`The human approved request ${requestAsked?.ref ?? ''}`) && message.text.includes(JSON.stringify({ tool: 'write', arguments: { file_path: requestTarget, content: 'probe content\n' } }))) === true && guardRequest.steps.some(step => lastToolResult(step)?.text.includes('sandbox') === true) && lastToolResult(guardRequest.steps.at(-1))?.text.includes('sandbox') === false && requestAsked !== undefined && existsSync(join(requestDir, 'home', 'requests', `${requestAsked.ref}.before`)) && readFileSync(join(requestDir, 'home', 'requests', `${requestAsked.ref}.before`), 'utf8') === 'old content\n' && lastToolResult(guardRequest.steps.at(-1))?.isError === true && lastToolResult(guardRequest.steps.at(-1)).text.includes('You tried to write') === true && lastToolResult(guardRequest.steps.at(-1)).text.includes(`"ref": "${requestAsked?.ref ?? ''}"`) === false, `write#2 ${(lastToolResult(guardRequest.steps[4])?.text ?? '').includes('sandbox') ? 'stopped by sandbox' : (lastToolResult(guardRequest.steps[4])?.text ?? 'none').slice(0, 50)}; write#3 containment ${lastToolResult(guardRequest.steps[6])?.text.includes('You tried to write') === true}; backup ${requestAsked === undefined ? 'no asked ref' : existsSync(join(requestDir, 'home', 'requests', `${requestAsked.ref}.before`))}`],
   ['guard request (GLM): the journal holds denial → followup right-path → asked → approved (with the human\'s words) → grant → denial, the ref riding on the requestable denials', requestViolations.length >= 6 && requestViolations.some(record => record.kind === undefined && record.rule === 'workspace-containment' && typeof record.ref === 'string') && requestViolations.some(record => record.kind === 'followup' && record.outcome === 'right-path') && requestViolations.filter(record => record.kind === 'request').map(record => record.outcome).join(',') === 'asked,approved' && requestViolations.some(record => record.kind === 'request' && record.outcome === 'approved' && record.by === 'human' && record.via === 'chat' && record.words === '可以') && requestViolations.some(record => record.kind === 'grant') && requestViolations.filter(record => record.kind === undefined && record.rule === 'workspace-containment').length === 2, `${requestViolations.length} record(s): ${JSON.stringify(requestViolations.map(record => [record.kind ?? 'denial', record.rule ?? '', record.outcome ?? '']))}`],
+  ['guard request worker (m4 §5.9, M7 §3.2.1): the worker-scope refusal carries the ref and the worker\'s sentence, the human 可以 grants the main agent\'s exception, and the identical write of the dispatched worker passes worker-scope and the guard row (the grant spent, the old content backed up under requests/) and stops at rc.3\'s own workspace-write sandbox', requestWorkerRun.status === 0 && requestWorkerViolations.some(record => record.rule === 'worker-scope' && /^r-[0-9a-z]{8}$/.test(record.ref ?? '') && String(record.correction).includes('give ref "')) && requestWorkerViolations.some(record => record.kind === 'request' && record.outcome === 'approved' && record.by === 'human' && record.via === 'chat' && record.words === '可以') && requestWorkerViolations.some(record => record.kind === 'grant') && requestWorkerGranted !== undefined && requestWorkerRef !== undefined && existsSync(join(requestWorkerDir, 'home', 'requests', `${requestWorkerRef}.before`)) && readFileSync(join(requestWorkerDir, 'home', 'requests', `${requestWorkerRef}.before`), 'utf8') === 'old content\n', `exit ${requestWorkerRun.status}; worker steps ${requestWorkerSteps.length}; granted write ${requestWorkerGranted === undefined ? 'not seen' : 'stopped by sandbox'}; backup ${requestWorkerRef === undefined ? 'no ref' : existsSync(join(requestWorkerDir, 'home', 'requests', `${requestWorkerRef}.before`))}; ${JSON.stringify(requestWorkerViolations.map(record => [record.kind ?? 'denial', record.rule ?? '', record.outcome ?? '', record.ref ?? '']))}`],
   ['guard request (native): the same channel without the GLM face — request_exception and probe_say called directly, the granted write passes the gate and stops at rc.3\'s sandbox, the third is denied by containment', guardRequestPlain.status === 0 && lastToolResult(guardRequestPlain.steps[2])?.isError !== true && lastToolResult(guardRequestPlain.steps[2]).text.includes('"outcome":"ask"') && lastToolResult(guardRequestPlain.steps[5])?.text.includes('sandbox') === true && lastToolResult(guardRequestPlain.steps[6])?.isError === true && lastToolResult(guardRequestPlain.steps[6]).text.includes('You tried to write') === true && jsonl(join(runDir, 'guard-request-plain', 'home', 'audit', 'violations.jsonl')).some(record => record.kind === 'request' && record.outcome === 'approved'), `exit ${guardRequestPlain.status}; ask ${(lastToolResult(guardRequestPlain.steps[2])?.text ?? 'none').slice(0, 50).replace(/\n/g, ' ')}; write#2 ${(lastToolResult(guardRequestPlain.steps[5])?.text ?? '').includes('sandbox') ? 'stopped by sandbox' : 'other'}`],
   ['guard request refuse: a headless 可以 reads not-client, 可以吗 reads unclear with the confirmation sentence as the new tail, the approval after it grants (its write stops at rc.3\'s sandbox), and a reply with one sentence more is not-shown with the write denied by containment', guardRequestRefuse.status === 0 && refuseGitReady && refuseNotice(5, 'did not come through the DSH client') && refuseNotice(7, 'not a plain yes or no') && refuseNotice(7, REFUSE_CONFIRM) && refuseNotice(9, 'The human approved request') && refuseNotice(14, 'was not approved') && lastToolResult(guardRequestRefuse.steps[9])?.text.includes('sandbox') === true && lastToolResult(guardRequestRefuse.steps[14])?.isError === true && lastToolResult(guardRequestRefuse.steps[14]).text.includes('You tried to write') === true && refuseViolations.filter(record => record.kind === 'request').map(record => record.outcome).join(',') === 'asked,not-client,unclear,approved,asked,not-shown', `exit ${guardRequestRefuse.status}; outcomes ${JSON.stringify(refuseViolations.filter(record => record.kind === 'request').map(record => record.outcome))}; write#4 containment ${lastToolResult(guardRequestRefuse.steps[14])?.text.includes('You tried to write') === true}`],
   ['guard request goal: the goal agent files with a live goal, a round\'s first step without the human carries still waits, and the approval pairs with its ask result and a spent grant in the journal', guardRequestGoal.status === 0 && requestGoalGitReady && requestGoalAsked && requestGoalStill && requestGoalApproval !== undefined && requestGoalSteps.length >= 4 && requestGoalViolations.some(record => record.kind === 'request' && record.outcome === 'approved') && requestGoalViolations.some(record => record.kind === 'grant') && requestGoalViolations.some(record => record.kind === undefined && record.rule === 'workspace-containment' && typeof record.ref === 'string'), `exit ${guardRequestGoal.status}; still ${requestGoalStill}; approval ${requestGoalApproval === undefined ? 'none' : requestGoalApproval.text.slice(0, 50)}; rounds ${requestGoalSteps.length}`],
@@ -3455,11 +4698,15 @@ const checks = [
   ['health: the reports stay out of the model-visible conversation', conversationTexts.length > 0 && conversationTexts.every(text => !text.includes('行健康') && !text.includes('glmHournessHealth')), `${conversationTexts.length} text(s) checked`],
   ['calibration limits: the step past maxSteps is rejected, the turn ends blocked and the run exits non-zero', stepLimited.steps.length === 2 && stepLimits.length === 1 && stepLimits[0].kind === 'step-limit' && stepLimited.status !== 0, `exit ${stepLimited.status}, ${stepLimited.steps.length} step(s), record: ${JSON.stringify(stepLimits)}`],
   ['calibration limits: the time limit cancels a running 60-second shell command and no later step runs', timeLimited.steps.length === 1 && timeLimits.length === 1 && timeLimits[0].kind === 'time-limit' && timeLimited.elapsedMs < 45_000 && timeLimited.status !== 0, `exit ${timeLimited.status} after ${Math.round(timeLimited.elapsedMs / 1000)} s, ${timeLimited.steps.length} step(s), record: ${JSON.stringify(timeLimits)}`],
+  ['calibration fence: reading the task checker by absolute path through Read and Get-Content, listing $env:TEMP and walking out of the workspace with .. are denied without the checker\'s text; reading and listing the workspace pass', fenceResults.slice(0, 4).every(result => result?.isError === true && result.text.includes('is outside the workspace') && !result.text.includes(checkerText)) && fenceResults[4]?.isError !== true && fenceResults[4]?.text.includes('fence-note') === true && fenceResults[5]?.isError !== true, fenceResults.map(result => result === undefined ? 'none' : `: ${result.text.slice(0, 50).replace(/\n/g, ' ')}`).join(' | ')],
+  ['calibration fence: fence.jsonl holds one line per denial, with the reason (fenced for the checker, temporary-root for $env:TEMP and for .. out of the run directory)', fenceDenials.length === 4 && JSON.stringify(fenceDenials.map(entry => entry.why)) === JSON.stringify(['fenced', 'fenced', 'temporary-root', 'temporary-root']), JSON.stringify(fenceDenials.map(entry => [entry.tool, entry.why]))],
+  ...['A1', 'A2', 'A4', 'A5'].map(arm => [`calibration ablation ${arm}: the first request's system prompt is A0's with exactly that arm's paragraph(s) changed, the tool face unchanged`, ...Object.values(ablationCheck(arm))]),
+  ['calibration ablation A3: the system prompt is A0\'s; the tool face is A0\'s without the 18 graph and memory tools, which the deferred tools announcement lists', ablationFirst('A3') !== undefined && isDeepStrictEqual(ablationParagraphs('A3'), ablationParagraphs('A0')) && a3Deferred.length === 18 && isDeepStrictEqual(ablationTools('A3'), ablationTools('A0').filter(tool => !a3Deferred.includes(JSON.parse(tool).name))) && a3Deferred.every(tool => a3Announced.split('\n').includes(tool)), `A0 holds ${a3Deferred.length}/18; A3 tools ${ablationTools('A3').length} vs A0 ${ablationTools('A0').length}; announced ${a3Deferred.filter(tool => a3Announced.split('\n').includes(tool)).length}`],
   ['dispatch (a): a host-level row starts a background child through subagents.startActivation; the dispatch call returns at once with the reserved child id', started !== undefined && started.childId.startsWith('probe-task-') && lastToolResult(dispatchMain[1])?.isError !== true && lastToolResult(dispatchMain[1])?.text.includes(started.childId) === true && dispatchChild.length > 0, started === undefined ? `no start recorded (exit ${dispatch.status}): ${JSON.stringify(dispatchNotes.find(entry => entry.kind === 'dispatch-failed') ?? null)}` : `child ${started.childId}: ${dispatchChild.length} request(s)`],
   ['dispatch (a): the child gets the prompt, runs in the requested cwd and on the agentOptions model', childFirstUser?.text.startsWith(CHILD_PROMPT) === true && childBash?.isError !== true && childBash?.text.trim() === dispatchWs && dispatchChild.every(step => step.model === 'glm-5.3-flash') && dispatchMain.every(step => step.model === 'glm-5.3'), `prompt: ${(childFirstUser?.text ?? 'none').slice(0, 60).replace(/\n/g, ' ')}; cwd: ${(childBash?.text ?? 'no tool result').trim()}; models: ${[...new Set(dispatchChild.map(step => step.model))].join(', ')}`],
   ['dispatch (a): the parent keeps working while the child runs (its next two steps come before the child finishes, without a completion notice)', dispatchMain.length === 4 && dispatchChild.length >= 4 && dispatchMain[2].clock < dispatchChild.at(-1).clock && [1, 2].every(index => messagesOf(dispatchMain[index], 'subagent-settled').length === 0), `parent clocks ${dispatchMain.map(step => step.clock - (dispatchMain[0]?.clock ?? 0)).join(', ')} ms; child clocks ${dispatchChild.map(step => step.clock - (dispatchMain[0]?.clock ?? 0)).join(', ')} ms`],
   ['dispatch (a): the completion notice reaches the parent with the structured result; the activation result carries it too', settled.length === 1 && settled[0].text.includes(`Structured result: ${JSON.stringify(HAND_BACK)}`) && childResult?.stopReason === 'completed' && JSON.stringify(childResult.structured) === JSON.stringify(HAND_BACK), `${(settled[0]?.text ?? 'no notice').slice(-120).replace(/\n/g, ' | ')}; result: ${JSON.stringify(childResult ?? null).slice(0, 120)}`],
-  ['dispatch (b): tools/pre-execute sees each child call with the child agent, whose id maps to the task; the parent\'s calls do not map', childCalls.length === 5 && childCalls.every(entry => entry.task === 'T1' && entry.agentId === started?.childId && entry.sessionId === started.childId && entry.nested === false) && JSON.stringify(childCalls.map(entry => entry.tool)) === JSON.stringify(['Bash', 'Write', 'Write', 'DeferredToolCall', 'structured_output']), childCalls.map(entry => entry.tool).join(', ') || 'no calls recorded'],
+  ['dispatch (b): tools/pre-execute sees each child call with the child agent, whose id maps to the task; the parent\'s calls do not map', childCalls.length === 4 && childCalls.every(entry => entry.task === 'T1' && entry.agentId === started?.childId && entry.sessionId === started.childId && entry.nested === false) && JSON.stringify(childCalls.map(entry => entry.tool)) === JSON.stringify(['Bash', 'Write', 'Write', 'structured_output']), childCalls.map(entry => entry.tool).join(', ') || 'no calls recorded'],
   ['dispatch (b): a write outside the task scope is denied and reaches the child as a tool error; the write inside the scope runs', scopeDenied?.isError === true && scopeDenied.text.includes(SCOPE_DENIAL) && !existsSync(outsideFile) && existsSync(insideFile) && readFileSync(insideFile, 'utf8') === 'inside\n' && dispatchNotes.filter(entry => entry.kind === 'scope-deny').length === 1, scopeDenied === undefined ? 'no tool result' : scopeDenied.text.slice(0, 100).replace(/\n/g, ' ')],
   ['dispatch (b): the child session header keeps the parent directory; the requested cwd is only the child working directory', childCalls.length > 0 && childCalls.every(entry => entry.headerCwd === dispatch.cwd) && childBash?.text.trim() === dispatchWs, `header cwd ${childCalls[0]?.headerCwd ?? 'none'}`],
   ['goal (c): a plugin-created goal on a second root agent gets round 1 from the driver, and the notice appended in agent/pre-step enters with it', goalCreated?.root === true && goalCreated.goal?.activation === 'armed' && roundOf(goalSteps[0], 1) && projections(goalSteps[0]).length === 1 && firstRoundOrder[0] >= 0 && firstRoundOrder[1] > firstRoundOrder[0], goalSteps[0] === undefined ? `no goal-agent request (exit ${goalRun.status})` : `sources: ${goalSteps[0].messages.map(message => message.source ?? message.role).slice(-6).join(', ')}`],
@@ -3534,6 +4781,7 @@ const checks = [
   ['rules-peak-stop-exit: V13, the host exits with the goal paused at the stop level: the run is clean and the way out agrees with itself: a row that unloaded (its heartbeat file is gone) resumed the goal and wrote it on the ticket, a runner that left without unloading it left the goal and the ticket as the stop made them', stopExitProject.ready && rulesPeakStopExit.status === 0 && !stderrOf('rules-peak-stop-exit').includes('dsh-glm-hourness/rules') && stopExitNotes.some(entry => entry.kind === 'stop-held' && entry.goal?.phase === 'paused') && (stopExitUnloaded ? typeof stopExitState?.tickets?.['q-1']?.resumedAt === 'string' && stopExitOps.includes('resume') : stopExitState?.tickets?.['q-1']?.state === 'deferred' && stopExitState.tickets['q-1'].resumedAt === undefined && stopExitOps.join() === 'create,pause'), `unloaded ${stopExitUnloaded}; exit ${rulesPeakStopExit.status}; goal operations ${JSON.stringify(stopExitOps)}; ticket ${JSON.stringify(stopExitState?.tickets?.['q-1'] ?? null)}; journal ${JSON.stringify(stopExitJournal.map(record => [record.op, record.reason ?? null]).slice(-3))}; ${stderrOf('rules-peak-stop-exit').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['loops: the row ships enabled since the rules-loops merge: the boot scenarios list it in effect on both routes', glmHealth.loops?.status === ACTED && plainHealth.loops?.status === ACTED, `${healthLine(glmHealth, 'loops')}; ${healthLine(plainHealth, 'loops')}`],
   ['lessons: the row ships enabled since the lessons enablement: without the overlay the boot scenarios list it loaded on both routes', glmHealth.lessons !== undefined && glmHealth.lessons.status !== '未加载' && plainHealth.lessons !== undefined && plainHealth.lessons.status !== '未加载', `${healthLine(glmHealth, 'lessons')}; ${healthLine(plainHealth, 'lessons')}`],
+  ['transcript: the row ships enabled since the transcript enablement: without the overlay the boot scenarios list it loaded and not yet acting on both routes (it acts on a GLM compaction only)', [glmHealth, plainHealth].every(health => health.transcript?.status === IDLE && health.transcript.reason.startsWith('已加载；GLM 压缩时')), `${healthLine(glmHealth, 'transcript')}; ${healthLine(plainHealth, 'transcript')}`],
   ['loops: the row, enabled by the overlay in a scratch git clone that carries a person\'s entry file, boots, runs its four steps and exits clean with nothing from it on stderr', loopsBoard.ready && loops.status === 0 && loops.steps.length === 4 && !stderrOf('loops').includes('dsh-glm-hourness/loops'), `exit ${loops.status}, ${loops.steps.length} step(s), git ${loopsBoard.ready}; ${stderrOf('loops').split('\n').find(line => line.includes('loops')) ?? 'no stderr line mentions loops'}`],
   ['loops: a file tool writing into docs/loops/ is refused by loops:files-only with the four-part text, the entry file is as it was, and the refusal is journaled as a plain denial (the gate\'s records carry no mode, G1)', lastToolResult(loops.steps[1])?.isError === true && LOOPS_DENIAL.test(lastToolResult(loops.steps[1]).text) && readFileSync(loopsBoard.entryFile, 'utf8') === LOOPS_ENTRY_TEXT && rulesRecordOf(loopsRecords, 'loops:files-only') !== undefined && rulesRecordOf(loopsRecords, 'loops:files-only')?.mode === undefined, lastToolResult(loops.steps[1])?.text?.slice(0, 200) ?? 'no result'],
   ['loops: a shell command writing into the project\'s .llm/loops/ is refused by the same rule, not by file-tools-only, and the board\'s change record does not carry what it wrote (the recorder\'s follow-up records carry a kind)', lastToolResult(loops.steps[2])?.isError === true && (lastToolResult(loops.steps[2])?.text ?? '').includes('Rule loops:files-only') && loopsJournalText !== '' && !loopsJournalText.split('\n').includes('probe') && loopsRecords.filter(record => record.rule === 'loops:files-only' && record.kind === undefined).length === 2, `${lastToolResult(loops.steps[2])?.text?.slice(0, 160) ?? 'no result'}; ${loopsRecords.filter(record => record.rule === 'loops:files-only').length} journal line(s) for the rule`],
@@ -3551,6 +4799,14 @@ const checks = [
   ...metricsConcurrentChecks,
   ...metricsRuleChecks,
   ...designChecks(),
+  ...execChecks(),
+  ...planChecks(),
+  ...reviewChecks(),
+  ...mergeChecks(),
+  ...mergeUpstreamChecks(),
+  ...driveChecks(),
+  ...execModulesChecks(),
+  ...skeletonChecks(),
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],
   ['non-glm tools: natives present, no aliases', plainFirst !== undefined && nativeFace.every(name => plainTools.has(name)) && zcodeFace.every(name => !plainTools.has(name)), zcodeFace.filter(name => plainTools.has(name)).join(', ') || ''],
