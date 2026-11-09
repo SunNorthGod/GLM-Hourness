@@ -42,7 +42,9 @@ import { projectJournal } from '../memory/audit.ts'
 import { projectHomeFor } from '../data/project-home.ts'
 import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import { createUserNotice, type AgentLike, type CommandDefinitionLike, type CommandsExecutor, type DesignAgentLike, type DesignAgentsService, type DesignInvocationLike, type InjectHost, type PreExecuteListener, type ProvideHost, type ServiceLookup, type SessionLike, type SessionPersistenceLike, type SessionProjectionsService } from '../shared/dsh-min.ts'
+import { executeService } from '../shared/execute-service.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
+import { disposerList } from '../shared/row-support.ts'
 import Schema from '../shared/schemastery.ts'
 import { ATTACH_BOARDS } from './attach.ts'
 import { MAIN_AGENT_IDENTITY, MAIN_AGENT_SECTION } from './identity.ts'
@@ -119,10 +121,7 @@ function isDirectory(dir: string): boolean {
 
 /** cordis plugin entry: register /wish and the main agent projection, keep the role consistent. Activation never throws. */
 export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void {
-  const disposers: Array<() => void> = []
-  const dispose = (): void => {
-    for (const undo of disposers.splice(0).reverse()) undo()
-  }
+  const { list: disposers, drain: dispose } = disposerList()
   const problem = dialectWarner('design')
   // The person's persona, read once: it does not change within a session (docs/ORCHESTRATION.md §3.1).
   const persona = readPersona(config)
@@ -347,7 +346,8 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
       }
       if (session !== undefined) reportedMain.add(session)
       health.report(sessionIdOf(agent), step.problems.length > 0 ? 'degraded' : 'active', step.problems.length > 0 ? said : MAIN_AGENT_ACTIVE)
-      return { ...assembled, sections: insertHournessSection(assembled.sections, { name: MAIN_AGENT_SECTION, text: MAIN_AGENT_IDENTITY, interpolate: false }) }
+      // The boundary sentence names dispatch_task once the execute row is on (M7 E4, F18); read per step, the row can load later.
+      return { ...assembled, sections: insertHournessSection(assembled.sections, { name: MAIN_AGENT_SECTION, text: MAIN_AGENT_IDENTITY(executeService(ctx) !== undefined), interpolate: false }) }
     }, { prepend: true }))
     // Not prepend: inside every prepended listener, so the dialect's and tool search's listeners already see the face without the tools.
     disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
@@ -374,6 +374,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
         eligible: () => assembledAsMain.get(agent) === true,
         graph: () => graphFocus(ctx),
         report: (reported, state, reason) => { health.report(sessionIdOf(reported), state, reason) },
+        executeOn: () => executeService(ctx) !== undefined,
       })
       if (uninstall !== undefined) disposers.push(uninstall)
     }
@@ -572,6 +573,8 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
       metric: designMetricSink(ctx),
       hiddenTools: HIDDEN_FROM_MAIN_AGENT,
       journal: (record, cwd) => { void journal.violation(record, cwd) },
+      isWorker: (agentId) => executeService(ctx)?.isWorker(agentId),
+      executeOn: () => executeService(ctx) !== undefined,
       report: (agent, state, reason) => { health.report(sessionIdOf(agent), state, reason) },
       tell: (agent, notice) => {
         const live = agents()?.get(agent.id)

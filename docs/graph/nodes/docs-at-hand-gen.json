@@ -1,0 +1,42 @@
+{
+  "id": "docs-at-hand-gen",
+  "type": "task",
+  "title": "组件文档的生成：简报与接管（等 M7）",
+  "why": "组件文档由接管之后的活与 worker 随改动写出来，而不是靠人想起",
+  "status": "approved",
+  "parent": "docs-at-hand",
+  "kind": "implement",
+  "acceptance": [
+    "M7 简报在写入范围碰到组件时带一句；接管结束的提醒与 execute.release 的提示各一句（对已放行设计的请求，记批注）",
+    "L2；L3 随 M7 执行探针"
+  ],
+  "writeScope": [
+    "src/execute/brief.ts"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m7"
+    },
+    {
+      "type": "source",
+      "to": "docs-at-hand"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-06T19:09:02.650Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "设计 0.3 第一件的生成部分：worker 简报一句、接管后与新项目的 kind: docs 任务，等 M7 合入 main",
+      "relay": "你自己把握好这个度吧反正，尽量融合进我们的流程内而不是加越来越多的东西",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-09T20:09:15.312Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "gen 落地（724897e3，并入 main，2026-11-10）：简报一句——execute 简报约束栏逐字「Component doc covering your scope: <C>/AGENTS.md. Keep it true: … otherwise say in the handback field docs why it still holds.」，scopeComponents（目录条目先查自己、文件条目从父目录起、检出根不算、首触去重）、超 BRIEF_LIMIT 先于经验被裁（设计 §4.4）、worker 派发按工作树 AGENTS.md 算组件。验收后两句是对已放行设计的请求（接管结束提醒多一句、扫描多组件候选→bootstrap 节点；execute.release 提示加一句→m7 节点），已记批注待人定；设计 §5.5 docsFor 块同桶未实现。L3 场景 glm-exec-docs 五检查随批 3。桌面 L4 随下一批次。"
+    }
+  ]
+}

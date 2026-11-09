@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Execute",
+    "description": "The execution line: dispatch_task hands one task of the project graph to a subagent on a model the main agent names and justifies, the harness builds the worktree and the brief, and the dispatched chain can only write inside its own worktree, write scope and branch. Ships enabled since 2026-11-09; the loop-board seam is still to come."
+  }
+}

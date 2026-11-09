@@ -47,11 +47,11 @@ rowTest('the row is a cordis plugin that needs the tools and commands services, 
   assert.deepEqual(inject, ['tools', 'commands'])
   const command = commands.get('rules')
   assert.deepEqual([command?.definitionId, command?.name], ['dsh-glm-hourness/rules', 'rules'])
-  assert.equal(command?.input?.hint, 'show | peak [无影响|少做|不做] | lift <规则> | delete <规则或开关> | on <开关> [时长] | off <开关> | set <信号> <值> [时长] | clear <信号> | let <单号> | cancel <单号> | recovery <编号…|文件> 照改|忽略')
+  assert.equal(command?.input?.hint, 'show | peak [无影响|少做|不做] | lift <规则> | delete <规则或开关> | on <开关> [时长] | off <开关> | set <信号> <值> [时长] | clear <信号> | let <单号> | cancel <单号> | accept <提议> | reject <提议> | recovery <编号…|文件> 照改|忽略')
   assert.deepEqual(runtime.scoped.map(tool => tool.name), [...RULES_TOOL_NAMES], 'the tools the row registers are the contract names')
   assert.ok(runtime.services.has(PEAK_MODE_SERVICE))
   assert.ok(runtime.services.has(RULES_SERVICE))
-  assert.deepEqual(health(runtime), { row: 'rules', status: 'idle', reason: `命令 /rules、工具 rules_show 与高峰模式服务 ${PEAK_MODE_SERVICE} 已就绪` })
+  assert.deepEqual(health(runtime), { row: 'rules', status: 'idle', reason: `命令 /rules、工具 rules_show、rules_propose 与高峰模式服务 ${PEAK_MODE_SERVICE} 已就绪` })
   assert.ok(peakModeService(runtime.ctx) !== undefined)
   void dispose()
   assert.equal(commands.size, 0)
@@ -363,7 +363,7 @@ test('activation never throws: a command that cannot register, a service that ca
     void never()
   })
   const ours = warnings.filter(warning => warning.startsWith('dsh-glm-hourness/rules: '))
-  assert.equal(ours.length, 9, ours.join(' | '))
+  assert.equal(ours.length, 10, ours.join(' | '))
   for (const expected of [
     /registering \/rules failed, the level cannot be changed: taken/,
     /row health not provided/,
@@ -371,6 +371,7 @@ test('activation never throws: a command that cannot register, a service that ca
     new RegExp(`${RULES_SERVICE} is not provided`),
     /row status not provided/,
     /registering rules_show failed/,
+    /registering rules_propose failed/,
     /the session listeners are not registered/,
     /the tool-call gate is not installed, the row executes no rule: no events/,
     /config\.dir must be a non-empty path/,

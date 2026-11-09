@@ -174,6 +174,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "lessons-3 经桌面 L4 关闭（2026-11-06）；经验行 glm-hourness/lessons 从 bad85a49 起出厂启用，已在人的桌面版上生效。子节点 lessons-1 至 lessons-4 全部完成；M7 派发简报带经验与交回调 propose 两件仍随 M7（ORCHESTRATION §8.6「还没做」）。"
+    },
+    {
+      "at": "2026-11-09T14:11:04.281Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "docs-at-hand 桌面 pass（批次 L4，2026-11-09）：AGENTS.md 按路径送达成立——读组件文件后模型逐字贴出 system-reminder 带组件 AGENTS.md 全文与图上决策行，别名不触发时正文由经验行补送（设计 0.3 §5 判法），digest 去重正常；loops.unsynced-daily 登记可见（每天 18:05，时间门控核到下次时刻）。已随 fb88f941 进 main。"
     }
   ]
 }

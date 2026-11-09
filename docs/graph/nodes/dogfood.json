@@ -5,7 +5,7 @@
   "why": "用自己的编排层开发自己，卡住和返工的地方就是要改的地方",
   "status": "approved",
   "parent": "orch",
-  "body": "等 M3 的主 Agent 与 M7 的派发、审查、汇合有了最薄的一条能跑通的骨架之后，本项目的开发改由它自己的编排层在 DSH 里做（GLM 主 Agent 用强一档模型，子 agent 用便宜模型），替换现在由 Kiro 工作流顶着的角色。这是对编排层最硬的验收：卡住、返工、要人救场的地方就是要改的地方，记成节点。开始条件（M7 设计 0.2 §10.3）：骨架场景全部通过；真实模型从已放行的目标跑到目标完成一次（主 Agent GLM-5.3、worker GLM-5.3-Flash，记下步数、积分、被拦次数、问答次数）；第一批 L4 通过；本仓库的 norm-merge-gate 由人批准且 H1 已合入；桌面版里主 Agent 用强一档模型，worker 用默认的 simple 档，审查高一档。满足之后编排者把本仓库的下一件实现任务交给 DSH 里的主 Agent，Kiro 只观察。",
+  "body": "等 M3 的主 Agent 与 M7 的派发、审查、汇合有了最薄的一条能跑通的骨架之后，本项目的开发改由它自己的编排层在 DSH 里做（GLM 主 Agent 用强一档模型；子 agent 与审查用什么模型由主 Agent 自己选，d-main-agent-models），替换现在由编排方顶着的角色。这是对编排层最硬的验收：卡住、返工、要人救场的地方就是要改的地方，记成节点。开始条件（M7 设计 0.6 §10.3）：一、八个骨架场景（glm-exec-dispatch、non-glm-exec-dispatch、glm-exec-plan、glm-exec-review、glm-exec-merge、glm-exec-drive、glm-exec-modules、glm-exec-skeleton）全部通过（L3）；二、真实模型跑一次：主 Agent 用 GLM-5.3，从已放行的目标跑到目标完成，记下主 Agent 为子 agent 与审查选的模型和理由、步数、积分、被拦次数、问答次数；三、第一批 L4 通过；四、一页放行稿由人放行，十件活的「怎样算做完」按人的原话改好，H1（探针在 git 工作树里自动用临时 profile）已合入；五、规则板最小一片（d-rules-peak-slice）已合入，M7 对它的两处读（少做上限、高峰停住）在它的真实服务类型上验过。满足之后编排者把本仓库的下一件实现任务交给 DSH 里的主 Agent，编排方只观察。",
   "edges": [
     {
       "type": "depends",
@@ -157,6 +157,30 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-05：「暂时自己做，kiro积分用完了再自举到时候」。自举的开始时机因此加一条：Kiro 积分用完时转入自举；在那之前，M7 合入后的 P1–P3、P6 等后续由编排方在 Kiro 这边派线做，不留作自举的第一件活。"
+    },
+    {
+      "at": "2026-11-06T18:24:49.212Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "开始条件原抄 M7 设计 0.2 §10.3，按 0.6 §10.3 重写：worker 与审查的模型改为主 Agent 自己选（d-main-agent-models），不再写死 GLM-5.3-Flash 与 simple 档；加第 5 条规则板最小一片；八个骨架场景点名；norm-merge-gate 一项由一页放行稿一项取代；「Kiro」改写为编排方（编排已换到 Cursor）。被取代的条款整条重写。",
+      "changes": {
+        "body": {
+          "from": "等 M3 的主 Agent 与 M7 的派发、审查、汇合有了最薄的一条能跑通的骨架之后，本项目的开发改由它自己的编排层在 DSH 里做（GLM 主 Agent 用强一档模型，子 agent 用便宜模型），替换现在由 Kiro 工作流顶着的角色。这是对编排层最硬的验收：卡住、返工、要人救场的地方就是要改的地方，记成节点。开始条件（M7 设计 0.2 §10.3）：骨架场景全部通过；真实模型从已放行的目标跑到目标完成一次（主 Agent GLM-5.3、worker GLM-5.3-Flash，记下步数、积分、被拦次数、问答次数）；第一批 L4 通过；本仓库的 norm-merge-gate 由人批准且 H1 已合入；桌面版里主 Agent 用强一档模型，worker 用默认的 simple 档，审查高一档。满足之后编排者把本仓库的下一件实现任务交给 DSH 里的主 Agent，Kiro 只观察。",
+          "to": "等 M3 的主 Agent 与 M7 的派发、审查、汇合有了最薄的一条能跑通的骨架之后，本项目的开发改由它自己的编排层在 DSH 里做（GLM 主 Agent 用强一档模型；子 agent 与审查用什么模型由主 Agent 自己选，d-main-agent-models），替换现在由编排方顶着的角色。这是对编排层最硬的验收：卡住、返工、要人救场的地方就是要改的地方，记成节点。开始条件（M7 设计 0.6 §10.3）：一、八个骨架场景（glm-exec-dispatch、non-glm-exec-dispatch、glm-exec-plan、glm-exec-review、glm-exec-merge、glm-exec-drive、glm-exec-modules、glm-exec-skeleton）全部通过（L3）；二、真实模型跑一次：主 Agent 用 GLM-5.3，从已放行的目标跑到目标完成，记下主 Agent 为子 agent 与审查选的模型和理由、步数、积分、被拦次数、问答次数；三、第一批 L4 通过；四、一页放行稿由人放行，十件活的「怎样算做完」按人的原话改好，H1（探针在 git 工作树里自动用临时 profile）已合入；五、规则板最小一片（d-rules-peak-slice）已合入，M7 对它的两处读（少做上限、高峰停住）在它的真实服务类型上验过。满足之后编排者把本仓库的下一件实现任务交给 DSH 里的主 Agent，编排方只观察。"
+        }
+      }
+    },
+    {
+      "at": "2026-11-06T18:25:13.642Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "开始条件核对（2026-11-07，对着正文按 M7 设计 0.6 §10.3 重写后的五条；核对对象是 origin/main 与 origin/m7）。第 4 条里的 H1：效果已在 main，6fea6d0（split 第 5 步，两个宿主包）起 npm run probe 在 git 工作树里自动生成临时 profile，指向这个工作树的包；DEVELOPMENT.md §3 写「主检出与 git worktree 都直接 npm run probe」；2026-11-06 aeb046d 又把每次运行的目录挪到系统临时目录。第 5 条：规则板最小一片已合入，c7e7fa4、ed80a99 在 origin/main（git merge-base --is-ancestor 退出码 0）；M7 对它两处读的 L2 验证在 m7 分支上，随 m7 合入。第 2 条：真实模型第 3 次运行在 2026-11-06T12:44Z 达到（m7 节点同日批注）：headless、glm-5.3 主 Agent，goal-1 从 release 推到 complete，没有 worker、没有问人；前两次分别卡在计划通知不叫醒（修复 a2f934e）与 scratch-only 拦登记子 agent 的新文件（修复 07ee5baa）。第 1 条：八个骨架场景（glm-exec-*）在 origin/m7 的探针里，origin/main 里没有；m7 尚未合入 main（origin/m7 领先 main 27 个提交，land-2 未做）。第 3 条：第一批 L4 未做。第 4 条里一页放行稿由人放行：M7 0.6 的放行记在本节点 2026-10-30T12:52 的批注（人说「没问题的」）；十件活的「怎样算做完」按人原话改好这一项这次没有核对。结论：五条里第 2、5 条和 H1 已满足，第 1、3 条随 m7 合入与批次 L4，开始条件未满足，自举不开始。"
+    },
+    {
+      "at": "2026-11-06T18:25:25.853Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "编排方决定（agent 决定，可推翻）：编排已从 Kiro 换到 Cursor，自举的顺序维持 d-finish-then-bootstrap：先把各块彻底做完，最后做接管、进自举。依据：本节点 2026-11-05T09:53 记的人的话「暂时自己做，kiro积分用完了再自举到时候」以 Kiro 积分用完为触发，编排换到 Cursor 之后这个触发不再会发生；d-finish-then-bootstrap（人 2026-11-03 定，「先不用按自举算了，干脆直接在我们这边彻底做完再进自举吧」）自己写明了顺序，没有被取代，也没有写触发条件。核对日期时发现它比 11-05 那句早两天，不是更晚；维持它的理由是触发消失与顺序明确，不是时间先后。人要改成别的触发（例如某个日期或积分线），说一句即可。"
     }
   ]
 }

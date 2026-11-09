@@ -12,11 +12,9 @@ import type { GraphNode } from '../graph/schema.ts'
 import { bigLoopSet, isClosed, moduleReleaseGate, moduleSet, releaseGate, releaseSet, stageStatus, type GateItem } from '../graph/stage.ts'
 import { hasErrors, loadGraph } from '../graph/store.ts'
 import type { AgentLike, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
+import { refuse } from '../shared/tool-refusal.ts'
 
-/** Throw a refusal: the model reads the structured error after "Error: ". */
-export function refuse(code: string, message: string, hint: string, field?: string): never {
-  throw new Error(JSON.stringify(field === undefined ? { code, message, hint } : { code, message, field, hint }))
-}
+export { refuse } from '../shared/tool-refusal.ts'
 
 /** Throw the engine's own refusal as it is. */
 export function refuseWith(result: Extract<ApplyResult, { ok: false }>): never {

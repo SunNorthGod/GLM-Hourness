@@ -20,7 +20,7 @@ import { judgeRecord, lessonsFold, type LessonsState, type RandomSource, type Re
 export const journalFile = (dir: string): string => join(dir, 'lessons.jsonl')
 
 /** What kind of problem a note to the row's health is about; a later success under the same key clears it. */
-export type NoteKey = 'directory' | 'lock' | 'io' | 'read' | 'import' | 'main-agent' | 'expire' | 'recur' | 'failure'
+export type NoteKey = 'directory' | 'lock' | 'io' | 'read' | 'import' | 'main-agent' | 'expire' | 'recur' | 'failure' | 'path'
 
 /** What the row counts while it runs, for its health and for the service. */
 interface LessonCounters {

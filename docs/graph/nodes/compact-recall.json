@@ -3,9 +3,39 @@
   "type": "task",
   "title": "压缩后能查原文：照 ZCode 3.17.1 的续接原句加明文会话文件",
   "why": "会话压缩之后模型还能翻回原文，不会因为摘要丢了细节而重做或做错",
-  "status": "doing",
+  "status": "done",
   "parent": "bottom",
   "body": "GLM 会话压缩时，在摘要末尾追加 ZCode 3.17.1 续接文本里 transcriptPath 那一句的原文（reference/zcode-3.17.1/zcode.cjs，Bxt 的 transcriptPath 分支），路径指向把当前会话导出的明文文件；文件放在项目 .llm/ 下，不进 git，有清理规则；模型用 Read 分页读。不另造工具，不读其他会话。新行默认 disabled: true，L3 沙盒验证后再定是否启用；L4 随下一批桌面验收。调查报告：.agents/tasks/compaction-recall/report.md（§6 选项 C、§7 拍板前要答的问题、§8 未核实项）。",
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "ac6413cf",
+      "note": "feat: ship the transcript row enabled (compact-recall)"
+    },
+    {
+      "kind": "commit",
+      "ref": "23739f1a",
+      "note": "main 快进到此，origin 与 github 一致"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0,
+      "note": "3279/3279，棘轮 73/18/1，gitleaks 无发现；合并提交 23739f1a 上重跑"
+    },
+    {
+      "kind": "check",
+      "ref": "npm run -s probe",
+      "exit": 0,
+      "note": "438/438，含 glm-compact-transcript 七项与出厂启用一项"
+    },
+    {
+      "kind": "check",
+      "ref": "desktop /glm-status over CDP",
+      "exit": 0,
+      "note": "transcript 已加载，本会话未触发；记录 .agents/tasks/compact-recall/enable/report.md"
+    }
+  ],
   "history": [
     {
       "at": "2026-11-04T16:37:39.095Z",
@@ -119,6 +149,50 @@
       "actor": "llm",
       "op": "comment",
       "text": "transcript-enable（wf_e67d1f1c90ebd359）code 步被上游 503 打断，等待恢复。工作树 .worktrees/transcript-enable，分支 transcript-enable，基线 6b0b808。"
+    },
+    {
+      "at": "2026-11-06T18:45:41.984Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "transcript-enable 完成（Cursor agent 接手 wf_e67d1f1c90ebd359）：glm-hourness/transcript 行出厂启用，合入 main 23739f1a（ff-only；功能提交 ac6413cf，评审记录 1cc4cbdf），origin 与 github 都推到 23739f1a。半成品按 bad85a49 的清单核对后补了 locale 两个文件的「默认启用」、README 行表与 L2 对 config: {} 的断言，探针新项改为判「已加载，本会话未触发」。独立评审第 1 轮两条挡路（探针新项判错状态、locale 仍写默认关闭），改后第 2 轮 APPROVED。门禁：build、preflight、npm test 3279/3279、棘轮 73/18/1 未升、gitleaks 无发现；探针 438/438（评审前一轮 434/438：一项是评审第 1 条，三项是 agent shell 的 GIT_CONFIG_* 被带进探针，删掉变量后全过）；合入 db16003、0ce50ab 之后各重跑 build、preflight、npm test，全绿。人的桌面版合入前没有在运行，没有发 Browser.close；主检出 build 后 build-info 23739f1、已跟踪文件干净，02:38 带 9333 启动（cookie 12 个，未动），在本步建的临时会话 session-c2833df3 里两次 /glm-status：transcript「已加载，本会话未触发」（启用未动作的行就是这一态）；插件页「会话原文 · 运行中 · 默认启用」；会话里没有模型请求、没有压缩；CDP 控制台 1424 条全是 inspector ingest 与 plugins/events 两类已知项，没有异常；宿主 stderr 只有 DevTools 一行，没有新崩溃记录；人的 profile 未改。记录 .agents/tasks/compact-recall/enable/report.md。"
+    },
+    {
+      "at": "2026-11-06T18:45:43.046Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "压缩后读原文这件事做完：行与续接原句 2026-11-05 实现并过 L3，遮掉凭证随 compact-recall-redact 合入，2026-11-06 隔离实例 L4 八项通过，人答「那就开」后行出厂启用并合入 main 23739f1a，人的桌面版核对 transcript 行已加载、两包没有新错误。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "ac6413cf",
+          "note": "feat: ship the transcript row enabled (compact-recall)"
+        },
+        {
+          "kind": "commit",
+          "ref": "23739f1a",
+          "note": "main 快进到此，origin 与 github 一致"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0,
+          "note": "3279/3279，棘轮 73/18/1，gitleaks 无发现；合并提交 23739f1a 上重跑"
+        },
+        {
+          "kind": "check",
+          "ref": "npm run -s probe",
+          "exit": 0,
+          "note": "438/438，含 glm-compact-transcript 七项与出厂启用一项"
+        },
+        {
+          "kind": "check",
+          "ref": "desktop /glm-status over CDP",
+          "exit": 0,
+          "note": "transcript 已加载，本会话未触发；记录 .agents/tasks/compact-recall/enable/report.md"
+        }
+      ]
     }
   ]
 }

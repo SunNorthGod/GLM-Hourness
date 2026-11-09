@@ -31,13 +31,15 @@ import { RULES_DECLARATION, RULES_SERVICE, rulesService } from '../src/rules/ser
 import { DECLARATION_SECTION } from '../src/guard/sections.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
 import { loopDefaultsOf, type ChannelLoopDefault } from '../src/shared/channel-loop.ts'
-import type { AgentLike, CommandDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
+import type { AgentLike, CommandDefinitionLike, LlmCatalog, SessionQueryService, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type HealthRow, type HealthState, type RowHealthView } from '../src/shared/health.ts'
 import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
 import { OUTPUT_STYLE_SECTION } from '../src/shared/output-style.ts'
 import { PRICING_SERVICE, peakHoursOf, pricingService, quotaOf, type UsagePricing } from '../src/shared/pricing.ts'
 import type { QuotaView } from '../src/shared/quota.ts'
-import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, ENV_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_HABIT, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, ENV_TOOL_NAMES, EXECUTE_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_HABIT, MEMORY_TOOL_NAMES, OPERATE_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES, STRUCTURED_OUTPUT_TOOL, WORKER_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { emitMetric, setMetricSink, type MetricEvent } from '../src/execute/metrics.ts'
+import { HANDBACK_SCHEMA, REVIEW_SCHEMA, handbackProblems, mergeHandbackSchema, reviewProblems } from '../src/execute/schemas.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { apply as compactApply } from '../src/glm-prompt/compact-row.ts'
@@ -78,6 +80,7 @@ const ROW_IDS = [
   'glm-hourness/graph-panel',
   'glm-hourness/rules',
   'glm-hourness/design',
+  'glm-hourness/execute',
   'glm-hourness/loops',
   'glm-hourness/metrics',
   'glm-hourness/env',
@@ -314,11 +317,123 @@ test('tool names: the design row registers exactly the contract names, and withd
   assert.deepEqual([...host.tools.keys()], [])
 })
 test('tool names: every orchestration tool kept resident exists, and GLM tool search keeps it resident', () => {
-  const known = new Set([...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES, ...DESIGN_TOOL_NAMES, ...LESSONS_TOOL_NAMES])
+  const known = new Set([...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES, ...DESIGN_TOOL_NAMES, ...LESSONS_TOOL_NAMES, ...EXECUTE_TOOL_NAMES, ...WORKER_TOOL_NAMES, ...OPERATE_TOOL_NAMES, STRUCTURED_OUTPUT_TOOL])
   for (const name of ORCHESTRATION_RESIDENT_TOOLS) {
     assert.ok(known.has(name), `${name} is resident but no orchestration row registers it`)
     assert.ok(RESIDENT_TOOLS.has(name), name)
   }
+})
+
+test('tool names: the execute row\'s three lists are the contract names, resident, and the dispatch gate keeps the DSH tools', () => {
+  // M7 design 0.6 §2.3.2: the resident names of the execute path, and what a
+  // face filter takes away from non-main agents and from reviewers.
+  assert.deepEqual([...EXECUTE_TOOL_NAMES], ['dispatch_task', 'answer_worker', 'check_commit', 'await_human'])
+  assert.deepEqual([...WORKER_TOOL_NAMES], ['submit_plan', 'ask_main'])
+  assert.deepEqual([...OPERATE_TOOL_NAMES], ['hourness_report'])
+  for (const name of [...EXECUTE_TOOL_NAMES, ...WORKER_TOOL_NAMES, ...OPERATE_TOOL_NAMES, STRUCTURED_OUTPUT_TOOL]) {
+    assert.ok(ORCHESTRATION_RESIDENT_TOOLS.has(name) && RESIDENT_TOOLS.has(name), name)
+  }
+  // DISPATCH_TOOL_NAMES is the rules board's dispatch-tool gate (§2.3.2, the
+  // thin slice has no gate): the execute row's own tool is not on it, and the
+  // rules board adds `dispatch_task` when the full board lands.
+  assert.ok(!DISPATCH_TOOL_NAMES.includes('dispatch_task'))
+})
+
+// The schema subset rc.3 accepts for structured outputs (subagent:3046 with
+// dsh-tools:334): object roots built from type, properties, required, boolean
+// additionalProperties, items, enum, and the description annotation.
+function assertSubset(node: unknown, path: string): void {
+  assert.ok(typeof node === 'object' && node !== null && !Array.isArray(node), `${path} is a schema object`)
+  const schema = node as Record<string, unknown>
+  const type = schema.type
+  assert.ok(typeof type === 'string', `${path}.type is a string`)
+  for (const key of Object.keys(schema)) {
+    assert.ok(['type', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'description'].includes(key), `${path}.${key} is in the subset`)
+  }
+  if (type === 'object') {
+    const properties = schema.properties as Record<string, unknown>
+    const required = schema.required as readonly string[] | undefined
+    for (const [name, child] of Object.entries(properties ?? {})) assertSubset(child, `${path}.${name}`)
+    for (const name of required ?? []) assert.ok(name in (properties ?? {}), `${path}.required names ${name}`)
+  }
+  else if (type === 'array') assertSubset(schema.items, `${path}[]`)
+  else if (type === 'string') assert.ok(schema.enum === undefined || (Array.isArray(schema.enum) && schema.enum.length > 0), `${path}.enum is a non-empty list`)
+}
+
+const sampleHandback = {
+  status: 'done',
+  summary: 'did it',
+  commits: ['abc1234'],
+  files: ['src/a.ts'],
+  checks: [{ command: 'npm test', exit: 0 }],
+  questions: [],
+  assumptions: [],
+  lessons: [{ problem: 'p', fix: 'f', files: [], commands: [], tools: [], errors: ['NotFoundException: x happened'], scope: 'project' }],
+}
+
+test('schemas: the handback and the review stay in the rc.3 subset, and the merge keeps the core fields', () => {
+  assertSubset(HANDBACK_SCHEMA, 'handback')
+  assertSubset(REVIEW_SCHEMA, 'review')
+  // A repository schema keeps its own fields, loses none of the core ones,
+  // and the built-in wins a name both declare (§3.6.1).
+  const merged = mergeHandbackSchema({
+    type: 'object',
+    description: 'a blog post',
+    properties: { summary: { type: 'string' }, slug: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } },
+    required: ['slug'],
+  })
+  assert.ok(merged !== undefined)
+  assertSubset(merged, 'merged')
+  const properties = merged.properties as Record<string, unknown>
+  assert.ok('slug' in properties && 'tags' in properties && 'status' in properties && 'lessons' in properties)
+  assert.equal((properties.summary as Record<string, unknown>).description, 'what happened, at most 2000 characters; the long report goes to the file named in report')
+  assert.ok((merged.required as readonly string[]).includes('slug') && (merged.required as readonly string[]).includes('status'))
+  // Not an object schema, or not in the subset: nothing to merge, the dispatch reports bad_schema.
+  assert.equal(mergeHandbackSchema({ type: 'string' }), undefined)
+  assert.equal(mergeHandbackSchema({ type: 'object', properties: { x: 5 }, required: ['x'] }), undefined)
+  assert.equal(mergeHandbackSchema({ type: 'object', properties: {}, required: ['missing'] }), undefined)
+})
+
+test('schemas: the semantic checks name what a handback or a review got wrong', () => {
+  assert.deepEqual(handbackProblems(sampleHandback), [])
+  assert.deepEqual(
+    handbackProblems({ ...sampleHandback, commits: ['nothex'], files: ['C:\\x.ts', 'a/../b'], report: 'elsewhere/x.md', lessons: [{ problem: 'p', fix: 'f', files: [], commands: [], tools: [], errors: ['short'] }] }),
+    [
+      'commits[0] is not a hexadecimal commit id',
+      'files[0] is not a repository-relative path',
+      'files[1] is not a repository-relative path',
+      'report must be a .hourness/ path inside the worktree',
+      'lesson 0: errors must be at most 5 fragments of 8-300 characters',
+    ],
+  )
+  assert.deepEqual(reviewProblems({ commit: 'abc1234', checked: ['acceptance:0 holds'] }), [])
+  assert.deepEqual(reviewProblems({ commit: 'main', checked: 'no' }), ['commit is not a hexadecimal commit id', 'checked is not a list of strings'])
+})
+
+test('schemas: the docs line stays one line within its 300 characters (docs-at-hand design 0.3 §6.2)', () => {
+  assert.deepEqual(handbackProblems({ ...sampleHandback, docs: 'updated: src/guarded' }), [])
+  assert.deepEqual(handbackProblems({ ...sampleHandback, docs: 'still true: the guard is unchanged, the commits only add a file' }), [])
+  for (const docs of ['   ', 'two\nlines', 'x'.repeat(301), 7]) {
+    assert.deepEqual(handbackProblems({ ...sampleHandback, docs }), ['docs must be one line of 1-300 characters'], JSON.stringify(docs))
+  }
+})
+
+test('metrics: emitMetric hands events to the injected sink and is silent without one', () => {
+  const seen: MetricEvent[] = []
+  const previous = setMetricSink(event => { seen.push(event) })
+  try {
+    emitMetric({ event: 'execute.dispatch-refused', code: 'slots_full' })
+    emitMetric({ event: 'execute.completion-gate', goal: 'goal-1', passed: false, gaps: 2 })
+    assert.equal(seen.length, 2)
+    assert.deepEqual(seen[0], { event: 'execute.dispatch-refused', code: 'slots_full' })
+  }
+  finally {
+    setMetricSink(previous)
+  }
+  // No sink: nothing is recorded and nothing throws.
+  assert.equal(setMetricSink(undefined), undefined)
+  emitMetric({ event: 'execute.dispatch-refused', code: 'busy' })
+  assert.equal(seen.length, 2)
 })
 
 test('persona section: the name the design row adds and the dialect places is one string in the products of both packages', async () => {
@@ -714,6 +829,22 @@ test('main agent rules: every rule of the table denies once on the fake host, an
   for (let attempt = 0; attempt < 200 && (!existsSync(file) || readFileSync(file, 'utf8').split('\n').filter(line => line !== '').length < MAIN_AGENT_RULES.length); attempt++) await new Promise(resolve => setTimeout(resolve, 10))
   const rules = readFileSync(file, 'utf8').split('\n').filter(line => line !== '').map(line => (JSON.parse(line) as { rule: string }).rule)
   assert.deepEqual([...new Set(rules)].sort(), MAIN_AGENT_RULES.map(rule => rule.id).sort())
+})
+
+test('the model catalog and the session query shapes of the execute row are implementable against rc.3', async () => {
+  const catalog: LlmCatalog = {
+    listModels: provider => Promise.resolve(provider === 'glm' ? [{ id: 'glm-5.3-flash' }] : []),
+    resolveModelInfo: (provider, model) => Promise.resolve(provider === 'glm' && model === 'glm-5.3-flash' ? { reasoning: { efforts: [{ id: 'low', name: 'Low' }, { id: 'high', name: 'High' }] } } : undefined),
+  }
+  assert.deepEqual(await catalog.listModels('glm'), [{ id: 'glm-5.3-flash' }])
+  assert.equal((await catalog.resolveModelInfo('glm', 'glm-5.3-flash'))?.reasoning?.efforts?.length, 2)
+  assert.equal(await catalog.resolveModelInfo('other', 'x'), undefined)
+  // rc.3 observeSession is async and rejects for a session it cannot find (session-query:1064, 545).
+  const query: SessionQueryService = {
+    observeSession: sessionId => (sessionId === 's1' ? Promise.resolve({ projections: { values: { hournessHandback: { status: 'done' } } } }) : Promise.reject(new Error('session "gone" not found'))),
+  }
+  assert.deepEqual((await query.observeSession('s1')).projections?.values?.hournessHandback, { status: 'done' })
+  await assert.rejects(query.observeSession('gone'), /not found/)
 })
 
 test('glm-compact and the transcript row: a GLM compaction summary ends with the sentence naming the file the row wrote', async () => {

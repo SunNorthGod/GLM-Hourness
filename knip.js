@@ -23,8 +23,10 @@ export default {
     'scripts/probe/probe-lift.mjs',
     'scripts/probe/probe-env.mjs',
     'scripts/probe/probe-sessions.mjs',
-    // Calibration bounds row and simulated human: scripts/sandbox.mjs passes their paths to the DSH Loader.
+    // Calibration bounds, read fence, ablation switch and simulated human: scripts/sandbox.mjs passes their paths to the DSH Loader.
     'scripts/calibrate/limits.mjs',
+    'scripts/calibrate/fence.mjs',
+    'scripts/calibrate/ablation.mjs',
     'scripts/calibrate/simulated-human.mjs',
     // Calibration checkers: run-calibrate.mjs starts each task's check.mjs by path.
     'tests/calibration/*/check.mjs',

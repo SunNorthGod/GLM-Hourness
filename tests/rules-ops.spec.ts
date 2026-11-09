@@ -561,7 +561,7 @@ clockedTest('recovery-accept takes several lines in the order the journal has th
 clockedTest('recovery-accept of a line whose changes do not fit the state is refused with the reason, and the line stays listed', async (project) => {
   const { paths, board } = project
   await startFrom(project)
-  await appendFile(paths.journal, `${forged({ seq: 50, changes: [{ path: ['proposals', 'p-1'], value: {} }], snapshot: '0123456789abcdef' })}\n`)
+  await appendFile(paths.journal, `${forged({ seq: 50, changes: [{ path: ['bogus', 'p-1'], value: {} }], snapshot: '0123456789abcdef' })}\n`)
   await appendFile(paths.journal, `${forged({ seq: 51, changes: [{ path: ['notices', 'n-bad'], value: { kind: 'shout', rule: 'r', text: 't', at: FORGED_AT } }], snapshot: '0123456789abcdef' })}\n`)
   await board.apply('harness', { op: 'notice-add', kind: 'late-block', rule: 'r-block', text: 'settle' })
   const [one, two] = Object.values(stateOf(paths).unresolved ?? {}).sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
@@ -673,7 +673,8 @@ clockedTest('a request made against an older state is stale for every operation,
   assert.ok(current.ok && current.changed)
 })
 
-test('the operations table is the one the design lists: nothing for a proposal is in it', async () => {
+test('the operations table is the one the design lists: the path of agreement is in it, the detectors are not', async () => {
   const { WRITE_OPS } = await import('../src/rules/permissions.ts')
-  assert.equal(WRITE_OPS.some(op => /propos|^propose$|rule-set|signal-define|detector-|repin|^remove$|signal-detected/.test(op)), false)
+  assert.deepEqual(WRITE_OPS.filter(op => op.startsWith('propos')), ['propose', 'proposal-show', 'proposal-accept', 'proposal-reject', 'proposal-expire'])
+  assert.equal(WRITE_OPS.some(op => /rule-set|signal-define|detector-|signal-detected/.test(op)), false)
 })

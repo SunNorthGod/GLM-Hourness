@@ -26,7 +26,7 @@
  */
 import { existsSync } from 'node:fs'
 import { copyFile, mkdir, unlink } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { acquireLock, type LockEnvironment, realLockEnvironment } from '../data/lock.ts'
 import { gitDirOf } from '../data/project-root.ts'
 import { adoptRepo, diffRepo, parseRepoRules, repoJson, repoPart, stateFromRepo, stateProblem, unapprovedScripts, type Change, type JournalRecord, type ProjectState, type RepoDiffLine, type RepoRules } from './model.ts'
@@ -142,6 +142,34 @@ export async function exportRepo(paths: RulesPaths, part: RepoRules | undefined,
   catch {
     return 'failed'
   }
+}
+
+/**
+ * Put the script files of an accepted proposal in the repository, byte for byte, before the record that pins their
+ * hash is written: a pin with no file would make the script `script-missing` at its first run. Nothing is written
+ * while git is in the middle of an operation (the person agrees again once it is done); the answer is why the files
+ * are not in place, or undefined when they are.
+ */
+export async function putScriptFiles(paths: RulesPaths, files: readonly { readonly file: string, readonly text: string }[], io: StoreIo = realStoreIo): Promise<string | undefined> {
+  const marker = gitOperationIn(paths.projectRoot)
+  if (marker !== undefined) return `git 正在做 ${marker}，脚本文件现在不写：等它做完再同意一次`
+  const root = resolve(paths.projectRoot)
+  for (const { file, text } of files) {
+    const target = resolve(root, ...file.split('/'))
+    if (!target.startsWith(`${root}${sep}`)) return `脚本的路径出了项目：${file}`
+    try {
+      await mkdir(dirname(target), { recursive: true })
+      const written = await writeAtomic(target, text, io)
+      if (!written.ok) {
+        await unlink(written.temporary).catch(() => {})
+        return `脚本文件改名没成功：${file}`
+      }
+    }
+    catch (error) {
+      return `脚本文件写不下：${file}（${error instanceof Error ? error.message : String(error)}）`
+    }
+  }
+  return undefined
 }
 
 /** Note which rules file the board wrote: the next read tells a change from someone else apart by it. */

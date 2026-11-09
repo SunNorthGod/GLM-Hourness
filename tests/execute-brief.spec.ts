@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Attempt } from '../src/execute/attempts.ts'
-import { BRIEF_LIMIT, briefGate, parseDispatchArgs, renderBrief, type BriefContext, type BriefInput, type GateResult } from '../src/execute/brief.ts'
+import { BRIEF_LIMIT, briefGate, parseDispatchArgs, renderAcceptanceBrief, renderBrief, renderReviewBrief, type BriefContext, type BriefInput, type GateResult } from '../src/execute/brief.ts'
 import { digest12 } from '../src/execute/digest.ts'
 import { releaseOf } from '../src/graph/execute-stage.ts'
 import type { LoadedGraph } from '../src/graph/parse.ts'
@@ -275,10 +275,35 @@ test('row 13, nothing_to_review: a review task needs a current finished handback
   assert.equal(withDepth.args.depth, 'light')
 })
 
-test('the goal\'s review: a goal with acceptance and a free model is dispatched', () => {
+test('the goal\'s review: a goal with acceptance and a free model is dispatched; a round at the current trunk commit, or a running one, makes it busy (§3.9.4)', () => {
   const ok = gate(plain(), 'goal-1')
   assert.ok(ok.ok)
   assert.equal(ok.subject, 'goal')
+  const reviewed = refused(gate(plain(), 'goal-1', { acceptedAtTrunk: true }))
+  assert.equal(reviewed.code, 'busy')
+  assert.match(reviewed.message, /already has an acceptance review at the current trunk commit/)
+  const running = refused(gate(plain(), 'goal-1', { running: [attempt({ node: 'goal-1', role: 'acceptance-review', childId: 'hz-goal-1-acc-a1-000000' })] }))
+  assert.equal(running.code, 'busy')
+  assert.match(running.hint, /hz-goal-1-acc-a1-000000/)
+})
+
+test('renderAcceptanceBrief: the goal line names the trunk commit, done-when is the goal\'s acceptance as acceptance:<i>, checked needs each item with its evidence, the reviewer writes only its report', () => {
+  const graph = withNode(plain(), node({ id: 'task-2', type: 'task', parent: 'feature-1', title: 'Write the index', writeScope: ['site/index/'], ...WORK, status: 'done', evidence: [{ kind: 'commit', ref: 'c0ffee1234567890' }] }))
+  const goal = withNode(graph, { ...get(graph, 'goal-1'), acceptance: ['the blog builds', 'the feed validates'] })
+  const brief = renderAcceptanceBrief({ graph: goal, goal: get(goal, 'goal-1'), childId: 'hz-goal-1-acc-a1-abcdef', trunk: { branch: 'main', sha: 'abcdef0123456789abcdef0123456789abcdef01' }, gateCommands: ['npm test'] })
+  const lines = brief.text.split('\n')
+  assert.equal(lines[0], '# Acceptance review of goal goal-1: Static blog')
+  assert.ok(lines.includes('Review goal goal-1 at commit abcdef012345 against its acceptance.'))
+  assert.ok(lines.includes('- acceptance:0 the blog builds'))
+  assert.ok(lines.includes('- acceptance:1 the feed validates'))
+  assert.ok(lines.some(line => line.includes('task-2 "Write the index" (done, trunk commit c0ffee123456)')), 'the work of the goal is listed with its trunk commit')
+  assert.ok(lines.includes('- A finding blocks only when its criterion is acceptance:<i>, the item of the goal it shows unmet. Everything else is not blocking.'))
+  assert.ok(lines.some(line => line.startsWith('- checked must hold one entry per item below, written "acceptance:<i> <evidence>"')))
+  assert.ok(lines.includes('- You write nothing except your report ".hourness/hz-goal-1-acc-a1-abcdef.md" in your working directory.'))
+  assert.ok(lines.includes('- Not in scope: no comments.'))
+  assert.match(brief.text, /verdict \(verdict, commit abcdef012345, findings, checked, lessons\)/)
+  assert.equal(brief.digest, digest12(brief.text.slice(0, brief.text.lastIndexOf('\n\nbrief '))))
+  assert.ok(brief.text.endsWith(`brief ${brief.digest} · graph ${goal.revision}`))
 })
 
 test('the release check reads the context, not a stage: an unreleased result in the context refuses a node the graph shows as released', () => {
@@ -363,6 +388,36 @@ test('renderBrief: a quick task and a carried plan change the constraint, earlie
   assert.ok(full.includes('- Rules in effect: writes go to the worktree; no pushes'))
 })
 
+test('renderBrief: a write scope that touches a component carries the component-doc line, right after the write boundary (docs-at-hand design 0.3 §4.4)', () => {
+  const text = renderBrief(briefInput({ docs: ['site/feed'] })).text
+  const line = '- Component doc covering your scope: site/feed/AGENTS.md. Keep it true: update it in the same commits when your change alters what it says; otherwise say in the handback field "docs" why it still holds.'
+  assert.ok(text.includes(line))
+  const lines = text.split('\n')
+  const writeLine = lines.findIndex(entry => entry.startsWith('- Write only inside:'))
+  assert.ok(writeLine >= 0 && lines.indexOf(line) === writeLine + 1, 'the duty sits with the boundary it qualifies')
+  const both = renderBrief(briefInput({ docs: ['site/feed', 'src/other'] })).text
+  assert.ok(both.includes('scope: site/feed/AGENTS.md.') && both.includes('scope: src/other/AGENTS.md.'))
+  assert.ok(!renderBrief(briefInput()).text.includes('Component doc'), 'no component, no line')
+})
+
+test('renderBrief: over the limit the component-doc line yields before the lessons (docs-at-hand design 0.3 §4.4)', () => {
+  const room = BRIEF_LIMIT - renderBrief(briefInput()).text.length
+  const quarter = Math.floor(room / 4)
+  const input = (sizes: { docs: number, lessons: number, details: number, context: number }) => briefInput({
+    docs: [`c${'x'.repeat(sizes.docs)}`],
+    lessons: [`l ${'x'.repeat(sizes.lessons)}`],
+    earlier: [{ outcome: 'blocked', details: [`d ${'y'.repeat(sizes.details)}`] }],
+    context: `c ${'z'.repeat(sizes.context)}`,
+  })
+  const docsOnly = renderBrief(input({ docs: room, lessons: quarter, details: quarter, context: quarter }))
+  assert.deepEqual(docsOnly.truncated, ['docs'])
+  assert.ok(!docsOnly.text.includes('Component doc covering'), 'the line is cut whole, no stub')
+  assert.ok(docsOnly.text.includes('- Lessons that match this task:'), 'the lessons stay')
+  const all = renderBrief(input({ docs: quarter, lessons: room, details: room, context: room }))
+  assert.deepEqual(all.truncated, ['docs', 'lessons', 'earlier', 'context'])
+  assert.ok(all.text.length <= BRIEF_LIMIT + 80)
+})
+
 test('renderBrief: over 9000 characters, lessons go first, then the details of earlier attempts, then the main agent\'s context', () => {
   const room = BRIEF_LIMIT - renderBrief(briefInput()).text.length
   const quarter = Math.floor(room / 4)
@@ -424,4 +479,24 @@ test('renderBrief: a task with no source decisions, no non-goals and no write sc
   assert.ok(text.includes('- Not in scope: nothing recorded'))
   assert.ok(text.includes('- Write only inside: nothing. Writes elsewhere are refused.'))
   assert.ok(text.includes('Why it exists: "goal-1" > this task.'))
+})
+
+test('renderReviewBrief: the handback\'s docs lines ride in the context, and the checklist carries the component-docs rule verbatim (docs-at-hand design 0.3 §6.2)', () => {
+  const graph = plain()
+  const input = (docs?: readonly string[]) => ({
+    graph,
+    task: get(graph, 'review-1'),
+    reviewed: get(graph, 'task-1'),
+    childId: 'hz-review-1-a1-k3x9ab',
+    depth: 'full' as const,
+    handback: { head: 'abc123def456', base: 'aaa111bbb222', status: 'done', ...(docs === undefined ? {} : { docs }) },
+    gateCommands: [] as readonly string[],
+  })
+  const CHECKLIST = '- Component docs: if the handback names a component whose AGENTS.md was not updated, check that "still true" holds; a doc that carries a to-do list, progress or decision conclusions is misplaced. A stale doc is a non-blocking finding unless an acceptance item covers docs.'
+  const brief = renderReviewBrief(input(['src changed code but its AGENTS.md was not touched and the handback says nothing about it.', 'still true: site']))
+  assert.ok(brief.text.includes('- The handback says of the component docs:\n  - src changed code but its AGENTS.md was not touched and the handback says nothing about it.\n  - still true: site'))
+  assert.ok(brief.text.includes(CHECKLIST))
+  const bare = renderReviewBrief(input())
+  assert.ok(!bare.text.includes('The handback says of the component docs'), 'no docs line in the handback, nothing to carry')
+  assert.ok(bare.text.includes(CHECKLIST), 'the checklist item is a standing rule')
 })

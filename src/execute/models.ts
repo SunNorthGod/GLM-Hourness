@@ -94,8 +94,8 @@ export const CATALOG_UNCHECKED_NOTE = '模型目录读不到，没有核对'
  * `unknown_model`; a catalog that could not be read (`undefined`) or is empty
  * lets the model through with a note, because the runtime does not bind the
  * catalog to routing (llm:2080–2083) and an unreadable list must not block a
- * model that works. `efforts` are the reasoning levels of the chosen model
- * when they could be read: given, they must contain `reasoningEffort`.
+ * model that works. `efforts` are the ids of the chosen model's reasoning
+ * levels when they could be read: given, they must contain `reasoningEffort`.
  */
 export function checkModelChoice(choice: ModelChoice, catalog: readonly CatalogEntry[] | undefined, efforts: readonly string[] | undefined): ModelCheck {
   const listed = catalog !== undefined && catalog.length > 0

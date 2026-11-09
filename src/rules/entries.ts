@@ -193,3 +193,50 @@ export function noticeProblem(value: unknown, path: string): Problem {
     ?? requiredText(value, 'text', path)
     ?? (isTime(value.at) ? undefined : `${path}.at must be an ISO time`)
 }
+
+const PROPOSAL_KINDS: readonly string[] = ['rule', 'lift', 'switch', 'peak-mode', 'remove', 'repin']
+const PROPOSAL_STATUSES: readonly string[] = ['open', 'accepted', 'rejected', 'superseded', 'expired']
+const PROPOSAL_FIELDS = ['id', 'kind', 'body', 'script', 'describe', 'cautions', 'reason', 'via', 'shownAt', 'replaces', 'question', 'proposedBy', 'at', 'status', 'decidedBy']
+
+/** The script a proposal carries, as stored: the text the human read, its hash and where it is to be written. */
+function proposalScriptProblem(script: unknown, path: string): Problem {
+  if (script === undefined) return undefined
+  if (!isRecord(script)) return `${path} must be an object`
+  return unknownKeys(script, ['text', 'sha256', 'file', 'lang', 'timeoutSeconds', 'onError'], path)
+    ?? requiredText(script, 'text', path)
+    ?? scriptPinProblem({ file: script.file, sha256: script.sha256, lang: script.lang }, path, false)
+    ?? (script.timeoutSeconds === undefined || isCount(script.timeoutSeconds) ? undefined : `${path}.timeoutSeconds must be a count`)
+    ?? (script.onError === undefined ? undefined : oneOf(script, 'onError', ['allow', 'block'], path))
+}
+
+/** Who decided a proposal, and when. */
+function decidedByProblem(decided: unknown, path: string): Problem {
+  if (decided === undefined) return undefined
+  if (!isRecord(decided)) return `${path} must be an object`
+  return unknownKeys(decided, ['actor', 'relay', 'at'], path)
+    ?? oneOf(decided, 'actor', ['human', 'llm', 'harness'], path)
+    ?? textField(decided, 'relay', path)
+    ?? (isTime(decided.at) ? undefined : `${path}.at must be an ISO time`)
+}
+
+/** A proposal as stored (design §7.2, §9.3): what an agent proposed, which is not decided until it is `accepted`. */
+export function proposalProblem(key: string, value: unknown, path: string): Problem {
+  if (!isRecord(value)) return `${path} must be an object`
+  const by = value.proposedBy
+  return unknownKeys(value, PROPOSAL_FIELDS, path)
+    ?? (value.id === key && /^p-[0-9a-f]{8}$/.test(key) ? undefined : `${path}.id must be the key and look like p-<8 hex digits>`)
+    ?? oneOf(value, 'kind', PROPOSAL_KINDS, path)
+    ?? (typeof value.body === 'object' && value.body !== null ? undefined : `${path}.body must be an object or a list`)
+    ?? proposalScriptProblem(value.script, `${path}.script`)
+    ?? requiredText(value, 'describe', path)
+    ?? (stringList(value.cautions) ? undefined : `${path}.cautions must be a list of sentences`)
+    ?? requiredText(value, 'reason', path)
+    ?? oneOf(value, 'via', ['graph', 'board'], path)
+    ?? timeField(value, 'shownAt', path)
+    ?? textField(value, 'replaces', path)
+    ?? textField(value, 'question', path)
+    ?? (isRecord(by) && typeof by.sessionId === 'string' && typeof by.agentId === 'string' && Object.keys(by).length === 2 ? undefined : `${path}.proposedBy must be {sessionId, agentId}`)
+    ?? (isTime(value.at) ? undefined : `${path}.at must be an ISO time`)
+    ?? oneOf(value, 'status', PROPOSAL_STATUSES, path)
+    ?? decidedByProblem(value.decidedBy, `${path}.decidedBy`)
+}

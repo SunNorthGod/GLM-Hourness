@@ -386,11 +386,10 @@ test('applyRecord is a pure function of the state and the record: it reads no cl
   assert.deepEqual([Object.keys(withRule.rules ?? {}), withRule.nextTicket, Object.keys(withRule.scripts ?? {})], [['r-1'], 2, ['r-1']], 'the collections of the full board change one entry at a time')
   const without = applyRecord(withRule, { seq: 6, changes: [{ path: ['rules', 'r-1'] }, { path: ['scripts', 'r-1'] }] })
   assert.deepEqual(['rules' in without, 'scripts' in without, without.nextTicket], [false, false, 2], 'the last entry of a collection takes the collection with it')
-  for (const collection of ['rules', 'signals', 'detectors', 'tickets', 'notices', 'scripts']) {
+  for (const collection of ['rules', 'signals', 'detectors', 'tickets', 'notices', 'scripts', 'proposals']) {
     assert.doesNotThrow(() => applyRecord(state, { seq: 5, changes: [{ path: [collection, 'x'], value: {} }] }), collection)
     assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: [collection], value: {} }] }), /not a path of the state/, `${collection} changes one entry at a time`)
   }
-  assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['proposals', 'p-x'], value: {} }] }), /not a path of the state/, 'proposals are not part of this version of the state')
   assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['root'], value: 'C:/x' }] }), /not a path/)
   assert.throws(() => applyRecord(state, { seq: 5, changes: [{ path: ['repo'] }] }), /cannot be deleted/)
   assert.throws(() => applyRecord(state, { seq: 5, changes: [null as never] }), /needs a path/)

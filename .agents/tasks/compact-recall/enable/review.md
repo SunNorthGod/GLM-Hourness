@@ -69,3 +69,41 @@ Change: drop the last sentence in both files, as the lessons locale does (it has
 ## Verdict
 
 CHANGES_REQUESTED. B1 makes the probe gate fail as written. B2 leaves the shipped plugin-manager text contradicting the shipped default. Both are small edits: one check expression and two doc clauses for B1, two locale strings for B2. After them, re-run `npm run build`, `npm run preflight` and `npm test`, then the probe. The probe run in progress at review time contains B1.
+
+## Round 2
+
+Worktree HEAD is now `e4680b5b` (graph-only advance from `54a40775`). The change is still the uncommitted working-tree diff against HEAD, now 11 files: the nine above plus `packages/hourness/locale/transcript/zh.json` and `en.json`. Read-only review again: nothing was built, tested or probed here.
+
+Round 2 verdict: APPROVED. It supersedes the round-1 verdict above. Both blocking findings are resolved and nothing new blocks.
+
+### Gates recorded by the author on this tree (logs read, not re-run)
+
+- `g2-build.log`: `build-info: dsh-glm-zcode, dsh-hourness e4680b5 dirty`, no errors.
+- `g2-preflight.log`: `preflight: OK (... dsh-hourness 15 rows; 20 rows composed ...)`.
+- `g2-test.log`: the `# tests` lines sum to 3279 and the `# fail` lines to 0. `eslint: ok (73 suppressed)`, `knip: ok (18 in the baseline)`, `jscpd: ok (1 clone(s) in the baseline)`, `check-secrets: ok (gitleaks 8.30.1: 1112 commits on HEAD, staged and unstaged changes, no leaks)`. The new L2 test is `ok 15 - the row ships enabled in the orchestration patch (no disabled key) with an empty config`.
+- `g2-probe.log`: `probe: 438/438 passed`.
+- `g1-probe.log` (the round-1 diff): `probe: 434/438 passed`. It has four FAILs. The first is `transcript: the row ships enabled ... in effect on both routes (transcript: 已加载，本会话未触发; transcript: 已加载，本会话未触发)`, which is the round-1 B1 failure as predicted. The other three are `guard: quoted =>, -> and >>> ...`, `design main (GLM): git status ...` and `design main (non-GLM): git status ...`, with stderr `error: missing config key GIT_CONFIG_KEY_0`. Those three come from the agent shell's environment, not from this diff (R2-N2).
+
+### Blocking findings, re-checked
+
+- B1: resolved. `scripts/probe/run-probe.mjs:3542` now requires `[glmHealth, plainHealth].every(health => health.transcript?.status === IDLE && health.transcript.reason.startsWith('已加载；GLM 压缩时'))`. `IDLE` is `'已加载，本会话未触发'` (`:2492`). The reason prefix is the start of the activation reason in `src/data/transcript-row.ts:45`. The label says the row acts on a GLM compaction only. `docs/DEVELOPMENT.md:79` and `docs/DESIGN.md:762` now say the boot scenarios list the row 「已加载，本会话未触发」, and DESIGN cites §2.5, where `:283` defines that state. `g2-probe.log` shows `PASS transcript: ... (transcript: 已加载，本会话未触发; transcript: 已加载，本会话未触发)`.
+- B2: resolved. `packages/hourness/locale/transcript/zh.json:4` ends 「默认启用。」 and `en.json:4` ends "On by default.". The `design`, `env`, `loops`, `metrics` and `rules` locales end the same way (`lessons` carries no default sentence).
+
+### Non-blocking findings from round 1
+
+- N1: moot, with a correction to the stated reason. `4eb29f4d` (on `origin/main`) tracks `.agents/tasks/compact-recall/l4.md` (and this review). The five citations resolve once the branch lands on top of `origin/main`. Task documents are not git-ignored: `.gitignore` ignores `.agents/tasks/**/*` but re-includes `!.agents/tasks/**/*.md` ("只有文稿入库").
+- N2: confirmed by `g2-probe.log`. These checks pass with the row on by default in the other compaction scenarios: `graph row: after a compaction checkpoint ...` (8 compactions), both `host instructions` checks (8 compactions), `memory compaction: ...` and `design stage (compact): ...` (6 compactions).
+- N3: done (`tests/data-transcript.spec.ts:358-367` asserts `config: {}` with the reason).
+- N4: the sentence is removed. The table still lacks `metrics` and `env`, which is pre-existing.
+- N5, N7: left as is; fine.
+- N6: reflowed. One short line remains at `run-probe.mjs:469` ("scripts/probe/probe-llm.mjs). The task"); cosmetic, no action needed.
+
+### New, non-blocking
+
+- R2-N1 (landing). `origin/main` is `08d1e9a7` and local `main` is `db160034`, ahead of the worktree HEAD `e4680b5b`. The commits in between (`d3d766bf`, `4eb29f4d`, `08d1e9a7`: `.gitignore` and `.agents/tasks/**`; `db160034`: `docs/graph/**`) do not touch the 11 files, so the rebase is trivial. The gates have to run again on the landed tree. The secret gate (`scripts/check-secrets.mjs`, gitleaks over HEAD history) will then also scan `l4.md`, which quotes the two planted fake strings (`Bearer l4fake…`, `sk-l4fake…`) verbatim, and `.gitleaks.toml` has no entry for them. By reading, gitleaks' default rules do not match them, but this was not verified here: the g2 scan predates `4eb29f4d`.
+- R2-N2. The `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_0` / `GIT_CONFIG_VALUE_0` environment pitfall behind the three g1 git failures is not recorded anywhere. `git grep GIT_CONFIG` finds only the 2026-10-31 `GIT_CONFIG_GLOBAL` note at `docs/HANDOFF.md:139`. Record it next to that note or in `docs/DEVELOPMENT.md` §7. Alternatively, have the probe runner drop `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_*` and `GIT_CONFIG_VALUE_*` from the environment it spawns. Either is a separate change.
+- R2-N3. Stale "ships disabled" comments remain on rows that already ship enabled. They are pre-existing and not about this row: `src/design/index.ts:34`, `src/lessons/index.ts:23`, `src/loops/index.ts:57`, `src/rules/index.ts:55`, and `scripts/probe/run-probe.mjs:3094` (metrics). Clean them up separately.
+
+### Verdict
+
+APPROVED. No remaining blocking finding.

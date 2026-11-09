@@ -95,20 +95,24 @@ const listen = (agent: FakeAgent, listener: AssembleListener, prepend: boolean):
 // ---------------------------------------------------------------- the identity section
 
 test('the identity section: role and boundaries within 1,500, the talk guide and the plain-words list within 2,000, the whole within 3,200', () => {
-  assert.ok(MAIN_AGENT_ROLE.length <= 1500, `role ${MAIN_AGENT_ROLE.length}`)
+  assert.ok(MAIN_AGENT_ROLE(false).length <= 1500, `role ${MAIN_AGENT_ROLE(false).length}`)
+  assert.ok(MAIN_AGENT_ROLE(true).length <= 1500, `role with the execute row on: ${MAIN_AGENT_ROLE(true).length}`)
   assert.equal(MAIN_AGENT_TALK, `${TALK_GUIDE}\n${PLAIN_WORDS_GUIDE}`)
   // 2,000 and 3,200 (were 1,800 and 3,000): the reliability sentence of the talk guide adds about 170 characters to both;
   // the human agreed to the whole at 3,200 (decision d-habits-into-framework, Q3). The role keeps its 1,500.
   assert.ok(MAIN_AGENT_TALK.length <= 2000, `talk ${MAIN_AGENT_TALK.length}`)
-  assert.equal(MAIN_AGENT_IDENTITY, `${MAIN_AGENT_ROLE}\n\n${MAIN_AGENT_TALK}`)
-  assert.ok(MAIN_AGENT_IDENTITY.length <= 3200, `whole ${MAIN_AGENT_IDENTITY.length}`)
+  for (const executeOn of [false, true]) {
+    assert.equal(MAIN_AGENT_IDENTITY(executeOn), `${MAIN_AGENT_ROLE(executeOn)}\n\n${MAIN_AGENT_TALK}`)
+    assert.ok(MAIN_AGENT_IDENTITY(executeOn).length <= 3200, `whole (execute ${executeOn}) ${MAIN_AGENT_IDENTITY(executeOn).length}`)
+  }
   assert.equal(MAIN_AGENT_SECTION, 'hourness:main-agent')
 })
 
 test('the talk guide says how reliable each conclusion is and puts a wrong earlier conclusion or a failed check first', () => {
   const sentence = 'Say of every conclusion whether you read it, ran it or inferred it; an earlier conclusion of yours that turned out wrong, or a check that failed, goes first in the report.'
   assert.ok(TALK_GUIDE.includes(sentence))
-  assert.ok(MAIN_AGENT_IDENTITY.includes(sentence))
+  assert.ok(MAIN_AGENT_IDENTITY(false).includes(sentence))
+  assert.ok(MAIN_AGENT_IDENTITY(true).includes(sentence))
 })
 
 test('the tool description carries the shapes of a question and the worked examples; its limits come from the constants', () => {
@@ -133,12 +137,13 @@ test('the first part has the five items: role, the harness boundaries, git with 
     'The shell and git are yours; before a git command that can lose uncommitted work or rewrite history, the harness saves a snapshot and tells you how to restore it.',
     'The design loop runs wish, interview, design, release.',
     'If the human has /plan on, exit_plan_mode only leaves plan mode; it releases nothing on the graph.',
-  ]) assert.ok(MAIN_AGENT_ROLE.includes(part), part)
+  ]) assert.ok(MAIN_AGENT_ROLE(false).includes(part), part)
+  assert.ok(MAIN_AGENT_ROLE(true).includes('writing work goes to workers you dispatch with dispatch_task; subagents started with the subagent tool only read'), 'the F18 sentence is in the execute row variant')
 })
 
 test('the section names the two tools, the delegation call, the four ways of asking and the plain yes-words, and none of the retired names or phrases', () => {
-  for (const wanted of ['propose_to_human', 'record_human_answer', 'delegation', ...ASK_FORMS, ...AGREE_WORDS]) assert.ok(MAIN_AGENT_IDENTITY.includes(wanted), wanted)
-  for (const gone of ['ask_user_question', 'decision_card', 'design_review', 'ask_human', '(Recommended)', '(推荐)', '（推荐）', 'depth', 'never give them options', 'four short lines', 'norm-delegations']) assert.ok(!MAIN_AGENT_IDENTITY.includes(gone), gone)
+  for (const wanted of ['propose_to_human', 'record_human_answer', 'delegation', ...ASK_FORMS, ...AGREE_WORDS]) assert.ok(MAIN_AGENT_IDENTITY(false).includes(wanted), wanted)
+  for (const gone of ['ask_user_question', 'decision_card', 'design_review', 'ask_human', '(Recommended)', '(推荐)', '（推荐）', 'depth', 'never give them options', 'four short lines', 'norm-delegations']) assert.ok(!MAIN_AGENT_IDENTITY(false).includes(gone), gone)
 })
 
 test('talk.ts: the question tool hidden from the main agent, and the three proposal kinds', () => {
@@ -1043,7 +1048,7 @@ test('the section goes before glm:guard when the guard\'s listener adds it after
   await type(host, agent, '/wish')
   assert.deepEqual((await agent.assemble({ sections: [{ name: 'harness:identity', text: 'i' }, guard, { name: 'glm:memory', text: 'm' }] })).sections.map(section => section.name), ['harness:identity', MAIN_AGENT_SECTION, 'glm:guard', 'glm:memory'])
   assert.deepEqual((await agent.assemble()).sections.map(section => section.name), ['harness:identity', MAIN_AGENT_SECTION])
-  assert.equal(sectionOf(await agent.assemble())?.text, MAIN_AGENT_IDENTITY)
+  assert.equal(sectionOf(await agent.assemble())?.text, MAIN_AGENT_IDENTITY(false))
 })
 
 test('a dialect that rewrites the identity section leaves the main agent section where it is', async () => {

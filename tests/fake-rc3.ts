@@ -115,19 +115,34 @@ class GoalError extends Error {
   }
 }
 
-/** A goal as `goals.get` returns it, as far as the rows read it: its identity, the revision that every change raises by one, and the phase, with why a blocked one is blocked (dsh-goal `GoalBlockReason`). */
+/**
+ * A goal as `goals.get` returns it, as far as the rows read it: its identity,
+ * the revision that every change raises by one, the phase with why a blocked
+ * one is blocked (dsh-goal `GoalBlockReason`), the objective, the round
+ * budget, and the process-local activation (goal:880–888).
+ */
 interface FakeGoal {
   readonly id: string
   readonly revision: number
   readonly phase: string
   readonly blockedReason?: { readonly code: string, readonly message: string }
+  readonly objective: string
+  readonly maxGoalRounds: number
+  readonly roundsStarted: number
+  readonly activation: 'armed' | 'disarmed'
 }
 
-/** What a row asked of the goal service, in order, with the reference it gave. */
+/** What a row asked of the goal service, in order, with the reference it gave (none for `create`). */
 interface GoalCall {
-  readonly op: 'pause' | 'resume'
+  readonly op: 'pause' | 'resume' | 'create' | 'edit' | 'complete' | 'block' | 'clear'
   readonly agentId: string
   readonly ref: { readonly id: string, readonly revision: number }
+}
+
+/** What `goal/changed` carries (goal:872–877), with the live agent fused in (goal-round-driver:243). */
+interface FakeGoalChanged {
+  readonly agent: FakeLiveAgent
+  readonly change: { readonly operation: string, readonly ref: { readonly id: string, readonly revision: number }, readonly goal?: FakeGoal }
 }
 
 /**
@@ -138,22 +153,43 @@ interface GoalCall {
  * it by one revision, all three throwing `GoalError` for an agent that is not
  * live (dsh-goal `assertLive`, goal:611–614) and the two changes for a stale
  * reference (`expectCurrent`, goal:760–765) or a phase they do not take
- * (goal:676–699). Every message put in front of an agent is recorded in
- * `woken`, every pause and resume in `goalCalls`, and both in `log` in the
- * order they happened.
+ * (goal:676–699). The execute row's drive uses the rest of the life cycle:
+ * `create` arms a new goal and refuses while an unfinished one stands
+ * (`GOAL_ALREADY_EXISTS`, goal:635–650), `edit` changes the objective or the
+ * round budget, `complete` takes an active, paused or blocked goal to
+ * `complete`, `block` an active one to `blocked` with a lowercase-hyphen code
+ * and a trimmed non-empty message (goal:76–83, 472–480), and `clear` removes
+ * it (goal:736–753). `create` and `resume` arm the goal, `pause`, `block` and
+ * `complete` disarm it, and `disarm(id)` stands for `agent/created`
+ * (goal:594–596); `resume` refuses an active armed goal and an exhausted
+ * round budget (goal:696–697). Every change goes to the `onChanged`
+ * listeners as `goal/changed` with the agent fused in. Every message put in
+ * front of an agent is recorded in `woken`, every goal operation in
+ * `goalCalls`, and both in `log` in the order they happened.
  */
 export interface FakeLive {
   readonly agents: { get(id: string): FakeLiveAgent | undefined, list(): FakeLiveAgent[] }
   readonly goals: {
     get(agent: FakeLiveAgent): FakeGoal | undefined
+    create(agent: FakeLiveAgent, request: { readonly objective: string, readonly maxGoalRounds?: number }): FakeGoal
+    edit(agent: FakeLiveAgent, ref: GoalCall['ref'], change: { readonly objective?: string, readonly maxGoalRounds?: number }): FakeGoal
     pause(agent: FakeLiveAgent, ref: GoalCall['ref']): FakeGoal
     resume(agent: FakeLiveAgent, ref: GoalCall['ref']): FakeGoal
+    complete(agent: FakeLiveAgent, ref: GoalCall['ref']): FakeGoal
+    block(agent: FakeLiveAgent, ref: GoalCall['ref'], reason: { readonly code: string, readonly message: string }): FakeGoal
+    clear(agent: FakeLiveAgent, ref: GoalCall['ref']): void
   }
   readonly woken: Woken[]
-  /** The pauses and resumes the rows asked for, whether or not they worked. */
+  /** The goal operations the rows asked for, whether or not they worked. */
   readonly goalCalls: GoalCall[]
-  /** `goal:pause`, `goal:resume` and `wake:<way>` in the order they happened. */
+  /** `goal:<op>` and `wake:<way>` in the order they happened. */
   readonly log: string[]
+  /** Listen to every goal change, as a host-level `goal/changed` listener would. */
+  onChanged(listener: (payload: FakeGoalChanged) => void): void
+  /** The process-local activation edge of `agent/created`: the goal stays as it is and is disarmed. */
+  disarm(id: string): void
+  /** The goal rounds the driver started so far; `resume` refuses once they reach the budget. */
+  setRounds(id: string, started: number): void
   /** Register the live agent of a session. */
   add(agent: AgentLike, status?: 'idle' | 'running'): void
   /** The agent is released: the registry no longer knows it. */
@@ -167,7 +203,7 @@ export interface FakeLive {
   breakWake(id: string, ...ways: Array<Woken['how']>): void
   /** Make `goals.get` throw for the agent, as it does for one that is not live. */
   breakGoals(id: string): void
-  /** Make the next `goals.pause` or `goals.resume` for the agent throw with this message (every one after it too). */
+  /** Make the next goal operation `op` for the agent throw with this message (every one after it too). */
   breakGoalChange(id: string, op: GoalCall['op'], message?: string, code?: string): void
 }
 
@@ -176,13 +212,19 @@ export function fakeLive(): FakeLive {
   const woken: Woken[] = []
   const goalCalls: GoalCall[] = []
   const log: string[] = []
+  const changed: Array<(payload: FakeGoalChanged) => void> = []
   const WAYS = ['steer', 'inject', 'followup'] as const
+  const CODE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
   const liveEntry = (agent: FakeLiveAgent) => {
     const entry = entries.get(agent.id)
     if (entry?.live !== agent || entry.goalsBroken) throw new GoalError(`agent "${agent.id}" is not live in this registry`)
     return entry
   }
-  const change = (op: GoalCall['op']) => (agent: FakeLiveAgent, ref: GoalCall['ref']): FakeGoal => {
+  const notify = (agent: FakeLiveAgent, operation: string, ref: GoalCall['ref'], goal: FakeGoal | undefined): void => {
+    for (const listener of [...changed]) listener({ agent, change: { operation, ref: { ...ref }, ...(goal === undefined ? {} : { goal }) } })
+  }
+  /** One recorded call on a live agent's current goal at the reference given. */
+  const current = (op: GoalCall['op'], agent: FakeLiveAgent, ref: GoalCall['ref']) => {
     goalCalls.push({ op, agentId: agent.id, ref: { ...ref } })
     log.push(`goal:${op}`)
     const entry = liveEntry(agent)
@@ -191,11 +233,20 @@ export function fakeLive(): FakeLive {
     const goal = entry.goal
     if (goal === undefined) throw new GoalError('no current goal', 'GOAL_NOT_FOUND')
     if (ref.id !== goal.id || ref.revision !== goal.revision) throw new GoalError(`stale goal ref "${ref.id}" revision ${ref.revision}; current is "${goal.id}" revision ${goal.revision}`, 'GOAL_STALE_REVISION')
-    const allowed = op === 'pause' ? ['active'] : ['active', 'paused', 'blocked']
-    if (!allowed.includes(goal.phase)) throw new GoalError(`cannot ${op} goal "${goal.id}" from phase "${goal.phase}"`, 'GOAL_INVALID_TRANSITION')
-    entry.goal = { id: goal.id, revision: goal.revision + 1, phase: op === 'pause' ? 'paused' : 'active' }
-    return entry.goal
+    return { entry, goal }
   }
+  const commit = (entry: { goal: FakeGoal | undefined, live: FakeLiveAgent }, operation: string, goal: FakeGoal): FakeGoal => {
+    entry.goal = goal
+    notify(entry.live, operation, { id: goal.id, revision: goal.revision }, goal)
+    return goal
+  }
+  const next = (goal: FakeGoal, phase: string, activation: FakeGoal['activation']): FakeGoal => ({ id: goal.id, revision: goal.revision + 1, phase, objective: goal.objective, maxGoalRounds: goal.maxGoalRounds, roundsStarted: goal.roundsStarted, activation })
+  const transition = (op: 'pause' | 'complete', allowed: readonly string[], phase: string) => (agent: FakeLiveAgent, ref: GoalCall['ref']): FakeGoal => {
+    const { entry, goal } = current(op, agent, ref)
+    if (!allowed.includes(goal.phase)) throw new GoalError(`cannot ${op} goal "${goal.id}" from phase "${goal.phase}"`, 'GOAL_INVALID_TRANSITION')
+    return commit(entry, op, next(goal, phase, 'disarmed'))
+  }
+  let created = 0
   return {
     woken,
     goalCalls,
@@ -203,8 +254,51 @@ export function fakeLive(): FakeLive {
     agents: { get: id => entries.get(id)?.live, list: () => [...entries.values()].map(entry => entry.live) },
     goals: {
       get: agent => liveEntry(agent).goal,
-      pause: change('pause'),
-      resume: change('resume'),
+      create(agent, request) {
+        goalCalls.push({ op: 'create', agentId: agent.id, ref: { id: '', revision: 0 } })
+        log.push('goal:create')
+        const entry = liveEntry(agent)
+        const broken = entry.changeBroken.get('create')
+        if (broken !== undefined) throw new GoalError(broken.message, broken.code)
+        if (typeof request.objective !== 'string' || request.objective.trim() === '') throw new GoalError('goal objective must be a non-empty string', 'GOAL_INVALID_OBJECTIVE')
+        const standing = entry.goal
+        if (standing !== undefined && standing.phase !== 'complete') throw new GoalError(`goal "${standing.id}" already exists with phase "${standing.phase}"`, 'GOAL_ALREADY_EXISTS')
+        return commit(entry, 'create', { id: `goal-${agent.id}-${++created}`, revision: 1, phase: 'active', objective: request.objective.trim(), maxGoalRounds: request.maxGoalRounds ?? 256, roundsStarted: 0, activation: 'armed' })
+      },
+      edit(agent, ref, change) {
+        const { entry, goal } = current('edit', agent, ref)
+        if (change.objective === undefined && change.maxGoalRounds === undefined) throw new GoalError('goal edit requires objective and/or maxGoalRounds', 'GOAL_INVALID_EDIT')
+        return commit(entry, 'edit', { ...goal, revision: goal.revision + 1, ...(change.objective === undefined ? {} : { objective: change.objective.trim() }), ...(change.maxGoalRounds === undefined ? {} : { maxGoalRounds: change.maxGoalRounds }) })
+      },
+      pause: transition('pause', ['active'], 'paused'),
+      resume(agent, ref) {
+        const { entry, goal } = current('resume', agent, ref)
+        if (!['active', 'paused', 'blocked'].includes(goal.phase)) throw new GoalError(`cannot resume goal "${goal.id}" from phase "${goal.phase}"`, 'GOAL_INVALID_TRANSITION')
+        if (goal.phase === 'active' && goal.activation === 'armed') throw new GoalError(`goal "${goal.id}" is already active and armed`, 'GOAL_INVALID_TRANSITION')
+        if (goal.roundsStarted >= goal.maxGoalRounds) throw new GoalError(`goal "${goal.id}" exhausted ${goal.maxGoalRounds} goal rounds; increase maxGoalRounds before resuming`, 'GOAL_INVALID_TRANSITION')
+        return commit(entry, 'resume', next(goal, 'active', 'armed'))
+      },
+      complete: transition('complete', ['active', 'paused', 'blocked'], 'complete'),
+      block(agent, ref, reason) {
+        const { entry, goal } = current('block', agent, ref)
+        if (goal.phase !== 'active') throw new GoalError(`cannot block goal "${goal.id}" from phase "${goal.phase}"`, 'GOAL_INVALID_TRANSITION')
+        if (!CODE.test(reason.code) || reason.message.trim() === '') throw new GoalError('goal block reason requires a lower-kebab-case code and a non-empty message', 'GOAL_INVALID_BLOCK_REASON')
+        return commit(entry, 'block', { ...next(goal, 'blocked', 'disarmed'), blockedReason: { code: reason.code, message: reason.message.trim() } })
+      },
+      clear(agent, ref) {
+        const { entry, goal } = current('clear', agent, ref)
+        entry.goal = undefined
+        notify(agent, 'clear', { id: goal.id, revision: goal.revision + 1 }, undefined)
+      },
+    },
+    onChanged(listener) { changed.push(listener) },
+    disarm(id) {
+      const entry = entries.get(id)
+      if (entry?.goal !== undefined) entry.goal = { ...entry.goal, activation: 'disarmed' }
+    },
+    setRounds(id, started) {
+      const entry = entries.get(id)
+      if (entry?.goal !== undefined) entry.goal = { ...entry.goal, roundsStarted: started }
     },
     add(agent, status = 'idle') {
       const session = agent.session!
@@ -229,14 +323,23 @@ export function fakeLive(): FakeLive {
     setGoal(id, phase, blocked) {
       const entry = entries.get(id)
       if (entry === undefined) return
+      const before = entry.goal
       entry.goal = phase === undefined
         ? undefined
         : {
-            id: entry.goal?.id ?? `goal-${id}`,
-            revision: (entry.goal?.revision ?? 0) + 1,
+            id: before?.id ?? `goal-${id}`,
+            revision: (before?.revision ?? 0) + 1,
             phase,
+            objective: before?.objective ?? `goal of ${id}`,
+            maxGoalRounds: before?.maxGoalRounds ?? 256,
+            roundsStarted: before?.roundsStarted ?? 0,
+            activation: phase === 'active' ? 'armed' : 'disarmed',
             ...(blocked === undefined || phase !== 'blocked' ? {} : { blockedReason: blocked }),
           }
+      // The person's change reaches the listeners as the operation it stands for.
+      const operation = phase === undefined ? 'clear' : phase === 'paused' ? 'pause' : phase === 'blocked' ? 'block' : phase === 'complete' ? 'complete' : before === undefined ? 'create' : 'resume'
+      const goal = entry.goal ?? before
+      if (goal !== undefined) notify(entry.live, operation, { id: goal.id, revision: entry.goal?.revision ?? goal.revision + 1 }, entry.goal)
     },
     goalOf: id => entries.get(id)?.goal,
     breakWake(id, ...ways) { const entry = entries.get(id); if (entry !== undefined) entry.broken = new Set(ways.length === 0 ? WAYS : ways) },

@@ -227,11 +227,12 @@ test('a stored rule is checked for its shape, not for the moment or the project:
   assert.equal(parse({ version: 2, rules: { 'r-stale': { ...stale, condition: { signal: 'gone-signal', is: true, above: 3 } } } }), false, 'the comparison itself is still checked')
 })
 
-test('a state is checked entry by entry for the collections of the full board; proposals are not part of it', () => {
+test('a state is checked entry by entry for the collections of the full board, proposals among them', () => {
   const full: ProjectState = { ...fromFile(), seq: 3, tickets: { 'q-1': TICKET }, nextTicket: 2, notices: { 'n-1': NOTICE } }
   assert.equal(stateProblem(full), undefined)
   const bad = (change: Partial<ProjectState> | Record<string, unknown>): string => stateProblem({ ...full, ...change }) ?? ''
-  assert.match(bad({ proposals: {} }), /state\.proposals is not a field/)
+  assert.match(bad({ proposals: { 'p-00000001': { id: 'p-00000002' } } }), /state\.proposals\.p-00000001\.id/)
+  assert.match(bad({ proposals: { 'p-00000001': { id: 'p-00000001', kind: 'detector' } } }), /proposals\.p-00000001\.kind/)
   assert.match(bad({ nextTicket: -1 }), /nextTicket/)
   assert.match(bad({ tickets: { 'q-1': { ...TICKET, state: 'lost' } } }), /tickets\.q-1\.state/)
   assert.match(bad({ tickets: { 'q-2': TICKET } }), /tickets\.q-2\.id/)

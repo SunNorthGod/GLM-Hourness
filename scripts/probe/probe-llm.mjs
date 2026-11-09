@@ -57,10 +57,13 @@
 import { randomUUID } from 'node:crypto'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { GLM_MODELS, glmInputModalities } from '../../packages/glm/dist/glm-llm/models.js'
 import { asAttachments, glmImageRequestTarget, prepareRequestImages } from '../../packages/glm/dist/glm-llm/images.js'
 import { encodeRequest, splitSystemPrompt } from '../../packages/glm/dist/glm-llm/anthropic.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
+import { oldestPending } from '../../packages/hourness/dist/execute/requests.js'
+import { latestDispatch, registeredDispatches } from '../../packages/hourness/dist/execute/attempts.js'
 import { collectStatus } from '../../packages/hourness/dist/report/status.js'
 
 export const name = 'glm-hourness-probe/llm'
@@ -78,20 +81,62 @@ function checkedScript(script) {
 }
 
 /**
- * `{rev:<node id>}` in the arguments of a scripted call becomes the revision of
- * that node on the project graph of the request's session as it is when the
- * request arrives, so a script can edit a node more than once (every edit
- * changes the revision the next needs). A node that is not there leaves the
- * text as it was.
+ * Runtime ids in the arguments of a scripted call, resolved as the request
+ * arrives:
+ * - `{rev:<node id>}` is the revision of that node on the project graph of
+ *   the request's session, so a script can edit a node more than once (every
+ *   edit changes the revision the next needs);
+ * - `{plan-request:<task id>}` and `{ask-request:<task id>}` are the id of
+ *   the oldest open request of that kind for the task (M7 E5), so the main
+ *   agent's script can answer a request whose id only exists at runtime;
+ * - `{worker:<task id>}` is the child id of the dispatch of that task that
+ *   is not the calling session itself, so a script can address a worker by
+ *   its runtime id (send_message);
+ * - `{review:<task id>}` is the id of that task's open review task and
+ *   `{question:<task id>}` the id of the oldest open question under it
+ *   (M7 E6), so the main agent's script can dispatch the review and answer
+ *   the person's question by ids that only exist at runtime;
+ * - `{head:<task id>}` is the 12-hex head of that task's latest done
+ *   handback, what a reviewer names as the commit it reviews;
+ * - `{child:<task id>}` is the child id of that task's latest dispatch
+ *   comment, so a script can address a worker that has ended (M7 E8);
+ * - `{git-head}` is the 12-hex HEAD of the calling session's repository, so
+ *   a worker can name its own commit in its handback.
+ * A value that is not there leaves the text as it was.
  */
 async function withRevisions(ctx, request, call) {
-  const text = JSON.stringify(call.arguments ?? {})
-  if (!text.includes('{rev:')) return call
-  const cwd = ctx.get('agents')?.get(request.sessionId)?.session?.header?.cwd
+  const original = JSON.stringify(call.arguments ?? {})
+  if (!/\{(rev|plan-request|ask-request|worker|review|question|head|child|git-head):?/.test(original)) return call
+  const agent = ctx.get('agents')?.get(request.sessionId)
+  const cwd = agent?.session?.header?.cwd
   const dir = ctx.get('glmHournessGraph')?.dirFor?.(cwd)
   if (dir === undefined) return call
-  const graph = await loadGraph(dir)
-  return { ...call, arguments: JSON.parse(text.replace(/\{rev:([A-Za-z0-9._-]+)\}/g, (whole, id) => graph.revisions.get(id) ?? whole)) }
+  let text = original
+  if (['{rev:', '{review:', '{question:', '{head:', '{child:'].some(mark => text.includes(mark))) {
+    const graph = await loadGraph(dir)
+    text = text.replace(/\{rev:([A-Za-z0-9._-]+)\}/g, (whole, id) => graph.revisions.get(id) ?? whole)
+    const open = id => graph.nodes.get(id)?.status !== 'dropped' && graph.nodes.get(id)?.status !== 'superseded'
+    text = text.replace(/\{review:([A-Za-z0-9._-]+)\}/g, (whole, task) => [...graph.nodes.values()].find(node => node.parent === task && node.kind === 'review' && open(node.id))?.id ?? whole)
+    text = text.replace(/\{question:([A-Za-z0-9._-]+)\}/g, (whole, task) => [...graph.nodes.values()].filter(node => node.parent === task && node.type === 'question' && open(node.id)).sort((a, b) => String(a.history[0]?.at ?? '').localeCompare(String(b.history[0]?.at ?? '')))[0]?.id ?? whole)
+    text = text.replace(/\{head:([A-Za-z0-9._-]+)\}/g, (whole, task) => [...(graph.nodes.get(task)?.history ?? [])].reverse().map(entry => /（最新 ([0-9a-f]{12})）/.exec(String(entry.text ?? ''))?.[1]).find(sha => sha !== undefined) ?? whole)
+    text = text.replace(/\{child:([A-Za-z0-9._-]+)\}/g, (whole, task) => {
+      const node = graph.nodes.get(task)
+      return node === undefined ? whole : latestDispatch(node)?.childId ?? whole
+    })
+  }
+  if (text.includes('{git-head}')) {
+    // The dispatched worker commits in its worktree, which is not the session cwd: the register holds the worktree the dispatch created.
+    const repo = registeredDispatches().find(entry => entry.childId === request.sessionId)?.worktree ?? cwd
+    if (repo !== undefined) {
+      const head = spawnSync('git', ['rev-parse', '--short=12', 'HEAD'], { cwd: repo, encoding: 'utf8' })
+      if (head.status === 0) text = text.replace(/\{git-head\}/g, head.stdout.trim())
+    }
+  }
+  text = text.replace(/\{plan-request:([A-Za-z0-9._-]+)\}/g, (whole, task) => oldestPending('plan', dir, task)?.id ?? whole)
+  text = text.replace(/\{ask-request:([A-Za-z0-9._-]+)\}/g, (whole, task) => oldestPending('question', dir, task)?.id ?? whole)
+  text = text.replace(/\{worker:([A-Za-z0-9._-]+)\}/g, (whole, task) => registeredDispatches().find(attempt => attempt.node === task && attempt.childId !== agent?.id)?.childId ?? whole)
+  if (text === original) return call
+  return { ...call, arguments: JSON.parse(text) }
 }
 
 const TRANSCRIPT_MARK = 'read the full transcript at: '
@@ -139,11 +184,14 @@ function withGoal(call, goal) {
 /**
  * `{ref}` in the arguments of a scripted call becomes the request reference
  * the conversation last named by a denial — the exception sentence names it,
- * in either the containment spelling (`request_exception {"ref": "r-…"}`) or
- * the new-rules spelling (`call request_exception with ref "r-…"`) — so the
- * script files and retries without knowing the generated ref
- * (m4-request-card §5.3). Anchored on those sentences because the
- * `request_exception` tool description carries the F20 example's own ref.
+ * in the containment spelling (`request_exception {"ref": "r-…"}`), the
+ * new-rules spelling (`call request_exception with ref "r-…"`) or the
+ * worker sentence's spelling (`give ref "r-…"`, m4-request-card §5.2's third
+ * case) — so the script files and retries without knowing the generated ref
+ * (m4-request-card §5.3). The worker's denial is a tool result; the main
+ * agent reads the same sentence relayed in the worker's question notice, a
+ * user message, so both roles are read. Anchored on those sentences because
+ * the `request_exception` tool description carries the F20 example's own ref.
  * No denial in the conversation leaves the text as it was.
  */
 function withRef(request, call) {
@@ -151,11 +199,16 @@ function withRef(request, call) {
   if (!text.includes('{ref}')) return call
   let found
   for (const message of request.messages ?? []) {
-    if (message.role !== 'tool') continue
-    for (const part of Array.isArray(message.content) ? message.content : []) {
+    // A user message is read only for the relayed worker sentence: the other notices repeat older refs in the denial spellings.
+    const spelled = message.role === 'tool'
+      ? /(?:request_exception \{"ref": "|request_exception with ref "|give ref ")(r-[0-9a-z]{8})/
+      : message.role === 'user' ? /give ref "(r-[0-9a-z]{8})/ : undefined
+    if (spelled === undefined) continue
+    const parts = typeof message.content === 'string' ? [{ text: message.content }] : Array.isArray(message.content) ? message.content : []
+    for (const part of parts) {
       for (const piece of Array.isArray(part.content) ? part.content : [part]) {
         if (typeof piece.text !== 'string') continue
-        const named = /(?:request_exception \{"ref": "|request_exception with ref ")(r-[0-9a-z]{8})/.exec(piece.text)
+        const named = spelled.exec(piece.text)
         if (named !== null) found = named[1]
       }
     }
@@ -392,13 +445,18 @@ class ProbeAdapter {
     }
   }
 
-  /** Send `text` to the request's own session as a message of the user, the way the second session's `say` does; the queued followup wakes the agent and it follows its script's next step. Not awaited: the agent is mid-turn here. */
+  /** Send `text` to the request's own session as a message of the user, the way the second session's `say` does: `steer` when the agent is mid-turn (the message lands in the running turn, which stays open), `followup` when it is idle (the queued message wakes it). Not awaited. */
   async tellOwn(request, text) {
     const agents = this.ctx.get('agents')
     const own = agents?.get(request.sessionId)
     if (own === undefined) return { kind: 'no-agent' }
+    const message = { id: randomUUID(), role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } }
     try {
-      own.followup({ id: randomUUID(), role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } })
+      if (typeof own.steer === 'function') {
+        own.steer(message)
+        return { kind: 'steered' }
+      }
+      own.followup(message)
       return { kind: 'sent' }
     }
     catch (error) {
@@ -447,7 +505,12 @@ class ProbeAdapter {
   providerRetryPolicy() { return undefined }
   imageRequestPricing() { return undefined }
   imageRequestTarget(_provider, _model, image) { return glmImageRequestTarget(image) }
-  listModels(provider) { return Promise.resolve(GLM_MODELS.map(model => ({ provider, id: model.id, name: `${model.name} (probe)`, inputModalities: [...model.inputModalities] }))) }
+  // The catalog the provider serves: the GLM models plus the probe's own
+  // non-GLM id, so a dispatch of the non-GLM scenarios passes the execute
+  // row's catalog check (the row reads llm.listModels; ORCHESTRATION §17.9).
+  listModels(provider) {
+    return Promise.resolve([...GLM_MODELS.map(model => ({ provider, id: model.id, name: `${model.name} (probe)`, inputModalities: [...model.inputModalities] })), { provider, id: 'deepseek-probe', name: 'DeepSeek Probe', inputModalities: ['text'] }])
+  }
   resolveModel(provider, model) {
     return Promise.resolve({
       provider,

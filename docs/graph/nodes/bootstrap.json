@@ -402,6 +402,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "接管线（wf_f008ac0c87ec6943）结束：B6 评审两条挡路（F1 复用失败的准备命令后续未标 afterSetupFailure；F2 宿主中途挂掉后同计划的一轮不再重跑）修在 8f036e2，先合入 origin/main（11d6279）；两个提交上四道门禁退出 0（test 3323、3324 过 / 0 失败），探针 446/446，棘轮 73/18/1；B6F 评审 APPROVED，loopState ALL_DONE。B0–B6 全部在 origin/bootstrap（8f036e2，工作树干净），行出厂仍禁用，未合入 main。B7–B10 顺延：B7 等 M7 的 gate-norm.ts 与 floor.ts 进 main，B8、B9 等 M7/M3，B10 等 B7 与 M7 派发。最终报告预计对 origin/m7 有 5 处冲突，对另三条线没有。"
+    },
+    {
+      "at": "2026-11-09T20:09:16.475Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "docs-at-hand gen 对本模块的请求（gen 节点验收后两句，2026-11-10 记录）：接管结束的提醒多一句（组件文档还在手边吗）、扫描多组件候选——对已放行设计 0.6 的改动请求，待人定后才动。"
     }
   ]
 }

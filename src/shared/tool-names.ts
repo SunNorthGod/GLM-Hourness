@@ -20,7 +20,7 @@ export const GRAPH_TOOL_NAMES: readonly string[] = [
  * one-ticket-per-session entry queues). tests/contracts.spec.ts pins the
  * registration of src/rules/index.ts to this list.
  */
-export const RULES_TOOL_NAMES: readonly string[] = ['rules_show']
+export const RULES_TOOL_NAMES: readonly string[] = ['rules_show', 'rules_propose']
 
 /**
  * The DSH native tools that dispatch a subagent. A call to one of them is a
@@ -137,10 +137,41 @@ export const LESSONS_MERGE_TOOL = 'lessons_merge'
 export const LESSONS_TOOL_NAMES: readonly string[] = [LESSONS_QUERY_TOOL, LESSONS_MERGE_TOOL]
 
 /**
+ * The execute row's tools for the main agent (M7 design 0.6 §2.3.2): dispatch,
+ * answer, check a commit before it reaches the trunk, and wait for the person.
+ * Resident on the GLM route: driving a goal touches them every round. The
+ * execute row registers them (E4); the face filter takes them away from every
+ * agent that is not the main agent, and each tool body checks its caller too.
+ */
+export const EXECUTE_TOOL_NAMES: readonly string[] = ['dispatch_task', 'answer_worker', 'check_commit', 'await_human']
+
+/**
+ * The execute row's tools for a dispatched worker. A reviewer keeps only
+ * `ask_main`: the face filter removes `submit_plan` from its face (§2.3.2).
+ */
+export const WORKER_TOOL_NAMES: readonly string[] = ['submit_plan', 'ask_main']
+
+/**
+ * The operate row's tool (M7 P3): the reports the three time entries ask for.
+ * Resident: every entry reminder uses it.
+ */
+export const OPERATE_TOOL_NAMES: readonly string[] = ['hourness_report']
+
+/**
+ * The subagent tool that submits a structured result (rc.3 dsh-subagent
+ * `attachStructuredRuntime`, subagent:889–960): a dispatched worker ends its
+ * turn with it (§3.6.2), so it stays at hand like the rest of the dispatch
+ * path. The host registers it for subagents with an `outputSchema`, no row
+ * does — it is named here because the GLM face has to keep it resident.
+ */
+export const STRUCTURED_OUTPUT_TOOL = 'structured_output'
+
+/**
  * Orchestration tools GLM tool search keeps resident (project decisions,
- * docs/ORCHESTRATION.md §8 for memory, §2.8 and §2.10 for the graph). Named
- * one by one: an orchestration tool added later is deferred like any DSH
- * tool without a ZCode counterpart until its name is added here.
+ * docs/ORCHESTRATION.md §8 for memory, §2.8 and §2.10 for the graph, M7
+ * §2.3.2 for the execute path). Named one by one: an orchestration tool added
+ * later is deferred like any DSH tool without a ZCode counterpart until its
+ * name is added here.
  */
 export const ORCHESTRATION_RESIDENT_TOOLS: ReadonlySet<string> = new Set([
   // memory
@@ -154,6 +185,11 @@ export const ORCHESTRATION_RESIDENT_TOOLS: ReadonlySet<string> = new Set([
   'graph_link', 'graph_unlink', 'graph_relink', 'graph_walk', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',
   // design row (main agent)
   ...DESIGN_TOOL_NAMES,
+  // execute row (main agent and workers, M7); the operate row arrives with P3
+  ...EXECUTE_TOOL_NAMES,
+  ...WORKER_TOOL_NAMES,
+  ...OPERATE_TOOL_NAMES,
+  STRUCTURED_OUTPUT_TOOL,
 ])
 
 /**

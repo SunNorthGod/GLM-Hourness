@@ -15,7 +15,7 @@
  * declared in ./cordis-min.ts (no Node import) and re-exported here.
  */
 import { randomUUID } from 'node:crypto'
-import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmRuntime } from '@deepseek-ai/dsh-llm'
 import type { ProvideHost, ServiceLookup } from './cordis-min.ts'
 import type { StreamChunk } from './lm-min.ts'
 
@@ -425,6 +425,14 @@ export interface InjectableServices {
     resolveAgent(sessionId: string): Promise<{ readonly agent?: AgentLike, readonly error?: { readonly code: string, readonly message?: string } }>
   }
   readonly commands: CommandsHost<AgentCommandInvocationLike>['commands']
+  /**
+   * The model catalog the execute row checks a dispatch's model choice
+   * against (M7 §3.1.3 — a check, not a gate) and the stored-session reader
+   * the reconcile folds a lost worker's last `structured_output` call from
+   * (§3.9.6).
+   */
+  readonly llm: LlmCatalog
+  readonly sessionQuery: SessionQueryService
 }
 
 /**
@@ -520,25 +528,62 @@ export interface GoalView extends GoalRef {
    * to resume by it, which stays with the execute row.
    */
   readonly blockedReason?: { readonly code: string, readonly message: string }
+  /** The goal's objective (dsh-goal `GoalSnapshot.objective`); the execute row recognises its own drive's goal by the `Project graph goal <id>:` prefix. */
+  readonly objective?: string
+  /**
+   * Whether the goal may continue on its own in this process (dsh-goal view,
+   * goal:880–888): `create` and `resume` arm, `pause`, `block`, `complete`
+   * and every `agent/created` disarm (goal:594–596). An `active` goal that is
+   * `disarmed` waits for a resume.
+   */
+  readonly activation?: 'armed' | 'disarmed'
 }
 
 /**
- * The `goals` service members the rules board uses (rc.3 dsh-goal, no
- * installed `.d.ts`): `get` is the goal of an exact live agent, undefined when
- * it has none (goal:611–614); `pause` takes an `active` goal to `paused` and
- * `resume` an `active`, `paused` or `blocked` one to `active` while its round
- * budget lasts, each returning the new view (goal:676–699). All three throw
- * `GoalError` for an agent that is not the registry's live instance
- * (goal:767–769), and the two changes for a reference that is not the current
+ * What `goal/changed` carries (dsh-goal `commit`, goal:872–877): the change
+ * (its operation, the reference it names and the view after it, absent once
+ * cleared). It is emitted through `agentEvents(ctx, agent)`, which fuses the
+ * live agent into the payload, so a host-level `ctx.on('goal/changed')`
+ * receives `{agent, change}` (goal-round-driver:243).
+ */
+export interface GoalChangedPayload {
+  readonly agent: LiveAgentLike
+  readonly change: {
+    readonly operation: string
+    readonly ref: GoalRef
+    readonly goal?: GoalView
+  }
+}
+
+/**
+ * The `goals` service members the rules board and the execute row use (rc.3
+ * dsh-goal, no installed `.d.ts`): `get` is the goal of an exact live agent,
+ * undefined when it has none (goal:611–614); `pause` takes an `active` goal
+ * to `paused` and `resume` an `active`, `paused` or `blocked` one to `active`
+ * while its round budget lasts, each returning the new view (goal:676–699).
+ * The execute row drives the rest of the life cycle (M7 design §3.9.1):
+ * `create` builds the goal of a released design (`{objective, maxGoalRounds?}`,
+ * `GOAL_ALREADY_EXISTS` when an unfinished one stands, goal:635–650), `edit`
+ * changes `objective` or `maxGoalRounds` (goal:657–669), `complete` finishes
+ * it (goal:706–712), `block` stops it with a lowercase-hyphen reason code and
+ * message (goal:720–729) and `clear` removes it (goal:736–753). Every member
+ * throws `GoalError` for an agent that is not the registry's live instance
+ * (goal:767–769), and the changes for a reference that is not the current
  * goal and revision (`GOAL_STALE_REVISION`, goal:760–765) or a phase they do
- * not take (`GOAL_INVALID_TRANSITION`). The round driver cancels the running
- * step of a paused agent only when the initiator is not that agent
- * (goal-round-driver:246).
+ * not take (`GOAL_INVALID_TRANSITION`). The service layer checks no human
+ * authority; that comes from the chat before the row calls (tool-goal:49–52).
+ * The round driver cancels the running step of a paused agent only when the
+ * initiator is not that agent (goal-round-driver:246).
  */
 export interface GoalsService {
   get(agent: LiveAgentLike): GoalView | undefined
+  create(agent: LiveAgentLike, request: { readonly objective: string, readonly maxGoalRounds?: number }): GoalView
+  edit(agent: LiveAgentLike, ref: GoalRef, change: { readonly objective?: string, readonly maxGoalRounds?: number }): GoalView
   pause(agent: LiveAgentLike, ref: GoalRef): GoalView
   resume(agent: LiveAgentLike, ref: GoalRef): GoalView
+  complete(agent: LiveAgentLike, ref: GoalRef): GoalView
+  block(agent: LiveAgentLike, ref: GoalRef, reason: { readonly code: string, readonly message: string }): GoalView
+  clear(agent: LiveAgentLike, ref: GoalRef): void
 }
 
 /**
@@ -566,6 +611,57 @@ export interface DesignAgentsService {
  */
 export interface SessionPersistenceLike {
   list(options?: unknown): Promise<ReadonlyArray<{ readonly header: { readonly id: string } }>>
+}
+
+/** Why an activation ended (rc.3 `SubagentStopReasonMap`, subagent types). */
+type SubagentStopReason = 'completed' | 'aborted' | 'error' | 'max-tokens' | 'refusal'
+
+/** What a settled activation hands back (rc.3 `SubagentResult`). */
+interface SubagentResult {
+  readonly output: readonly unknown[]
+  readonly structured?: unknown
+  readonly diagnostic?: string
+  readonly stopReason: SubagentStopReason
+}
+
+/** A started activation (rc.3 `SubagentActivation`): the child's session id, the accepted message and the result promise. */
+interface SubagentActivation {
+  readonly childId: string
+  readonly messageId?: string
+  readonly result: Promise<SubagentResult>
+  dispose(): Promise<void>
+}
+
+/** The dispatch the execute row starts (rc.3 `SubagentActivationSpec`, `SubagentStartRequest`; the execute row passes no `agentPreset`). */
+interface SubagentStartSpec {
+  readonly provider: string
+  readonly label: string
+  readonly childId?: string
+  readonly request: {
+    readonly cwd?: string
+    readonly prompt: readonly unknown[]
+    readonly parent: LiveAgentLike
+    readonly agentOptions?: { readonly provider?: string, readonly model?: string, readonly reasoningEffort?: string }
+    readonly outputSchema?: unknown
+    readonly maxDepth?: number
+  }
+  readonly signal: AbortSignal
+  readonly delivery: 'caller' | 'parent'
+}
+
+/** A run an external provider started (rc.3 `SubagentRun`). */
+interface SubagentRun {
+  readonly id: string
+  readonly result: Promise<SubagentResult>
+  dispose(): Promise<void>
+}
+
+/** An entry of a parent's durable direct-child catalog (rc.3 `SubagentCatalogEntry`). */
+interface SubagentCatalogEntry {
+  readonly id: string
+  readonly createdAt: number
+  readonly label?: string
+  readonly mode: 'one-shot' | 'external' | 'continuable' | 'unknown'
 }
 
 /**
@@ -596,14 +692,111 @@ export interface SessionQueryLike {
 }
 
 /**
- * The `subagents` service member the run controls call (rc.3 dsh-subagent
- * `interrupt`, subagent:3105; the manager, subagent:1258–1277): under a
- * `user` authority it cancels the current turn of a live direct child of
- * that parent session and keeps its inbox; an absent child is an accepted
- * no-op; a child of another parent throws `UNAUTHORIZED`.
+ * An external activation backend the execute row registers for its checks
+ * (rc.3 `SubagentProvider`, subagent:3256–3267; `ResolvedSubagentStartRequest`
+ * carries the resolved `cwd`). Its capabilities are all false (the frozen
+ * `NO_START_CAPABILITIES`, subagent:2789–2794): an external activation takes
+ * no `agentOptions`, preset, schema or depth — the harness checks and waits
+ * for its result. `inheritsParentContext` is false: the backend runs its own
+ * permissions.
+ */
+interface SubagentProvider {
+  readonly name: string
+  readonly capabilities: { readonly agentOptions: false, readonly agentPreset: false, readonly outputSchema: false, readonly depthLimit: false }
+  readonly inheritsParentContext: false
+  readonly agentRouteDefaults?: Readonly<{ readonly provider: string, readonly model: string }>
+  start(request: {
+    readonly cwd: string
+    readonly agentPreset?: string
+    readonly label?: string
+    readonly prompt: readonly unknown[]
+    readonly parent: LiveAgentLike
+    readonly signal: AbortSignal
+    readonly agentOptions?: { readonly provider?: string, readonly model?: string, readonly reasoningEffort?: string }
+    readonly outputSchema?: unknown
+    readonly maxDepth?: number
+  }): Promise<SubagentRun>
+}
+
+/**
+ * The `subagents` service members the run controls and the execute row call
+ * (rc.3 dsh-subagent). `interrupt` (subagent:3105) cancels, under a `user`
+ * authority, the current turn of a live direct child of that parent session
+ * and keeps its inbox; an absent child is an accepted no-op; a child of
+ * another parent throws `UNAUTHORIZED`.
+ *
+ * What the execute row adds (M7 design §3.1.2, §3.8.2, §4):
+ * - `startActivation` (subagent:3036–3048, `startLocal` 1391–1477) starts a
+ *   child from a `spawn` provider or a registered external one and resolves
+ *   with the activation as soon as the child is accepted; a `childId` already
+ *   taken throws `DUPLICATE_CHILD` (1430–1437), an exhausted activation
+ *   budget `ACTIVATION_LIMIT_REACHED` (1046–1048). `request.cwd` an absolute
+ *   path is used as-is (1523–1527), `agentOptions` merge over the parent's
+ *   route (315–329), `outputSchema` gives the child `structured_output`
+ *   (889–960) and `delivery: 'caller'` keeps the harness as the only reader
+ *   of the result (1460, 2048–2063).
+ * - `resolveMaxDepth` (3023–3030) is the depth budget a dispatch passes on so
+ *   a worker cannot dispatch again.
+ * - `registerProvider` (3256–3267) installs an external backend; the disposer
+ *   unregisters it (new starts refuse, running ones live on).
+ * - `waitForChildren(parent)` (1296–1330) joins every progressing descendant;
+ *   true means work was joined and the host rechecks the parent's idle state.
+ * - `sendMessage(sender, targetId, content, options)` (1538–1550, 2119–2135)
+ *   steers one message to the sender's direct parent or direct continuable
+ *   child; an idle child starts a turn, an absent one cold-resumes from
+ *   persistence (2141–2189) without its `outputSchema` — which is why M7
+ *   refuses ended worker ids at the tool (§3.2.5).
+ * - `listChildren(parentSessionId, signal?)` (2339–2352) reads the durable
+ *   direct-child catalog without loading anyone: the reconcile's map of what
+ *   survived a restart.
  */
 export interface SubagentsService {
   interrupt(targetSessionId: string, authority: { readonly kind: 'user', readonly parentSessionId: string }): void
+  startActivation(spec: SubagentStartSpec): Promise<SubagentActivation>
+  resolveMaxDepth(configured?: number | 'provider-managed'): number | undefined
+  registerProvider(provider: SubagentProvider): () => void
+  waitForChildren(parent: LiveAgentLike): Promise<boolean>
+  sendMessage(sender: LiveAgentLike, targetId: string, content: readonly unknown[], options: { readonly signal: AbortSignal }): Promise<string>
+  listChildren(parentSessionId: string, signal?: AbortSignal): Promise<readonly SubagentCatalogEntry[]>
+}
+
+/**
+ * The `llm` service members the execute row reads for the model choice (rc.3
+ * dsh-llm, service name `llm`, 1816): `listModels` (typert.host.js:236,
+ * `async listModels(provider: string): Promise<LlmModelInfo[]>`) is the
+ * deduplicated catalog of a provider — the runtime does not bind the catalog
+ * to routing, so it is a check, not a gate (§3.1.3) — and it throws for a
+ * provider that is not registered; `resolveModelInfo` (typert.host.js:243,
+ * async) adds the model's `reasoning.efforts` when it has any: effort records
+ * whose `id` is the value `reasoningEffort` takes (dsh-llm types.d.ts
+ * `LlmModelReasoningInfo`, `LlmReasoningEffortInfo`).
+ */
+export interface LlmCatalog {
+  listModels(provider: string): Promise<readonly { readonly id: string, readonly name?: string }[]>
+  resolveModelInfo(provider: string, model: string): Promise<{ readonly reasoning?: { readonly efforts?: readonly { readonly id: string, readonly name: string, readonly description?: string }[] } } | undefined>
+}
+
+/**
+ * One observation of a session (rc.3 dsh-session-query
+ * `SessionObservationReader`, session-query:450–507): the registered
+ * projections' client views at the observation's cut (`values` holds a key
+ * only for a unit with a wire view), and a `Symbol.dispose` member that
+ * releases the lease (dsh-subagent's `listChildren` disposes it after the
+ * read, subagent:2339–2352).
+ */
+export interface SessionObservationLike {
+  readonly projections?: { readonly values?: Readonly<Record<string, unknown>> }
+}
+
+/**
+ * The `sessionQuery` service member the reconcile reads (rc.3 dsh-session-query
+ * `observeSession`, session-query:1064): an async read of one live or stored
+ * session that rejects with `SESSION_QUERY_SESSION_NOT_FOUND` when there is
+ * none; the handback projection folds a lost worker's last
+ * `structured_output` call from it (§3.9.6).
+ */
+export interface SessionQueryService {
+  observeSession(sessionId: string, options?: { readonly signal?: AbortSignal }): Promise<SessionObservationLike>
 }
 
 /**
@@ -806,6 +999,16 @@ export type LlmStreamOptionsContractCheck = GenerateOptions extends LlmStreamOpt
 /** Referenced so the conditional type is evaluated by tsc. */
 const llmStreamOptionsContractCheck: LlmStreamOptionsContractCheck = true
 void llmStreamOptionsContractCheck
+
+/**
+ * Compile-time contract check against the installed @deepseek-ai/dsh-llm
+ * types: the runtime's `listModels` and `resolveModelInfo` offer what the
+ * execute row reads, with compatible types (the effort records, not bare ids).
+ */
+type LlmCatalogContractCheck = Pick<LlmRuntime, 'listModels' | 'resolveModelInfo'> extends LlmCatalog ? true : never
+/** Referenced so the conditional type is evaluated by tsc. */
+const llmCatalogContractCheck: LlmCatalogContractCheck = true
+void llmCatalogContractCheck
 
 /** Recursively freeze a freshly built JSON value (createMessage freezes its output). */
 function deepFreeze<T>(value: T): T {

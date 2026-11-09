@@ -3,8 +3,10 @@
  * step 4, §6.3): every git process the harness runs for itself. Task
  * worktrees and their branches, the gate worktree, the change list between
  * two commits, the comparison of one file's content in two commits, the
- * `Hourness-Task` trailers, the trunk and its remote-tracking reference, and
- * `ls-remote`. It runs git with `execFile`, never through a shell, so a
+ * `Hourness-Task` trailers, the tree of a commit, the commits between two,
+ * the paths a commit would record, the trunk and its remote-tracking
+ * reference, a remote's URL and default branch, and `ls-remote`. It runs
+ * git with `execFile`, never through a shell, so a
  * branch name or a path is one argument and is never re-parsed.
  *
  * Three rules hold for every call:
@@ -43,8 +45,8 @@
  *
  * The runner is injected: tests run real git in temporary repositories, and
  * run the process wrapper itself against `node -e` for exit codes and
- * timeouts. M3's `takeSnapshot` is not in the repository yet; the gate guard
- * takes it as `SnapshotSaver`, which step E7 binds to the real function.
+ * timeouts. The gate guard takes M3's `takeSnapshot` as `SnapshotSaver`;
+ * the merge check (src/execute/check.ts) binds it to the real function.
  */
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -318,7 +320,7 @@ export interface GateWorktree {
 /**
  * M3's `takeSnapshot(repo, invocation, risk)` as this module needs it: the
  * snapshot of what `git <sub> <args>` would discard, resolved once it is
- * saved. Step E7 wraps the real function in it.
+ * saved. The merge check (src/execute/check.ts) wraps the real function in it.
  */
 export type SnapshotSaver = (repo: string, invocation: { readonly sub: string, readonly args: readonly string[] }, risk: 'discard') => Promise<{ readonly ok: true } | { readonly ok: false, readonly reason: string }>
 
@@ -376,6 +378,15 @@ export function createGit(runner: GitRunner = realGitRunner) {
   /** The full id of the commit a revision names; `undefined` when it names none. */
   async function resolveCommit(cwd: string, rev: string): Promise<string | undefined> {
     return isRev(rev) ? firstLine(cwd, ['rev-parse', '--verify', '--quiet', `${rev}^{commit}`]) : undefined
+  }
+
+  /** The id of the tree a revision names (a commit's root tree); `undefined` when it names none. Two commits with the same tree have the same content (§3.11.1). */
+  async function treeOf(cwd: string, rev: string): Promise<Outcome<string | undefined>> {
+    if (!isRev(rev)) return failed('not a revision')
+    const args = ['rev-parse', '--verify', '--quiet', `${rev}^{tree}`]
+    const result = await run(cwd, args)
+    if (result.code === 0) return succeeded(result.stdout.trim().split(/\r?\n/)[0] || undefined)
+    return result.code === 1 ? succeeded(undefined) : failed(describe(args, result))
   }
 
   /** The commit a local branch points at; `undefined` when there is no such branch. */
@@ -447,6 +458,27 @@ export function createGit(runner: GitRunner = realGitRunner) {
     return result.ok ? succeeded(parseTaskTrailers(result.value).find(entry => entry.tasks.includes(task))?.commit) : result
   }
 
+  /** The commits in `from..to`, newest first: what an advance from `from` to `to` brings in. */
+  async function commitsBetween(cwd: string, from: string, to: string): Promise<Outcome<string[]>> {
+    if (!isRev(from) || !isRev(to)) return failed('not a revision')
+    const result = await read(cwd, ['rev-list', `${from}..${to}`, '--'])
+    return result.ok ? succeeded(result.value.split(/\r?\n/).map(line => line.trim()).filter(line => line !== '')) : result
+  }
+
+  /**
+   * The paths a `git commit` in `cwd` would record: the staged ones, and with
+   * `all` (`commit -a`) also the tracked files changed in the work tree.
+   * Renames are not detected, so a rename lists both paths (the stricter
+   * reading for the `only` rule of §3.8.4).
+   */
+  async function stagedPaths(cwd: string, all: boolean): Promise<Outcome<string[]>> {
+    const staged = await read(cwd, ['diff', '--cached', '--no-renames', '--name-only', '-z', '--'])
+    if (!staged.ok) return staged
+    const tracked = all ? await read(cwd, ['diff', '--no-renames', '--name-only', '-z', 'HEAD', '--']) : succeeded('')
+    if (!tracked.ok) return tracked
+    return succeeded([...new Set(`${staged.value}${tracked.value}`.split('\0').filter(path => path !== ''))])
+  }
+
   // --- worktrees
 
   async function listWorktrees(cwd: string): Promise<Outcome<WorktreeEntry[]>> {
@@ -488,6 +520,19 @@ export function createGit(runner: GitRunner = realGitRunner) {
   async function removeWorktree(cwd: string, path: string): Promise<Outcome<undefined>> {
     const result = await read(cwd, ['worktree', 'remove', '--', path], WRITE_TIMEOUT_MS)
     return result.ok ? succeeded(undefined) : result
+  }
+
+  /**
+   * Delete a worktree the harness created in this same dispatch call and the
+   * branch it made for it (§3.1.2 step 4: a failed setup deletes both, so
+   * the next dispatch starts clean). The forced removal is safe here exactly
+   * because the worktree is the one this call created.
+   */
+  async function discardWorktree(cwd: string, path: string, branch: string): Promise<Outcome<undefined>> {
+    const removed = await read(cwd, ['worktree', 'remove', '--force', '--', path], WRITE_TIMEOUT_MS)
+    if (!removed.ok) return removed
+    const deleted = await read(cwd, ['branch', '--delete', '--force', `refs/heads/${branch}`])
+    return deleted.ok || deleted.reason.includes('not found') ? succeeded(undefined) : deleted
   }
 
   /** `hz/<task>@<n>` for the first `n` from 1 that is no branch yet. */
@@ -724,6 +769,27 @@ export function createGit(runner: GitRunner = realGitRunner) {
     return succeeded({ local: ids.get(local), remote: tracking === undefined ? undefined : ids.get(tracking) })
   }
 
+  /** The URL a configured remote fetches from, as `git remote get-url` prints it; `undefined` when there is no such remote. */
+  async function remoteUrl(cwd: string, remote: string): Promise<Outcome<string | undefined>> {
+    if (!REMOTE_NAME.test(remote)) return failed('not a remote name')
+    const args = ['remote', 'get-url', '--', remote]
+    const result = await run(cwd, args)
+    if (result.code === 0) return succeeded(result.stdout.trim().split(/\r?\n/)[0] || undefined)
+    return result.code === undefined ? failed(describe(args, result)) : succeeded(undefined)
+  }
+
+  /** The branch `refs/remotes/<remote>/HEAD` names, the remote's default branch (§3.8.4); `undefined` when the reference is not there. */
+  async function remoteHeadBranch(cwd: string, remote: string): Promise<Outcome<string | undefined>> {
+    if (!REMOTE_NAME.test(remote)) return failed('not a remote name')
+    const prefix = `refs/remotes/${remote}/`
+    const args = ['symbolic-ref', '--quiet', `${prefix}HEAD`]
+    const result = await run(cwd, args)
+    if (result.code === 1) return succeeded(undefined)
+    if (result.code !== 0) return failed(describe(args, result))
+    const ref = result.stdout.trim()
+    return succeeded(ref.startsWith(prefix) && ref.length > prefix.length ? ref.slice(prefix.length) : undefined)
+  }
+
   /** The message of the newest reflog entry of a reference, e.g. `update by push`; `undefined` when it has no reflog. */
   async function reflogSubject(cwd: string, ref: string): Promise<Outcome<string | undefined>> {
     if (!isRev(ref)) return failed('not a reference')
@@ -744,10 +810,10 @@ export function createGit(runner: GitRunner = realGitRunner) {
 
   // `run` stays inside: it takes any arguments, so exporting it would let a caller start merge, push or update-ref past every check below.
   return {
-    toplevel, currentBranch, resolveCommit, branchTip, mergeBase, isAncestor,
-    changedFiles, entryAt, sameContent, taskTrailers, lastTaskCommit,
-    listWorktrees, ensureWorktree, removeWorktree, prepareGateWorktree,
-    trunkUpstream, trunkRefs, reflogSubject, lsRemote,
+    toplevel, currentBranch, resolveCommit, treeOf, branchTip, mergeBase, isAncestor,
+    changedFiles, entryAt, sameContent, taskTrailers, lastTaskCommit, commitsBetween, stagedPaths,
+    listWorktrees, ensureWorktree, removeWorktree, discardWorktree, prepareGateWorktree,
+    trunkUpstream, trunkRefs, remoteUrl, remoteHeadBranch, reflogSubject, lsRemote,
   }
 }
 

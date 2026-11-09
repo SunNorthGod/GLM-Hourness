@@ -30,7 +30,7 @@ M7 在编排层包 `dsh-hourness` 里加两行，都默认禁用：`glm-hourness
 - 规则板最小一片进了开始条件与验证（R4-F6，`d-rules-peak-slice`，§9.1、§9.2、§10.1、§10.3）：E4 与 E8 的两处读对着 `src/shared/peak-mode.ts` 写，不再「没合入就不写」；片子晚于 E4 时由 E4 之后的第一个提交补上；开始条件多一条。
 - 八道代码里的门写了首日模式（R4-F7，`docs/CHARTER.md` 0.7，§12.1）：全部首日 `enforce`，是对「写在代码里的新门禁先影子」的例外，agent 定、人可推翻，理由与推翻后的办法（先影子，按 M4 的 `PROMOTION` 转生效）逐道写在表里，放行稿「替你定了的方向」里让人看到。
 - 运行时文件进项目的 `.llm/`（R4-N1，`d-rules-in-repo`，§2.1）；harness 条目的 `tell` 是 `{text, wake}`，表里补 `wake`（R4-N2，§3.11.1）。
-- 评审里其余的发现不在本稿改，一条不丢，何时改见 §18.2：R4-F4（`trunkAdvanceFor`）在 E7 合入之前；R4-F5（周报晨报加规则板与循环板的几节、每周至多三件的排序）在 P2 开工之前；R4-F10（M4 0.4 的几条）中的 `PROMOTION` 一条在 P2 之前，其余在实现中；R4-N3 到 R4-N10 各有时间。
+- 评审里其余的发现不在本稿改，一条不丢，何时改见 §18.2：R4-F4（`trunkAdvanceFor`）在 E7 合入之前；R4-F5（周报晨报加规则板与循环板的几节、每周至多三件的排序）在 P2 开工之前；R4-F10（M4 0.4 的几条）中的 `PROMOTION` 一条在 P2 之前，申报接缝一条已在 2026-11-04 接上（§3.2.1），「草稿区为空」随 E7 的 `trunkCheck`，其余在实现中；R4-N3 到 R4-N10 各有时间。
 
 0.4 与 0.3 不同的地方（评审第 1 轮与接缝裁定，§17）：
 
@@ -415,6 +415,10 @@ Returns {"task":"task-12","attempt":1,"childId":"hz-task-12-a1-k3x9ab","role":"w
 
 纠偏的正路：`If the task needs this file, ask the main agent with ask_main; it can widen the write scope, then resubmit your plan.`；例外：`If the file belongs to another task, report it in your handback under questions.`
 
+**申报接缝（0.6 修订，2026-11-04；m4 设计 0.6 §5.9 的 worker 一侧，R4-F10「谁后合入谁接」在 E6 合入批接上）。** worker 的写被判到工作树之外（§3.2.1 第 2 条的拒绝支）时，先问 guard 行的服务 `glmHournessRequests`（`requestsService(ctx)`，`src/guard/request-service.ts`；行不在或成员形状不对时读不到，行为照旧，行健康报一次）：`peekGrant({agent, tool, args, base})` 为真就不拒，调 `next()` 放行给 guard 行——圈禁判拒、放行簿按派发链的根匹配、使用时核对与备份、消耗放行、写 `GrantRecord`（m4 §5.6），`worker-scope` 的命令记录记 `allowed`。`peekGrant` 为假则照拒，并问 `outsideDenial({agent, tool, args, base, task})`：返回 `{ref, exception}`（目标出了项目；判法按 F19 用目标最近存在目录的项目根，不用圈禁根，worker 写主检出拿不到编号）时，纠偏的「例外」一句换成返回的 `exception`，违规记录带 `ref`；返回 `undefined`（目标在项目里、只是出了工作树，或 guard 行不在）时纠偏照上面的原样，不发编号。worker 照例外一句调 `ask_main`，问题里带编号与目标，`assumption` 写明没回答就交回并把编号写进 questions；主 Agent 拿编号调 `request_exception`（编号登记的派发链的根就是它）、把申报文字放在回复末尾，人回「可以」之后主 Agent 用 `answer_worker` 回那条 `ask_main`，worker 原样再调一次，`peekGrant` 命中、guard 行消耗放行；30 分钟内第二次同样的调用又被拒时拿新编号（m4 §5.9 第 5 步）。时限照 m4：`ask_main` 等 20 分钟（`ASK_WAIT_MS`），申报等 2 小时，放行 30 分钟。`openRequests` 不在此处：它是自动推进的停等（§3.9.5，E8 接 `goals.block`，原因码 `hourness-waiting-human`）。跟进记录器的结算（带编号的 `ask_main` 记 `right-path`）随四道门改经 `installRuleGate` 一起接（m4 §18 第 5 条的谁后合入谁改；接之前按 m4 写明的「改之前」状态，结算记 `other`）。L2：`tests/execute-row.spec.ts` 的申报接缝一例（放行命中不拒、出项目带编号与申报句、项目内原样不带编号、服务不在照旧——已有的工作树外一例兼作对照）；L3：`guard-request-worker`（m4 §14.1）。
+
+**M4 `scratch-only` 的一处豁免（0.6 修订，2026-11-06；E9 真实模型第 2 次运行的发现）。** M4 的 `scratch-only`（`src/guard/scratch.ts`）拒绝在没有同类已跟踪文件的目录里新建脚本，正路是 `request_exception`，要人批。登记的 worker 照已批计划在任务工作树里新建 `src/sum.mjs`、`src/sum.test.mjs` 时被它拒了 6 次，worker 与主 Agent 各申报两次，自动推进停在 `hourness-waiting-human`，无人值守跑不到完成：任何第一份文件开了新源码目录的任务都要人逐个文件批。豁免的条件是合取：调用方是 `dispatch_task` 登记的派发（登记表里有它）、角色 `worker`（不是审查、目标整体审查或检查）、它的 agent 还活着、计划是 `approved`（`quick` 的 `skipped` 与获批之前的 `required` 都不算）、写目标解析后在它的工作树里（不是工作树根本身，不在 `.git` 里），且相对工作树根的路径在已批计划各步 `paths` 的并集里或任务当前的 `writeScope` 里（图取执行行按修订号缓存的那份）。判定在执行行：服务 `glmHournessExecute` 加第四个成员 `inApprovedScope(agentId, target)`，纯函数是 `src/execute/attempts.ts` 的 `writesPlannedFile`；guard 行（`src/guard/index.ts`）每次文件工具写入时问它，答 `true` 时把 `approvedScope` 交给 `scratchOnly`，规则直接放行；服务不在、形状不对或抛错都按 `false`。其余情形照旧判：没登记的会话（包括主 Agent 与普通子 agent）、范围与计划之外的路径、计划获批之前、执行行不在。理由：已批计划里的文件是这件活的源码，不是一次性脚本；写入范围与计划的边界由本节的 `worker-scope` 守，草稿区的检查（`check_commit` 的 `scratch_left`，§3.8.3）照旧。L2：`tests/guard-scratch-worker.spec.ts`（guard 行在假宿主上、真 git 工作树里：已批计划的 worker 新建计划里的两个脚本放行、范围内计划外的也放行；没登记的子 agent、主 Agent（含它自己的 worker 持有同一路径的已批计划时）、范围与计划之外、计划未批、执行行不在都拒；`writesPlannedFile` 的各支）；两例放行在改动之前失败。`tests/execute-row.spec.ts` 钉住执行行提供的第四个成员。
+
 #### 3.2.2 `dispatch-chain-readonly`：派发链里不在登记表的 agent 只读
 
 取代 M3 `design-before-release` 的「有效阶段为 `release` 或之后：放行」一行。M3 的规则按派发链找根（`dispatchRoot`，M3 §3.3.3）；根是主 Agent、写调用方不在登记表里时：执行服务在（执行行启用）→ 拒绝，越界一句 `In a main-agent session only dispatched task workers write; you were started with the plain subagent tool.`，正路「Read, search and report back; the main agent dispatches writing work with dispatch_task.」；执行服务不在 → 保持 M3 的行为（`release` 之后放行）。设计期（放行之前）照旧按 M3 拒绝。M3 的身份节边界一句与 `main-agent-no-write` 的正路在执行服务在时同样改为「writing work goes to workers you dispatch with dispatch_task; subagents started with the subagent tool only read」，否则主 Agent 会先走一次必被拒绝的路（0.2 评审 F18）。这条规则改的是 M3 的文件 `src/guard/main-agent.ts`，判定经服务 `glmHournessExecute.isWorker(agentId)` 取得，guard 目录不导入执行目录。
@@ -473,7 +477,7 @@ worker 与它派出的 agent（派发链里、根是主 Agent、不是主 Agent 
 通过：
 1. harness 以 `harness` 身份改任务正文：把正文里 `## 计划` 开头的一节（没有就追加）换成渲染后的计划（`第 <版本> 版 · 等主 Agent 审 · 摘要 <plan digest>`，每步一行标题、一行路径与验证层级），版本从 1 起，每次通过加一。写正文失败时照样继续（计划的事实源是 worker 会话里这次工具调用的参数），健康表记降级。
 2. 在请求表里登记一个请求 `{id: 'R-<6 位>', kind: 'plan', child, task, version, digest}`，给主 Agent 送一条通知（§3.4.3），正文是渲染后的计划与 `answer_worker` 的用法。
-3. 工具调用不返回，等主 Agent 回应，上限 30 分钟（常量 `PLAN_WAIT_MS`）。等待期间 worker 的回合开着，驱动器不会开下一拍（它等子 agent），主 Agent 由通知唤醒（空闲时 `followup`，运行中 `steer`）。
+3. 工具调用不返回，等主 Agent 回应，上限 30 分钟（常量 `PLAN_WAIT_MS`）。等待期间 worker 的回合开着，驱动器不会开下一拍（它等子 agent），主 Agent 由通知唤醒（空闲时 `followup`，运行中 `steer`）。主 Agent 空闲且 goal 活跃时也用 `followup`，不用唤醒表里那一格的 `inject`：驱动器在等这个 worker，不唤醒的消息等不到下一步（2026-11-06 真实模型运行，§3.4.3）。
 4. 回应或超时之后返回：`{status: 'approved' | 'revise' | 'timeout', version, text?}`。超时时提示 worker：`No review within 30 minutes; hand back with status plan-pending.`（主 Agent 之后可以批这一版并重新派发，新的一次派发直接沿用已批的计划）。
 
 #### 3.3.3 改计划
@@ -510,7 +514,7 @@ worker 之间不直接说话：DSH 已经拒绝；简报里写明「需要别的
 
 #### 3.4.3 harness 发给主 Agent 的消息
 
-都用 `createUserNotice('glm-hourness-execute', 摘要, 正文, {hournessExecute: {...}})`（来源种类非空、其余字段原样保存，`docs/DESIGN.md` §2.4a；来源不是 `user`，所以不会被 `update_goal` 当成人直接说的话，tool-goal:44–52）。主 Agent 运行中用 `steer`，空闲用 `followup`（agent-loop:806–811）。事实字段：`{event: 'plan' | 'question' | 'handback' | 'review' | 'check' | 'advance' | 'stale' | 'drive', task, attempt, childId, request?}`。这些是请求与事实的通知（机制）；「碰到某件事就去做」的提醒是循环板条目的正文（§2.5），来源为 `glm-hourness-loop`。
+都用 `createUserNotice('glm-hourness-execute', 摘要, 正文, {hournessExecute: {...}})`（来源种类非空、其余字段原样保存，`docs/DESIGN.md` §2.4a；来源不是 `user`，所以不会被 `update_goal` 当成人直接说的话，tool-goal:44–52）。主 Agent 运行中用 `steer`，空闲用 `followup`（agent-loop:806–811）；`plan` 与 `question` 两种在主 Agent 空闲且 goal 活跃时同样用 `followup`（`deliver` 的 `wakeIdle`），因为发出它们的 worker 开着调用等回应，驱动器开下一轮前要等这个 worker（goal-round-driver:132，subagent:1296），`inject` 会一直没人读到超时（2026-11-06 真实模型运行查到）。事实字段：`{event: 'plan' | 'question' | 'handback' | 'review' | 'check' | 'advance' | 'stale' | 'drive', task, attempt, childId, request?}`。这些是请求与事实的通知（机制）；「碰到某件事就去做」的提醒是循环板条目的正文（§2.5），来源为 `glm-hourness-loop`。
 
 收件人是当前的主 Agent（评审 N7）：通知、worker 的计划与问题请求，一律送给 M3 `mainAgentOf(userHome, graphDir)` 此刻给出的持有者会话，每次送之前重取，不用派发时记下的 `parent`。`answer_worker` 认的也是当前持有者：调用方 `isMainAgent` 为真，就能回应这个项目登记表里的任何一条请求，包括前任主 Agent 派出的 worker 的。人用 `/wish here` 把主 Agent 移到另一个会话之后：
 
@@ -848,6 +852,8 @@ notTaken:   不先**放弃这件活**，放弃了目标会少一块
 标 E3-9 的写法和行答复 E3 的独立评审（`review-e3.md` 发现 E3-9）。评审在临时仓库里逐条跑过：主检出在另一个分支 `feature` 上时，`git push . feature:main`、`git branch -M feature main`、`git worktree add -B main ../wt feature`、`git pull . feature:main`、`git symbolic-ref refs/heads/main refs/heads/feature` 各自把 `L` 挪到了没检查过的 `feature` 提交；`git push . feature:refs/remotes/origin/main` 把 `T` 挪了，真正的远端没动。原表漏它们的原因：`pull` 一行只管主检出在主干上的情形，refspec 一行只写了 `fetch`，推送各行只管上游远端。执行后的比对仍会在事后发现这六条（走「不成立」一支，`T` 一支按推送判），所以缺的是预防，不是发现。上面各行的判定就是这六条的判定。代码和用例落在 E1b（写法分类，输入是解析好的 git 调用）与 E7（执行前监听器，拒绝用例和「今天必败」断言）；E3 的 `src/execute/git.ts` 不分类写法。
 
 拒绝的纠偏（四段）：事实 `<主干> would move from <O> to <N> without a passed merge check (<缺什么>).`（推送写 `<上游>/<主干> would be pushed from <T> to <N> …`；改跟踪引用写 `<上游>/<主干> is the harness's view of the published main branch; only git fetch updates it.`）；越界 `The main branch moves only to a commit the harness checked.`；正路 `Build the commit off the main branch (for example in the task's worktree), run check_commit <commit>, then fast-forward <主干> with git merge --ff-only <commit>.`，拉取时写上面的三步，底线清单不满足时另写 `dispatch a full review of the task that changed <f>`；例外 `none`。进违规流水，规则 id `execute:trunk-advance-checked`。
+
+执行前放行时（R4-F4，2026-11-04 随 E7 补）：本地主干的前进结果可预知、`advanceOk(O, N)` 成立时，调用 `next()` 之前按 `exec.callId` 把 `{branch, from: O, to: N}` 记在内存里，`post-execute` 或 60 秒后删；规则板经 `glmHournessExecute.trunkAdvanceFor(callId)` 读它。执行行的这道门与执行边界规则都装在规则板的门之外（后装的 `prepend` 在外层），被拒的调用到不了规则板。
 
 执行后（`tools/post-execute`，成功与失败的调用都看）：重读 `L` 与 `T`。都没变就什么都不做。`T` 变了见下面「远端跟踪引用变了」一段。`L` 变到 `N'`：
 
@@ -1308,7 +1314,7 @@ Done tasks stay done unless you reopen them. When you cannot tell 1 from 2, take
 | --- | --- | --- |
 | `glmHournessLoops`：`contribute(source, contribution)`、`emit(event)`；`Contribution.run`；读取函数 `loopsService(ctx, problem)` | 交默认条目、事件声明与 harness 动作；交事件（§2.5） | 循环板设计 0.6 §3.1（`src/loops/service.ts`）；条目的 `tell` 是 `{text, wake}`（0.6 §2.3） |
 | `glmHournessPeakMode`（`PEAK_MODE_SERVICE`，规则板 0.10 §7.2 的 `PeakModeService`）：`stateFor(sessionId)` 的档位 `level`、`glmWorkerCap` 与 `until`；`peakHoldFor(sessionId)` 的 `{level, until}`；读取函数 `peakModeService(ctx, problem?)`。只此三样，都不为主 Agent：主 Agent 不受高峰影响（`d-main-agent-peak-exempt`） | 少做上限（§3.1.2）；高峰里停住（§3.9.5） | 规则板设计 0.10 §3.6、§7.2、§16.1（`src/shared/peak-mode.ts`，最小一片就交它） |
-| `glmHournessExecute`（本稿提供）：`isWorker(agentId)`、`runAction(action, record)` | M3 的 `design-before-release`；循环板执行 harness 条目 | §2.5、§3.2.2 |
+| `glmHournessExecute`（本稿提供）：`isWorker(agentId)`、`inApprovedScope(agentId, target)`、`trunkAdvanceFor(callId)`、`runAction(action, record)` | M3 的 `design-before-release`；M4 `scratch-only` 的豁免；循环板执行 harness 条目 | §2.5、§3.2.1、§3.2.2 |
 
 git 的事实（不是 DSH 的契约，L2 在临时仓库里钉住）：推送成功时 git 更新远端跟踪引用并在它的 reflog 写 `update by push`；拉取写 `fetch` 或 `pull` 开头的说明（非裸仓库默认 `core.logAllRefUpdates=true`，`refs/remotes/` 下的引用有 reflog）；全局选项 `--no-replace-objects` 让读取不受 `git replace` 影响；`git ls-remote <远端> <引用>` 只读远端。
 
@@ -1957,16 +1963,16 @@ git 在 L2 用临时目录里的真实 git 仓库测：建工作树与分支、�
 
 | 发现 | 何时改 | 为什么能晚 | 做什么 |
 | --- | --- | --- | --- |
-| R4-F4（MEDIUM）缺 `glmHournessExecute.trunkAdvanceFor`，且与规则板的门谁在外层没说 | 实现中，E7 合入之前 | 规则板的整块门不在自举路径上（最小一片没有门） | `glmHournessExecute` 加第三个成员 `trunkAdvanceFor(callId): {branch, from, to} \| undefined`；§3.8.4 执行前一节加「`advanceOk` 成立、结果可预知时，调用 `next()` 之前按 `exec.callId` 记在内存里，`post-execute` 或 60 秒后删」；L2 三例（放行的 `merge --ff-only` 之后假规则门读得到、被拒绝的读不到、脚本里的前进读不到）。§2.5 的接口一条已指向这里 |
+| R4-F4（MEDIUM）缺 `glmHournessExecute.trunkAdvanceFor`，且与规则板的门谁在外层没说 | 已做（2026-11-04，E7）：服务加了 `trunkAdvanceFor`，§3.8.4 执行前一节加了那一句，L2 三例在 `tests/execute-advance.spec.ts` | 规则板的整块门不在自举路径上（最小一片没有门） | `glmHournessExecute` 加第三个成员 `trunkAdvanceFor(callId): {branch, from, to} \| undefined`；§3.8.4 执行前一节加「`advanceOk` 成立、结果可预知时，调用 `next()` 之前按 `exec.callId` 记在内存里，`post-execute` 或 60 秒后删」；L2 三例（放行的 `merge --ff-only` 之后假规则门读得到、被拒绝的读不到、脚本里的前进读不到）。§2.5 的接口一条已指向这里 |
 | R4-F5（MEDIUM）周报与晨报没有加规则板、循环板要的几节，每周至多三件没有排序 | 实现中，P2 开工之前 | 周报晨报在骨架之后（P2） | §3.12.4 加一张表（节名、读什么、至多几项、服务不在时的话、对应的 `askDraft` 种类 `stale-rules`、`stale-loops`、`fix-script`）；写定优先序（建议：修脚本 > 加类 > 升降 > 删规则 > 删循环板条目；合计至多 3 件）；`operate.weekly` 提醒文字、m7-8 第 3 条、§3.10 晨报的规则板一节同批改；`d-script-timeout` 的「反复超时」一节随此。0.5 已在 §1.1 的 `d-script-timeout` 行写明 |
-| R4-F10（MEDIUM）M4 0.4 写给 M7 的几条没有处置 | 第 2 条（`PROMOTION`）在 P2 开工之前；第 1、3、4 条实现中，M4 的 G1/G4 合入时「谁后合入谁改」 | M4 不在自举路径上 | §7 的 M4 一行已加（指向这里）；E4 照 main 上现有的 guard 框架写；§3.12.2 引用 `PROMOTION` 并采用 M4 的含义，`ladderProposals` 经 `classifyRecord` 读；写明 `requestsService(ctx)?.peekGrant`、`outsideDenial`、`openRequests` 与服务不在时行为不变；汇合门禁在服务在时多「草稿区为空」一步。§12.1 已按 M4 的 `RuleMode`、`PROMOTION` 写了代码里的门的转生效 |
+| R4-F10（MEDIUM）M4 0.4 写给 M7 的几条没有处置 | 第 2 条（`PROMOTION`）在 P2 开工之前；第 3 条（`peekGrant`/`outsideDenial`）已在 E6 合入批接上（2026-11-04，§3.2.1 的申报接缝）；第 4 条（汇合门禁的「草稿区为空」）已做（2026-11-04，E7：guard 行在时 `check_commit` 拒 `scratch_left`，`trunkCheck` 第一步同查）；第 1 条（`installRuleGate` 取代各装各的监听器）随四道门的迁移，接之前的「改之前」状态按 m4 写明 tolerated；`openRequests` 的停等已做（2026-11-05，E8：持有者的 goal 在 active 而 `openRequests` 不空时以 `hourness-waiting-human` 停住，申报都结了之后恢复，实施计划 D3） | M4 不在自举路径上 | §7 的 M4 一行已加（指向这里）；E4 照 main 上现有的 guard 框架写；§3.12.2 引用 `PROMOTION` 并采用 M4 的含义，`ladderProposals` 经 `classifyRecord` 读；§3.2.1 已写明 `requestsService(ctx)?.peekGrant`、`outsideDenial` 与服务不在时行为不变，`openRequests` 归 §3.9.5（E8）；汇合门禁在服务在时多「草稿区为空」一步。§12.1 已按 M4 的 `RuleMode`、`PROMOTION` 写了代码里的门的转生效 |
 | R4-N3（NIT）几处旧引用 | 下一次改这些行时；不挡任何步 | 只是引用 | 0.5 改 E1b 与 §7 时已把循环板、规则板、M3、plain-ui 的版本换成当前的；版本说明里 0.4 与 0.3 的原文保留作历史，不改；「依据：main」已换成 `ee726c3` |
 | R4-N4（NIT）`mainAgentOf(userHome, graphDir)` 的参数会变 | E4 开工之前，M3 0.5 定稿后 | M7 只按名字引用 | §7 的 M3 一行已写「参数以 M3 0.5 为准」；§3.4.3 里的旧签名在 M3 0.5 定稿时改 |
 | R4-N5（NIT）M3 附录 §9 第 7 条的两件小事 | （a）0.5 顺带做了：§2.1 的 `git-snapshot.ts` 一行补上 `gitRisk`。（b）E4 开工之前 | 一句话 | （b）在 §3.1.3 加一句：M7 走 `startActivation` 加 `agentOptions`（subagent:293–303、315–329），不经 `subagent` 工具的 `modelSelectionSettings`，没有允许清单，所以不评估它 |
 | R4-N6（NIT）少做上限的计数口径与规则板字面不同 | 记在给 `rules` 的批注里（`graph-ops-v05.json`），0.5 已写 | 只是说明有意 | M7 不算 `check_commit` 的检查（不跑模型），把目标整体的审查算进去；与规则板 §3.6、§16 的字面不同，是有意的 |
 | R4-N7（NIT）被不做档排队的 worker 交回 `blocked` 时怎么算 | 整块规则板的门合入之前（E9 之后） | 不做档的排队是整块规则板的门，自举期间不生效 | §3.6.2 第 7 步写明：交回 `blocked`、`summary` 里带规则板单号的，不算一次失败的派发（不进审查或检查的停下计数），等规则板的唤醒再派 |
 | R4-N8（NIT）§10.3 第 1 条「骨架场景」没点名 | 0.5 顺带做了 | 同一句话 | §10.3 第 1 条已点名八个场景（含新加的 `glm-exec-modules`） |
-| R4-N9（NIT）建议把 E8 拆成 E8a 与 E8b | E7 合入之后、E8 开工之前，由编排方定拆不拆 | 排期建议，不改任何行为；循环板不在自举路径上，E8b（交条目、交事件、看门、`actions.jsonl`）本来就只能对着假循环板测 | 拆的话 E8a 是自动推进、完成门禁、对账、退路执行者、两层循环的后果，E8b 排在循环板合入之后 |
+| R4-N9（NIT）建议把 E8 拆成 E8a 与 E8b | 已定（E8，2026-11-05）：不拆，循环板已在 main，接缝对着真实的 `validateContribution` 与 `createRegistry` 测（实施计划 D1） | 排期建议，不改任何行为；循环板不在自举路径上，E8b（交条目、交事件、看门、`actions.jsonl`）本来就只能对着假循环板测 | 拆的话 E8a 是自动推进、完成门禁、对账、退路执行者、两层循环的后果，E8b 排在循环板合入之后 |
 | R4-N10（NIT）metrics 0.2 写给 M7 的几条 | 指标流水定稿时，由编排方找人定 | metrics 是半成稿；比率进不进主 Agent 的对话是与 `CHARTER.md` §8 的冲突，要按方向性岔路问人，M7 自己改不了 | M7 不改；§7 的指标流水一行已记下这几条 |
 | R5-F4（MEDIUM）模块设计的独立评审归 M7 的派发，0.5 没有处置（编排方已裁定：改法 A，0.6 写进设计，不再留空） | 决定：0.6（2026-10-30）。做：E1a 的 `isDesignReview` 与门禁跳过的纯函数；E4 合入之前，记录形状交给 M3（`graph-ops-v06.json` 给 `m3` 的批注，M3 第 9 步在 `moduleReleaseGate` 加第 8 项）；E4 的派发与 `not_released` 跳过；E6 的交回处理与记录；L3 `glm-exec-modules` | 产品的模块评审不在自举骨架里；本仓库自举不受影响（本仓库的模块设计评审由 Kiro 工作流做，不走这条路）。派发的那一半要动 `briefGate` 的 `not_released` 一行，所以在 E4 合入之前决定，现已决定 | 见 §3.7.5：`kind: review`、写入范围为空、`source` 指向模块设计决策的任务，由 harness 在 `dispatch_task {id: <模块 id>}` 时建；模块没放行也派得出去（目标层照查）；记录 `设计审查 · <childId> · <APPROVED\|CHANGES_REQUESTED> · 方向清单 <digest> · 挡路 <n> · 派出 <at>`，M3 数这一项。放弃改法 B（产品里不做并在放行稿写明）的理由：`d-design-onepage` 里人定的流程包含这一步，删掉等于删去人定过的东西 |
 | R5-N3（NIT）`onepage.md` 仍是 0.4，验收字句的草稿也是 0.4 的 | 0.6 同批做完（编排方，设计之外） | 挡的是人的放行，不挡设计稿 | `onepage.md` 按 0.6 重写（模块一级、宪章例外、R5-N1 第 2 点的字句、「放行」一节），`graph-ops-v04-pending.json` 的 m7-2、m7-3、m7 重写，见 §14 |

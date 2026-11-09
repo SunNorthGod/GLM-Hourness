@@ -1,0 +1,43 @@
+{
+  "id": "docs-at-hand-sync",
+  "type": "task",
+  "title": "同步核对：交回一行与审查一条（等 M7）",
+  "why": "改了代码而组件文档没动时，交回里有一行说明、审查有一条核对",
+  "status": "approved",
+  "parent": "docs-at-hand",
+  "kind": "implement",
+  "acceptance": [
+    "交回结构加可选的 docs 一行，缺口时往交回摘要批注写一句，审查清单一条；不加规则、不拒绝交回",
+    "L2；L3 随 M7 执行探针（glm-exec-docs）"
+  ],
+  "writeScope": [
+    "src/execute/",
+    "src/lessons/docs.ts"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "m7"
+    },
+    {
+      "type": "source",
+      "to": "docs-at-hand"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-06T19:09:02.400Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "设计 0.3 第三件：同步核对并进交回结构与审查清单，等 M7 合入 main",
+      "relay": "你自己把握好这个度吧反正，尽量融合进我们的流程内而不是加越来越多的东西",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-09T20:09:15.875Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "sync 落地（504048ea，并入 main，2026-11-10）：交回一行——HANDBACK_SCHEMA.docs 可选一行（1–300 字符），done 交回与底线共用同一份 git diff 读数、组件按 head 提交的树判（git.entryAt，不看工作盘）、缺口 docsGaps（增改删都算、组件自己的文档除外、改名按删加）、批注行 Docs: 前缀渲染进批注与主 Agent 通知、git 失败降级 degraded；审查简报 Context 带交回 docs 行、审查清单一条常在（句内自带 if）。偏离三条留底 impl-plan（前缀渲染、常在清单、探针 check 5 按 E6 先例放宽）。"
+    }
+  ]
+}

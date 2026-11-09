@@ -357,6 +357,18 @@ test('an approved script is handed back to be run with its timing, and only when
   assert.equal(other.refused.length, 1)
 })
 
+test('a caller that cannot run scripts says so for an approved one: it is not handed back, it is judged by its failure setting, and the words are the caller\'s', () => {
+  const caller = { approved: new Set(['r-script']), notRunHere: 'is not run by the tool-call gate yet' }
+  const plain = judge(inputOf({}, [peak(true)]), [scripted()], caller)
+  assert.deepEqual([plain.effect, plain.pending, plain.refused.length], ['allow', [], 1])
+  assert.match(plain.refused[0]?.reason ?? '', /The script of rule r-script is not run by the tool-call gate yet, so it was not run\. The rule's failure setting lets the call through\./)
+  const strict = judge(inputOf({}, [peak(true)]), [scripted({ action: { kind: 'script', script: { file: 'docs/rules/scripts/r-script.mjs', sha256: SHA, lang: 'node' }, onError: 'block' } })], caller)
+  assert.equal(strict.effect, 'block')
+  assert.match(strict.hits[0]?.reason ?? '', /is not run by the tool-call gate yet/)
+  const unapproved = judge(inputOf({}, [peak(true)]), [scripted({ id: 'r-other-script' })], caller)
+  assert.match(unapproved.refused[0]?.reason ?? '', /is not approved on this machine/, 'a script nobody approved is said not to be approved, whoever the caller is')
+})
+
 test('a stored script whose timing is out of range is not run either', () => {
   const broken = scripted({ action: { kind: 'script', script: { file: 'docs/rules/scripts/r-script.mjs', sha256: SHA, lang: 'node' }, timeoutSeconds: 99 } })
   const result = judge(inputOf({}, [peak(true)]), [broken], { approved: new Set(['r-script']) })

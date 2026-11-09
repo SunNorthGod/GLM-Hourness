@@ -20,6 +20,12 @@ export function warnOnceFor(name: string): (key: string, text: string) => void {
   }
 }
 
+/** A row's list of undo hooks: the row pushes what it registers, `drain` runs them last registered first (the cordis dispose order). */
+export function disposerList(): { readonly list: Array<() => void>, readonly drain: () => void } {
+  const list: Array<() => void> = []
+  return { list, drain: () => { for (const undo of list.splice(0).reverse()) undo() } }
+}
+
 /** What is wrong with each session, by kind: a later success under the same kind clears it (`text` undefined). */
 export interface SessionNotebook<Key extends string> {
   readonly note: (sessionId: string | undefined, key: Key, text: string | undefined) => void
