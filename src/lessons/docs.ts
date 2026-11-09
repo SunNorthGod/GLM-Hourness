@@ -35,14 +35,12 @@ function clip(text: string, max: number): string {
 }
 
 /**
- * The component a file belongs to: the nearest directory above the file, below
- * `root` (the root itself is no component), for which `hasAgents` says there is
- * an `AGENTS.md`. The file may be that `AGENTS.md` itself. A file outside the
- * root belongs to none.
+ * The nearest directory at or above `start`, below the checkout root `base`
+ * (the root itself is no component), for which `hasAgents` says there is an
+ * `AGENTS.md`. A directory outside the base belongs to none.
  */
-export function componentDirOf(root: string, file: string, hasAgents: (dir: string) => boolean, api: PathApi & Pick<typeof path, 'dirname'> = path): string | undefined {
-  const base = api.resolve(root)
-  let dir = api.dirname(api.resolve(file))
+function componentAbove(base: string, start: string, hasAgents: (dir: string) => boolean, api: PathApi & Pick<typeof path, 'dirname'>): string | undefined {
+  let dir = start
   for (;;) {
     const relative = api.relative(base, dir)
     if (relative === '' || api.isAbsolute(relative) || relative.split(api.sep)[0] === '..') return undefined
@@ -51,6 +49,38 @@ export function componentDirOf(root: string, file: string, hasAgents: (dir: stri
     if (parent === dir) return undefined
     dir = parent
   }
+}
+
+/**
+ * The component a file belongs to: the nearest directory above the file, below
+ * `root` (the root itself is no component), for which `hasAgents` says there is
+ * an `AGENTS.md`. The file may be that `AGENTS.md` itself. A file outside the
+ * root belongs to none.
+ */
+export function componentDirOf(root: string, file: string, hasAgents: (dir: string) => boolean, api: PathApi & Pick<typeof path, 'dirname'> = path): string | undefined {
+  return componentAbove(api.resolve(root), api.dirname(api.resolve(file)), hasAgents, api)
+}
+
+/**
+ * The components a write scope touches (docs-at-hand design 0.3 §4.1, §5.5):
+ * for every entry the nearest directory that holds an `AGENTS.md` — a
+ * directory entry (a trailing `/`) starts at itself, since such a document
+ * applies to work under it; a file entry starts at its parent — once each, in
+ * the order the scope first touches them, repository-relative. Entries that
+ * name no component (the checkout root, outside paths) contribute none.
+ */
+export function scopeComponents(scope: readonly string[], root: string, hasAgents: (dir: string) => boolean, api: PathApi & Pick<typeof path, 'dirname'> = path): readonly string[] {
+  const base = api.resolve(root)
+  const found: string[] = []
+  for (const entry of scope) {
+    const clean = entry.replace(/\/+$/, '')
+    const start = clean.length === entry.length ? api.dirname(api.resolve(base, entry)) : api.resolve(base, clean)
+    const dir = componentAbove(base, start, hasAgents, api)
+    if (dir === undefined) continue
+    const relative = api.relative(base, dir).split(api.sep).join('/')
+    if (!found.includes(relative)) found.push(relative)
+  }
+  return found
 }
 
 const DECISIONS_HEADING = /^(#{1,6})\s*(?:Decisions|决策)\s*$/i

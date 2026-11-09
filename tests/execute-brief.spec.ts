@@ -388,6 +388,36 @@ test('renderBrief: a quick task and a carried plan change the constraint, earlie
   assert.ok(full.includes('- Rules in effect: writes go to the worktree; no pushes'))
 })
 
+test('renderBrief: a write scope that touches a component carries the component-doc line, right after the write boundary (docs-at-hand design 0.3 §4.4)', () => {
+  const text = renderBrief(briefInput({ docs: ['site/feed'] })).text
+  const line = '- Component doc covering your scope: site/feed/AGENTS.md. Keep it true: update it in the same commits when your change alters what it says; otherwise say in the handback field "docs" why it still holds.'
+  assert.ok(text.includes(line))
+  const lines = text.split('\n')
+  const writeLine = lines.findIndex(entry => entry.startsWith('- Write only inside:'))
+  assert.ok(writeLine >= 0 && lines.indexOf(line) === writeLine + 1, 'the duty sits with the boundary it qualifies')
+  const both = renderBrief(briefInput({ docs: ['site/feed', 'src/other'] })).text
+  assert.ok(both.includes('scope: site/feed/AGENTS.md.') && both.includes('scope: src/other/AGENTS.md.'))
+  assert.ok(!renderBrief(briefInput()).text.includes('Component doc'), 'no component, no line')
+})
+
+test('renderBrief: over the limit the component-doc line yields before the lessons (docs-at-hand design 0.3 §4.4)', () => {
+  const room = BRIEF_LIMIT - renderBrief(briefInput()).text.length
+  const quarter = Math.floor(room / 4)
+  const input = (sizes: { docs: number, lessons: number, details: number, context: number }) => briefInput({
+    docs: [`c${'x'.repeat(sizes.docs)}`],
+    lessons: [`l ${'x'.repeat(sizes.lessons)}`],
+    earlier: [{ outcome: 'blocked', details: [`d ${'y'.repeat(sizes.details)}`] }],
+    context: `c ${'z'.repeat(sizes.context)}`,
+  })
+  const docsOnly = renderBrief(input({ docs: room, lessons: quarter, details: quarter, context: quarter }))
+  assert.deepEqual(docsOnly.truncated, ['docs'])
+  assert.ok(!docsOnly.text.includes('Component doc covering'), 'the line is cut whole, no stub')
+  assert.ok(docsOnly.text.includes('- Lessons that match this task:'), 'the lessons stay')
+  const all = renderBrief(input({ docs: quarter, lessons: room, details: room, context: room }))
+  assert.deepEqual(all.truncated, ['docs', 'lessons', 'earlier', 'context'])
+  assert.ok(all.text.length <= BRIEF_LIMIT + 80)
+})
+
 test('renderBrief: over 9000 characters, lessons go first, then the details of earlier attempts, then the main agent\'s context', () => {
   const room = BRIEF_LIMIT - renderBrief(briefInput()).text.length
   const quarter = Math.floor(room / 4)

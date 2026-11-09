@@ -383,13 +383,15 @@ export interface BriefInput {
   readonly quick?: boolean
   /** Lessons that match the task, one line each; at most five are used. */
   readonly lessons?: readonly string[]
+  /** The components the write scope touches (docs-at-hand design 0.3 §4.4), repository-relative, as the caller read them in the worktree. */
+  readonly docs?: readonly string[]
   /** The rules board's lines for this session, when the rules row is on. */
   readonly rules?: readonly string[]
   /** The commands of `norm-merge-gate`. */
   readonly gateCommands: readonly string[]
 }
 
-type Truncation = 'lessons' | 'earlier' | 'context'
+type Truncation = 'docs' | 'lessons' | 'earlier' | 'context'
 
 export interface Brief {
   readonly text: string
@@ -458,6 +460,7 @@ function body(input: BriefInput, cut: ReadonlySet<Truncation>): string {
     '',
     '## Constraints',
     `- Write only inside: ${scope.length === 0 ? 'nothing' : scope.join(', ')}. Writes elsewhere are refused.`,
+    ...(cut.has('docs') ? [] : (input.docs ?? []).map(component => `- Component doc covering your scope: ${component}/AGENTS.md. Keep it true: update it in the same commits when your change alters what it says; otherwise say in the handback field "docs" why it still holds.`)),
     input.plan !== undefined
       ? `- Your plan (version ${input.plan.version}) is already approved: write inside it. To change it, submit a new version with submit_plan and wait for approval.`
       : input.quick ? '- Quick task: no plan needed.' : '- Before writing, submit a plan with submit_plan and wait for approval.',
@@ -480,20 +483,23 @@ function body(input: BriefInput, cut: ReadonlySet<Truncation>): string {
 /**
  * The text a write worker starts from (§3.5.2), built only from the graph
  * and the facts of the dispatch: the model writes none of it. English, at most
- * 9000 characters; when it is longer, first the lessons, then the details of
- * earlier attempts, then the main agent's context are replaced by a
- * "(truncated)" note, in that order, until it fits. The footer carries the
- * digest of everything above it and the graph revision it was written at.
+ * 9000 characters; when it is longer, first the component-doc line, then the
+ * lessons, then the details of earlier attempts, then the main agent's
+ * context are cut, in that order, until it fits (docs-at-hand design 0.3
+ * §4.4: the component-doc line yields before the lessons — the reminder at a
+ * file names it again on the first write). The footer carries the digest of
+ * everything above it and the graph revision it was written at.
  */
 export function renderBrief(input: BriefInput): Brief {
   const cut = new Set<Truncation>()
   const present: Readonly<Record<Truncation, boolean>> = {
+    docs: (input.docs ?? []).length > 0,
     lessons: (input.lessons ?? []).length > 0,
     earlier: input.earlier.some(attempt => attempt.details.length > 0),
     context: (input.context ?? '').trim() !== '',
   }
   let text = body(input, cut)
-  for (const step of ['lessons', 'earlier', 'context'] as const) {
+  for (const step of ['docs', 'lessons', 'earlier', 'context'] as const) {
     if (text.length <= BRIEF_LIMIT) break
     if (!present[step]) continue
     cut.add(step)

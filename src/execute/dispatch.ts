@@ -23,6 +23,7 @@
  * never undoes the dispatch (step 10).
  */
 import { exec } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { openEngine } from '../graph/engine.ts'
@@ -31,6 +32,7 @@ import type { LoadedGraph } from '../graph/parse.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import { pinsOf, renderPins } from '../graph/pins.ts'
 import { projectOf } from '../data/project-root.ts'
+import { scopeComponents } from '../lessons/docs.ts'
 import { peakModeService } from '../shared/peak-mode.ts'
 import { isGlmModel } from '../shared/route.ts'
 import type { AgentLike, LiveAgentLike, LlmCatalog, ServiceLookup, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
@@ -516,6 +518,10 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
       const plan: PlanStatus = isWorkerRole ? planStatusOf(target, parsed.quick) : 'none'
       const approved = plan === 'approved' ? carriedPlan(target) : undefined
       const section = readPlanSection(target.body)
+      // The components the write scope touches, as the worktree the worker starts from holds them (docs-at-hand design 0.3 §4.4).
+      const docs = isWorkerRole
+        ? scopeComponents(target.writeScope ?? [], resolve(project, worktree!.path), dir => existsSync(join(dir, 'AGENTS.md')))
+        : []
       const brief: Brief = isWorkerRole
         ? renderBrief({
             graph: targetGraph,
@@ -526,6 +532,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
             branch: worktree!.branch,
             base: { branch: worktree!.base, sha: worktree!.baseSha },
             ...(parsed.context === undefined ? {} : { context: parsed.context }),
+            ...(docs.length > 0 ? { docs } : {}),
             earlier,
             ...(approved !== undefined && section !== undefined ? { plan: { version: approved.version, steps: section.steps } } : {}),
             ...(parsed.quick === true ? { quick: true } : {}),

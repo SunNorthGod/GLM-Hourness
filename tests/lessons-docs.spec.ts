@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 import test from 'node:test'
 import type { GraphNode } from '../src/graph/schema.ts'
-import { BODY_MAX, componentDirOf, decisionIdsOf, graphFacts, NOTICE_MAX, pathNotice, type NoticeParts } from '../src/lessons/docs.ts'
+import { BODY_MAX, componentDirOf, decisionIdsOf, graphFacts, NOTICE_MAX, pathNotice, type NoticeParts, scopeComponents } from '../src/lessons/docs.ts'
 
 const withAgents = (...dirs: string[]) => (dir: string): boolean => dirs.includes(dir)
 
@@ -28,6 +28,22 @@ test('on Windows the separators and the case do not matter, and a work tree answ
   assert.equal(componentDirOf('C:\\Repo', 'c:\\repo\\SRC\\a\\file.ts', withAgents('c:\\repo\\SRC\\a'), win), 'c:\\repo\\SRC\\a')
   assert.equal(componentDirOf('C:\\Repo\\.worktrees\\hz-1', 'C:\\Repo\\.worktrees\\hz-1\\src\\file.ts', withAgents('C:\\Repo\\.worktrees\\hz-1\\src', 'C:\\Repo'), win), 'C:\\Repo\\.worktrees\\hz-1\\src')
   assert.equal(componentDirOf('C:\\Repo\\.worktrees\\hz-1', 'C:\\Repo\\.worktrees\\hz-1\\file.ts', withAgents('C:\\Repo'), win), undefined, 'the main checkout is not above a work tree for this purpose')
+})
+
+test('a write scope touches the components of its entries: a directory entry starts at itself, a file entry at its parent, once each, repository-relative', () => {
+  const posix = path.posix
+  assert.deepEqual(scopeComponents(['src/a/b/file.ts', 'src/'], '/r', withAgents('/r/src'), posix), ['src'], 'the file and the directory that holds it share the component')
+  assert.deepEqual(scopeComponents(['src/'], '/r', withAgents('/r/src'), posix), ['src'], 'a directory entry is covered by its own document')
+  assert.deepEqual(scopeComponents(['src/x/', 'src/x/inner/'], '/r', withAgents('/r/src', '/r/src/x/inner'), posix), ['src', 'src/x/inner'], 'the outer entry first, the nested one is the inner entry\'s own')
+  assert.deepEqual(scopeComponents(['src/', 'src/x/'], '/r', withAgents('/r/src'), posix), ['src'], 'one component once, in first-seen order')
+  assert.deepEqual(scopeComponents(['AGENTS.md', 'file.ts'], '/r', withAgents('/r'), posix), [], 'the root itself is no component')
+  assert.deepEqual(scopeComponents(['site/feed/feed.json'], '/r', withAgents(), posix), [], 'no component document, no component')
+})
+
+test('on Windows a scope entry resolves against the work tree root and reports repository-relative', () => {
+  const win = path.win32
+  assert.deepEqual(scopeComponents(['src/guarded/writer.js'], 'C:\\Repo\\.worktrees\\hz-1', withAgents('C:\\Repo\\.worktrees\\hz-1\\src'), win), ['src'])
+  assert.deepEqual(scopeComponents(['src/'], 'C:\\Repo\\.worktrees\\hz-1', withAgents('C:\\Repo'), win), [], 'the main checkout is not above a work tree here')
 })
 
 test('the decisions section lists graph ids: either heading, list items only, ids once, in the order of the document', () => {
