@@ -1,0 +1,26 @@
+{
+  "id": "d-no-run-cap",
+  "type": "decision",
+  "title": "不限同时运行的条数，能开的线全开",
+  "why": "运行被限流停下现在会自动报回编排方，五条上限的理由不在了；真正的瓶颈是探针锁、桌面版和 GLM 高峰时段",
+  "status": "approved",
+  "parent": "orch",
+  "verification": "unverified",
+  "body": "2026-11-07 编排方问人：「M7 合入后能开的活会一下子变多，『同时最多五条』的上限要怎么调？」选项：只读、只写设计的线不占名额，动代码的线仍然最多五条；保持五条不变；不设上限，能开的全开。人选了「不设上限，能开的全开」。不再限制同时运行的条数；依赖已满足、不等人回话的线都开。取代 d-five-runs 的五条上限：它的理由是 Kiro 里的运行被限流停下时不提醒编排方，要等编排方去查才接上，开得越多空等越多；编排已从 Kiro 换到 Cursor 的后台 agent，运行停下会自动报回编排方，这条理由不再成立。编排方同时说明了不随上限消失的硬瓶颈：两把探针锁（.llm/probe-lock、.llm/probe-lock-2）同时最多两个任务跑探针，桌面版只有一个（.llm/desktop-lock），GLM 高峰时段限流。这些瓶颈由各线按 DEVELOPMENT.md §1.1 的锁规则排队，不靠减少开线条数。",
+  "edges": [
+    {
+      "type": "supersedes",
+      "to": "d-five-runs"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-06T17:52:24.936Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人选择不设同时运行条数的上限：d-five-runs 的理由（Kiro 的运行停下不提醒编排方）随编排换到 Cursor 后台 agent 而不成立",
+      "relay": "不设上限，能开的全开",
+      "to": "approved"
+    }
+  ]
+}

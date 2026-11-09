@@ -1,0 +1,84 @@
+{
+  "id": "m5-index-truncation-alarm",
+  "type": "task",
+  "title": "记忆索引装不下时记一笔，指标板上看得到",
+  "why": "项目变大后记忆超出开局索引时，人能从数据上看出来，再决定要不要上更强的检索",
+  "status": "done",
+  "parent": "m5",
+  "kind": "implement",
+  "body": "会话开局与压缩之后的记忆索引因 200 行或 25,000 字符的上限丢掉条目时，交一条指标事件（候选条目数、列出数、丢掉数、用掉的字符、撞的哪个上限、会话），不带条目原文；memory_query 一条都没取到时交一条只计数的事件，不带查询原文。两种事件进指标闭表，计数在指标板或周报现有的记忆一处显示。依据：ORCHESTRATION.md §8.3、§10.6；向量库暂不上的结论见 m5 节点 2026-11-06 批注。",
+  "acceptance": [
+    "索引丢了条目时有一条事件、没丢时没有；memory_query 空结果有一条只计数的事件；两种事件过闭表，不带条目与查询原文；服务不在时不交、不告警",
+    "L2 钉住上面四种情形；指标板或周报上看得到两个计数；ORCHESTRATION §8.3、§10.6 与 HANDOFF 的 M5 一行同批改；门禁全绿，改动在 main 上"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "6b0b8085",
+      "note": "合入 main，门禁全绿、探针 437/437"
+    },
+    {
+      "kind": "check",
+      "ref": "desktop metrics board over CDP",
+      "exit": 0,
+      "note": "截图 .agents/tasks/compact-recall/enable/desktop/shot-metrics-coverage.png（不入库）；记录 .agents/tasks/compact-recall/enable/report.md"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-06T09:04:42.886Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "人 2026-11-06 问项目变大后记忆会不会越来越多、要不要上向量库。编排方答：记忆是只追加的 jsonl，事实 14 天半衰期、开局索引至多 200 行与 25,000 字符，暂不上向量库；建议先在索引装不下时记指标事件，等有数据再定 BM25 还是向量。人回「那就加」。",
+      "relay": "那就加",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-06T09:04:43.437Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 m5-index-truncation-alarm 开工",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-06T10:55:20.264Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "code 步完成：78f77ef9（分支 m5-index-truncation-alarm，未推送）。build、preflight、npm test（3277/3277）、check-lint（73/18/1，无上升）都退出 0；两个计数放在指标板「记录范围」一组的新行，所以欠一次桌面核对。下一步独立评审。"
+    },
+    {
+      "at": "2026-11-06T11:16:08.816Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "独立评审 APPROVED，无挡路（.agents/tasks/m5-index-truncation-alarm/review.json，78f77ef9）。下一步合入；两个计数在指标板「记录范围」一组，合入后要桌面核对。"
+    },
+    {
+      "at": "2026-11-06T11:54:57.215Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "合入 main 6b0b8085（wf_8924e7a9cdb716c0），origin 与 github ls-remote 一致；合入树上门禁全绿，探针 437/437，棘轮 73/18/1 未升。剩验收第 2 条的桌面核对：指标板「记录范围」一组的新行，随下一次桌面重启（transcript-enable 的桌面核对）一起看。记录 .agents/tasks/m5-index-truncation-alarm/report.md。"
+    },
+    {
+      "at": "2026-11-06T18:45:44.007Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "验收第 2 条剩下的桌面核对随 transcript-enable 的桌面重启做完（main 23739f1a 的构建，人的桌面版经 CDP）：面板「指标」页「记录范围」一组有「记忆索引截掉与查询落空」一行，读作「索引截掉 0 次，查询落空 0 次 / 索引截掉 0 次，查询落空 0 次」；控制台没有异常，两包没有新错误。其余验收已在 6b0b8085 合入时满足。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "6b0b8085",
+          "note": "合入 main，门禁全绿、探针 437/437"
+        },
+        {
+          "kind": "check",
+          "ref": "desktop metrics board over CDP",
+          "exit": 0,
+          "note": "截图 .agents/tasks/compact-recall/enable/desktop/shot-metrics-coverage.png（不入库）；记录 .agents/tasks/compact-recall/enable/report.md"
+        }
+      ]
+    }
+  ]
+}

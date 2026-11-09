@@ -23,6 +23,7 @@
  * everything else reads them from here.
  */
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Actor, GraphNode } from '../graph/schema.ts'
@@ -251,7 +252,7 @@ export interface TimingBook {
 }
 
 /** The journal file of a project directory. */
-function timingFile(home: string): string {
+export function timingFile(home: string): string {
   return join(home, 'env-checks', 'timing.jsonl')
 }
 
@@ -281,6 +282,16 @@ export async function readTiming(home: string): Promise<TimingBook | { readonly 
   catch (error) {
     const code = (error as NodeJS.ErrnoException).code
     return code === 'ENOENT' ? { lines: [], bad: 0 } : { error: code ?? (error instanceof Error ? error.message : String(error)) }
+  }
+}
+
+/** The same read, synchronous, for the loop board's page; a failure is an empty journal (the page then shows what the check line gives). */
+export function readTimingSync(home: string): TimingBook {
+  try {
+    return parseTiming(readFileSync(timingFile(home), 'utf8'))
+  }
+  catch {
+    return { lines: [], bad: 0 }
   }
 }
 

@@ -14,14 +14,15 @@
  * the end instead of silently shaping the numbers.
  */
 import { auditPaths, type DecisionRecord, type UsageRecord } from '../memory/audit.ts'
+import { effectCheckLines, effectChecks, type EffectCheck, type JournalRead } from '../memory/effect.ts'
 import { classifyRecord, journalEarliest, type GuardRecord, type LiftRecord } from '../guard/records.ts'
 import { liftRecordPath } from '../guard/lift.ts'
 import { liftLines, renderStamp, ruleLines, type LiftsInput } from '../guard/status.ts'
-import { suppressionLineOf } from '../env/status.ts'
+import { checkTimeouts, suppressionLineOf, timeoutLines } from '../env/status.ts'
 import { runGit } from '../data/git-process.ts'
 import type { SuppressionRecord } from '../env/suppressions.ts'
-import { limitSetting, parseLimits, type LimitLine } from '../env/limit-tool.ts'
-import { lastValues, parseTiming, secondsText, valueSourceText, type TimingLine } from '../env/timeout.ts'
+import { parseLimits, type LimitLine } from '../env/limit-tool.ts'
+import { parseTiming, type TimingLine } from '../env/timeout.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { listOpenItems } from '../graph/projection.ts'
 import type { HistoryEntry } from '../graph/schema.ts'
@@ -77,6 +78,8 @@ export interface ReportInput {
   readonly now?: number | undefined
   /** The metrics journal's facts and its 记录 coverage line, ready-made lines; absent when the caller passed no project. */
   readonly metrics?: readonly string[]
+  /** The checks of the rule proposals whose days fell due in the last seven days (src/memory/effect.ts); absent or empty when there are none. */
+  readonly effects?: readonly EffectCheck[]
 }
 
 /** The local calendar day of an instant, as 2026-10-27. */
@@ -180,39 +183,16 @@ function requestLineOf(records: readonly { ref: string, outcome: string }[], gra
   return `- 申报 ${asked.size} 次：放行 ${approved}（已用 ${grants}、作废 ${voids}）、不放行 ${declined}、没答 ${unanswered}`
 }
 
-/** The checks' timeouts look back this far (design §6.3.1 「看得见」). */
-const TIMING_WINDOW_MS = 7 * 24 * 3600 * 1000
-
 /**
- * The section of the checks' timeouts (design §6.3.1, §3.10): one line per
- * check that has a value, with the value and where it came from (whose
- * estimate, in which session, or that the session was not recorded; then
- * what was wanted when the value is held at the ceiling), the
- * timeouts of the last seven days and the latest one, and the runs dropped
- * from the queue; under it, when the check's last line in limits.jsonl is a
- * raise, the raised ceiling with its day and reason (never a value line's
- * `cap`: a reset shows at once). Empty when the journal has no value line.
+ * The section of the checks' timeouts (design §6.3.1, §3.10): the env
+ * module's facts and lines (src/env/status.ts `checkTimeouts`,
+ * `timeoutLines`), the same computation the status entry `env/timeouts`
+ * hands (status hub design 0.3 §12 M4 row). Empty when the journal has no
+ * value line.
  */
 function timingSection(timing: readonly TimingLine[], limits: readonly LimitLine[], now: number, offsetMinutes: number): string[] {
-  const since = now - TIMING_WINDOW_MS
-  const recent = (line: TimingLine): boolean => !Number.isNaN(Date.parse(line.at)) && Date.parse(line.at) >= since && Date.parse(line.at) <= now
-  const lines: string[] = []
-  for (const [check, value] of lastValues({ lines: timing, bad: 0 })) {
-    const timeouts = timing.filter(line => line.kind === 'timeout' && line.check === check && recent(line))
-    const queued = timing.filter(line => line.kind === 'queue' && line.check === check && recent(line)).length
-    const last = timeouts.at(-1)
-    const late = last?.kind !== 'timeout' ? '近 7 天没有超时' : `近 7 天超时 ${timeouts.length} 次（最近一次：上限 ${secondsText(last.limitMs)} 秒，跑了 ${(last.elapsedMs / 1000).toFixed(1)} 秒，${renderStamp(Date.parse(last.at), offsetMinutes)}）`
-    lines.push(`- ${check}：超时 ${secondsText(value.limitMs)} 秒（${valueSourceText(value, true)}）· ${late}${queued === 0 ? '' : ` · 排队太久没跑 ${queued} 次`}`)
-    const setting = limitSetting({ lines: limits, bad: 0 }, check)
-    if (setting !== undefined) lines.push(`  - 上限已由主 Agent 调高到 ${setting.capS} 秒 · ${renderDay(setting.at, offsetMinutes)}：${setting.reason}；要改回，跟主 Agent 说`)
-  }
+  const lines = timeoutLines(checkTimeouts(timing, limits, now), offsetMinutes)
   return lines.length === 0 ? [] : ['', '## 检查的超时', ...lines]
-}
-
-/** The day of a moment at the report's offset, YYYY-MM-DD; a moment that does not read is written as recorded. */
-function renderDay(at: string, offsetMinutes: number): string {
-  const ms = Date.parse(at)
-  return Number.isNaN(ms) ? at : new Date(ms + offsetMinutes * 60_000).toISOString().slice(0, 10)
 }
 
 /** The section of the asks: what waits for the person, who settled the rest, and how many dispatch calls were made. */
@@ -279,6 +259,7 @@ export function morningReport(input: ReportInput): string {
   const suppressionLine = suppressionLineOf(input.suppressions ?? [])
   if (suppressionLine !== undefined) lines.push(suppressionLine)
   lines.push(...timingSection(input.timing ?? [], input.limits ?? [], input.now ?? Date.now(), offsetMinutes))
+  lines.push(...effectCheckLines(input.effects ?? [], offsetMinutes))
 
   lines.push('')
   lines.push('## 等你定的事')
@@ -331,10 +312,10 @@ export interface ReportOptions {
 /** Reads the project graph of the session that asked for the report; rejects with the reason when it cannot. */
 export type GraphReader = () => Promise<LoadedGraph>
 
-/** The asks of the graph `read` gives, or why it could not be read: the report names the reason and goes on. */
-async function readAsks(read: GraphReader, since: string | undefined): Promise<AskSummary | GraphUnreadable> {
+/** The graph `read` gives, or why it could not be read; read once per report, the asks and the checks of the rule proposals share it. */
+async function readOnce(read: GraphReader): Promise<{ readonly graph: LoadedGraph } | GraphUnreadable> {
   try {
-    return askSummary(await read(), since)
+    return { graph: await read() }
   }
   catch (error) {
     return { unreadable: error instanceof Error ? error.message : String(error) }
@@ -405,6 +386,7 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
   const uncommitted = root === undefined || file === undefined || 'error' in file
     ? undefined
     : await runGit(root, ['status', '--porcelain', '--', 'docs/guard/lifts.jsonl']).then(run => run.code === 0 && run.out.trim().length > 0, () => undefined)
+  const loaded = await readOnce(graph)
   return morningReport({
     decisions: inPeriod(await readJsonl<DecisionRecord>(paths.decisions)),
     violations: inPeriod(wholeViolations),
@@ -419,7 +401,7 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
     pricing: options.pricing,
     problem: options.problem,
     usageScope: gapLines(parseGaps(gapRaw), nowAt, zone, periodStart),
-    asks: await readAsks(graph, since),
+    asks: 'unreadable' in loaded ? loaded : askSummary(loaded.graph, since),
     offsetMinutes: options.offsetMinutes,
     lifts: {
       records: liftRecords,
@@ -428,7 +410,25 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
       ...(uncommitted === undefined ? {} : { uncommitted }),
     },
     ...(metricsLinesOut === undefined ? {} : { metrics: metricsLinesOut }),
+    effects: 'unreadable' in loaded ? [] : await readEffects(loaded.graph, options.metrics, nowAt),
   })
+}
+
+/**
+ * The checks of the rule proposals whose days are up (M5 design §3.6.1): the
+ * graph gives the agreed proposals and the corrections, the metrics journal
+ * of the session's project the denials. The caller gives no checks for a
+ * graph that cannot be read (the section of asks already names why); a
+ * journal that cannot be read makes the denial checks unchecked, with the
+ * reason.
+ */
+async function readEffects(loaded: LoadedGraph, metrics: ReportOptions['metrics'], nowMs: number): Promise<EffectCheck[]> {
+  const journal: JournalRead = metrics === undefined
+    ? { unreadable: '这次调用没有给出项目' }
+    : !('root' in metrics)
+        ? { unreadable: metrics.reason }
+        : await readLog(metrics.root).then(read => ({ events: read.events }), (error: unknown) => ({ unreadable: error instanceof Error ? error.message : String(error) }))
+  return effectChecks(loaded.nodes.values(), journal, nowMs)
 }
 
 /** The facts groups the conversation-facing report carries (§7.3): the task, interception, lift, timeout, stall and report groups, no scores, no burden numbers, no coverage group. */

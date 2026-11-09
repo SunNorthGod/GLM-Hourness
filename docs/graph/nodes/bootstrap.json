@@ -366,6 +366,42 @@
       "actor": "llm",
       "op": "comment",
       "text": "按 d-habits-into-framework：接管的默认表按 ORCHESTRATION.md §7.5 补回死代码与重复检查，Node 加 knip 与 jscpd，Python 加 vulture；Rust 已有 cargo clippy -D warnings 不另加；Go 先不加 staticcheck，写进默认表「没有覆盖」的说明。已有项目走设计 §5.6 的基线办法，输出读不了的不进门禁。交接管线（wf_f008ac0c87ec6943）B5 一并做，设计 §5.5 同批改。"
+    },
+    {
+      "at": "2026-11-05T17:13:47.104Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管线 B5 第 4 部分已推 origin/bootstrap（69da25b）：设计 0.6 的默认表按 d-tests-required-gate 与 d-habits-into-framework 改写（死代码与重复检查补回默认表）。B5 前 1、2 部分为源码与 L2（3b629b0、56f578a）。运行 01:1x 因限流暂停后已恢复。"
+    },
+    {
+      "at": "2026-11-05T20:16:58.320Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管线（wf_f008ac0c87ec6943）B5 bootstrap-paths 做完，六个提交 3b629b0、56f578a、68de8cb、69da25b、d9df637、878c007 已推 origin/bootstrap；最后的树上 build、preflight、npm test（3195/0/0）、探针 427/427 绿，棘轮 73/18/1。按 d-habits-into-framework 补进默认表的死代码与重复检查已在，各工具输出能否被读的试跑有记录。下一步 B5 评审，然后 B6。"
+    },
+    {
+      "at": "2026-11-05T21:29:40.466Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B5 评审 CHANGES_REQUESTED：F1 候选名字没按设计 §8、§12 过滤；F2 提醒的长度上限从 2500 放到 3500 没有记录理由。循环接着修。"
+    },
+    {
+      "at": "2026-11-06T07:55:11.188Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管线（wf_f008ac0c87ec6943）B6 bootstrap-trial 做完，四个提交 ef6f086（源码：trial-env、trial-plan、trial、trial-round，dsh-min 的 sandbox 结构类型，killTree 导出）、4047a30（L2 12/12）、2b4bc95（L3 场景 bootstrap-trial）、aa62ce4（文档）已推 origin/bootstrap。最后的树上 build、preflight、lint、npm test（3277/0）、探针 439/439 绿，棘轮 73/18/1。真实 rc.3 Windows ACL 沙盒上：子进程看不到 GITHUB_TOKEN，写试跑目录外被拒（confinement-limited，EPERM 那一行），脚本里的 git push 没落地，管道起孙进程为 confinement-limited（U1、U4、U7、U8 成立）。行仍默认禁用。下一步 B6 评审；B7 仍等 M7 的 gate-norm.ts、floor.ts 进 main。"
+    },
+    {
+      "at": "2026-11-06T08:49:44.279Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "B6 bootstrap-trial 评审 CHANGES_REQUESTED，2 条挡路：F1 复用的失败的准备命令之后的命令没标 afterSetupFailure（trial.ts:381-383）；F2 宿主在一轮中途退出后，同一份计划的轮次再也不跑（trial-round.ts:143-144）。门禁与探针 439/439 绿。循环接着修（第 11 轮）。"
+    },
+    {
+      "at": "2026-11-06T10:31:19.784Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "接管线（wf_f008ac0c87ec6943）结束：B6 评审两条挡路（F1 复用失败的准备命令后续未标 afterSetupFailure；F2 宿主中途挂掉后同计划的一轮不再重跑）修在 8f036e2，先合入 origin/main（11d6279）；两个提交上四道门禁退出 0（test 3323、3324 过 / 0 失败），探针 446/446，棘轮 73/18/1；B6F 评审 APPROVED，loopState ALL_DONE。B0–B6 全部在 origin/bootstrap（8f036e2，工作树干净），行出厂仍禁用，未合入 main。B7–B10 顺延：B7 等 M7 的 gate-norm.ts 与 floor.ts 进 main，B8、B9 等 M7/M3，B10 等 B7 与 M7 派发。最终报告预计对 origin/m7 有 5 处冲突，对另三条线没有。"
     }
   ]
 }

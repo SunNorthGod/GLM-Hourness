@@ -239,6 +239,25 @@ test('M5\'s lock options: a lock written in another boot is taken over only when
   assert.ok(readdirSync(dir).some(name => name.startsWith('far.jsonl.lock.stale-')))
 })
 
+test('M5\'s lock options: an empty lock file (its creator between creating and writing it) is taken over only after it stayed empty for 500 ms, and not when its creator writes it meanwhile', async () => {
+  const dir = scratch()
+  const empty = join(dir, 'empty.jsonl')
+  writeFileSync(`${empty}.lock`, '')
+  const waiting = clockEnvironment()
+  assert.equal((await appendJournal(empty, idsFold, add(tick('a')), { ...OPTIONS, lock: waiting })).status, 'ok')
+  assert.ok(waiting.now() - START >= 500 && waiting.now() - START < 600, `taken over after ${waiting.now() - START} ms`)
+  assert.ok(readdirSync(dir).some(name => name.startsWith('empty.jsonl.lock.stale-')), 'the empty lock is kept')
+
+  const written = join(dir, 'written.jsonl')
+  writeFileSync(`${written}.lock`, '')
+  const clock = clockEnvironment()
+  let sleeps = 0
+  const creator: LockEnvironment = { ...clock, sleep: (ms) => { if (sleeps++ === 0) foreignLock(written, { at: clock.now() }); return clock.sleep(ms) } }
+  assert.deepEqual(await appendJournal(written, idsFold, add(tick('a')), { ...OPTIONS, lock: creator }), { status: 'busy', lockLost: false })
+  assert.equal((JSON.parse(readFileSync(`${written}.lock`, 'utf8')) as { token: string }).token, 'someone-else', 'the creator\'s lock was not taken over')
+  assert.ok(!existsSync(written), 'nothing was written')
+})
+
 test('the lock file names the writer m5:<row>', async () => {
   const file = join(scratch(), 'j.jsonl')
   let holder: unknown

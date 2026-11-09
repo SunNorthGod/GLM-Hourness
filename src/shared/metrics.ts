@@ -10,10 +10,11 @@
  * named (host kinds, `timeout.*`, `progress.*`, `lift`), plus the ones the
  * sibling designs already fixed — rules board 0.10 §10.5, loop board 0.6
  * §6.10, M7 0.6 §3.16, M6 0.6 §14.2, M3 addendum 0.6 §3.12 and the takeover
- * 0.6 trial. Value lists that a sibling design owns stay there: such fields
- * are typed `string` (id) and only the names are fixed here.
+ * 0.6 trial, and the memory row's two counts. Value lists that a sibling
+ * design owns stay there: such fields are typed `string` (id) and only the
+ * names are fixed here.
  */
-import type { ServiceLookup } from './dsh-min.ts'
+import type { ServiceLookup, SessionLike } from './dsh-min.ts'
 import { buildStamp } from './build-info.ts'
 
 /** The cordis service name the metrics row provides. */
@@ -26,11 +27,22 @@ export const METRICS_SERVICE = 'glmHournessMetrics'
  */
 export const METRICS_ID_PATTERN = /^[A-Za-z0-9_.:@+/-]{1,120}$/
 
+/**
+ * A value for an id field built from outside text (a session id, a tool
+ * name, a node id): itself when it has the shape of an id, else `other`, so
+ * that the event is not refused whole for one field; `none` when there is
+ * no value and the field is required.
+ */
+export function toMetricsId(value: string | undefined): string {
+  if (value === undefined || value === '') return 'none'
+  return METRICS_ID_PATTERN.test(value) ? value : 'other'
+}
+
 /** A key-to-count map (`map` in the field grammar): id keys, integer, boolean or id values. */
 export type MetricsMap = Readonly<Record<string, number | boolean | string>>
 
 /** Who handed an event in: the metrics row, or the row that emitted it through the service (§4.1 `by`). */
-export type MetricsBy = 'host' | 'graph' | 'guard' | 'rules' | 'loops' | 'execute' | 'operate' | 'glm' | 'design' | 'bootstrap' | 'env'
+export type MetricsBy = 'host' | 'graph' | 'guard' | 'rules' | 'loops' | 'execute' | 'operate' | 'glm' | 'design' | 'bootstrap' | 'env' | 'memory'
 
 /** Where a timeout value's limit comes from (`d-timeout-measured`, §4.2). */
 type TimeoutSource = 'estimate' | 'measured' | 'default' | 'ceiling' | 'fixed'
@@ -271,6 +283,18 @@ export interface BootstrapBodies {
 }
 
 /**
+ * The memory row's two kinds (project graph node m5-index-truncation-alarm):
+ * counts only, never a memory's name, description, body or the words of a
+ * query; the session is the envelope's `sid`.
+ */
+export interface MemoryBodies {
+  /** The session index dropped entries at the line or the character cap; `again` when the session had an index before (a compaction removed it). */
+  'memory.index-truncated': { readonly eligible: number, readonly shown: number, readonly dropped: number, readonly chars: number, readonly cap: 'lines' | 'chars', readonly again: boolean }
+  /** A memory_query answered with no entry. */
+  'memory.query-empty': { readonly mode: 'focus' | 'name', readonly type?: 'user' | 'feedback' | 'project' | 'reference', readonly searched: number }
+}
+
+/**
  * One kind's event as a caller hands it in: the kind, the submitter and
  * optionally its own instant at the envelope level, the body's fields under
  * `body` — the same two layers the line stores (§4; two sibling kinds
@@ -290,6 +314,10 @@ export type EmittedEvent =
   | EventsOf<GlmBodies>
   | EventsOf<DesignBodies>
   | EventsOf<BootstrapBodies>
+  | EventsOf<MemoryBodies>
+
+/** One kind's event of a namespace before the sender adds the submitter: the kind and its body (a sender row's sink adds `by`). */
+export type BodyEventOf<B> = { [K in keyof B & string]: { readonly k: K, readonly body: B[K] } }[keyof B & string]
 
 /** What the service takes: an emitted event plus the build stamp `emitMetric` added and the session id the service adds. */
 export type QueuedEvent = EmittedEvent & { readonly v?: string, readonly sid?: string }
@@ -298,6 +326,15 @@ export type QueuedEvent = EmittedEvent & { readonly v?: string, readonly sid?: s
 export interface MetricsWhere {
   readonly sessionId?: string
   readonly dir?: string
+}
+
+/** Where an event of a session belongs: the session and its working directory, each only when it is there. */
+export function metricsWhereOf(session: Pick<SessionLike, 'id' | 'header'> | undefined): MetricsWhere {
+  const cwd = session?.header.cwd
+  return {
+    ...(session === undefined || session.id === '' ? {} : { sessionId: session.id }),
+    ...(typeof cwd === 'string' && cwd !== '' ? { dir: cwd } : {}),
+  }
 }
 
 /** The process-local state the /hourness coverage line reads (metrics design §7.3): what this host's writer dropped, the last background self-check's finding, and the events no project could take. */

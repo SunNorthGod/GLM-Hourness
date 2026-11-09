@@ -11,6 +11,7 @@
  * command to type.
  */
 import { momentText, runLine, type LoopsView, type PeakView, type ViewEntry } from '../../../src/loops/view.ts'
+import { checkCell, type PageTell } from './timeouts.ts'
 
 /** One entry on the page. */
 export interface LoopItem {
@@ -28,7 +29,13 @@ export interface LoopItem {
   readonly greyed: boolean
   /** How to change and delete one of the person's own; null for a plugin's. */
   readonly changeLine: string | null
-  /** 讲细点: why it is there, the id and its state, in small print. */
+  /** The timeout of each check a plugin entry runs: the number and its source, a raised ceiling, the seven days (./timeouts.ts). */
+  readonly checkLines: readonly string[]
+  /** A person's script or check entry: the version agreed to, a check's command, the timeout (loop board design §8.2 item 5). */
+  readonly workLines: readonly string[]
+  /** A person's script entry: its file from the project root, read when 讲细点 opens; null for the others. */
+  readonly script: string | null
+  /** 讲细点: why it is there, the lines its plugin gives for this project, the history and last timeouts of its checks, its own rules, its state and the id, in small print. */
   readonly details: readonly string[]
 }
 
@@ -76,8 +83,28 @@ const STATE_WORDS: Readonly<Record<string, string>> = {
 
 const runs = (entry: ViewEntry): boolean => entry.state === 'active' || entry.state === 'ok'
 
-function itemOf(entry: ViewEntry): LoopItem {
+/** The page tells what the board's data lacks once per key, in the console (plain-ui 1.3 §8.1). */
+const told = new Set<string>()
+const CONSOLE_TELL: PageTell = {
+  warn(key, text) {
+    if (told.has(`warn:${key}`)) return
+    told.add(`warn:${key}`)
+    console.warn(`glm-hourness: ${text}`)
+  },
+  info(key, text) {
+    if (told.has(`info:${key}`)) return
+    told.add(`info:${key}`)
+    console.info(`glm-hourness: ${text}`)
+  },
+}
+
+/** The strings of a list the view hands over; anything else is no line. */
+const textsOf = (value: unknown): readonly string[] => Array.isArray(value) ? value.filter((line): line is string => typeof line === 'string') : []
+
+function itemOf(entry: ViewEntry, nowMs: number, tell: PageTell): LoopItem {
   const mine = entry.source === 'person'
+  const cells = (Array.isArray(entry.checks) ? entry.checks as readonly unknown[] : []).flatMap(check => checkCell(check, entry.id, nowMs, tell) ?? [])
+  const ownRules = textsOf(entry.ownRules)
   return {
     id: entry.id,
     title: entry.title,
@@ -87,8 +114,15 @@ function itemOf(entry: ViewEntry): LoopItem {
     note: entry.note ?? null,
     greyed: !runs(entry),
     changeLine: mine && entry.state !== 'deleted' ? `要改：跟主 Agent 说「把${entry.title}改成……」；要删：在输入框打 /loops delete ${entry.title}` : null,
+    checkLines: cells.flatMap(cell => cell.lines),
+    workLines: textsOf(entry.work),
+    script: typeof entry.script === 'string' && entry.script !== '' ? entry.script : null,
     details: [
       ...(entry.why === undefined ? [] : [`为什么有它：${entry.why}`]),
+      ...textsOf(entry.details),
+      ...cells.flatMap(cell => cell.details),
+      // The entry's own rules (main's wording since m4-checks B1); for M4's checker the step's 20 seconds are here, not in the timeout cell (plain-ui 1.3 §4.7, P12-05).
+      ...(ownRules.length === 0 ? [] : ['它自己的规矩：', ...ownRules.map(rule => `· ${rule}`)]),
       `状态：${STATE_WORDS[entry.state] ?? entry.state}`,
       `id：${entry.id}`,
     ],
@@ -106,21 +140,23 @@ function peakLineOf(peak: PeakView): string {
   return [clock, level, ...(peak.cap === undefined ? [] : [peak.cap])].join(' · ')
 }
 
-/** The page model of a project's view; `view` is null while there is no view.json yet. */
-export function buildLoopsPage(view: LoopsView | null): LoopsPageModel {
+/** The page model of a project's view; `view` is null while there is no view.json yet. `tell` hears what the board's data lacks (the console, once per key). */
+export function buildLoopsPage(view: LoopsView | null, tell: PageTell = CONSOLE_TELL): LoopsPageModel {
   const entries = view?.entries ?? []
+  const nowMs = view === null ? Number.NaN : Date.parse(view.at)
+  const item = (entry: ViewEntry): LoopItem => itemOf(entry, nowMs, tell)
   const plugin = entries.filter(entry => entry.source === 'plugin')
   const person = entries.filter(entry => entry.source === 'person')
-  const mine = person.filter(entry => entry.state !== 'deleted').map(itemOf)
-  const deleted = person.filter(entry => entry.state === 'deleted' && entry.note !== undefined).map(itemOf)
+  const mine = person.filter(entry => entry.state !== 'deleted').map(item)
+  const deleted = person.filter(entry => entry.state === 'deleted' && entry.note !== undefined).map(item)
   return {
     holderLine: view?.holder?.line ?? null,
     holderSession: view?.holder?.session ?? null,
     peakLine: view?.peak === undefined ? null : peakLineOf(view.peak),
     waitingLine: view === null || view.waiting === 0 ? null : `在等的 ${view.waiting} 件`,
     attention: view?.attention ?? [],
-    events: { title: '碰到某件事就做的', rows: plugin.filter(entry => entry.trigger === 'event').map(itemOf) },
-    timed: { title: '到点做的', rows: plugin.filter(entry => entry.trigger === 'time').map(itemOf) },
+    events: { title: '碰到某件事就做的', rows: plugin.filter(entry => entry.trigger === 'event').map(item) },
+    timed: { title: '到点做的', rows: plugin.filter(entry => entry.trigger === 'time').map(item) },
     mine: { title: '本项目加的', rows: mine },
     mineEmpty: mine.length === 0 ? '还没有你加的。要加：跟主 Agent 说「每 30 分钟查一下服务器，挂了告诉我」' : null,
     deleted: { title: `最近 7 天删掉的（${deleted.length}）`, rows: deleted },

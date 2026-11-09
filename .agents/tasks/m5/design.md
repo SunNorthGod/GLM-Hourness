@@ -414,12 +414,45 @@ Learning digest (hourness): in the last 28 days the person corrected the same ki
 | 偏好（`feedback` 带 `relay`） | 人在对话里说过 | 否 | 条目的 `learnedFrom` |
 | 推测（`feedback` 不带 `relay`，会淡忘） | 只能从改动里看出来 | 否；`learning_signals` 列出，人删就撤 | 同上 |
 | 经验 | 某种情况下的坑与解法 | 否 | 经验的 `learnedFrom`（`lessons_merge` 的参数） |
-| 规则提议 | 要 harness 执行，写得成规则板的词汇 | 是：`rules_propose` 在规则板里记提议，主 Agent 用 M3 的 `propose_to_human`（`attach` 指向它）把它作为四行方案交给人，人同意后 `record_human_answer`（规则板 0.10 §9.3）；规则行不在时，主 Agent 用 `propose_to_human` 直接提一张待决（`kind: 'question'`，不带 `attach`；M3 附录 0.5 §3.4：`question` 新提时由它自己提议待决节点，不先 `graph_propose`，R4-05） | 给人看的四行里不加这一项；主 Agent 在对应的提议或待决节点上用 `graph_comment` 记一行 `学自：<键>`，`learning_signals` 从节点历史里读 |
+| 规则提议 | 要 harness 执行，写得成规则板的词汇 | 是：`rules_propose` 在规则板里记提议，主 Agent 用 M3 的 `propose_to_human`（`attach` 指向它）把它作为四行方案交给人，人同意后 `record_human_answer`（规则板 0.10 §9.3）；规则行不在时，主 Agent 用 `propose_to_human` 直接提一张待决（`kind: 'question'`，不带 `attach`；M3 附录 0.5 §3.4：`question` 新提时由它自己提议待决节点，不先 `graph_propose`，R4-05） | 给人看的四行里不加这一项；`propose_to_human` 带 `rule`（预期效果，§3.6.1）；主 Agent 在对应的提议或待决节点上用 `graph_comment` 记一行 `学自：<键>`，`learning_signals` 从节点历史里读，待决上的只有带预期效果时才算 |
 | 候选标定题 | 同类失败两次以上，或人出手救场（M7 §3.14.5） | 否 | 复盘节点的 `候选标定题：` 一栏后加 `学自：<键>`（栏名是 M7 0.6 的固定标签） |
 
 4. 观察：`recurrences(groups, outcomes)` 数「学过之后」同组的新事件，`learning_signals` 每次附前 4 周每周的次数（`docs/CHARTER.md` §8：只看走向）。复发不降的组，主 Agent 在下一次摘要之后换落点（例如经验升为规则提议）；规范阶梯（M7 §3.12.2）的输入是规范节点与违规记录，M5 的组进不了它，M5 不去碰。
 
 这一条不新增给人的待决：只有规则提议到人面前，而那是主 Agent 判断之后提的，经过规则板的提议和 M3 的 `propose_to_human`，四行方案的格式与每次至多三件由它们管。
+
+#### 3.6.1 规则提议的预期效果（`m5-rule-expected-effect`）
+
+人 2026-11-05「那两件也按你说的来」；依据每周阅读 2026-11-05 报告 A5、D3、D10。规则提议交给人时写明预期效果：看哪个数、往哪边变、多久后核对。实现在 `src/memory/effect.ts`（纯函数，校验、图上的固定写法与读回、给人看的一段），设计行的 `propose_to_human` 与 `record_human_answer` 调用它。
+
+形状：`propose_to_human` 的参数 `rule`，只给 `kind: question`、`form: recommend`。带 `rule` 的问题就是规则提议。
+
+| 字段 | 必填 | 内容 |
+| --- | --- | --- |
+| `change` | 是 | `add`（新增或加严）或 `lift`（撤下） |
+| `effect` | 是 | 给人看的一句，至多 60 个码点，一行，不含换词表上的词，不含 `·` |
+| `metric` | 是 | `corrections:<组键>`（组键同 `learning_signals`：`edit:<类型>.<字段>`、`reject:<类型>`、`reopen:<类型>`、`chat:reject`、`chat:add`；`depth:*` 不在图上，不收）或 `denials:<规则 id>`（id 取 `CATALOG`，`src/rules/builtin.ts`） |
+| `direction` | 是 | `down` 或 `up` |
+| `days` | 是 | 同意之后多少天核对，整数 7–56 |
+| `lift` | `lift` 时必填 | 撤下的规则 id（`CATALOG`） |
+| `cover` | `lift` 时与 `ablation` 二选一 | 覆盖同一类调用的替补规则 id（`CATALOG`，不等于 `lift`） |
+| `ablation` | `lift` 时与 `cover` 二选一 | 单层消融的结果原文，1–6000 码点；与 `attach` 互斥 |
+
+任何一项缺或不合格得 `invalid`，`field` 是 `rule` 或 `rule.<字段>`，`hint` 写怎么补；撤规则既没有替补也没附消融时 `field` 是 `rule.cover`，`hint` 说「写替补；没有替补时先只关这一条规则跑一遍，把结果放进 `ablation`」。别的问法带 `rule`、只带 `question` 与 `text` 的再展示带 `rule` 都是 `invalid`。
+
+图上存的：问题节点 `body` 的开头几行（带 `attach` 时在板的原文之前，`body` 仍以板的提议行结尾）：`规则提议：新增` 或 `规则提议：撤下 <lift>`、`预期效果：<effect>`、`核对：<metric> 变少|变多，同意后 <days> 天`；撤下时再一行 `替补：<cover>` 或 `替补：没有，附了单层消融的结果`，后面接消融原文。读回（`effectOf`）只认这几行的精确写法，读回的结果再过一遍同一个校验。
+
+给人看的：问话（与 `choose` 的列表）之后接一段「预期效果：<effect>；同意后 <days> 天核对，没做到会写进晨报。」，撤下时再一行「撤下 <lift>，替补是 <cover>，它也管同一类调用。」或「撤下 <lift>，没有替补，单层消融的结果在下面。」；消融原文在最后，`message` 要求原样放进回复。只带 `question` 与 `text` 的再展示从图上读出同一段。
+
+改稿：带预期效果的问题改稿时必须再带 `rule`（缺了 `invalid`，`field: rule`），新的一段整段替换旧的。
+
+同意：附了消融的撤规则提议，`record_human_answer` 同意前核对最近一次展示之后主 Agent 说的话里有整份消融原文（规整后比较），没有就 `not_shown`，图不变。
+
+学习流水线的落点：问题节点上的 `学自：<键>` 只有在这个问题带预期效果时才算落点；别的类型节点上的照旧算。提醒文字与 `learning_signals` 的说明写明规则提议用 `propose_to_human` 带 `rule`。
+
+到期核对（`effectChecks`、`effectCheckLines`，`/hourness` 晨报调用，`docs/ORCHESTRATION.md` §12）：同意时刻是待决 `done` 时最后一条 `decide` 的 `at`，没拍板、被否、放弃的不核对。到期 = 同意 + `days` 天；之前的窗口 [同意 − `days` 天, 同意)，之后的窗口 [同意, 到期)。`corrections:<键>` 用 `correctionSignals` 在项目图上数；`denials:<id>` 在会话项目的指标流水里数 `rule`（`effect` 为 `deny` 或 `late`）与 `rules.judged`（`how: block`），事件的规则名等于 id 或 `<行>:<名>` 等于 id。`down` 要之后严格少于之前，`up` 要严格多于，相等算没做到。核对不了：指标流水读不到、没有记录、或最早一条晚于之前窗口的起点（只对 `denials`）。旧规则（D10）：同意得更早、仍是 `done` 的规则提议，在这一条的两个窗口里各数一次自己的 `metric`，往自己预期的反方向走了就列在这一条下面。晨报一节「规则提议的核对」：到期落在报告时刻之前 7 天内的，没做到、核对不了、或有旧规则往回走了的才列，全做到了不出这一节；写两段的原始次数，不写比率；最后一行「这里只列出来，规则不会自己变；要撤或要改，跟主 Agent 说」。图读不出时没有这一节（「等你定的事」已写原因）。
+
+不做的事：到期没做到只在晨报里列出，harness 与 agent 都不因此撤、改或加严规则；要撤要改，照旧提给人（`d-rules-human-only`）。规则板的 `rules_propose` 带同一栏、人设规则的 id 进名单，等规则板 R3（`rules-r4d`）。
 
 ### 3.7 汇报细度闭环（m5-5）
 
@@ -433,6 +466,44 @@ Learning digest (hourness): in the last 28 days the person corrected the same ki
 4. 撤：人对主 Agent 说「汇报细度恢复默认」，主 Agent 带原话调 `memory_forget reporting-depth`；或人在输入框打 `/memory forget reporting-depth`。下一个会话回到配置的默认。
 
 先后：人最近一次说的（偏好里的值）> 配置 `reportingDepth` > `balanced`。为什么取「最近一次」而不平滑：人能一眼看懂（「你上次说要简洁，所以这次从简洁开始」），记忆页上写明来由，人说一句就回去。
+### 3.8 习惯先问：从提示词升成规则（`m5-habit-rule`，2026-11-05）
+
+本节补在 0.6 正文后面。0.7 的 §3.8（`memory_habit` 的问、确认、回绝）全文已不在任何检出里（`rest-plan.md` 第 2 条），以代码 `src/memory/habit.ts`、`tools.ts` 与图上 `m5-4` 的验收为准；这里只写 `m5-habit-rule` 加的部分。人 2026-11-05 定：人直接说出口的习惯照旧直接记，不是直接说出口的要先问，并且做成规则。
+
+根因（实读 main 7560058 的代码，详见 `.agents/tasks/m5/habit-rule-plan.md` §1）：2026-11-04 桌面批次里 GLM-5.3-Flash 用通用问答卡问了一条猜出的习惯，人的回绝因此没进 `memory_habit` 的记录。
+
+1. `memory_habit` 在 GLM 路由上是延迟工具（不在 `ORCHESTRATION_RESIDENT_TOOLS`），模型要先检索再经 `DeferredToolCall` 调；它的说明（问法、28 天）在检索之前看不到。
+2. 通用问答卡 `ask_user_question` 常驻；只有主 Agent 模式下才被拿掉并由 `main-agent-ask` 拦。
+3. 指向 `memory_habit` 的提示只在 `relay` 参数说明末句、`ask_first` 的 `hint`、学习摘要提醒与它自己的说明里；`# Memory` 一节不提它。
+4. 没有代码规则：记忆行不注册 `tools/pre-execute`，`ask_first`、`relay_not_said` 是工具报错，不进违规流水、没有编号。
+5. 所以有两条绕路：卡上问（回答是工具结果，不是人的消息，回绝什么都不留）；对话里问、人答「好」之后 `memory_store` 带 `relay: "好"` 或复述问话的半句直接记成偏好（能过 `saidLatest`，不留 `ask`、不计每周上限）。
+
+取舍：
+
+| 做法 | 管得住 | 代价 | 取 |
+| --- | --- | --- | --- |
+| `memory_habit` 常驻，`# Memory` 一节加一句（`MEMORY_L3`） | 根因 1、3：第一步就看得见定义与 28 天的说法 | 每个 GLM 请求多一份工具定义（约 2.5 KB，进前缀缓存）；仍是提示 | 取 |
+| 规则拦卡上问习惯 | 桌面批次实际走的路：卡上的问题、标题或选项带「习惯、偏好、记住、记下、以后都……」（许可词表）就拦 | 问别的事带了这些词也拦；纠正提醒说改在对话里问，人一句话可撤 | 取 |
+| 规则拦「把人只是答应的话记成偏好」 | `memory_store` 一侧的绕路：`relay` 是光秃秃的同意（`isPlainYes`），或 `relay` 的词至少一半出自 agent 在人最近一条消息之前问的那句话（含问号） | 启发式：人复述 agent 问过的话也算答应，要再走一次 `memory_habit`；压缩后看不见那一问时放过 | 取 |
+| 拦对话里直接问 | — | 对话文本不经工具调用，调用边界看不到；只能事后猜回复文字 | 不做，留作已知缺口 |
+
+规则 `habit-ask-first`（`src/memory/habit-rule.ts`，记忆行经 `installRuleGate` 安装，规则总表 `memory:habit-ask-first`，`liftVia: 'any'`）：只判根会话的 `memory_store` 与 `ask_user_question`；拦下的调用进会话项目的 `.llm/audit/violations.jsonl`（与记忆的项目目录同一处），带规则编号与纠正提醒，提醒的正路是 `memory_habit ask`，跟进记录器认下一次调 `memory_habit` 为走了正路。放过：人直述的偏好（`relay` 不是光秃秃的同意、也不复述 agent 的问话）、`reporting-depth`（`memory_habit` 带不了 `value`，§3.7 照旧）、事实类记忆、卡上问别的事。撤下只走 M4 的一条路（`d-one-lift-path`）：人对主 Agent 说一句，主 Agent 带人的原话调 `guard_lift habit-ask-first`；规则板的 `/rules lift` 还没接到代码规则（`src/guard/lift-service.ts`），纠正提醒与规则板都不写它。撤下后规则不拦、`glm:guard` 一节不再声明它。记忆行生效时 `glm:guard` 一节多一行 `HABIT_RULE_DECLARATION`。行健康：规则没装上（宿主没有 `tools/pre-execute`，或安装抛错）时记忆行降级并写明。
+
+剩下的缺口：模型在对话里直接问、人说「不用」时，回绝仍只在那个会话里。规则让这条路什么都记不进去（人答应了也得回到 `memory_habit`），`memory_habit` 常驻、`# Memory` 一句与规则声明让正路是最顺手的那条；两档模型的真实运行记在 `.agents/tasks/m5/habit-rule-runs.md`。
+
+#### 3.8.6 说过「不用」之后：看得见，且换了说法也要模型确认（2026-11-06，编排方定）
+
+起因：2026-11-06 第一批真实运行（`habit-rule-runs.md`）里，两档模型在第二个会话都换了名字与说法再问同一条习惯，`memory_habit ask` 没认出：「同一条」只认组键、同名或名字加说明的词集 Jaccard ≥ 0.6，那两对只有 0.30 与 0.46；会话索引与 `memory_query` 又都不列「不用」，模型问之前看不到。词集重合分不开真的再问与另一条习惯：同一工具相反的偏好（单引号对双引号）1.00、同一条规矩换一门语言 0.88、同说法不同范围 1.00，都比两对真实再问高（`habit-rule-plan.md` 记了全部数字），所以不设一个阈值去硬拦。
+
+做法（不是新的 guard 规则，是 `memory_habit` 自己的参数检查，与 `declined_recently` 同类）：
+
+1. 看得见：会话开局的索引在条目之后列还在期内的「不用」，一行一条（名字、说明、到哪天不再问），至多 10 行，其余写条数；只有「不用」、没有条目时索引照发。`memory_query` 的结果不论关键词都带 `declined`（同样的三项加范围，至多 10 条）。过了 `until` 的不列。
+2. 软检查：`ask` 的说明与一条还在期内的「不用」的说明词集重合 ≥ 0.25（`MAYBE_DECLINED_SHARE`；两对真实再问 0.304、0.429，无关但同语言的习惯 0.154），或名字加说明 ≥ 0.6，就拒为 `maybe_declined`，文字点名那条「不用」（名字、说明、到哪天）并写出路：是同一条就别问；确实是另一条，带 `notSame: true` 再发。误中只多一次调用，所以阈值取低。
+3. 硬拒不变的部分：同名或组键相同的「不用」仍是 `declined_recently`，`notSame` 撤不掉它。
+4. 记下：带 `notSame: true` 放行的 `ask` 记录里有 `data.notSame`（被放过的「不用」的 id，`<范围>:<名字>`），工具结果带 `notSame`，指标流水交一条 `count`（`by: memory`，`what: habit-not-same`，`byKey` 是那些 id），以后可数被放过几次。
+
+L2 `tests/memory-habit-declined.spec.ts`：两对真实再问都得 `maybe_declined`；五个反例（相反偏好、另一门语言、不同范围同说法、共用常见词的无关习惯、完全无关）要么低于 0.25 直接问得出，要么带 `notSame: true` 放行且记下；`notSame` 撤不掉同名与同组键的「不用」；过期的不再拦；索引与 `memory_query` 列在期内的、不列过期的。
+
 ## 4. 经验板块（`lessons`）
 
 ### 4.1 一条经验（lessons-1）

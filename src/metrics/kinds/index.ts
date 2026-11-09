@@ -11,12 +11,13 @@ import { EXECUTE_KINDS } from './execute.ts'
 import { GLM_KINDS } from './glm.ts'
 import { HOST_KINDS } from './host.ts'
 import { LOOP_KINDS } from './loops.ts'
+import { MEMORY_KINDS } from './memory.ts'
 import { OPERATE_KINDS } from './operate.ts'
 import { PROGRESS_KINDS } from './progress.ts'
 import { RULES_KINDS } from './rules.ts'
 import { TIMEOUT_KINDS } from './timeout.ts'
 
 export const METRICS_KINDS: ReadonlyMap<string, KindTable> = new Map(
-  [...HOST_KINDS, ...TIMEOUT_KINDS, ...PROGRESS_KINDS, ...RULES_KINDS, ...LOOP_KINDS, ...EXECUTE_KINDS, ...OPERATE_KINDS, ...GLM_KINDS, ...DESIGN_KINDS, ...BOOTSTRAP_KINDS]
+  [...HOST_KINDS, ...TIMEOUT_KINDS, ...PROGRESS_KINDS, ...RULES_KINDS, ...LOOP_KINDS, ...EXECUTE_KINDS, ...OPERATE_KINDS, ...GLM_KINDS, ...DESIGN_KINDS, ...BOOTSTRAP_KINDS, ...MEMORY_KINDS]
     .map((table) => [table.name, table]),
 )

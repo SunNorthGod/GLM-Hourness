@@ -16,7 +16,9 @@
  * - a live agent is steered while it is running, injected while it is idle with
  *   a goal in the active phase (a followup would count as competing input and
  *   void the goal driver's reservation, goal-round-driver:249) and followed up
- *   otherwise. A message that does not wake the session is always injected;
+ *   otherwise. A message that does not wake the session is put before its
+ *   next step through the board's step mailbox (src/shared/step-mailbox.ts),
+ *   never into an idle agent's inbox, and its result says `inject`;
  * - a cold session is revived through `sessionController.resolveAgent`, the
  *   same call the host's own schedule delivery makes (schedule:1576), and only
  *   for a message that wakes. Its two expected errors are not failures:
@@ -31,11 +33,12 @@
  *   again each time, before the run is a failure.
  *
  * The result of a run of an entry whose answer goes to the session the event
- * came from is injected into that session when it is live here, and otherwise
+ * came from is injected into that session when it is running here, and otherwise
  * goes to the main agent with a line that says which session it was for.
  */
 import { agentsOf, wayTo as wakeWay } from '../rules/wake.ts'
 import { createUserNotice, type MessageableAgentLike, type ServiceLookup, type SessionLike, type UserNotice } from '../shared/dsh-min.ts'
+import { createStepMailbox } from '../shared/step-mailbox.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
 import { canDeliver, type HolderMemory, type HolderReason, type HolderState } from './holder.ts'
 import type { HeldMessage, RuntimeState } from './inbox.ts'
@@ -191,20 +194,47 @@ export function createDelivery(deps: DeliverDeps): LoopDelivery {
   /** The requests gathered for one target, with the promises that wait for them. */
   const batches = new Map<string, { readonly parts: DeliverRequest[], readonly settle: Array<(result: DeliverResult) => void>, cancel: () => void }>()
   const retries = new Set<() => void>()
+  const mailbox = createStepMailbox('loops')
   let disposed = false
 
   const iso = (): string => new Date(deps.now()).toISOString()
 
-  /** Put one notice in front of a live agent of this process. */
+  /**
+   * Put one notice in front of a live agent of this process. One that does not
+   * wake it waits in the board's step mailbox, not in the agent's inbox: the
+   * desktop host counts a waiting inbox as a running task and clears it when
+   * it shuts down (src/shared/step-mailbox.ts).
+   */
   function toLive(agent: MessageableAgentLike, notice: UserNotice, wake: boolean): DeliverResult {
     const how = wayTo(deps.ctx, agent, wake)
     try {
-      withoutInitiator(deps.ctx, () => { agent[how](notice) })
+      if (wake) withoutInitiator(deps.ctx, () => { agent[how](notice) })
+      else {
+        const posted = withoutInitiator(deps.ctx, () => mailbox.post(agent, notice))
+        if (posted.via === 'none') return { kind: 'failed', reason: posted.reason }
+      }
     }
     catch (error) {
       return { kind: 'failed', reason: message(error) }
     }
     return { kind: 'delivered', how, messageId: notice.id }
+  }
+
+  /**
+   * The answer of a run for a session that is running now (design §6.4 last
+   * paragraph) goes into its inbox with `inject`: its driver claims it at the
+   * next step, or opens one more turn for it at the end of this one
+   * (agent-loop agent.ts:420), so it does not stay in an idle inbox; held in
+   * the mailbox instead it would be lost when a child ends after its last step.
+   */
+  function toRunning(agent: MessageableAgentLike, notice: UserNotice): DeliverResult {
+    try {
+      withoutInitiator(deps.ctx, () => { agent.inject(notice) })
+    }
+    catch (error) {
+      return { kind: 'failed', reason: message(error) }
+    }
+    return { kind: 'delivered', how: 'inject', messageId: notice.id }
   }
 
   /** The live agent of a session, reviving a cold one when the message wakes it; `held` with the reason when it cannot be reached (design §6.4 item 2). */
@@ -224,7 +254,7 @@ export function createDelivery(deps: DeliverDeps): LoopDelivery {
     if (target !== undefined && target !== holder.session) {
       const live = agentsOf(deps.ctx)?.get(target)
       // A subagent that has stopped is not woken: a finished child has no use for the answer (design §6.4 last paragraph).
-      if (live !== undefined && live.status === 'running') return toLive(live, loopNotice(parts), false)
+      if (live !== undefined && live.status === 'running') return toRunning(live, loopNotice(parts))
       const forOther = parts.map(part => ({ ...part, text: `${part.text}\nFor session ${target}, which is not running now.` }))
       return await toHolder(forOther, wake)
     }
@@ -349,6 +379,7 @@ export function createDelivery(deps: DeliverDeps): LoopDelivery {
       batches.clear()
       for (const cancel of retries) cancel()
       retries.clear()
+      mailbox.dispose()
     },
   }
 }

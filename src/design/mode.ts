@@ -19,6 +19,7 @@ import { claimHolder, holderFileOf, projectKey, readHolder, releaseHolder, repla
 import type { GraphService } from '../graph/service.ts'
 import { createUserNotice, type CommandResultLike, type DesignAgentLike, type DesignAgentsService, type DesignInvocationLike, type SessionEventLike, type SessionLike, type SessionPersistenceLike, type SessionProjectionsService, type UserNotice } from '../shared/dsh-min.ts'
 import type { HealthState } from '../shared/health.ts'
+import type { HolderMove } from './metrics.ts'
 
 /** What the projection keeps for one session. */
 export interface MainAgentState {
@@ -242,7 +243,11 @@ export interface WishDeps {
   readonly installHooks: (agent: DesignAgentLike) => void
   /** Make every other live root session of the project, whose mode is on, leave it. */
   readonly demoteOthers: (key: string, except: string) => Promise<void>
+  /** Put a notice before the agent's next step without waking it or filling its inbox (src/shared/step-mailbox.ts); one that reaches nobody is the session's degraded health. */
+  readonly tell: (agent: DesignAgentLike, notice: UserNotice) => void
   readonly now: () => Date
+  /** The holder record of the session's project was written, moved or deleted by this /wish (`design.holder-moved`). Optional; never throws. */
+  readonly moved?: (session: SessionLike, move: HolderMove) => void
 }
 
 type Input = { readonly kind: 'off' } | { readonly kind: 'on', readonly here: boolean, readonly wish: string }
@@ -313,12 +318,12 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
     const wasMain = isMainAgent(deps.role, agent)
     if (reading.kind === 'held' && reading.record.sessionId !== session.id && modeOf(deps.role.projections(), session).active) {
       setPending(session, commandId, false)
-      agent.inject(createUserNotice(NOTICE_KIND, 'main agent moved away', MOVED_NOTICE))
+      deps.tell(agent, createUserNotice(NOTICE_KIND, 'main agent moved away', MOVED_NOTICE))
       return done('主 Agent 在另一个会话里，这个会话已经变回普通会话')
     }
     if (file !== undefined && reading.kind === 'held' && reading.record.sessionId === session.id) {
       try {
-        releaseHolder(file, session.id)
+        if (releaseHolder(file, session.id)) deps.moved?.(session, { how: 'off', from: session.id })
       }
       catch (error) {
         return fail(`主 Agent 的持有者记录删不掉：${message(error)}`)
@@ -326,7 +331,7 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
     }
     if (!wasMain) return done('这个会话本来就不是主 Agent')
     setPending(session, commandId, false)
-    agent.inject(createUserNotice(NOTICE_KIND, 'main agent mode off', OFF_NOTICE))
+    deps.tell(agent, createUserNotice(NOTICE_KIND, 'main agent mode off', OFF_NOTICE))
     return done('已退出主 Agent 模式：这个会话的 agent 又可以直接写文件了')
   }
 
@@ -348,6 +353,8 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
     const key = projectKey(dir)
     const record: HolderRecord = { version: 1, sessionId: session.id, graphDir: dir, since: deps.now().toISOString(), commandId }
     let lead = ''
+    // How this /wish changed the record, told once the record is read back naming this session.
+    let move: HolderMove | undefined
     // From the first write on the claim is in flight (review R3): while the handler waits in demoteOthers, another session's /wish sees this one as open, not lapsed. Cleared when the marker's /wish stops writing the record; nothing of this handler awaits after that.
     const mark = (): void => { claiming.set(session, commandId) }
     try {
@@ -356,12 +363,16 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
         const reading = readHolder(file)
         if (reading.kind === 'none') {
           mark()
-          if (claimHolder(file, record)) break
+          if (claimHolder(file, record)) {
+            move = { how: 'wish', to: session.id }
+            break
+          }
           continue
         }
         if (reading.kind === 'unreadable') {
           mark()
           replaceHolder(file, record)
+          move = { how: 'unreadable', to: session.id }
           await deps.demoteOthers(key, session.id)
           lead = `原来的主 Agent 记录读不到（${reading.reason}），已改为这个会话；`
           break
@@ -370,6 +381,7 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
         if (input.here) {
           mark()
           replaceHolder(file, record)
+          move = { how: 'here', from: reading.record.sessionId, to: session.id }
           await deps.demoteOthers(key, session.id)
           lead = MOVED_HERE
           break
@@ -378,16 +390,18 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
         if (standing === 'open' || standing === 'closed') return done(pointerText(deps, reading.record, standing, input.wish !== ''))
         mark()
         replaceHolder(file, record)
+        move = { how: 'takeover', from: reading.record.sessionId, to: session.id }
         lead = standing === 'gone' ? '原来的主 Agent 会话已经不在了，' : '原来记的主 Agent 会话其实没有开着主 Agent 模式，'
         break
       }
       const final = readHolder(file)
       if (final.kind !== 'held' || final.record.sessionId !== session.id) throw new Error('别的会话同时在抢，记录还没写上')
+      if (move !== undefined) deps.moved?.(session, move)
     }
     catch (error) {
       // The record may have been written by this /wish and name this session while its mode is off: release it, so that no reader of mainAgentOf delivers to a session that is not the main agent (review R1). A release that fails is the session's degraded health; /wish off can try again.
       try {
-        releaseHolder(file, session.id)
+        if (releaseHolder(file, session.id) && move !== undefined) deps.moved?.(session, { how: 'lapsed', from: session.id })
       }
       catch (reason) {
         deps.role.report(session, 'degraded', staleRecordKept(message(reason)))
@@ -403,7 +417,7 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
     deps.installHooks(agent)
     if (input.wish === '' && isMainAgent(deps.role, agent)) return done(`${lead}这个会话已经是主 Agent`)
     setPending(session, commandId, true)
-    if (input.wish === '') agent.inject(createUserNotice(NOTICE_KIND, 'main agent mode on', ENTER_NOTICE))
+    if (input.wish === '') deps.tell(agent, createUserNotice(NOTICE_KIND, 'main agent mode on', ENTER_NOTICE))
     else if (agent.status === 'running') agent.steer(wishNotice(input.wish, commandId))
     else agent.followup(wishNotice(input.wish, commandId))
     return done(`${lead}已让这个会话的 agent 当主 Agent（项目经理）：它按项目图推进，不写文件；/wish off 退出${input.wish === '' ? '' : '。已把你的愿望交给它'}。${STRONG_MODEL_NOTE}`)

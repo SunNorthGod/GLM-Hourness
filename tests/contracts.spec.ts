@@ -20,6 +20,7 @@ import { isGateListener } from '../src/guard/gate.ts'
 import { graphFilesOnly } from '../src/guard/graph-files.ts'
 import { activeRules, apply as guardApply } from '../src/guard/index.ts'
 import { installMetricsFileGuard, metricsFilesOnly } from '../src/metrics/rules.ts'
+import { habitAskFirst, installHabitRule } from '../src/memory/habit-rule.ts'
 import { installLoopsFileGuard, installLoopsScheduleGuard, loopsFilesOnly, loopsScheduleTools, LOOPS_FILES_ONLY } from '../src/loops/guard.ts'
 import { LOOPS_DECLARATION, LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
 import { MAIN_AGENT_RULES } from '../src/guard/main-agent-rules.ts'
@@ -36,7 +37,7 @@ import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
 import { OUTPUT_STYLE_SECTION } from '../src/shared/output-style.ts'
 import { PRICING_SERVICE, peakHoursOf, pricingService, quotaOf, type UsagePricing } from '../src/shared/pricing.ts'
 import type { QuotaView } from '../src/shared/quota.ts'
-import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, ENV_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, ENV_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_HABIT, MEMORY_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { apply as compactApply } from '../src/glm-prompt/compact-row.ts'
@@ -238,13 +239,19 @@ test('guard catalog: each listed rule is the id of a rule object its row install
     graph: [graphFilesOnly('C:/work/app/docs/graph', 'C:/work/app').id],
     loops: [loopsFilesOnly(['C:/work/app'], 'C:/work/app').id, loopsScheduleTools(true).id],
     metrics: [metricsFilesOnly('C:/work/app', 'C:/work/app').id],
+    memory: [habitAskFirst({}).id],
   }
   const listed = (row: string): string[] => GUARD_RULES.filter(rule => rule.row === row).map(rule => rule.id)
   assert.deepEqual(listed('guard').sort(), [...installed.guard].sort())
   assert.deepEqual(listed('graph'), installed.graph)
   assert.deepEqual(listed('loops'), installed.loops)
   assert.deepEqual(listed('metrics'), installed.metrics)
-  assert.deepEqual([...new Set(GUARD_RULES.map(rule => rule.row))].sort(), ['graph', 'guard', 'loops', 'metrics'], 'only rows that exist on main')
+  assert.deepEqual(listed('memory'), installed.memory)
+  assert.deepEqual([...new Set(GUARD_RULES.map(rule => rule.row))].sort(), ['graph', 'guard', 'loops', 'memory', 'metrics'], 'only rows that exist on main')
+  // m4-gate acceptance 6 as the human worded it, plus the memory row's habit-ask-first (m5-habit-rule): six, one, two, one, one.
+  assert.deepEqual(['guard', 'graph', 'loops', 'metrics', 'memory'].map(row => listed(row).length), [6, 1, 2, 1, 1])
+  assert.equal(GUARD_RULES.length, 11)
+  assert.equal(MAIN_AGENT_RULES.length, 9, 'the main agent\'s nine rules are unchanged')
   // No mode column: a rule of the catalog denies from the day its row is enabled (d-code-rules-enforce).
   for (const entry of GUARD_RULES) {
     assert.deepEqual(Object.keys(entry).sort(), ['blocks', 'id', 'liftVia', 'row', 'title'], JSON.stringify(entry))
@@ -271,6 +278,11 @@ test('guard catalog: the rows with rules install their pre-execute listeners thr
   installMetricsFileGuard({ ctx: metricsBare, journal: () => {} })
   assert.equal(metricsListener.filter(entry => entry.event === 'tools/pre-execute').length, 1)
   assert.ok(metricsListener.every(entry => isGateListener(entry.listener)), 'the metrics row\'s gate comes from the gate as well')
+  const memoryListener: Array<{ event: string, listener: unknown }> = []
+  const memoryBare = { on: (event: string, listener: unknown) => { memoryListener.push({ event, listener }); return () => {} }, get: () => undefined }
+  installHabitRule({ ctx: memoryBare, journal: () => {} })
+  assert.equal(memoryListener.filter(entry => entry.event === 'tools/pre-execute').length, 1)
+  assert.ok(memoryListener.every(entry => isGateListener(entry.listener)), 'the memory row\'s habit-ask-first comes from the gate as well')
   assert.equal(loops.filter(entry => entry.event === 'tools/pre-execute').length, 2)
   assert.ok(loops.every(entry => isGateListener(entry.listener)), 'the loop board\'s two gates come from the gate as well')
 })
@@ -302,7 +314,7 @@ test('tool names: the design row registers exactly the contract names, and withd
   assert.deepEqual([...host.tools.keys()], [])
 })
 test('tool names: every orchestration tool kept resident exists, and GLM tool search keeps it resident', () => {
-  const known = new Set([...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES, ...DESIGN_TOOL_NAMES, ...LESSONS_TOOL_NAMES])
+  const known = new Set([...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES, ...DESIGN_TOOL_NAMES, ...LESSONS_TOOL_NAMES])
   for (const name of ORCHESTRATION_RESIDENT_TOOLS) {
     assert.ok(known.has(name), `${name} is resident but no orchestration row registers it`)
     assert.ok(RESIDENT_TOOLS.has(name), name)
@@ -315,9 +327,9 @@ test('persona section: the name the design row adds and the dialect places is on
   assert.equal(OUTPUT_STYLE_SECTION, 'hourness:output-style')
 })
 
-test('tool names: the learning tool is the main agent\'s read-only view and stays deferred in the GLM face; the memory tools stay resident', () => {
-  for (const name of LEARNING_TOOL_NAMES) assert.ok(!ORCHESTRATION_RESIDENT_TOOLS.has(name) && !RESIDENT_TOOLS.has(name), name)
-  for (const name of MEMORY_TOOL_NAMES) assert.ok(ORCHESTRATION_RESIDENT_TOOLS.has(name) && RESIDENT_TOOLS.has(name), name)
+test('tool names: the learning tool is the main agent\'s read-only view and stays deferred in the GLM face; the memory tools and memory_habit stay resident', () => {
+  for (const name of LEARNING_TOOL_NAMES.filter(name => name !== MEMORY_HABIT)) assert.ok(!ORCHESTRATION_RESIDENT_TOOLS.has(name) && !RESIDENT_TOOLS.has(name), name)
+  for (const name of [...MEMORY_TOOL_NAMES, MEMORY_HABIT]) assert.ok(ORCHESTRATION_RESIDENT_TOOLS.has(name) && RESIDENT_TOOLS.has(name), name)
 })
 
 test('tool names: the env row registers exactly the contract names, check_limit stays deferred in the GLM face (m4-checks design §6.3.1), and the row ships enabled', () => {
@@ -747,7 +759,7 @@ test('glm-compact and the transcript row: a GLM compaction summary ends with the
     assert.deepEqual(texts, [`Summary:\nbody${transcriptNote(path)}`])
     const written = readFileSync(path, 'utf8').split('\n')
     assert.ok(written[0]?.startsWith('Transcript of session S1, exported '), written[0])
-    assert.deepEqual(written.slice(1), renderTranscript('S1', documents, new Date(0)).split('\n').slice(1))
+    assert.deepEqual(written.slice(1), renderTranscript('S1', documents, new Date(0)).text.split('\n').slice(1))
     stopCompact()
     stopTranscript()
   }

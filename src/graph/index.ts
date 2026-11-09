@@ -6,7 +6,9 @@
  * points at those tools, and journals its denials in the violation journal
  * of the project directory (the row's home, else the data service's); and
  * at agent creation installs the step projection (reminder.ts) for the
- * focus node an agent sets with graph_focus. It hands the loop board its
+ * focus node an agent sets with graph_focus; the re-anchoring after a
+ * compaction also carries the session's denials, read from that same
+ * journal (reanchor.ts). It hands the loop board its
  * third-rework entry (loop-entry.ts, m4 design §6.8) and reports the
  * questions filed under it to the board. The estimates the graph tools
  * write on the check lines of a tool node under env go to the timing journal
@@ -22,14 +24,14 @@
 import { existsSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { installGraphFileGuard } from '../guard/graph-files.ts'
-import { projectJournal, type AuditFs } from '../memory/audit.ts'
+import { auditPaths, projectJournal, type AuditFs } from '../memory/audit.ts'
 import { projectHomeFor, projectRootOf } from '../data/project-home.ts'
 import { ensureLlmIgnored } from '../data/llm-ignore.ts'
 import { appendTiming } from '../env/timeout.ts'
 import type { AgentLike, DerivedMessage, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventLike, SessionLike, ToolDefinitionLike, ToolExecutionContext, ToolsLike } from '../shared/dsh-min.ts'
 import { GRAPH_SERVICE, type GraphFocusService, type GraphService } from './service.ts'
 import { provideRowHealth, sessionIdOf, type RowHealth } from '../shared/health.ts'
-import { focusFromHistory, installProjection } from './reminder.ts'
+import { focusFromHistory, installProjection, type ReanchorSource } from './reminder.ts'
 import { graphHealth, readGraph } from './row-health.ts'
 import { installLoopEntry } from './loop-entry.ts'
 import { loopsService, type LoopsService } from '../loops/service.ts'
@@ -170,12 +172,21 @@ export function apply(ctx: GraphContext, config: GraphConfig = {}): () => void {
   const journal = projectJournal(name, cwd => projectHomeFor(ctx, config.home, cwd), config.fs)
   disposers.push(installGraphFileGuard(ctx, cwd => resolveGraphDir(dir, cwd), (record, cwd) => journal.violation(record, cwd), health))
   disposers.push(provideService(ctx, dir, new Set(tools.map(tool => tool.name)), focuses))
+  // A re-anchoring reads the session's denials from the same project journal the gates write (ORCHESTRATION.md §2.5 重锚);
+  // a read that fails leaves them out of that one notice and stays on the session's row health until a read succeeds.
+  const reanchor: ReanchorSource = {
+    journal: (cwd) => {
+      const projectHome = projectHomeFor(ctx, config.home, cwd)
+      return projectHome === undefined ? undefined : auditPaths({ projectHome }).violations
+    },
+    told: (sessionId, problem) => { health.note(sessionId, 'graph-reanchor', problem === undefined ? undefined : `压缩后重锚没带本会话的拦截计数：${problem}`) },
+  }
   const installed = new WeakSet<AgentLike>()
   disposers.push(ctx.on('agent/created', ({ agent }) => {
     if (installed.has(agent)) return
     installed.add(agent)
     try {
-      const uninstall = installProjection(agent, dir, focuses, (sessionId, read, focus) => { health.report(sessionId, ...graphHealth(read, focus)) })
+      const uninstall = installProjection(agent, dir, focuses, (sessionId, read, focus) => { health.report(sessionId, ...graphHealth(read, focus)) }, reanchor)
       if (uninstall !== undefined) disposers.push(uninstall)
     }
     catch (error) {

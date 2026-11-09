@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Session transcript",
-    "description": "When a GLM conversation is compacted, writes the session's log as plain text to the project's .llm/transcripts/ and ends the summary with the path, so the model can read the original with Read. Other sessions' files go after 14 days. Off by default."
+    "description": "When a GLM conversation is compacted, writes the session's log as plain text to the project's .llm/transcripts/, with strings that look like credentials replaced by [redacted], and ends the summary with the path, so the model can read the original with Read. Other sessions' files go after 14 days. On by default."
   }
 }

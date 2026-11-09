@@ -236,6 +236,10 @@ export function factsFor(input: CalcInput): { readonly basis: string, readonly g
   const waits = handovers.map(event => num(event.body, 'waitedMs') ?? 0)
   const goalDoneHandover = handovers.some(event => bool(event.body, 'goalDone') === true)
 
+  // 记忆 (F): how often the session index dropped entries at a cap, and how often memory_query found nothing (m5-index-truncation-alarm).
+  const indexCuts = countOf(windowed, 'memory.index-truncated')
+  const emptyQueries = countOf(windowed, 'memory.query-empty')
+
   const failedChecks = windowed.filter(event => event.k === 'execute.check' && bool(event.body, 'ok') === false)
   const failedCheckIds = failedChecks.map(event => str(event.body, 'task') ?? str(event.body, 'commit') ?? '—')
     .sort((a, b) => a.localeCompare(b))
@@ -316,6 +320,13 @@ export function factsFor(input: CalcInput): { readonly basis: string, readonly g
     ...(input.quota === undefined
       ? [{ title: '额度停住', rows: [{ label: '停住', value: '—' } as CalcRow] }]
       : [quotaGroup(windowed, input.quota.stallCode, input.quota.resumeCode, countOf(windowed, 'glm.upstream-limit'))]),
+    {
+      title: '记忆',
+      rows: [
+        { label: '索引截掉', value: `${indexCuts.length} 次`, samples: indexCuts.length },
+        { label: '查询落空', value: `${emptyQueries.length} 次`, samples: emptyQueries.length },
+      ],
+    },
     {
       title: '汇报',
       rows: [

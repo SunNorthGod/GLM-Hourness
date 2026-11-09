@@ -529,6 +529,108 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-05 答编排方「全开照旧，还是先停消融与状态页两条中等的线让小活先收」：原话「先全开吧，你盯着点就行，任务也是做完一点就落盘一点」。照此：十三条线都不停，编排方每次被叫醒时查一遍、恢复被限流暂停的运行；编排方已逐条通知在跑的步骤，每做完一块就提交并推到自己的分支、报告边做边写，上游 503 打断时不丢已做的部分。"
+    },
+    {
+      "at": "2026-11-05T16:44:29.370Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 00:45 巡检：13 条线。上游限流把 bootstrap（wf_f008ac0c87ec6943）、m4-reanchor-violations（wf_b007fba3eafafeec）、status-hub-3（wf_992ec82f32e990c0）、m5-rule-expected-effect（wf_24a77ef57c68c12c）四条暂停，编排方已全部恢复。按人的「做完一点就落盘一点」，各线阶段提交照常推到自己的分支：bootstrap 56f578a（B5 第 2 部分 L2）、m4-checks-loop-details e667fe8、m3-metrics-wiring cb4c442。ablation 第 3 轮 code 步在跑（加的 3 轮里的第 1 轮）。"
+    },
+    {
+      "at": "2026-11-05T17:13:46.855Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 01:11 巡检：13 条运行全部因上游限流（Model service error 5xx）暂停在当前步，编排方逐条恢复（M7、bootstrap、ablation、status-hub-3、m3-metrics-wiring、m5-habit-rule、m5-rule-expected-effect、m4-reanchor-violations、m4-checks-loop-details、habits-prompts 合入步、glm-context-window-check-b、desktop-close-docs）；恢复后 habits-prompts 与 M7 已确认重新在跑。暂停期间各分支已推的阶段提交都在 origin，没有丢失。compact-recall-redact 仍等 habits-prompts 合入后重派合入步。"
+    },
+    {
+      "at": "2026-11-05T18:04:29.492Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 约 02:00 人重启了 Kiro，在跑的运行都被暂停（Interrupted by agent restart）。编排方逐条恢复：habits-prompts、M7、m4-checks-loop-details、glm-context-window-check-b、desktop-close-docs 及其余在跑的线，各步保留自己的会话从断点接着做；分支上已推的提交不受影响。"
+    },
+    {
+      "at": "2026-11-05T18:36:58.101Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 02:35 人问在跑几条、能开的是否都开了。编排方对过图上可开工的清单：除刚开的 inject-via-prestep 外，m7-1、m7-2、m7-4、m7-6..m7-9、m7-habits、m7-handback-path-check、rules-r4d 都等 M7 合入 main；m4-reanchor-norms 等 m4-reanchor-violations 合入（评审已 APPROVED，合入步在跑）；m4-request-card 的验收第 10 条要人的原话，还没问。在跑 14 条：M7、bootstrap、ablation、status-hub-3、m3-metrics-wiring、m5-habit-rule、m5-rule-expected-effect、m4-reanchor-violations（合入）、m4-checks-loop-details（合入）、habits-prompts（清 cookie 后重启桌面版）、desktop-close-docs、guide-metrics-line、compact-recall-redact-land、inject-via-prestep。"
+    },
+    {
+      "at": "2026-11-05T19:17:01.155Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 03:1x：主检出出现别的线写进来的已跟踪改动（knip.js、package.json、src/design/propose.ts、ui/src/loops/LoopsPage.tsx）与未跟踪 src/memory/effect.ts，挡住了 m4-checks-loop-details 的快进合入。像是 ablation、m5-rule-expected-effect、status-hub-3 的步骤违反了「主检出只放锁目录」，具体哪一步写的没查。处理：收进主检出的 stash，不还原、不丢；已向 ablation、m5-rule-expected-effect 的 code 步重申只在工作树改。另记 status-hub-3 code 步完成（4c16928、65e1324、b6eab12、7ba29e0 已推；门禁绿，探针 422/422），下一步评审。"
+    },
+    {
+      "at": "2026-11-06T01:31:03.492Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "主检出第三次被别的线写进草稿（前两次：m4-checks-loop-details 合入时四个文件、m4-reanchor-norms 合入时 package.json）：这次是 docs/DESIGN.md，08:58，内容是损坏的编辑，几个工作树的 DESIGN.md 修改时刻里 bootstrap（08:59:39）最接近，来源未核实。已存档还原。写主检出的源头还没堵上：各线任务书都写了只在自己的工作树改，仍有步骤写进主检出。后续要查是哪类步骤（推断：用绝对路径的编辑工具把主检出路径当成工作树路径）并在任务书模板与规则上修根因，不再逐次清理。"
+    },
+    {
+      "at": "2026-11-06T02:07:39.009Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "10:06 巡检：上游限流又暂停了 inject-via-prestep、ablation、m5-rule-expected-effect、bootstrap 四条运行，编排方已恢复。在跑：M7 真实模型运行一步（wf_36d1d690c7e1de90 real-model-run）、m5-habit-rule 第 2 轮评审、status-hub-3 合入后 L4、probe-run-dir-outside-repo 合入（主检出已干净，已告知接着做）。主检出已跟踪文件干净，两把探针锁空闲。"
+    },
+    {
+      "at": "2026-11-06T02:56:29.431Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "主检出第四次被别的线写进东西：10:26:36 出现未跟踪的 src/memory/effect.ts（14168 字节，与 .worktrees/m5-rule-expected-effect 里 10:27:01 写入的同名文件同源），probe-run-dir-outside-repo 合入步在主检出 build 时 tsc 报错（exit 2），已把它挪到 .agents/tasks/probe-run-dir-outside-repo/stray/src-memory-effect.ts-1026.txt 存档（没删），重建通过。前三次：m4-checks-loop-details 合入时的四个文件（stash@{0}）、inject-via-prestep 的 package.json、DESIGN.md 的坏草稿。推断原因：步骤用相对路径或默认 cwd 调文件工具与命令，落到 Kiro 工作区根即主检出。编排方已告知 m5-rule-expected-effect 一律用工作树绝对路径并在交回前核对主检出 status；以后派活的任务书都写这一条。"
+    },
+    {
+      "at": "2026-11-06T06:26:10.242Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 14:18 第五次有工作流写进主检出：package.json 的 test:1 多了 tests/guard-scratch-worker.spec.ts，来自 M7 guard-fix 步（wf_36d1d690c7e1de90，.worktrees/m3 里同样的改动）。已存档 .agents/tasks/zcode-parity/stray/package.json-guard-scratch-worker-1418.patch 并 restore，已告知该步只用工作树绝对路径。任务书提醒挡不住，「工具层挡住写主检出」需要单开一条线（与 M7 的写范围检查同一类）。"
+    },
+    {
+      "at": "2026-11-06T08:49:44.563Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 16:48 Kiro 重启后对账：M7（wf_36d1d690c7e1de90）停在 real-model-run-3、接管（wf_f008ac0c87ec6943）停在 B6 修复，两条已恢复；消融后台队列（pid 60792）仍在跑，高峰 14:00–18:00 不开新格，18:00 后接着跑；M7 第三次真实运行同样只在高峰外跑。主检出已跟踪文件干净，三把锁空闲。"
+    },
+    {
+      "at": "2026-11-06T09:00:48.307Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 17:00 人要求尽量并行。在跑 6 路：M7（第三次真实模型运行）、接管（B6 评审两条挡路在修）、消融（后台队列，高峰后自动续跑）、data-journal-lock-flake、compact-recall-l4、lessons-enable。其余就绪节点（m7-1、m7-2、m7-4、m7-6、m7-7、m7-8、m7-9、m7-habits、m7-handback-path-check、rules-r4d、m4-request-card）代码都压在 M7 分支上，等 M7 合入 main；主检出写入拦截同属 M7 写范围一类，也等 M7。"
+    },
+    {
+      "at": "2026-11-06T09:14:17.740Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-06 澄清「AI 知识库」指的是此前提炼给编排方的一位业内人士的项目开发经验：把文档放到 AI 手边。编排方在仓库、docs/graph 与 .agents/tasks 里按关键词查过，没找到这份提炼的记录，判断它只在早先的对话里、随上下文截断丢了，等人重发原文。现状对照（实读）：框架已做到的是会话开局与每次压缩之后把用户级与项目 AGENTS.md 交给模型（宿主 dsh-agent-instructions，L3 实测见 FACTS.md §3，m4-reanchor-norms）、每步的图投影、env 分支提醒、记忆索引、派活简报带经验；只在本仓库成立、框架不带的是文档地图与分工（AGENTS.md「文档」一节、CHARTER.md §11）和条款整条重写的写法，别的项目装上 Hourness 不会得到文档地图，也没有文档过时的检查。人重发原文后逐条对照再定要不要提节点。"
+    },
+    {
+      "at": "2026-11-06T10:31:20.053Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "第六次往主检出写：17:50 主检出出现未提交的 tests/metrics-schema.spec.ts 改动（+5/-2），与 .worktrees/m5-index-truncation-alarm 里 17:51 写的同一文件内容一致。编排方存档到 .agents/tasks/zcode-parity/stray/metrics-schema-1750.patch 后还原主检出，并提醒该步只写自己的工作树。工具层挡主检出写入的线仍等 M7 合入后与写范围检查一起做。"
+    },
+    {
+      "at": "2026-11-06T10:34:05.695Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "Kiro 2026-11-06 18:30 前后再次重启，编排方对账：在跑的五路都已恢复。M7（wf_36d1d690c7e1de90）real-model-run-3 在跑；lessons-enable（wf_7ed94028a156d1cb）desktop-l4 在跑、持 desktop-lock；m5-index-truncation-alarm（wf_8924e7a9cdb716c0）code 步在跑；compact-recall-l4（wf_07a1fd00ce69e723）l4-check 在跑；ablation（wf_5f5345b05e5c4e89）code 步等回话，后台队列 pid 60792 活着、持 probe-lock，高峰已过，编排方回它照原计划跑完再写报告。main = origin = github = 6e545fd，主检出没有已跟踪改动。"
+    },
+    {
+      "at": "2026-11-06T10:55:20.025Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-06 说当时发过那份「把文档放到 AI 手边」的提炼（据 ZCode 会话里人的原话：从抖音下的一个人的编程理论，让编排方融合进设计）。编排方再查：仓库 docs/、docs/graph、.agents/tasks、video/ 与 ~/.zcode/cli 的 memories、artifacts、rollout 按「抖音」「手边」「知识库」等关键词都没有原文；ZCode 那边 2026-11-06 18:45 的会话（sess_067e6066）同样查过、同样没找到。原文多半只在 ZCode 早先会话的对话库 ~/.zcode/cli/db/db.sqlite（约 27 GB，ZCode 运行时被占用，编排方不去动它）。建议人请 ZCode 按「抖音」搜它自己的历史会话，或直接重发原文；拿到后逐条对照框架。"
+    },
+    {
+      "at": "2026-11-06T11:54:57.461Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-06 给出「把文档放到 AI 手边」那份经验的原文：抖音号原子能（_yuanzineng_）视频字幕，C:/Users/29596/Desktop/Project/工具目录/字幕提取-原子能-AI协作知识库.md（仓库外，未复制进仓库）。要点：知识衰退（why/how 散在会议聊天里随人员流动丢失；宏观决策与微观实现脱节）；每个组件旁放一份知识库（流程图、架构与选型对照、按 git 复原的修改历史、待办、面向 AI 的文字版端到端测试案例），AI 逐层向上找资料；多 agent 改代码时核实知识文档同步更新；每天定时扫一遍有没有漏 commit/push。编排方对照（实读本仓库，DSH 是否加载子目录的 AGENTS.md 未核实）：已有的是项目级的 why（图上的决策、取代、带原话的历史，任何装了图行的项目都有）、宏观到微观的接力（派活简报带节点）、按文件匹配的经验、AGENTS.md「文档与行为同一批提交」（只管本仓库）；缺的是组件旁的知识文档（框架不生成也不维护）、按文件路径把相关决策与历史送到动手的 agent 手边、合入前核对改了代码的目录其知识文档是否同步（框架级）、Markdown 流程图、每日漏提交扫描。提议节点 docs-at-hand 先设计，等人定范围。"
+    },
+    {
+      "at": "2026-11-06T18:25:26.430Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-07 凌晨的两句话（原文）。一、「尽量你自己拿决定别卡任务」——人睡觉期间编排方对可逆的岔路自行拍板并写明；不可逆的（删掉还有未合入提交的分支、丢文件、强推）和改到人定做完条件的事留到早上。二、docs-at-hand 设计评审通过后按设计稿推荐的范围全部开工（人选「按设计稿推荐的范围全部直接开工」）；这一条同时记在 docs-at-hand 节点。引擎的 comment 没有 relay 字段，原话写在批注正文里。"
     }
   ]
 }

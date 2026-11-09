@@ -645,6 +645,108 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 E8 FEAT-005（wf_36d1d690c7e1de90）完成，本地提交 b750c0c（m7 分支，未推送）。串行门禁在树 f67a601 上：build 0、preflight 0、npm test 0（3163 条，0 失败，棘轮 eslint 73 / knip 18 / jscpd 1）、探针 467/467，glm-exec-drive 与 glm-exec-modules 全绿，gate.json 已写。下一步 e8-converge（E8 收敛评审），之后 E9、真模型运行、合入与 L4。"
+    },
+    {
+      "at": "2026-11-05T16:34:30.038Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 合入 main 时：habits-prompts（4598fa7）把 tests/design-mode.spec.ts 的身份段整段上限改为 3200、对话一段上限改为 2000，m7 分支上同两处断言仍是 3000 与 1800，合入时取 main 的数。"
+    },
+    {
+      "at": "2026-11-05T18:04:30.102Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E8 收敛第 1 轮修复完成（m7 分支本地，未推）：文档接缝修在 c06a23c，loops-run 读状态的竞态修在 6dc02ec（与 habits-prompts 4598fa7 修的是同一处原因，合入时取一处）。HEAD 6dc02ec（树 31a658b）全量门禁：build 0、preflight 0、test 0（3163 项，3162 过、0 败、1 跳过，棘轮 73/18/1）、探针 467/467，gate.json 已更新。下一步语义评审。"
+    },
+    {
+      "at": "2026-11-05T19:01:22.285Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E8 收敛第 1 轮（wf_36d1d690c7e1de90 e8-fix）：c06a23c 文档接缝、6dc02ec loops-run 读 state.json 的竞态（与 main 上 habits-prompts 的修法同因），树 31a658b 全量门禁绿（3163 测试、探针 467/467）。语义评审 CHANGES_REQUESTED，挡路 1 条：/wish off 之后少了 design §3.9.3 要的门外注释（drive.ts:1080），不挡路 5 条。收敛循环第 2 轮接着修。另记：inject-via-prestep（wf_d93b6a094e3f5503）正把 /wish off 一类不叫醒的提示改走步前提示，与这一处相邻，M7 合入时留意两边的改动。"
+    },
+    {
+      "at": "2026-11-05T20:16:58.591Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 E8（m7-3）收敛完成：第 1 轮语义评审 1 条挡路（/wish off 之后缺设计 §3.9.3 要的门外说明，drive.ts:1080）与 5 条不挡路，第 2 轮修复 6c63467、0e8d82e，树 be22104 上 build、preflight、npm test（3163 过、1 跳过）、探针 467/467 绿，棘轮 73/18/1；第 2 轮评审 APPROVED。E8 压成一个提交 c85da4a（feat(execute): the drive, the completion gate and the loop-board seam），origin/m7 快进到它，没有强推。下一步 plan-e9。"
+    },
+    {
+      "at": "2026-11-05T21:50:37.487Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 E9：plan-e9 步被上游错误（server_error: context canceled）截断，没写出计划，.worktrees/m3/.llm/wf/m7-e9/ 是空的，只留下主检出 .llm/logs 里的读取日志（m7-e9-plan-*.log，最后写入 04:59）。e9-code 步发现没有计划后停下等编排方，没改任何东西（m7 HEAD 仍是 c85da4a，树干净）。编排方选 A：另派 m7-plan-e9-retry（wf_b53e8674fee05fae，只读，边写边落盘）照 E8 计划的格式写 E9 计划，明确骨架场景复用哪套探针机制，并列出 M7 合入 main 时要吸收的改动（身份段 3200、对话段 2000 的上限，reminder.ts 与 src/loops 的改动）；计划写好后再让 e9-code 接着做。"
+    },
+    {
+      "at": "2026-11-05T23:08:15.187Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "E9 计划重写完成（m7-plan-e9-retry，wf_b53e8674fee05fae）：.worktrees/m3/.llm/wf/m7-e9/plan.md，5 个批次项、偏离 D1–D8、门禁清单、后续步骤说明、合入 main 时要吸收的改动与摘要，没有挡住它的编排方问题。e9-code 步接着按计划实现。"
+    },
+    {
+      "at": "2026-11-06T00:58:57.248Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 E9 第 (1) 节（骨架场景）完成并推到 origin/m7：c0d89dd、59ebb1f、fb37d60（wip(m7-e9)）。树 af3da93 上 build、preflight、npm test（3164：3163 过、1 跳过）0，棘轮 73/18/1，探针 478/478，glm-exec-skeleton 的 11 项全过；execute 行仍出厂停用。下一步 E9 评审。"
+    },
+    {
+      "at": "2026-11-06T01:04:22.936Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 E9（第 1 节，骨架场景）评审 APPROVED，0 条发现。三个 wip(m7-e9) 提交 c0d89dd、59ebb1f、fb37d60 已在 2026-11-06 08:57 推上 origin/m7，HEAD 树 af3da93 等于评审与门禁的树：build 0、preflight 0、npm test 3164（3163 过、1 跳过）、棘轮 73/18/1、探针 478/478（11 项 glm-exec-skeleton 全过，运行 2026-11-06T00-40-40-699Z）；execute 行仍出厂停用。e9-commit 步发现要压成一个提交就得强推已发布的历史，停下问。编排方定：不强推，三个 wip 提交留在 origin/m7 作 E9 的记录；M7 合入 main 时由合入步决定是否以压缩合并进 main（不改写 origin/m7）。下一步 real-model-run。"
+    },
+    {
+      "at": "2026-11-06T01:05:19.514Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 E9 第 (1) 节在 m7 分支落定（wf_36d1d690c7e1de90 e9-commit）：按编排方选的 A，三个已推的 wip(m7-e9) 提交 c0d89dd1、59ebb1f3、fb37d604 原样作为 E9 的记录，没有压缩、没有强推；origin/m7 = HEAD = fb37d604，树 af3da938 即评审（APPROVED，0 条发现）与门禁用的树。门禁：build 0、preflight 0、npm test 3164（3163 过、1 跳过）、棘轮 73/18/1、探针 478/478，含 glm-exec-skeleton 的 11 项。execute 行仍出厂停用。压缩留到 M7 合入 main 时（C）。下一步 real-model-run，然后合入、L4 与报告。"
+    },
+    {
+      "at": "2026-11-06T02:46:44.760Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 真实模型运行（wf_36d1d690c7e1de90 real-model-run，headless，临时 DSH home，m7 fb37d604，主 Agent 为第二个根会话 glm-5.3，DRIVE_ON，非高峰，5.9 分钟，计 23.49 积分）发现死锁：子 agent 调 submit_plan 后 5 分钟没有进展（主 Agent 空闲、goal 在跑、roundsStarted 0），看门狗结束运行。原因（读 rc.3 源码与 src/rules/wake.ts）：submit_plan 挂着子 agent 的工具调用；notifyMain 经 deliver() 投递，主 Agent 空闲且 goal 在跑时选 inject，不叫醒；goal 轮次驱动要等 subagents.waitForChildren 返回才开下一轮，而子 agent 在等主 Agent，只有 30 分钟计划超时才解开。ask_main 同一路径。L3 骨架没抓到：脚本化的主 Agent 不结束回合（E9 计划 D2），glm-exec-drive 用的是 quick。其余观察：主 Agent 自选 glm-5.3-flash 并写明理由、请轻审带理由；第一次 dispatch_task 的 quick 因带目录被拒，下一步自己改对；没有 guard 拦截、没有问人。编排方定 A：合入前在 m7 上修，requests.ts 的计划与提问通知对空闲持有者用 followup 叫醒（忙时不变），补 L2（空闲持有者加活 goal 两种通知都送到且轮次继续、忙时仍不叫醒、不重复开轮），文档同批改，全量门禁与探针，origin/m7 只快进，再重跑一次真实模型运行（积分照规矩只披露）；合入前插入一步独立评审修复提交。与 inject-via-prestep 的重叠：那条线把不叫醒的提示挪进 src/shared/step-mailbox.ts、改 src/loops/deliver.ts，计划与提问通知在那里必须保持叫醒，后合入的一方处理冲突。记录在 m7 工作树 .llm/wf/m7-e9/rmr/2026-11-06T02-28-10-056Z/。"
+    },
+    {
+      "at": "2026-11-06T04:47:01.022Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 真实模型第 2 次运行（wf_36d1d690c7e1de90 real-model-run，记录 .worktrees/m3/.llm/wf/m7-e9/rmr/2026-11-06T04-31-59-326Z，10.9 分钟，59.52 积分）：唤醒修复 a2f934e 生效（树 9f5cd81，build、preflight 绿，npm test 3167/0/1 跳过，新增两条主 Agent 闲着的 L2 不带修复会失败，棘轮 73/18/1，探针 478/478，首跑 476/478 为 ReplaceFileW 1175 偶发、重跑过），submit_plan 后约 6 秒主 Agent 被叫醒、批了计划、答了两次 ask_main。新挡路：计划批准后子 agent 写 src/sum.mjs、src/sum.test.mjs 被 guard 规则 scratch-only 拒 6 次（新目录里还没有这类已跟踪文件），两条路径都在任务 writeScope 与已批计划里；子 agent 与主 Agent 申报例外，驱动在 hourness-waiting-human 上等人，headless 里没人，卡住。§10.3 第 2 项仍未满足。编排方选 A：另起 guard-fix 步，先合入 origin/main（带 probe-run-dir-outside-repo，消掉 1175 偶发），再只为「已登记的子 agent、写自己任务 writeScope 内、计划已批准且列出该路径或其目录」免 scratch-only，主 Agent、普通会话、未登记子 agent、范围外、批准前一律照旧，免掉的写入照例外一样留痕，L2 钉住每种不免的情形；之后独立评审 guard 改动（伪造会话、路径穿越、junction、Windows 大小写、批准后改计划），再在高峰外做第 3 次真实运行，过了才合入。不选 B（换带现成 .mjs 的夹具）：执行行即将默认开启，新项目的第一件活会次次问人。"
+    },
+    {
+      "at": "2026-11-06T05:07:03.665Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7（wf_36d1d690c7e1de90）：叫醒修复 a2f934e 经 fix-review APPROVED（0 挡路、2 不挡路，范围 fb37d604..a2f934ec，树 9f5cd81a），fix-converge 无改动跳过。real-model-run 步结束：第 1 次卡在交计划的通知不叫醒（已修），第 2 次卡在 scratch-only 拦登记子 agent 在写范围内写新文件，§10.3 第 2 条仍未满足，记录 .worktrees/m3/.llm/wf/m7-e9/rmr/record.md。land 步发现它的任务书要求带 execute 启用合入，与本节点已记的选项 A（先修 guard、独立评审、第三次真实运行通过后才合入）冲突，停下来问；编排方答 A：land 步不做任何改动结束（m7 仍是 a2f934ec，main 8bd0550c 未动），剩余步骤改为 guard-fix（先合入 origin/main，登记子 agent 在计划批准后写自己写范围或计划内的路径不受 scratch-only 拦，其余照旧，L2 正反例，文档同批）→ 独立 guard 评审循环 → 第三次真实模型运行（只在高峰外）→ 原样的 land、l4、report（edit-workflow-r6 待批）。"
+    },
+    {
+      "at": "2026-11-06T06:17:20.389Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 人看到 Kiro 的 workflow 与本项目编排层相像，编排方对照之后列了四条从这一夜实际踩到的坑里得来的经验，人答：「行，那就记吧。我们独有的图概念我认为才是最缺的，要不然人都把控不了整体架构。」四条供 M7 的派活、返工计数、交回与完成门对照：一、上游 503 打空的轮次被算进返工预算（ablation、m4-reanchor-violations 各白用数轮），返工计数要分开「做了被打回」与「没跑起来」；二、子线四次把草稿写进主检出（package.json、DESIGN.md、propose.ts、src/memory/effect.ts），任务书提醒挡不住，「只写自己那块」要在工具层拦，写范围检查要覆盖主检出；三、半成品提交推上去之后再压缩就要强推（E9），交回规则要写明什么时候可以推、什么时候只留本地；四、一轮只交计划、没交代码也走完整轮评审（ablation、m5-rule-expected-effect），完成门应在评审之前挡下空交回。人的话另记：项目图是本项目与通用 workflow 最大的不同，状态带验收与证据、跟着 git 走，是人把控整体架构的依据。"
+    },
+    {
+      "at": "2026-11-06T07:58:13.337Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 guard-fix 步完成：先把 origin/main 137359f 合进 m7（9aa3a9a6，解了 9 处冲突），再提交 guard 修复 07ee5baa（树 085e936f）：已登记、活着、计划已批的子 agent 在自己的 writeScope 或计划列出的路径里写文件时不受 scratch-only 拦，其余照旧。门禁 build、preflight、test（3477/3477）、check-lint（73/18/1）、探针 529/529 全为 0，已推 origin/m7 = 07ee5baa。记录 .worktrees/m3/.llm/wf/m7-e9/guard-fix.md。下一步独立 guard 评审，然后高峰外第三次真实模型运行。"
+    },
+    {
+      "at": "2026-11-06T08:38:08.218Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "guard 修复 07ee5baa（合入 origin/main 137359f 为 9aa3a9a6，9 处冲突）经独立 guard-review APPROVED：0 挡路、3 不挡路，范围 a2f934ec..07ee5baa，树 085e936f，门禁记录成立（3477/3477，探针 529/529，棘轮 73/18/1）；guard-converge 无改动跳过。评审提示 origin/main 已前进到 63da5e25（inject-via-prestep），合入步要再合一次 main，wake.ts 不受影响。下一步高峰外的第三次真实模型运行。"
+    },
+    {
+      "at": "2026-11-06T11:18:46.035Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-06 19:18：real-model-run-3（wf_36d1d690c7e1de90）在跑，19:17 取了 .llm/desktop-lock（headless，glm-5.3 主 Agent，高峰外）；过了才走 land-2、l4、report。"
+    },
+    {
+      "at": "2026-11-06T12:44:47.924Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "M7 real-model-run-3（wf_36d1d690c7e1de90）完成：第三次真实模型在 headless、glm-5.3 主 Agent 下达到设计 §10.3 第 2 条：主 Agent 把 goal-1 从 release 推到 complete，没有工人、没有人问题。进程后来以退出码 1 结束，但那时 goal-1 已经完成了 18 分钟。下一步 land-2。desktop-lock 已释放。"
     }
   ]
 }

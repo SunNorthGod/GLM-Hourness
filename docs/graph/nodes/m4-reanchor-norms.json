@@ -3,7 +3,7 @@
   "type": "task",
   "title": "压缩之后，把这个目标下的规范再给模型看一遍",
   "why": "压缩后规则细节最容易失真，重锚时把规范的标题一并交给模型，少按走样的规矩干活",
-  "status": "approved",
+  "status": "done",
   "parent": "m4",
   "kind": "implement",
   "body": "压缩之后的那一次投影，除 m4-reanchor-violations 的本会话违规计数，再附焦点所在目标下已批准的规范节点（norm-*）的标题，每条一行；只在压缩后注入一次，平时不加。模块 src/graph/reminder.ts。同一件做一次 L3 实测：压缩之后宿主 dsh-agent-instructions 的基线（用户级与项目 AGENTS.md）是否重新出现在请求里，子 agent 是否收到；报告 2.2 只读了代码。等 m4-reanchor-violations 合入 main 后开工。",
@@ -17,6 +17,29 @@
       "to": "m4-reanchor-violations"
     }
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "7f261f9",
+      "note": "re-anchoring lists approved norm nodes, L2 与 L3 核对"
+    },
+    {
+      "kind": "commit",
+      "ref": "23550c4",
+      "note": "FACTS §3 一行：压缩后宿主补回 AGENTS.md 基线、子 agent 收到（L3 实测）"
+    },
+    {
+      "kind": "commit",
+      "ref": "8ca520b",
+      "note": "合入 main，origin 一致；github 待推"
+    },
+    {
+      "kind": "test",
+      "ref": "build、preflight、npm test、check-lint、npm run -s probe on 8ca520b",
+      "exit": 0,
+      "note": "3203 测试、探针 427/427、棘轮 73/18/1；桌面重启无新错误"
+    }
+  ],
   "history": [
     {
       "at": "2026-11-05T13:48:50.005Z",
@@ -25,6 +48,51 @@
       "reason": "d-habits-into-framework 的长会话规则重读一条（报告 3.1 的 H2）：ORCHESTRATION.md §2.5 写的重锚规范摘要没做；m4-reanchor-violations 在做违规计数，不往在跑的线里扩，它合入后另开。",
       "relay": "其余是\n哦，ide那条也加进去吧",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-05T20:16:57.775Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "前置 m4-reanchor-violations 已合入 main 5022820，本节点可以开工；编排方派 m4-reanchor-norms（见下一条状态记录）。"
+    },
+    {
+      "at": "2026-11-05T20:16:59.114Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "运行 m4-reanchor-norms（wf_e68cfc85d840d388）开工：压缩后重锚附焦点目标下已批准规范节点的标题，并 L3 实测压缩后宿主是否补回用户级与项目 AGENTS.md",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-06T00:58:56.789Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "m4-reanchor-norms（wf_e68cfc85d840d388 实现与评审 APPROVED，合入由 m4-reanchor-norms-land wf_3b77820c1d95ba2e 重做）完成：合入 main 8ca520b（三轮合入 origin/main，每轮门禁全绿），最终树 npm test 3203/0、探针 427/427、棘轮 73/18/1；主检出 dist 按 8ca520b 重建，桌面版重启后核对无新错误。压缩后的重锚列出焦点目标下已批准规范节点的标题，平时不加。L3 实测（探针场景 glm-compact-instructions）：每次压缩后下一次请求在检查点之后重新带上用户级与项目 AGENTS.md 的基线，经 subagents.startActivation 派出的子 agent 第一次请求也带它，写进 FACTS.md §3；ORCHESTRATION.md §2.5 同批改。github 推送当时连不上，main 只在 origin。",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "7f261f9",
+          "note": "re-anchoring lists approved norm nodes, L2 与 L3 核对"
+        },
+        {
+          "kind": "commit",
+          "ref": "23550c4",
+          "note": "FACTS §3 一行：压缩后宿主补回 AGENTS.md 基线、子 agent 收到（L3 实测）"
+        },
+        {
+          "kind": "commit",
+          "ref": "8ca520b",
+          "note": "合入 main，origin 一致；github 待推"
+        },
+        {
+          "kind": "test",
+          "ref": "build、preflight、npm test、check-lint、npm run -s probe on 8ca520b",
+          "exit": 0,
+          "note": "3203 测试、探针 427/427、棘轮 73/18/1；桌面重启无新错误"
+        }
+      ]
     }
   ]
 }

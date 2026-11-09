@@ -51,7 +51,10 @@
  * journal holds every line in between. In env-checks-ceiling a check held at
  * its ceiling is one line in the root agent's environment notice, which
  * check_limit takes away by raising the ceiling, and a dispatched subagent
- * never hears of it. The loop board's peak scenario
+ * never hears of it; right after the raise the status hub's collector reads
+ * the env row's env/timeouts with the held check and the raised ceiling,
+ * and the env row's hand-over gives the loop board's page the check with
+ * its timeout held at the ceiling and the raise. The loop board's peak scenario
  * (loops-peak) runs on the GLM route at the probe clock inside a peak, with
  * the loop row and the rules row (少做) enabled and no contribution listing
  * execute.resume-drive: the scripted agent becomes the main agent with /wish,
@@ -107,8 +110,12 @@
  * both packages' client faces. These three also read each project row's
  * settings-page title in their profile. The main checkout and a
  * worktree are tested the same way and ~/.dsh/profiles is never used. Each
- * run writes the DSH home, overlays, request dumps and logs under
- * .llm/probe-runs/<timestamp>/ (gitignored).
+ * run writes the DSH home, overlays, request dumps and logs into a directory
+ * of its own under the system temporary directory
+ * (glm-hourness-probe-<timestamp>-*, scripts/sandbox.mjs openRunDir), outside
+ * the repository tree, where freshly written files are briefly held by
+ * another process (docs/FACTS.md §3). A run that passes deletes it; any other
+ * exit keeps it and prints its path.
  *
  * Guard (exit 2, no conclusion): a profile of that name already exists
  * under the real profiles directory, a profile cannot be generated, or the
@@ -120,8 +127,8 @@
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
@@ -155,19 +162,18 @@ import { FAILURE_SOURCE } from '../../packages/hourness/dist/lessons/failure.js'
 import { GUARD_CORRECTION_SOURCE, GUARD_LIFT_LINE } from '../../packages/hourness/dist/guard/index.js'
 import { PENDING_SOURCE as LESSONS_PENDING_SOURCE, RECUR_SOURCE as LESSONS_RECUR_SOURCE } from '../../packages/hourness/dist/lessons/notices.js'
 import { INDEX_SOURCE as MEMORY_INDEX_SOURCE } from '../../packages/hourness/dist/memory/index.js'
+import { HABIT_RULE_DECLARATION } from '../../packages/hourness/dist/memory/habit-rule.js'
 import { compareShapes, describeDifference, isProjectDifference, profileShape } from '../profile-shape.mjs'
 import { checkLog, readLog } from '../../packages/hourness/dist/metrics/read.js'
 import { METRICS_FILES_ONLY } from '../../packages/hourness/dist/metrics/rules.js'
 import { keyOf } from '../../packages/hourness/dist/guard/records.js'
 import { PACKAGES } from '../packages.mjs'
-import { ablationRow, attachmentsIn, dataRows, designRows, fenceRow, generateProfile, initRepo, limitsRow, PROBE_PROFILES, repo, requireDesktop, sandboxCommand, scenarioWorkspace, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
+import { ablationRow, attachmentsIn, dataRows, designRows, fenceRow, generateProfile, initRepo, limitsRow, openRunDir, PROBE_PROFILES, removeRunDir, repo, requireDesktop, sandboxCommand, scenarioWorkspace, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
 import { DEFERRED_BY_A3, WORKSPACE_RULES_SHORT } from '../calibrate/ablation.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 import { CANARY } from './probe-net.mjs'
 
 requireDesktop('probe')
-
-const runDir = join(repo, '.llm', 'probe-runs', new Date().toISOString().replace(/[:.]/g, '-'))
 
 // The run boots profiles generated under its own DSH home; the user's
 // profiles directory must not gain them, and the profiles there must keep
@@ -195,9 +201,13 @@ for (const [name, shape] of shapesBefore) {
     process.exit(2)
   }
 }
+const runDir = openRunDir(new Date().toISOString().replace(/[:.]/g, '-'))
 /** The generated profiles by name; every one generated is unlinked on exit, a failed run included. */
 const profiles = {}
-process.on('exit', () => Object.values(profiles).forEach(unlinkProfile))
+process.on('exit', (code) => {
+  Object.values(profiles).forEach(unlinkProfile)
+  if (code !== 0 && existsSync(runDir)) console.error(`probe: run artifacts kept in ${runDir}`)
+})
 for (const [name, packages] of Object.entries(PROBE_PROFILES)) {
   try {
     profiles[name] = generateProfile(join(runDir, 'dsh-root'), name, packages)
@@ -207,6 +217,20 @@ for (const [name, packages] of Object.entries(PROBE_PROFILES)) {
     process.exit(2)
   }
 }
+// The host's workspace instructions (dsh-agent-instructions) read $DSH_HOME/AGENTS.md. The
+// scenario glm-compact-instructions boots probe-full under a DSH home of its own that holds
+// one, so no other scenario's requests gain it; it stays out of `profiles`, whose count the
+// sandbox check compares with the generated names.
+const instructionsHome = join(runDir, 'dsh-root-instructions')
+let instructionsProfile
+try {
+  instructionsProfile = generateProfile(instructionsHome, 'probe-full', PROBE_PROFILES['probe-full'])
+}
+catch (error) {
+  console.error(`probe: cannot generate the instructions profile under ${instructionsHome}: ${error instanceof Error && 'code' in error ? error.code : String(error)}`)
+  process.exit(2)
+}
+process.on('exit', () => unlinkProfile(instructionsProfile))
 const PACKAGE_NAME = Object.fromEntries(PACKAGES.map(pkg => [pkg.key, pkg.name]))
 
 /** A solid red 8x8 RGB PNG, built byte by byte so the fixture needs no binary file. */
@@ -309,8 +333,15 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
   const { exe, args, env } = sandboxCommand(patch, [task], on)
   // Every scenario's sessions run in a repository of its own, so no row keeps project state in this checkout's project.
   const workspace = scenarioWorkspace(dir, cwd)
+  // rc.3's workspace-write sandbox lets writes through under the workspace and the runtime's os.tmpdir();
+  // the run directory is under the system temporary directory, so the runtime gets a temporary directory
+  // of the scenario's own and a target elsewhere in the run directory stays outside both. It sits beside
+  // the scenario directories, not in one: the Windows ACL sandbox refuses a temp root inside the workspace,
+  // and a scenario that names no directory works in its scenario directory.
+  const temp = join(runDir, 'runtime-tmp', name)
+  mkdirSync(temp, { recursive: true })
   const started = Date.now()
-  const result = spawnSync(exe, args, { cwd: workspace, encoding: 'utf8', timeout: 180_000, env })
+  const result = spawnSync(exe, args, { cwd: workspace, encoding: 'utf8', timeout: 180_000, env: { ...env, TEMP: temp, TMP: temp } })
   const elapsedMs = Date.now() - started
   writeFileSync(join(dir, 'stdout.txt'), result.stdout ?? '')
   writeFileSync(join(dir, 'stderr.txt'), result.stderr ?? '')
@@ -420,24 +451,34 @@ const todoLastResult = todoFinal?.messages.findLastIndex(message => message.role
 const todoParallel = todo.steps[2]?.messages.findLast(message => message.role === 'assistant')?.toolCalls
 
 // GLM compaction: a low pressure threshold makes compaction-basic compact
-// at the second step boundary (sandbox overlay only).
+// at the second step boundary (sandbox overlay only). The transcript row
+// ships enabled; the overlay disables it here, so this scenario keeps the
+// check that a disabled row leaves the summary as it is without the row.
 const compacted = runScenario('glm-compact', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
   { text: 'done', status: true },
 ], 'Read package.json and reply done.', [
   '- id: compaction-basic',
   '  config: { thresholdRatio: 0.02, retainTokens: 0 }',
+  '- id: glm-hourness/transcript',
+  '  disabled: true',
 ])
-// GLM compaction with the transcript row enabled through the overlay (it
-// ships disabled): the checkpoint ends with ZCode's transcript sentence
-// naming the plaintext export under the scenario home, and the model reads
-// that file with Read ({transcript}, scripts/probe/probe-llm.mjs).
+// GLM compaction with the transcript row pinned on by the overlay (it ships
+// enabled; the overlay also points it at the scenario home): the checkpoint
+// ends with ZCode's transcript sentence naming the plaintext export under the
+// scenario home, and the model reads that file with Read ({transcript},
+// scripts/probe/probe-llm.mjs). The task
+// text carries two fake credentials (a Bearer value, a named-prefix key),
+// assembled from parts so that no line of this file is a token for the
+// secret scan; the export must carry neither (src/data/transcript.ts).
 const transcriptHome = join(runDir, 'glm-compact-transcript', 'home')
+const TRANSCRIPT_FAKES = [['Bearer', 'probe0123456789ABCDEFGHIJ'].join(' '), ['sk', '-'].join('') + 'probe0123456789abcdefgh']
+const TRANSCRIPT_FAKES_LINE = 'Probe credentials: [redacted] and [redacted].'
 const compactTranscript = runScenario('glm-compact-transcript', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
   { tool: { name: 'Read', arguments: { file_path: '{transcript}' } } },
   { text: 'done', status: true },
-], 'Read package.json, read the transcript the summary names, then reply done.', [
+], `Read package.json, read the transcript the summary names, then reply done. Probe credentials: ${TRANSCRIPT_FAKES.join(' and ')}.`, [
   '- id: compaction-basic',
   '  config: { thresholdRatio: 0.02, retainTokens: 0 }',
   '- id: glm-hourness/transcript',
@@ -991,7 +1032,7 @@ const calibFence = runScenario('calib-fence', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(fenceWs, 'note.txt') } } },
   { tool: { name: 'Bash', arguments: { command: 'Get-ChildItem .' } } },
   { text: 'done' },
-], 'Read the checker, list the temporary directory and the parent, then the workspace, then reply done.', fenceRow({ workspace: slash(fenceWs), fenced: [slash(repo)], tmp: slash(tmpdir()), record: slash(fenceRecord) }), fenceWs)
+], 'Read the checker, list the temporary directory and the parent, then the workspace, then reply done.', fenceRow({ workspace: slash(fenceWs), fenced: [slash(repo)], tmp: slash(join(runDir, 'runtime-tmp', 'calib-fence')), record: slash(fenceRecord) }), fenceWs)
 const fenceResults = [1, 2, 3, 4, 5, 6].map(index => lastToolResult(calibFence.steps[index]))
 const fenceDenials = existsSync(fenceRecord) ? readFileSync(fenceRecord, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
 const checkerText = readFileSync(fenceChecker, 'utf8').split('\n').find(line => line.includes('Acceptance for')) ?? 'Acceptance for'
@@ -1218,6 +1259,8 @@ const envCeilingRun = runScenario('env-checks-ceiling', 'deepseek-probe', [
   { tool: { name: 'write', arguments: { file_path: join(envCeilingWs, 't.txt'), content: 'a\n' } } },
   { tool: { name: 'read', arguments: { file_path: join(envCeilingWs, 't.txt') } } },
   { tool: { name: 'check_limit', arguments: { check: 'tool-1/full', seconds: 120, reason: ENV_CEILING_REASON } } },
+  // Asked once check_limit's result is back: the hub step records the env row's entries after the raise, and the tool reads what the env row hands the loop board's page.
+  { tool: { name: 'probe_loop_page', arguments: { entry: 'env.checks-after-edit' } }, hub: true },
   { tool: { name: 'probe_dispatch', arguments: { task: 'T1', prompt: 'Probe task T1: report.', cwd: envCeilingWs, scope: 'allowed', model: 'deepseek-probe' } } },
   { text: 'Waiting for task T1.' },
   { text: 'done' },
@@ -1234,6 +1277,12 @@ const envCeilingChildNotices = envNoticesOf(envCeilingChild)
 const envCeilingLimitResult = (() => { try { return JSON.parse(lastToolResult(envCeilingMain[3])?.text ?? '') } catch { return undefined } })()
 const envCeilingLimitLines = existsSync(envCeilingLimits) ? readFileSync(envCeilingLimits, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
 const envCeilingJournal = jsonl(join(envCeilingWs, '.llm', 'env-checks', 'timing.jsonl'))
+// The status hub's collector right after check_limit (status hub batch 9): the env row's env/timeouts entry.
+const envCeilingHub = envCeilingMain[3]?.hub
+const envCeilingTimeouts = envCeilingHub?.agent?.items.find(item => item.id === 'env/timeouts')
+// What the env row hands the loop board's page right after check_limit (panel done condition 8-1): one detail line per check, the check with its timeout.
+const envCeilingPage = readEnvLog(envCeilingLog).find(record => record.kind === 'page')?.page
+const envCeilingCheck = Array.isArray(envCeilingPage?.checks) ? envCeilingPage.checks[0] : undefined
 
 // Rules board, a rule of the person across the end of a peak (M6 S3, M6
 // design §16 S3, §7.3, docs/ORCHESTRATION.md §16.12). The clone's rules file
@@ -1689,17 +1738,76 @@ const plainGraph = runScenario('non-glm-graph', 'deepseek-probe', [
 ], 'List the open work, then reply done.', graphRow(graphCopy, join(runDir, 'non-glm-graph', 'home')), graphWs)
 const plainGraphOpen = lastToolResult(plainGraph.steps[1])
 
+// The first step writes a node file and is denied by graph-files-only, so the
+// re-anchoring after each later compaction lists that rule with its count
+// (ORCHESTRATION.md §2.5 重锚附带).
 const compactGraph = runScenario('glm-graph-compact', 'glm-5.3', [
+  { tool: { name: 'Write', arguments: { file_path: join(graphCopy, 'nodes', 'probe-compact.json'), content: '{}\n' } } },
   { tool: { name: 'graph_focus', arguments: { id: focusTask?.id } } },
   { tool: { name: 'Read', arguments: { file_path: join(graphWs, 'README.md') } } },
   { tool: { name: 'Read', arguments: { file_path: join(graphWs, 'README.md') } } },
   { text: 'done' },
-], 'Set the focus, read the README twice, then reply done.', [...graphRow(graphCopy, join(runDir, 'glm-graph-compact', 'home')), '- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'], graphWs)
+], 'Write a node file, set the focus, read the README twice, then reply done.', [...graphRow(graphCopy, join(runDir, 'glm-graph-compact', 'home')), '- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'], graphWs)
 /** Requests that carry a compaction checkpoint, and the projection reasons that follow it in each. */
 const reanchored = compactGraph.steps.flatMap((step) => {
   const at = step.messages.findLastIndex(message => message.source === 'compact-checkpoint')
   return at < 0 ? [] : [step.messages.slice(at + 1).filter(message => message.source === 'glm-graph-projection').map(message => message.projection)]
 })
+/** The first re-anchoring notice, the scenario's denials, and the non-goals of the focus's goal in the copy. */
+const firstReanchor = compactGraph.steps.flatMap(step => step.messages).find(message => message.source === 'glm-graph-projection' && message.projection === 'compaction')
+const compactViolations = jsonl(join(runDir, 'glm-graph-compact', 'home', 'audit', 'violations.jsonl'))
+const DENIED_HEAD = 'Calls the harness denied in this session, by rule (rule id: times).'
+const focusGoal = (() => {
+  let node = copyBefore.nodes.get(focusTask?.id ?? '')
+  while (node !== undefined && node.type !== 'goal') node = node.parent === undefined ? undefined : copyBefore.nodes.get(node.parent)
+  return node
+})()
+/** The approved, live norm nodes below the focus's goal in the copy, as the re-anchoring lists them (src/graph/reanchor.ts goalNorms). */
+const focusNorms = (() => {
+  if (focusGoal === undefined) return []
+  const under = node => {
+    for (let at = node; at !== undefined; at = at.parent === undefined ? undefined : copyBefore.nodes.get(at.parent)) {
+      if (at.status === 'dropped' || at.status === 'superseded') return false
+      if (at.id === focusGoal.id) return at !== node
+    }
+    return false
+  }
+  return [...copyBefore.nodes.values()].filter(node => node.type === 'norm' && ['approved', 'doing', 'done'].includes(node.status) && under(node)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+})()
+const NORMS_HEAD = 'Norms in effect under goal'
+
+// Host workspace instructions after a compaction (docs/FACTS.md §3; habits
+// report §2.2, H2): dsh-agent-instructions puts $DSH_HOME/AGENTS.md and the
+// project's AGENTS.md into the first request as one baseline message. The
+// scenario boots under a DSH home holding a user-level AGENTS.md, works in a
+// repository holding a project AGENTS.md, compacts at every step boundary,
+// and dispatches a subagent; the checks read whether the baseline comes back
+// after each checkpoint and whether the child's first request carries it.
+const instructionsDir = join(runDir, 'glm-compact-instructions')
+const instructionsWs = join(instructionsDir, 'ws')
+const USER_MARK = 'PROBE-USER-INSTRUCTIONS-MARK'
+const PROJECT_MARK = 'PROBE-PROJECT-INSTRUCTIONS-MARK'
+mkdirSync(instructionsWs, { recursive: true })
+writeFileSync(join(instructionsHome, 'AGENTS.md'), `# probe user instructions\n\n${USER_MARK}\n`)
+writeFileSync(join(instructionsWs, 'AGENTS.md'), `# probe project instructions\n\n${PROJECT_MARK}\n`)
+writeFileSync(join(instructionsWs, 'README.md'), 'probe workspace\n')
+const compactInstructions = runScenario('glm-compact-instructions', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(instructionsWs, 'README.md') } } },
+  { tool: { name: 'Read', arguments: { file_path: join(instructionsWs, 'README.md') } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'I1', prompt: 'Probe task I1: reply done.', cwd: instructionsWs, scope: '.', model: 'glm-5.3' } } } },
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the subagent run' } } },
+  { text: 'done' },
+], 'Read the README twice, dispatch task I1, wait, then reply done.', [...dispatchRow(join(instructionsDir, 'dispatch.jsonl')), '- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'], instructionsWs, [[{ text: 'child done' }]], instructionsProfile)
+const instructionsChildId = dispatchRecord('glm-compact-instructions').find(entry => entry.kind === 'started')?.childId
+const instructionsMain = compactInstructions.steps.filter(step => step.sessionId !== instructionsChildId)
+const instructionsChild = bySession(compactInstructions, instructionsChildId)
+/** The workspace instruction messages of a request after its last compaction checkpoint (all of them when it has none). */
+const instructionsAfterCheckpoint = (step) => {
+  const at = step?.messages.findLastIndex(message => message.source === 'compact-checkpoint') ?? -1
+  return (step?.messages ?? []).slice(at + 1).filter(message => message.source === 'agent-instructions')
+}
+const bothMarks = messages => messages.some(message => message.text.includes(USER_MARK) && message.text.includes(PROJECT_MARK))
+const instructionsCheckpointed = instructionsMain.filter(step => step.messages.some(message => message.source === 'compact-checkpoint'))
 
 const graphGoalDir = join(runDir, 'glm-graph-goal')
 const graphGoalWs = join(graphGoalDir, 'ws')
@@ -1824,22 +1932,29 @@ const depthSessions = (() => {
 /** The depth id the standing-preference sentence of the request's prompt names. */
 const depthOf = step => /The user's standing preference is [^（]+（(\w+)）/.exec(step?.system ?? '')?.[1]
 
-// The habit questions (M5 design §3.8, m5-4 items 4 to 8): the task is the
-// person's message, so a preference quoting it is stored checked; the agent
-// asks one habit question (deferred on the GLM route), the probe sends the
-// person's reply into the same session (`tell`), the confirm records the
-// habit with their words, and a relay that only an earlier message had is
-// refused. The user-level journal holds store, ask, store and nothing else.
+// The habit questions (M5 design §3.8, m5-4 items 4 to 8; m5-habit-rule):
+// the task is the person's message, so a preference quoting it is stored
+// checked (said outright, the rule habit-ask-first lets it through); a
+// question card about a habit is denied by habit-ask-first; the agent asks
+// one habit question with memory_habit (resident on the GLM route), the probe
+// sends the person's reply into the same session (`tell`), a memory_store
+// whose relay is only their yes is denied by habit-ask-first, the confirm
+// records the habit with their words, and a relay that only an earlier
+// message had is refused. The user-level journal holds store, ask, store and
+// nothing else; the violation journal holds the two denials.
 const HABIT_ASK = { name: 'commit-in-english', scope: 'all', description: 'Write commit messages in English', body: 'Commit messages stay in English.\n**Why:** the person asked for it.\n**How to apply:** write the subject and the body in English.', question: '以后提交说明都写成英文，好吗？', learnedFrom: ['edit:goal.stage'] }
 const HABIT_TASK = '试一下习惯先问再记；先记住我这句话：汇报只写结论。'
+const HABIT_CARD = { questions: [{ id: 'q-habit', question: '要把「提交说明都写成英文」记成你的习惯吗？', options: [{ label: '记下' }, { label: '不用' }] }] }
 const memoryHabit = runScenario('glm-memory-habit', 'glm-5.3', [
   { tool: { name: 'memory_store', arguments: { name: 'reports-conclusion-only', type: 'feedback', scope: 'all', description: 'Reports carry only the conclusion', body: 'The conclusion first, the rest on demand.\n**Why:** the person said so.', relay: '汇报只写结论' } } },
-  { tool: { name: 'DeferredToolCall', arguments: { name: 'memory_habit', input: { action: 'ask', ...HABIT_ASK } } } },
+  { tool: { name: 'ask_user_question', arguments: HABIT_CARD } },
+  { tool: { name: 'memory_habit', arguments: { action: 'ask', ...HABIT_ASK } } },
   { tell: '好，都写成英文吧' },
-  { tool: { name: 'DeferredToolCall', arguments: { name: 'memory_habit', input: { action: 'confirm', name: 'commit-in-english', words: ['好，都写成英文吧'] } } } },
+  { tool: { name: 'memory_store', arguments: { name: 'commit-english-direct', type: 'feedback', scope: 'all', description: 'Write commit messages in English', body: 'Commit messages stay in English.\n**Why:** the person said yes.', relay: '好' } } },
+  { tool: { name: 'memory_habit', arguments: { action: 'confirm', name: 'commit-in-english', words: ['好，都写成英文吧'] } } },
   { tool: { name: 'memory_store', arguments: { name: 'from-the-task', type: 'feedback', scope: 'all', description: 'Quoting an earlier message', body: 'This must be refused.\n**Why:** the words are not in the latest message.', relay: '汇报只写结论' } } },
   { text: 'done', status: true },
-], HABIT_TASK, [], repo)
+], HABIT_TASK, ['- insert:', '    - id: glm-hourness-probe/tool-ask-user', '      name: \'@deepseek-ai/dsh-tool-ask-user\''], repo)
 
 // Compaction: the session starts with a memory in the project, so its first
 // request has the index; the compaction removes it from the visible history
@@ -2048,6 +2163,21 @@ const designOne = designScenario('glm-design-one-main', 'glm-5.3', ws => [
   { tool: { name: 'Write', arguments: { file_path: join(ws, '.llm', 'x.txt'), content: 'x\n' } }, status: true },
   { text: 'done' },
 ], { wish: true })
+// A /wish off in an idle session leaves its inbox empty (inject-via-prestep):
+// the main session types /wish into a second root session that never ran,
+// then /wish off, then /wish off again with a message of the person that
+// wakes it. The notices of the two first commands wait in the design row's
+// step mailbox, not in the inbox the desktop host counts as a running task,
+// and the woken session's first request carries both before the message.
+const designWishOffIdle = designScenario('glm-design-wish-off-idle', 'glm-5.3', ws => [
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish' } },
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish off' } },
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish off', say: 'Reply done.' } },
+  // The woken session runs its turn while the main one waits; without the
+  // wait the run ends before that turn sends its first request.
+  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the second session run' } } },
+  { text: 'done' },
+], { others: [[{ text: 'done' }]] })
 // Stage reminders and design-before-release (docs/ORCHESTRATION.md §3.5, §6.1; M3 step 5).
 // The graph of the workspace is seeded before the run. The main agent
 // (the simulated human's /wish) dispatches subagents through the dispatch
@@ -2361,6 +2491,10 @@ const transcriptLines = transcriptText.split('\n')
 const transcriptLong = transcriptLines.filter(line => Array.from(line).length > 1000)
 const transcriptSplit = transcriptLines.some(line => Array.from(line).length === 1000 && line.includes('"test:1"'))
 const transcriptRead = [...compactTranscript.steps, ...compactTranscript.compactions].flatMap(request => request.messages).find(message => message.role === 'tool' && message.text.includes('Transcript of session'))
+// The fake credentials of the task text reach the session's first request; the export carries neither, reads them as [redacted] and counts its replacements in the header.
+const transcriptFakesAsked = compactTranscript.steps[0]?.messages.some(message => message.role === 'user' && TRANSCRIPT_FAKES.every(fake => message.text.includes(fake))) === true
+const transcriptFakesLeft = TRANSCRIPT_FAKES.filter(fake => transcriptText.includes(fake)).length
+const transcriptReplaced = transcriptLines.slice(0, 5).map(line => /Replaced in this export: (\d+)\.$/.exec(line)?.[1]).find(count => count !== undefined)
 
 // The memory row journals one usage record per model call from the
 // llm/stream request fields (rc.3 GenerateOptions: provider, model,
@@ -2810,6 +2944,34 @@ function personaChecks() {
     ['design persona (non-GLM): the row is in effect in /hourness-status and ran quietly', inEffectRow(rowAt(designPersonaPlain, designPersonaPlain.steps[0]?.command?.text)) && designPersonaPlain.status === 0 && !stderrOf(PERSONA_PLAIN).includes('dsh-glm-hourness/design'), `${JSON.stringify(rowAt(designPersonaPlain, designPersonaPlain.steps[0]?.command?.text) ?? null)}; exit ${designPersonaPlain.status}`],
   ]
 }
+/**
+ * A /wish off in an idle session (scenario glm-design-wish-off-idle,
+ * inject-via-prestep): the two commands typed into the second root session
+ * leave its inbox empty and log no inbox event; its first request, the turn the
+ * person's message woke, carries the enter notice and the leave notice, in that
+ * order and before the message, and no later request carries them again.
+ */
+function wishOffIdleChecks(wishNotices) {
+  const scenario = designWishOffIdle
+  const mainId = scenario.steps[0]?.sessionId
+  const main = scenario.steps.filter(step => step.sessionId === mainId)
+  const otherId = scenario.steps.find(step => step.sessionId !== mainId)?.sessionId
+  const second = otherId === undefined ? [] : bySession(scenario, otherId)
+  const typed = [0, 1].map(index => main[index]?.other)
+  const idleEmpty = typed.every(line => line?.kind === 'success' && !line.types.includes('agent/inbox/spliced') && isDeepStrictEqual(line.inbox, { nextStep: 0, nextTurn: 0 }))
+  const first = second[0]
+  const notices = wishNotices(first)
+  const at = text => (first?.messages ?? []).findIndex(message => message.source === 'glm-design-wish' && message.text.includes(text))
+  const said = (first?.messages ?? []).findIndex(message => message.role === 'user' && message.source === 'user' && message.text.includes('Reply done.'))
+  const entered = (first?.messages ?? []).findIndex(message => message.source === 'glm-design-wish' && message.text.startsWith('The human made this session\'s agent the main agent'))
+  const left = at('left main-agent mode with /wish off')
+  const later = second.slice(1).every(step => wishNotices(step).length === wishNotices(first).length)
+  return [
+    ['design wish off idle: /wish and /wish off typed into an idle second session succeed, log no inbox event, and leave its inbox empty (nextStep 0, nextTurn 0)', idleEmpty, JSON.stringify(typed.map(line => ({ kind: line?.kind, types: line?.types, inbox: line?.inbox ?? null })))],
+    ['design wish off idle: the first request of the woken session carries the enter notice, then the leave notice, both before the person\'s message; the second /wish off adds none', notices.length === 2 && entered >= 0 && left > entered && said > left && main[2]?.other?.kind === 'success' && main[2].other.resultText === '这个会话本来就不是主 Agent', `${notices.length} notice(s); enter ${entered}, leave ${left}, message ${said}; ${JSON.stringify(main[2]?.other ?? null).slice(0, 120)}`],
+    ['design wish off idle: no later request of the second session carries the notices again (the history keeps the two it admitted), the record is gone, the row warned of nothing', second.length >= 1 && later && designRecord(scenario).kind === 'none' && !stderrOf(scenario.name).includes('dsh-glm-hourness/design') && scenario.status === 0, `${second.length} request(s); record ${designRecord(scenario).kind}; exit ${scenario.status}`],
+  ]
+}
 function designChecks() {
   const zcode = (step) => step?.system.indexOf('You are ZCode, an interactive agent') ?? -1
   const ascending = (...marks) => marks.every(mark => mark >= 0) && marks.every((mark, index) => index === 0 || marks[index - 1] < mark)
@@ -2858,6 +3020,7 @@ function designChecks() {
     ['design one main: a second root session in the same workspace, typing /wish, is told where the main agent is and how to move it; its tool face and the first session\'s are not changed by it', mainSteps[0]?.other?.kind === 'success' && mainSteps[0].other.resultText.includes('这个项目的主 Agent 在另一个会话里') && mainSteps[0].other.resultText.includes('/wish here') && sectionAt(mainSteps[1]) >= 0 && lacks(mainSteps[1], ['Write', 'Edit']), JSON.stringify(mainSteps[0]?.other ?? null).slice(0, 160)],
     ['design one main: /wish here moves the role; the first session\'s next request has no section, its tool face back (Write, Edit, ask_user_question), the notice that the main agent moved; the Write runs', mainSteps[1]?.other?.kind === 'success' && mainSteps[1].other.resultText.startsWith('主 Agent 已从另一个会话移到这里；') && mainSteps[2] !== undefined && sectionAt(mainSteps[2]) < 0 && hasCut(mainSteps[2], GLM_CUT) && wishNotices(mainSteps[2]).some(message => message.text.includes('moved to another session')) && files(one, 'x.txt')[0], `${mainSteps[1]?.other?.kind}; section ${sectionAt(mainSteps[2])}; x.txt ${files(one, 'x.txt')[0]}`],
     ['design one main: the record names the second session, not the first and not the fork; the second session logged its own two commands', holder.kind === 'held' && holder.record.sessionId.startsWith('probe-other-') && holder.record.sessionId !== mainId && holder.record.sessionId !== forkNote?.sessionId && mainSteps[0]?.other?.types.join('>') === 'command/run>command/done', `${holder.kind === 'held' ? holder.record.sessionId : holder.kind}`],
+    ...wishOffIdleChecks(wishNotices),
     ...stageChecks(),
     ...questionChecks(),
     ...interviewChecks(),
@@ -2888,11 +3051,17 @@ function memoryChecks() {
   const habitRun = bySession(memoryHabit, memoryHabit.steps[0]?.sessionId)
   const said = (run, at, piece) => (run[at]?.messages ?? []).some(message => message.text.includes(piece))
   const habitJournal = memoryJournalOf('glm-memory-habit', 'all')
+  /** The denials (records without a kind) of the scenario's violation journal; the settled follow-ups are records of their own. */
+  const habitDenials = jsonl(join(runDir, 'glm-memory-habit', 'home', 'audit', 'violations.jsonl')).filter(record => record.kind === undefined)
   const habitChecks = [
-    ['memory habit: the preference quoting the task (the person\'s latest message in the session) is stored with the words checked', habitJournal[0]?.op === 'store' && habitJournal[0]?.data.relayChecked === true && habitJournal[0]?.relay === '汇报只写结论' && habitRun.length === 6, `journal ${habitJournal.map(record => record.op).join(', ') || 'none'}; requests ${habitRun.length} (exit ${memoryHabit.status})`],
-    ['memory habit: the ask is recorded with its question and its result reached the model as the circled text with the content on a second line', habitJournal[1]?.op === 'ask' && habitJournal[1]?.data.question === HABIT_ASK.question && isDeepStrictEqual(habitJournal[1]?.data.learnedFrom, ['edit:goal.stage']) && said(habitRun, 2, '① 以后提交说明都写成英文，好吗？') && said(habitRun, 2, `要记的：${HABIT_ASK.description}`), (habitRun[2]?.messages ?? []).map(message => message.text).find(text => text.includes('要记的：'))?.slice(0, 120) ?? 'the ask result did not reach the model'],
-    ['memory habit: the person\'s reply (`tell`) woke the session and the confirm stored what was asked, with their words as the relay, checked, and the question named', habitJournal[2]?.op === 'store' && habitJournal[2]?.data.ask === HABIT_ASK.question && habitJournal[2]?.relay === '好，都写成英文吧' && habitJournal[2]?.data.relayChecked === true && said(habitRun, 4, '"confirmed":true'), habitJournal[2] === undefined ? 'no confirm store' : (habitRun[4]?.messages ?? []).map(message => message.text).find(text => text.includes('confirmed'))?.slice(0, 120) ?? 'the confirm result did not reach the model'],
-    ['memory habit: a relay that only an earlier message had is refused as relay_not_said and nothing more was written', habitJournal.length === 3 && said(habitRun, 5, 'relay_not_said'), habitJournal.length === 3 ? (habitRun[5]?.messages ?? []).map(message => message.text).find(text => text.includes('relay_not_said'))?.slice(0, 120) ?? 'the refusal did not reach the model' : `journal ${habitJournal.map(record => record.op).join(', ')}`],
+    ['memory habit: the preference quoting the task (the person\'s latest message in the session, said outright) is stored with the words checked', habitJournal[0]?.op === 'store' && habitJournal[0]?.data.relayChecked === true && habitJournal[0]?.relay === '汇报只写结论' && habitRun.length === 8, `journal ${habitJournal.map(record => record.op).join(', ') || 'none'}; requests ${habitRun.length} (exit ${memoryHabit.status})`],
+    ['memory habit: memory_habit is resident in the GLM face from the first request, and the guard section declares habit-ask-first', habitRun[0]?.tools.some(tool => tool.name === 'memory_habit' && tool.deferLoading !== true) === true && habitRun[0].system.includes(HABIT_RULE_DECLARATION), `${(habitRun[0]?.tools ?? []).filter(tool => tool.name.startsWith('memory_')).map(tool => tool.name).join(', ')}; declared ${habitRun[0]?.system.includes(HABIT_RULE_DECLARATION)}`],
+    ['memory habit: a question card about a habit is denied by habit-ask-first with memory_habit as the right path, and the card never ran', lastToolResult(habitRun[2])?.isError === true && lastToolResult(habitRun[2]).text.includes('Rule habit-ask-first') && lastToolResult(habitRun[2]).text.includes('Call memory_habit with action "ask"'), (lastToolResult(habitRun[2])?.text ?? 'no result').slice(0, 160)],
+    ['memory habit: the ask is recorded with its question and its result reached the model as the circled text with the content on a second line', habitJournal[1]?.op === 'ask' && habitJournal[1]?.data.question === HABIT_ASK.question && isDeepStrictEqual(habitJournal[1]?.data.learnedFrom, ['edit:goal.stage']) && said(habitRun, 3, '① 以后提交说明都写成英文，好吗？') && said(habitRun, 3, `要记的：${HABIT_ASK.description}`), (habitRun[3]?.messages ?? []).map(message => message.text).find(text => text.includes('要记的：'))?.slice(0, 120) ?? 'the ask result did not reach the model'],
+    ['memory habit: after the person\'s yes, a memory_store whose relay is only that yes is denied by habit-ask-first and writes nothing', lastToolResult(habitRun[5])?.isError === true && lastToolResult(habitRun[5]).text.includes('Rule habit-ask-first') && !habitJournal.some(record => record.data?.name === 'commit-english-direct'), (lastToolResult(habitRun[5])?.text ?? 'no result').slice(0, 160)],
+    ['memory habit: the person\'s reply (`tell`) woke the session and the confirm stored what was asked, with their words as the relay, checked, and the question named', habitJournal[2]?.op === 'store' && habitJournal[2]?.data.ask === HABIT_ASK.question && habitJournal[2]?.relay === '好，都写成英文吧' && habitJournal[2]?.data.relayChecked === true && said(habitRun, 6, '"confirmed":true'), habitJournal[2] === undefined ? 'no confirm store' : (habitRun[6]?.messages ?? []).map(message => message.text).find(text => text.includes('confirmed'))?.slice(0, 120) ?? 'the confirm result did not reach the model'],
+    ['memory habit: a relay that only an earlier message had is refused as relay_not_said and nothing more was written', habitJournal.length === 3 && said(habitRun, 7, 'relay_not_said'), habitJournal.length === 3 ? (habitRun[7]?.messages ?? []).map(message => message.text).find(text => text.includes('relay_not_said'))?.slice(0, 120) ?? 'the refusal did not reach the model' : `journal ${habitJournal.map(record => record.op).join(', ')}`],
+    ['memory habit: the violation journal of the session\'s project holds the two denials of habit-ask-first, the card and the store, each with its tool', isDeepStrictEqual(habitDenials.map(record => [record.rule, record.tool]), [['habit-ask-first', 'ask_user_question'], ['habit-ask-first', 'memory_store']]), JSON.stringify(habitDenials.map(record => [record.rule, record.tool]))],
     ['memory habit: the memory row reports itself in effect, and the run warned of nothing', healthOf(memoryHabit).memory?.status === ACTED && quiet('glm-memory-habit'), `${healthLine(healthOf(memoryHabit), 'memory')}; stderr ${stderrOf('glm-memory-habit').length} byte(s)`],
   ]
   return [
@@ -2906,7 +3075,7 @@ function memoryChecks() {
         [`memory (${label}): the second root agent of the workspace has the index in its first request after the first user message, with the four memories, once, and not repeated in its next request`, run.second.length === 2 && afterFirstUser(run.second[0]) && isDeepStrictEqual(counts(run.second), [1, 1]) && MEMORY_NAMES.every(entry => indexTexts(run.second[0])[0]?.includes(`- ${entry} (`) === true), run.second.length === 0 ? `no second session (exit ${scenario.status}): ${JSON.stringify(scenario.steps.at(-1)?.spawn ?? null)}` : `index notices per request: ${counts(run.second).join(', ')}; ${(indexTexts(run.second[0])[0] ?? 'none').replace(/\n/g, ' | ').slice(0, 160)}`],
         [`memory (${label}): each root agent's system prompt is the same at every step`, new Set(run.first.map(step => step.system)).size === 1 && new Set(run.second.map(step => step.system)).size === 1, `${new Set(run.first.map(step => step.system)).size} and ${new Set(run.second.map(step => step.system)).size} distinct prompt(s)`],
         [`memory (${label}): the three memory tools are in the face of the root agent, resident, and the glm:memory section is ${glmRoute ? 'in' : 'not in'} the prompt`, memoryFace(run.first[0]).length === 3 && memoryFace(run.first[0]).every(tool => tool.deferLoading !== true) && run.first[0].system.includes(MEMORY_SECTION_LINE) === glmRoute, `${memoryFace(run.first[0]).map(tool => tool.name).join(', ')}; section ${run.first[0]?.system.includes(MEMORY_SECTION_LINE)}`],
-        [`memory (${label}): the learning tool ${glmRoute ? 'is deferred on the GLM route: it is not in the face and tool search reaches it' : 'is in the face of the root agent'}`, glmRoute ? learningFace(run.first[0]).length === 0 : learningFace(run.first[0]).length === LEARNING_TOOL_NAMES.length && learningFace(run.first[0]).every(tool => tool.deferLoading !== true && LEARNING_TOOL_NAMES.includes(tool.name)), `${learningFace(run.first[0]).map(tool => tool.name).join(', ') || 'none'} in the face`],
+        [`memory (${label}): the learning tool ${glmRoute ? 'is deferred on the GLM route (not in the face, tool search reaches it) while memory_habit is resident' : 'and memory_habit are in the face of the root agent'}`, glmRoute ? isDeepStrictEqual(learningFace(run.first[0]).map(tool => tool.name), ['memory_habit']) && learningFace(run.first[0]).every(tool => tool.deferLoading !== true) : learningFace(run.first[0]).length === LEARNING_TOOL_NAMES.length && learningFace(run.first[0]).every(tool => tool.deferLoading !== true && LEARNING_TOOL_NAMES.includes(tool.name)), `${learningFace(run.first[0]).map(tool => tool.name).join(', ') || 'none'} in the face`],
         [`memory (${label}): the row reports itself in effect and says the session has the index; the configured home is said to be ignored`, healthOf(scenario).memory?.status === ACTED && healthOf(scenario).memory.reason.includes('本会话已带索引') && healthOf(scenario).memory.reason.includes('行配置 home 已不再使用（M5）'), JSON.stringify(healthOf(scenario).memory ?? null)],
       ]
     }),
@@ -3023,7 +3192,8 @@ const concurrentDir = join(runDir, 'metrics-concurrent', 'ws')
 mkdirSync(concurrentDir, { recursive: true })
 if (spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: concurrentDir }).status !== 0) throw new Error('probe: metrics-concurrent git init failed')
 const concurrentScript = join(runDir, 'metrics-concurrent', 'append.mjs')
-const concurrentLibrary = './' + slash(relative(join(runDir, 'metrics-concurrent'), join(repo, 'packages', 'hourness', 'dist', 'metrics', 'library.js')))
+// A file URL: the run directory is under the temporary directory, which need not share a drive with the checkout.
+const concurrentLibrary = pathToFileURL(join(repo, 'packages', 'hourness', 'dist', 'metrics', 'library.js')).href
 writeFileSync(concurrentScript, `import { appendEvents } from ${JSON.stringify(concurrentLibrary)}
 const events = Array.from({ length: 5000 }, (_, i) => ({ k: 'count', by: 'guard', body: { what: \`w-\${process.pid}-\${i}\`, value: i } }))
 const result = await appendEvents(process.argv[2], events)
@@ -3183,6 +3353,8 @@ const checks = [
   ['env-checks-ceiling: an estimate of 25 s is held at the 60 s ceiling: the value line records the 75 s wanted', envCeilingRun.status === 0 && envCeilingJournal[0]?.kind === 'value' && envCeilingJournal[0].limitMs === 60000 && envCeilingJournal[0].capped?.wantedMs === 75000 && envCeilingJournal[0].cap?.by === 'default', `exit ${envCeilingRun.status}; ${JSON.stringify(envCeilingJournal.slice(0, 2))}`],
   ['env-checks-ceiling: the root agent\'s environment notice gets the held-at-its-ceiling line with the full key, and check_limit is in its tool face', envCeilingMainNotices.some(text => text.split('\n').includes(ENV_CEILING_HELD)) && names(envCeilingMain[0]).has('check_limit'), envCeilingMainNotices.map(text => text.slice(0, 400).replace(/\n/g, ' | ')).join(' || ')],
   ['env-checks-ceiling: check_limit raises the ceiling to 120 s and limits.jsonl has the raise with the reason and the session; the next notice has no held line', envCeilingLimitResult?.outcome === 'raised' && envCeilingLimitResult.capS === 120 && envCeilingLimitResult.previousCapS === 60 && envCeilingLimitLines.length === 1 && envCeilingLimitLines[0].action === 'raise' && envCeilingLimitLines[0].check === 'tool-1/full' && envCeilingLimitLines[0].reason === ENV_CEILING_REASON && envCeilingLimitLines[0].session === envCeilingStarted?.parentId && !(envNoticesOf(envCeilingMain.slice(-1)).at(-1) ?? '').includes('held at its ceiling'), `${JSON.stringify(envCeilingLimitResult ?? lastToolResult(envCeilingMain[3])?.text ?? null)}; ${JSON.stringify(envCeilingLimitLines)}`],
+  ['env-checks-ceiling: right after check_limit the collector reads env/timeouts at the agent audience: tool-1/full held at 60 s, and under it the raise to 120 s with its reason (status hub batch 9)', envCeilingHub?.error === undefined && envCeilingHub?.agent?.rows.every(row => row.outcome !== 'error') === true && envCeilingTimeouts?.audience === 'agent' && envCeilingTimeouts.text.startsWith('- tool-1/full：超时 60 秒（') && envCeilingTimeouts.text.includes('想要 75 秒，被上限截在 60 秒') && (envCeilingTimeouts.detail ?? []).some(line => line.startsWith('  - 上限已由主 Agent 调高到 120 秒 · ') && line.includes(`：${ENV_CEILING_REASON}；要改回，跟主 Agent 说`)), JSON.stringify(envCeilingHub ?? null).slice(0, 1200)],
+  ['env-checks-ceiling: right after check_limit the env row hands the loop board\'s page one detail line for the check (no timeout in it) and the check with its timeout: 60 s from the estimate of 25 s, held by the cap at 75 s, the raise to 120 s with its reason, a history and no timeouts (panel done condition 8-1)', isDeepStrictEqual(envCeilingPage?.details, ['Full：改了 *.txt 之后跑 · node fast.mjs {files}']) && envCeilingPage.checks.length === 1 && envCeilingCheck?.key === 'tool-1/full' && envCeilingCheck.title === 'Full：full' && envCeilingCheck.timeout?.seconds === 60 && envCeilingCheck.timeout.source?.kind === 'agent-estimate' && envCeilingCheck.timeout.source.estimateS === 25 && isDeepStrictEqual(envCeilingCheck.timeout.held, { by: 'cap', wantedS: 75 }) && envCeilingCheck.timeout.capRaised?.capS === 120 && envCeilingCheck.timeout.capRaised.reason === ENV_CEILING_REASON && Array.isArray(envCeilingCheck.timeout.history) && envCeilingCheck.timeout.history.length >= 1 && isDeepStrictEqual(envCeilingCheck.timeout.timeouts, []) && envCeilingCheck.timeout.timeouts7d === 0, JSON.stringify(envCeilingPage ?? null).slice(0, 1200)],
   ['env-checks-ceiling: a subagent\'s environment notice has the checks line and no held line', envCeilingStarted !== undefined && envCeilingChild.length > 0 && envCeilingChildNotices.length > 0 && envCeilingChildNotices.every(text => text.includes('Checks run after each edit (listed on the loop board): full on *.txt.') && !text.includes('held at its ceiling')), `${envCeilingChild.length} child request(s); ${envCeilingChildNotices.map(text => text.slice(0, 300).replace(/\n/g, ' | ')).join(' || ')}`],
   ['env-notice: the row appended .llm/ to the clone\'s .git/info/exclude and check-ignore verifies it', envIgnored === 0 && envExclude.split('\n').filter(line => line.trim() === '.llm/').length === 1, `check-ignore exit ${envIgnored}; exclude lines: ${envExclude.split('\n').filter(line => line.trim() === '.llm/').length}`],
   titleCheck('client-modules (probe-full)', clientModules.steps[0]?.meta, ['glm', 'hourness']),
@@ -3208,6 +3380,28 @@ const checks = [
   ['graph row: graph_comment leaves an llm history entry in the copy; the repository graph is unchanged', graphResult(3)?.isError !== true && copyAfter.nodes.get(doingTask?.id ?? '')?.history.at(-1)?.actor === 'llm' && copyAfter.nodes.get(doingTask?.id ?? '')?.history.at(-1)?.text === 'probe comment' && repoGraphBefore === repoGraphAfter, `repo graph ${repoGraphBefore} -> ${repoGraphAfter}`],
   ['graph row: after graph_focus the next request ends with the projection notice (focus); unchanged steps add none; a title edit adds one (changed)', graphNotices(graphSteps[4]).length === 1 && graphSteps[4]?.messages.at(-1)?.source === 'glm-graph-projection' && graphNotices(graphSteps[4])[0]?.projection === 'focus' && graphNotices(graphSteps[5]).length === 1 && graphNotices(graphSteps[6]).length === 1 && graphNotices(graphSteps[7]).length === 2 && graphSteps[7]?.messages.at(-1)?.projection === 'changed' && graphSteps[7]?.messages.at(-1)?.text.includes('probe title') === true, `notices per request: ${graphSteps.map(step => graphNotices(step).map(notice => notice.projection).join('+') || '0').join(', ')}`],
   ['graph row: after a compaction checkpoint the first request carries the projection again (compaction)', reanchored.some(reasons => reasons.includes('compaction')), `${compactGraph.compactions.length} compaction(s); after checkpoints: ${JSON.stringify(reanchored)}`],
+  ['graph row: the re-anchoring after the compaction lists graph-files-only with the session\'s denial count from the journal, and the non-goals of the focus\'s goal', (() => {
+    const denied = compactViolations.filter(record => record.kind === undefined && record.rule === 'graph-files-only')
+    const text = firstReanchor?.text ?? ''
+    const nonGoals = focusGoal?.nonGoals ?? []
+    return denied.length === 1 && text.includes(DENIED_HEAD) && text.includes(`\n- graph-files-only: ${denied.length}\n`) && (nonGoals.length === 0 || (text.includes(`Non-goals of goal ${focusGoal.id},`) && nonGoals.every(line => text.includes(`\n- ${line}\n`))))
+  })(), `journal denials ${compactViolations.filter(record => record.kind === undefined).map(record => record.rule).join(',') || 'none'}; goal ${focusGoal?.id ?? 'none'} with ${focusGoal?.nonGoals?.length ?? 0} non-goal(s); notice tail: ${JSON.stringify((firstReanchor?.text ?? 'no compaction notice').slice(-400))}`],
+  ['graph row: a projection that is not a re-anchoring carries no denied rules, also one added after the session\'s graph-files-only denials (the last request\'s changed notice)', (() => {
+    const all = graphNotices(graphSteps.at(-1))
+    const added = all.length - graphNotices(graphSteps[8]).length
+    return all.length > 0 && added > 0 && all.every(notice => notice.projection !== 'compaction' && !notice.text.includes(DENIED_HEAD))
+  })(), `notices in the last request: ${graphNotices(graphSteps.at(-1)).map(notice => `${notice.projection}${notice.text.includes(DENIED_HEAD) ? '(denied rules)' : ''}`).join(', ') || 'none'}; after the first denial: ${graphNotices(graphSteps.at(-1)).length - graphNotices(graphSteps[8]).length}`],
+  ['graph row: the re-anchoring after the compaction lists the approved norm nodes under the focus\'s goal, one per line (id: title); no other projection lists them', (() => {
+    const text = firstReanchor?.text ?? ''
+    const listed = focusNorms.length === 0
+      ? !text.includes(NORMS_HEAD)
+      : text.includes(`\n${NORMS_HEAD} ${focusGoal.id},`) && focusNorms.every(norm => text.includes(`\n- ${norm.id}: ${norm.title}\n`))
+    const others = [...graphSteps, ...compactGraph.steps].flatMap(step => graphNotices(step)).filter(notice => notice.projection !== 'compaction')
+    return firstReanchor !== undefined && listed && others.length > 0 && others.every(notice => !notice.text.includes(NORMS_HEAD))
+  })(), `goal ${focusGoal?.id ?? 'none'} with ${focusNorms.length} norm(s): ${focusNorms.map(norm => norm.id).join(', ') || 'none'}; other projections with norms: ${[...graphSteps, ...compactGraph.steps].flatMap(step => graphNotices(step)).filter(notice => notice.projection !== 'compaction' && notice.text.includes(NORMS_HEAD)).length}`],
+  ['host instructions: the first request carries the workspace baseline (agent-instructions) with the user-level $DSH_HOME/AGENTS.md and the project AGENTS.md', bothMarks(instructionsAfterCheckpoint(instructionsMain[0])), `exit ${compactInstructions.status}; first request sources: ${(instructionsMain[0]?.messages ?? []).map(message => message.source).join(',')}`],
+  ['host instructions: after every compaction checkpoint the next request carries the baseline again with both files', instructionsCheckpointed.length > 0 && instructionsCheckpointed.every(step => bothMarks(instructionsAfterCheckpoint(step))), `${compactInstructions.compactions.length} compaction(s); baseline messages after the checkpoint per request: ${instructionsCheckpointed.map(step => `${instructionsAfterCheckpoint(step).length}${bothMarks(instructionsAfterCheckpoint(step)) ? '' : '(marks missing)'}`).join(', ') || 'no checkpointed request'}`],
+  ['host instructions: the dispatched subagent\'s first request carries the baseline with both files', instructionsChildId !== undefined && bothMarks(instructionsAfterCheckpoint(instructionsChild[0])), `child ${instructionsChildId ?? 'not started'}; ${instructionsChild.length} child request(s); first request sources: ${(instructionsChild[0]?.messages ?? []).map(message => message.source).join(',')}`],
   ['graph row: a goal round carries the projection (goal-round)', graphNotices(graphRoundTwo).some(notice => notice.projection === 'goal-round'), graphRoundTwo === undefined ? `no round 2 request (${graphGoalSteps.length} goal-agent request(s), exit ${graphGoal.status})` : graphNotices(graphRoundTwo).map(notice => notice.projection).join(', ')],
   ['graph row: Write and Bash into the copy\'s node files are denied by graph-files-only and journaled; a write elsewhere runs (the recorder\'s follow-up records carry a kind)', [8, 9].every(index => graphResult(index)?.isError === true && graphResult(index)?.text.includes('inside the project graph') === true) && graphResult(10)?.isError !== true && !existsSync(graphNodeFile) && existsSync(graphNotes) && graphViolations.filter(record => record.rule === 'graph-files-only' && record.kind === undefined).map(record => record.tool).join(',') === 'Write,Bash', `records: ${graphViolations.map(record => `${record.kind ?? 'denial'}${record.rule.startsWith('graph-files-only') ? '' : `(${record.rule})`}${record.mode === 'shadow' ? '(shadow)' : ''}:${record.tool ?? ''}`).join(', ')}`],
   ['graph row: the workspace-change fallback runs and counts the graph tool writes as known (no late record names a node file)', healthOf(graphRun).guard?.reason.includes('事后纠正启用：工作区变更记录') === true && graphViolations.filter(record => record.mode === 'late').every(record => record.paths.every(path => !path.startsWith('docs/graph/'))), JSON.stringify(graphViolations.filter(record => record.mode === 'late').map(record => record.paths))],
@@ -3265,7 +3459,8 @@ const checks = [
   ['glm compact transcript: the sentence names <scenario home>/transcripts/<session id>.txt, which starts with the header line for that session', transcriptPath !== undefined && resolve(transcriptPath) === resolve(transcriptHome, 'transcripts', `${transcriptSession}.txt`) && resolve(transcriptPath).startsWith(`${resolve(transcriptHome, 'transcripts')}${sep}`) && transcriptLines[0]?.startsWith(`Transcript of session ${transcriptSession}, exported `) === true, `${transcriptPath ?? 'no path'}; ${transcriptLines[0]?.slice(0, 120) ?? ''}`],
   ['glm compact transcript: the model\'s Read of the named file returns the export (a recorded request carries that tool result)', transcriptRead !== undefined && transcriptRead.isError !== true, transcriptRead === undefined ? `no tool result with the export text in ${compactTranscript.steps.length} step(s) and ${compactTranscript.compactions.length} compaction(s)` : transcriptRead.text.slice(0, 160).replace(/\n/g, ' | ')],
   ['glm compact transcript: no line of the export is longer than 1000 code points, and the long test:1 line of package.json is split', transcriptText.length > 0 && transcriptLong.length === 0 && transcriptSplit, `${transcriptLines.length} line(s); ${transcriptLong.length} over 1000; split test:1 line ${transcriptSplit}`],
-  ['glm compact transcript: in glm-compact (transcript row disabled, the shipped default) no checkpoint names a transcript', checkpointsOf(compacted).length > 0 && checkpointsOf(compacted).every(message => !message.text.includes(TRANSCRIPT_MARK)), `${checkpointsOf(compacted).length} checkpoint(s)`],
+  ['glm compact transcript: the two fake credentials of the task reach the session but not the export, which reads them as [redacted] and counts its replacements in the header; /glm-status gives the same count', transcriptFakesAsked && transcriptFakesLeft === 0 && transcriptText.includes(TRANSCRIPT_FAKES_LINE) && Number(transcriptReplaced) >= TRANSCRIPT_FAKES.length && healthOf(compactTranscript).transcript?.reason.includes(`遮掉 ${transcriptReplaced} 处`) === true, `in the first request: ${transcriptFakesAsked}; left in the export: ${transcriptFakesLeft} of ${TRANSCRIPT_FAKES.length}; redacted task line: ${transcriptText.includes(TRANSCRIPT_FAKES_LINE)}; header count: ${transcriptReplaced ?? 'none'}`],
+  ['glm compact transcript: in glm-compact (transcript row disabled by the overlay) no checkpoint names a transcript', checkpointsOf(compacted).length > 0 && checkpointsOf(compacted).every(message => !message.text.includes(TRANSCRIPT_MARK)), `${checkpointsOf(compacted).length} checkpoint(s)`],
   ['glm compact transcript: /glm-status of the session lists the transcript row in effect with the export it wrote', healthOf(compactTranscript).transcript?.status === ACTED && healthOf(compactTranscript).transcript.reason.startsWith('压缩前导出'), JSON.stringify(healthOf(compactTranscript).transcript ?? null)],
   ['memory usage: one record per GLM step with the request provider, model and session id', glmUsage.length === glm.steps.length && glmUsage.every(record => record.provider === 'glm-probe' && record.model === 'glm-5.3' && typeof record.sessionId === 'string' && record.sessionId.length > 0), `${glmUsage.length} record(s) for ${glm.steps.length} step(s); first: ${JSON.stringify(glmUsage[0] ?? null).slice(0, 120)}`],
   ['memory usage: the compaction call is recorded with purpose compaction', compactUsage.length === compacted.compactions.length && compactUsage.length > 0, `${compactUsage.length} compaction record(s) for ${compacted.compactions.length} request(s)`],
@@ -3325,7 +3520,7 @@ const checks = [
   ['calibration limits: the step past maxSteps is rejected, the turn ends blocked and the run exits non-zero', stepLimited.steps.length === 2 && stepLimits.length === 1 && stepLimits[0].kind === 'step-limit' && stepLimited.status !== 0, `exit ${stepLimited.status}, ${stepLimited.steps.length} step(s), record: ${JSON.stringify(stepLimits)}`],
   ['calibration limits: the time limit cancels a running 60-second shell command and no later step runs', timeLimited.steps.length === 1 && timeLimits.length === 1 && timeLimits[0].kind === 'time-limit' && timeLimited.elapsedMs < 45_000 && timeLimited.status !== 0, `exit ${timeLimited.status} after ${Math.round(timeLimited.elapsedMs / 1000)} s, ${timeLimited.steps.length} step(s), record: ${JSON.stringify(timeLimits)}`],
   ['calibration fence: reading the task checker by absolute path through Read and Get-Content, listing $env:TEMP and walking out of the workspace with .. are denied without the checker\'s text; reading and listing the workspace pass', fenceResults.slice(0, 4).every(result => result?.isError === true && result.text.includes('is outside the workspace') && !result.text.includes(checkerText)) && fenceResults[4]?.isError !== true && fenceResults[4]?.text.includes('fence-note') === true && fenceResults[5]?.isError !== true, fenceResults.map(result => result === undefined ? 'none' : `: ${result.text.slice(0, 50).replace(/\n/g, ' ')}`).join(' | ')],
-  ['calibration fence: fence.jsonl holds one line per denial, with the reason (fenced, temporary-root, fenced for ..)', fenceDenials.length === 4 && JSON.stringify(fenceDenials.map(entry => entry.why)) === JSON.stringify(['fenced', 'fenced', 'temporary-root', 'fenced']), JSON.stringify(fenceDenials.map(entry => [entry.tool, entry.why]))],
+  ['calibration fence: fence.jsonl holds one line per denial, with the reason (fenced for the checker, temporary-root for $env:TEMP and for .. out of the run directory)', fenceDenials.length === 4 && JSON.stringify(fenceDenials.map(entry => entry.why)) === JSON.stringify(['fenced', 'fenced', 'temporary-root', 'temporary-root']), JSON.stringify(fenceDenials.map(entry => [entry.tool, entry.why]))],
   ...['A1', 'A2', 'A4', 'A5'].map(arm => [`calibration ablation ${arm}: the first request's system prompt is A0's with exactly that arm's paragraph(s) changed, the tool face unchanged`, ...Object.values(ablationCheck(arm))]),
   ['calibration ablation A3: the system prompt is A0\'s; the tool face is A0\'s without the 18 graph and memory tools, which the deferred tools announcement lists', ablationFirst('A3') !== undefined && isDeepStrictEqual(ablationParagraphs('A3'), ablationParagraphs('A0')) && a3Deferred.length === 18 && isDeepStrictEqual(ablationTools('A3'), ablationTools('A0').filter(tool => !a3Deferred.includes(JSON.parse(tool).name))) && a3Deferred.every(tool => a3Announced.split('\n').includes(tool)), `A0 holds ${a3Deferred.length}/18; A3 tools ${ablationTools('A3').length} vs A0 ${ablationTools('A0').length}; announced ${a3Deferred.filter(tool => a3Announced.split('\n').includes(tool)).length}`],
   ['dispatch (a): a host-level row starts a background child through subagents.startActivation; the dispatch call returns at once with the reserved child id', started !== undefined && started.childId.startsWith('probe-task-') && lastToolResult(dispatchMain[1])?.isError !== true && lastToolResult(dispatchMain[1])?.text.includes(started.childId) === true && dispatchChild.length > 0, started === undefined ? `no start recorded (exit ${dispatch.status}): ${JSON.stringify(dispatchNotes.find(entry => entry.kind === 'dispatch-failed') ?? null)}` : `child ${started.childId}: ${dispatchChild.length} request(s)`],
@@ -3406,6 +3601,8 @@ const checks = [
   ['rules-peak-stop: the journal has the ticket opened by the harness, the level changed by the person, and the ticket closed by the harness with its goal resumed, in that order; nothing is written in the scenario\'s user-level directory', isDeepStrictEqual(stopJournal.map(record => [record.op, record.actor]).filter(([op]) => op === 'ticket-open' || op === 'peak-mode-set' || op === 'ticket-update'), [['ticket-open', 'harness'], ['peak-mode-set', 'human'], ['ticket-update', 'harness']]) && !existsSync(join(runDir, 'rules-peak-stop', 'dsh-home', 'glm-hourness', 'rules')), JSON.stringify(stopJournal.map(record => [record.op, record.actor]))],
   ['rules-peak-stop-exit: V13, the host exits with the goal paused at the stop level: the run is clean and the way out agrees with itself: a row that unloaded (its heartbeat file is gone) resumed the goal and wrote it on the ticket, a runner that left without unloading it left the goal and the ticket as the stop made them', stopExitProject.ready && rulesPeakStopExit.status === 0 && !stderrOf('rules-peak-stop-exit').includes('dsh-glm-hourness/rules') && stopExitNotes.some(entry => entry.kind === 'stop-held' && entry.goal?.phase === 'paused') && (stopExitUnloaded ? typeof stopExitState?.tickets?.['q-1']?.resumedAt === 'string' && stopExitOps.includes('resume') : stopExitState?.tickets?.['q-1']?.state === 'deferred' && stopExitState.tickets['q-1'].resumedAt === undefined && stopExitOps.join() === 'create,pause'), `unloaded ${stopExitUnloaded}; exit ${rulesPeakStopExit.status}; goal operations ${JSON.stringify(stopExitOps)}; ticket ${JSON.stringify(stopExitState?.tickets?.['q-1'] ?? null)}; journal ${JSON.stringify(stopExitJournal.map(record => [record.op, record.reason ?? null]).slice(-3))}; ${stderrOf('rules-peak-stop-exit').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['loops: the row ships enabled since the rules-loops merge: the boot scenarios list it in effect on both routes', glmHealth.loops?.status === ACTED && plainHealth.loops?.status === ACTED, `${healthLine(glmHealth, 'loops')}; ${healthLine(plainHealth, 'loops')}`],
+  ['lessons: the row ships enabled since the lessons enablement: without the overlay the boot scenarios list it loaded on both routes', glmHealth.lessons !== undefined && glmHealth.lessons.status !== '未加载' && plainHealth.lessons !== undefined && plainHealth.lessons.status !== '未加载', `${healthLine(glmHealth, 'lessons')}; ${healthLine(plainHealth, 'lessons')}`],
+  ['transcript: the row ships enabled since the transcript enablement: without the overlay the boot scenarios list it loaded and not yet acting on both routes (it acts on a GLM compaction only)', [glmHealth, plainHealth].every(health => health.transcript?.status === IDLE && health.transcript.reason.startsWith('已加载；GLM 压缩时')), `${healthLine(glmHealth, 'transcript')}; ${healthLine(plainHealth, 'transcript')}`],
   ['loops: the row, enabled by the overlay in a scratch git clone that carries a person\'s entry file, boots, runs its four steps and exits clean with nothing from it on stderr', loopsBoard.ready && loops.status === 0 && loops.steps.length === 4 && !stderrOf('loops').includes('dsh-glm-hourness/loops'), `exit ${loops.status}, ${loops.steps.length} step(s), git ${loopsBoard.ready}; ${stderrOf('loops').split('\n').find(line => line.includes('loops')) ?? 'no stderr line mentions loops'}`],
   ['loops: a file tool writing into docs/loops/ is refused by loops:files-only with the four-part text, the entry file is as it was, and the refusal is journaled as a plain denial (the gate\'s records carry no mode, G1)', lastToolResult(loops.steps[1])?.isError === true && LOOPS_DENIAL.test(lastToolResult(loops.steps[1]).text) && readFileSync(loopsBoard.entryFile, 'utf8') === LOOPS_ENTRY_TEXT && rulesRecordOf(loopsRecords, 'loops:files-only') !== undefined && rulesRecordOf(loopsRecords, 'loops:files-only')?.mode === undefined, lastToolResult(loops.steps[1])?.text?.slice(0, 200) ?? 'no result'],
   ['loops: a shell command writing into the project\'s .llm/loops/ is refused by the same rule, not by file-tools-only, and the board\'s change record does not carry what it wrote (the recorder\'s follow-up records carry a kind)', lastToolResult(loops.steps[2])?.isError === true && (lastToolResult(loops.steps[2])?.text ?? '').includes('Rule loops:files-only') && loopsJournalText !== '' && !loopsJournalText.split('\n').includes('probe') && loopsRecords.filter(record => record.rule === 'loops:files-only' && record.kind === undefined).length === 2, `${lastToolResult(loops.steps[2])?.text?.slice(0, 160) ?? 'no result'}; ${loopsRecords.filter(record => record.rule === 'loops:files-only').length} journal line(s) for the rule`],
@@ -3434,7 +3631,7 @@ for (const [label, ok, detail] of checks) {
   if (!ok) failed += 1
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? `  (${detail})` : ''}`)
 }
-console.log(`probe: ${checks.length - failed}/${checks.length} passed; run artifacts in ${runDir}`)
+console.log(`probe: ${checks.length - failed}/${checks.length} passed`)
 
 // Profile guard: a change to the project part of a user profile voids the
 // run (the probe may have written there, or someone changed this project's
@@ -3451,4 +3648,12 @@ if (voiding.length > 0) {
   console.error('probe: the project part of a user profile changed during the run; the result is void, rerun (a second occurrence is a probe defect)')
   process.exit(2)
 }
-process.exit(failed === 0 ? 0 : 1)
+if (failed > 0) process.exit(1)
+// A run that passed leaves nothing behind; a directory that cannot be deleted is named and the result stands.
+try {
+  removeRunDir(runDir)
+}
+catch (error) {
+  console.warn(`probe: the run directory was not deleted (${error instanceof Error ? error.message : String(error)}): ${runDir}`)
+}
+process.exit(0)

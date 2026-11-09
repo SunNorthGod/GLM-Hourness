@@ -86,7 +86,33 @@ const sameText = (a: { readonly name: string, readonly description: string }, b:
 
 const fresh = (at: string, nowMs: number, days: number): boolean => nowMs - Date.parse(at) < days * DAY_MS
 
-/** The outcome of an earlier ask that names the same habit, by group key first and by wording otherwise (§3.8.1 step 7). */
+/**
+ * Share of the description's words (src/data/words.ts) that a new ask shares
+ * with a live no at which the ask may be the same habit (m5-habit-rule, M5
+ * design §3.8): the two real re-asks of 2026-11-06 shared 0.304 and 0.429, an
+ * unrelated habit on the same language 0.154. Word overlap cannot tell an
+ * opposite preference or another language from a re-ask (both score high),
+ * so a hit only refuses with `maybe_declined` and the model decides with
+ * `notSame`.
+ */
+export const MAYBE_DECLINED_SHARE = 0.25
+
+/** The id of a no in its journal: the scope and the name of the habit (src/memory/model.ts `memoryId`). */
+const declineId = (no: { readonly scope: string, readonly name: string }): string => `${no.scope}:${no.name}`
+
+/** The live noes (until not past) whose wording may be the habit of `request`: name and description together as for a repeat, or the description alone at MAYBE_DECLINED_SHARE. */
+function maybeDeclined(states: readonly MemoryState[], request: { readonly name: string, readonly description: string }, nowMs: number) {
+  const words = wordsOf(request.description)
+  return states.flatMap(state => [...state.declined.values()]).filter(no => Date.parse(no.until) > nowMs
+    && (sameText(no, request) || jaccard(wordsOf(no.description), words) >= MAYBE_DECLINED_SHARE))
+}
+
+/**
+ * The outcome of an earlier ask that names the same habit (§3.8.1 step 7).
+ * A confirmed habit and an open ask match by group key or by wording; a no
+ * matches outright only by group key or by name, and by wording it is a
+ * `maybe_declined` of planAsk, which the model can set aside.
+ */
 function earlierOutcome(
   states: readonly MemoryState[],
   request: { readonly name: string, readonly description: string, readonly learnedFrom?: readonly string[] },
@@ -95,6 +121,7 @@ function earlierOutcome(
   const keys = new Set(request.learnedFrom ?? [])
   const byKey = (ask: { readonly learnedFrom?: readonly string[] }): boolean => (ask.learnedFrom ?? []).some(key => keys.has(key))
   const matches = (of: { readonly name: string, readonly description: string, readonly learnedFrom?: readonly string[] }): boolean => byKey(of) || sameText(of, request)
+  const sameHabit = (of: { readonly name: string, readonly learnedFrom?: readonly string[] }): boolean => byKey(of) || of.name === request.name
   for (const state of states) {
     const confirmed = [...state.entries.values()].find(entry =>
       entry.confirmed !== undefined && (entry.status === 'active' || fresh(entry.forgottenAt ?? entry.lastReviewed, nowMs, KNOWN_FORGOTTEN_DAYS)) && matches(entry))
@@ -111,7 +138,7 @@ function earlierOutcome(
       }
     }
     for (const no of state.declined.values()) {
-      if (Date.parse(no.until) > nowMs && matches(no)) {
+      if (Date.parse(no.until) > nowMs && sameHabit(no)) {
         return refuse('declined_recently', `the person said no to this habit on ${no.at.slice(0, 10)}; the same habit is not asked again until ${no.until.slice(0, 10)}`, undefined,
           'do not ask again before then')
       }
@@ -137,6 +164,8 @@ export interface AskContext {
   readonly lastPersonAt: number | undefined
   /** The matters already put to the person in this reply (propose_to_human since their last message); `undefined` with the talk state. */
   readonly shown: number | undefined
+  /** The model says the ask is a different habit from the live noes its wording is close to (`notSame` of memory_habit). */
+  readonly notSame?: boolean
 }
 
 /**
@@ -149,7 +178,7 @@ export function planAsk(
   states: readonly MemoryState[],
   request: HabitFields,
   context: AskContext,
-): { readonly number: number } | Refusal {
+): { readonly number: number, readonly overrides?: readonly string[] } | Refusal {
   const nowMs = Date.parse(context.now)
   const inScope = states.filter(state => state.scope === request.scope)
   const active = inScope.find(state => state.entries.get(request.name)?.status === 'active')
@@ -158,6 +187,13 @@ export function planAsk(
   }
   const earlier = earlierOutcome(states, request, nowMs)
   if (earlier !== undefined) return earlier
+  const close = maybeDeclined(states, request, nowMs)
+  if (close.length > 0 && context.notSame !== true) {
+    const named = close.map(no => `${no.name} ("${no.description}", not asked again until ${no.until.slice(0, 10)})`).join('; ')
+    return refuse('maybe_declined', `the person said no to a habit that may be this one: ${named}`, 'description',
+      'if it is the same habit, drop the ask and do not put it to the person; if it is really a different habit, send the ask again with notSame: true, and it is recorded with the no it set aside')
+  }
+  const overrides = close.map(declineId)
   if (context.lastPersonAt === undefined || context.shown === undefined) {
     return refuse('unavailable', 'the messages of the person cannot be read in this session, so nothing is asked', undefined,
       'ask again in a session where the person\'s messages can be read')
@@ -175,7 +211,7 @@ export function planAsk(
     return refuse('week_cap', `${inWeek} habit questions have been asked in this project this week; at most ${HABIT_WEEK_CAP} go out in one week`, undefined,
       'let the person bring the habit up themselves, or wait for the next week')
   }
-  return { number }
+  return overrides.length === 0 ? { number } : { number, overrides }
 }
 
 /** What a confirm or a decline needs before the person's words are read (§3.8.3): the fields, and the question in this session, still open and inside the answer window. */

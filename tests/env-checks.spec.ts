@@ -24,12 +24,19 @@ import type { EditedStep } from '../src/env/edited.ts'
 import { apply as envApply } from '../src/env/index.ts'
 import { CHECK_FAILURE_LIMIT, CHECK_SLOTS, checkLogFile, createChecker, createCheckSlots, sweepCheckLogs, type Checker, type CheckerOptions } from '../src/env/runner.ts'
 import { parseTiming, type TimingLine } from '../src/env/timeout.ts'
+import { checksOwnRules, CHECKS_ENTRY_ID, envContribution, ENV_ROW_SOURCE } from '../src/env/loop-entry.ts'
+import { projectOf } from '../src/data/project-root.ts'
 import { openEngine } from '../src/graph/engine.ts'
+import { GRAPH_ROW_SOURCE, graphContribution, thirdReworkRule } from '../src/graph/loop-entry.ts'
 import { GRAPH_SERVICE } from '../src/graph/service.ts'
+import { createBoards, realDelay } from '../src/loops/boards.ts'
+import { createRegistry } from '../src/loops/registry.ts'
 import type { CommandRequest, ScriptResult } from '../src/loops/script.ts'
 import { LOOPS_DECLARATION, LOOPS_SERVICE, type ListedRun, type LoopsService } from '../src/loops/service.ts'
 import type { DerivedMessage, ServiceLookup, SessionLike, UserNotice } from '../src/shared/dsh-min.ts'
+import { buildLoopsPage } from '../ui/src/loops/model.ts'
 import { fakeRuntime } from './fake-rc3.ts'
+import { quickIo } from './loops-helpers.ts'
 
 const git = (root: string, args: readonly string[]): void => {
   const run = spawnSync('git', ['-C', root, '-c', 'user.name=probe', '-c', 'user.email=probe@example.invalid', ...args], { encoding: 'utf8' })
@@ -290,9 +297,11 @@ test('a raised ceiling: the next limit is three times the run under it, its valu
     const [value] = await journalOf(fixture.root)
     assert.ok(value?.kind === 'value')
     assert.deepEqual([value.limitMs, value.capped, value.cap], [75_000, undefined, { by: 'setting', capS: 120, at: '2026-11-05T01:00:00.000Z', reason }])
-    assert.deepEqual(checker.details(fixture.root)[1], `超时 75 秒 · 你估 25 秒 · 上限已调高到 120 秒：${reason}`)
+    const [raised] = checker.checks(fixture.root)
+    assert.deepEqual([raised?.key, raised?.title, raised?.timeout.seconds, raised?.timeout.source?.kind, raised?.timeout.held, raised?.timeout.capRaised], ['tool-1/full', 'Lint：full', 75, 'agent-estimate', undefined, { capS: 120, at: '2026-11-05T01:00:00.000Z', reason }])
     await writeFile(limits, `${JSON.stringify({ at: '2026-11-05T02:00:00.000Z', check: 'tool-1/full', action: 'reset', capS: 60, previousCapS: 120, reason: '' })}\n`, { flag: 'a' })
-    assert.deepEqual(checker.details(fixture.root)[1], '超时 75 秒 · 你估 25 秒', 'a reset shows before the check runs again, though the latest value line was computed under the setting')
+    const [reset] = checker.checks(fixture.root)
+    assert.deepEqual([reset?.timeout.seconds, reset?.timeout.capRaised], [75, undefined], 'a reset shows before the check runs again, though the latest value line was computed under the setting')
   })
 })
 
@@ -469,15 +478,57 @@ test('without the loop board no check runs: the session hears it once and the ro
   })
 })
 
-test('the loop board\'s details: two lines per check, the value and where it came from', async () => {
+test('the loop board\'s page: one detail line per check with its command, and the checks with their timeouts from the journals (plain-ui 1.3 §11 「1.0 的对接」第 2、4 条)', async () => {
   await withProject(['check slow lines 1s $ node slow.mjs {files} when *.txt'], async (fixture) => {
     const outcomes: ScriptResult[] = [{ kind: 'timeout', stdout: '', stderr: '', durationMs: 5_004 }, exited('', 40)]
     const { checker, step } = fakeChecker(fixture, () => Promise.resolve(outcomes.shift() ?? exited('')))
-    assert.deepEqual(checker.details(fixture.root), [], 'nothing before a step in the project')
+    assert.deepEqual([checker.details(fixture.root), checker.checks(fixture.root)], [[], []], 'nothing before a step in the project')
     await step(['a.txt'])
-    assert.deepEqual(checker.details(fixture.root), ['Lint：改了 *.txt 之后跑 · node slow.mjs {files}', '超时 5 秒 · 你估 1 秒'])
+    assert.deepEqual(checker.details(fixture.root), ['Lint：改了 *.txt 之后跑 · node slow.mjs {files}'], 'the timeout is not in the details any more')
+    const [first] = checker.checks(fixture.root)
+    assert.deepEqual([first?.key, first?.title, first?.timeout.seconds, first?.timeout.held], ['tool-1/slow', 'Lint：slow', 5, { by: 'floor', wantedS: 3 }], 'three times the estimate of 1 s is under the 5 s floor')
+    assert.ok(first?.timeout.source?.kind === 'agent-estimate' && first.timeout.source.estimateS === 1 && first.timeout.source.who === 'human' && typeof first.timeout.source.at === 'string')
+    assert.deepEqual(first?.timeout.history?.map(change => [change.seconds, change.previousS]), [[5, undefined]])
+    assert.deepEqual([first?.timeout.timeouts, first?.timeout.timeouts7d], [[{ at: first?.timeout.timeouts?.[0]?.at, limitS: 5, elapsedS: 5.004, outcome: '算没跑完，下一次改动照常再跑' }], 1])
     await step(['a.txt'])
-    assert.deepEqual(checker.details(fixture.root), ['Lint：改了 *.txt 之后跑 · node slow.mjs {files}', '超时 15 秒 · 系统按最近 1 次，最慢 5 秒 · 原 5 秒'])
+    const [second] = checker.checks(fixture.root)
+    assert.deepEqual([second?.timeout.seconds, second?.timeout.source, second?.timeout.held], [15, { kind: 'measured', runs: 1, slowestS: 5 }, undefined], 'the run stopped at 5 s counts as 5 s; three times it is 15 s')
+    assert.deepEqual(second?.timeout.history?.map(change => [change.seconds, change.previousS]), [[15, 5], [5, undefined]], 'the history, newest first')
+    assert.equal(second?.timeout.timeouts7d, 1)
+  })
+})
+
+test('the loop board\'s page: 讲细点 of 改完文件就跑检查 has a line for each approved check line of the project and the checker\'s five own rules, and the graph row\'s entry its one rule (m4-checks acceptance 5)', async () => {
+  await withProject([LINT, 'check slow lines 1s $ node slow.mjs {files} when *.md'], async (fixture) => {
+    const { checker, step } = fakeChecker(fixture, () => Promise.resolve(exited('')))
+    await step(['a.txt'])
+    // The real board over the real hand-overs: the registry, the view the host writes, and the page model the panel builds of it.
+    const registry = createRegistry()
+    assert.ok(registry.contribute(ENV_ROW_SOURCE, envContribution(checker)).ok)
+    assert.ok(registry.contribute(GRAPH_ROW_SOURCE, graphContribution()).ok)
+    const root = projectOf(fixture.root)?.root ?? fixture.root
+    const boards = createBoards({ registry, io: quickIo(), delay: realDelay, changed: () => {} })
+    try {
+      const view = await boards.refresh(root)
+      assert.ok(view !== undefined)
+      const page = buildLoopsPage(view)
+      const checks = page.events.rows.find(row => row.id === CHECKS_ENTRY_ID)
+      const shown = checks?.details ?? []
+      assert.deepEqual(shown.filter(line => line.includes('之后跑')), ['Lint：改了 *.txt 之后跑 · node lint.mjs {files}', 'Lint：改了 *.md 之后跑 · node slow.mjs {files}'], 'one line for each approved check line, the one that did not run too')
+      assert.equal(checksOwnRules().length, 5)
+      // Between the detail lines and the own rules stand the history and timeouts of the checks' cells (status-hub-3, panel 8-1).
+      const head = ['为什么有它：改完文件马上知道有没有新问题', ...checker.details(root)]
+      const tail = ['它自己的规矩：', ...checksOwnRules().map(rule => `· ${rule}`), '状态：在用', `id：${CHECKS_ENTRY_ID}`]
+      assert.deepEqual([shown.slice(0, head.length), shown.slice(-tail.length)], [head, tail])
+      assert.equal(checks?.checkLines.filter(line => line.startsWith('Lint：')).length, 2, 'one timeout cell for each approved check line')
+      assert.equal(checks?.fromLine, '项目编排带来的 · 只能看')
+      const third = page.events.rows.find(row => row.id === 'graph.third-rework')
+      assert.deepEqual(third?.details, ['为什么有它：同一处反复修不好，常常是问题没找对', '它自己的规矩：', `· ${thirdReworkRule()}`, '状态：在用', 'id：graph.third-rework'], 'the graph row gives no details: its one rule only')
+      assert.deepEqual(boards.problems(), [])
+    }
+    finally {
+      boards.dispose()
+    }
   })
 })
 
