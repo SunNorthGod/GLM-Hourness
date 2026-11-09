@@ -66,6 +66,7 @@ export const HANDBACK_SCHEMA: SchemaNode = {
     checks: { type: 'array', items: { type: 'object', properties: { command: { type: 'string' }, exit: { type: 'number' } }, required: ['command', 'exit'] }, description: 'the checks you ran and their exit codes; the harness runs its own' },
     questions: { ...STRING_LIST, description: 'what you leave for the main agent to decide' },
     assumptions: { ...STRING_LIST, description: 'the assumptions you used, including those ask_main timed out on' },
+    docs: { type: 'string', description: 'one line of at most 300 characters about the component documents your change touches: "updated: <component>" when your commits changed their AGENTS.md, or "still true: <why>" when a component\'s AGENTS.md was not changed and still holds' },
     lessons: { type: 'array', items: HANDBACK_LESSON, description: 'pitfalls met and their fixes, for the lessons board' },
     report: { type: 'string', description: 'path of the long report you wrote under .hourness/ in your worktree' },
   },
@@ -163,8 +164,10 @@ function lessonProblems(lessons: unknown, problems: readonly string[]): readonly
  * The shape half of the handback's semantic check (§3.6.2 step 2), on a value
  * that already passed the schema: every commit id is hexadecimal of 7-40
  * digits, every file and the report path are repository-relative, the report
- * sits under `.hourness/`, and the lessons' optional `errors` and `scope` are
- * in range (M5 §8.1). One line per problem; empty when the handback is sound.
+ * sits under `.hourness/`, the optional `docs` line stays one line within its
+ * 300 characters (docs-at-hand design 0.3 §6.2), and the lessons' optional
+ * `errors` and `scope` are in range (M5 §8.1). One line per problem; empty
+ * when the handback is sound.
  */
 export function handbackProblems(value: unknown): readonly string[] {
   if (!isRecord(value)) return ['the handback is not an object']
@@ -178,6 +181,10 @@ export function handbackProblems(value: unknown): readonly string[] {
   const report = value.report
   if (report !== undefined && (typeof report !== 'string' || !isRepoRelative(report) || !report.startsWith('.hourness/'))) {
     problems.push('report must be a .hourness/ path inside the worktree')
+  }
+  const docs = value.docs
+  if (docs !== undefined && (typeof docs !== 'string' || docs.trim() === '' || /[\r\n]/.test(docs) || docs.length > 300)) {
+    problems.push('docs must be one line of 1-300 characters')
   }
   return lessonProblems(value.lessons, problems)
 }

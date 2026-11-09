@@ -383,13 +383,15 @@ export interface BriefInput {
   readonly quick?: boolean
   /** Lessons that match the task, one line each; at most five are used. */
   readonly lessons?: readonly string[]
+  /** The components the write scope touches (docs-at-hand design 0.3 §4.4), repository-relative, as the caller read them in the worktree. */
+  readonly docs?: readonly string[]
   /** The rules board's lines for this session, when the rules row is on. */
   readonly rules?: readonly string[]
   /** The commands of `norm-merge-gate`. */
   readonly gateCommands: readonly string[]
 }
 
-type Truncation = 'lessons' | 'earlier' | 'context'
+type Truncation = 'docs' | 'lessons' | 'earlier' | 'context'
 
 export interface Brief {
   readonly text: string
@@ -458,6 +460,7 @@ function body(input: BriefInput, cut: ReadonlySet<Truncation>): string {
     '',
     '## Constraints',
     `- Write only inside: ${scope.length === 0 ? 'nothing' : scope.join(', ')}. Writes elsewhere are refused.`,
+    ...(cut.has('docs') ? [] : (input.docs ?? []).map(component => `- Component doc covering your scope: ${component}/AGENTS.md. Keep it true: update it in the same commits when your change alters what it says; otherwise say in the handback field "docs" why it still holds.`)),
     input.plan !== undefined
       ? `- Your plan (version ${input.plan.version}) is already approved: write inside it. To change it, submit a new version with submit_plan and wait for approval.`
       : input.quick ? '- Quick task: no plan needed.' : '- Before writing, submit a plan with submit_plan and wait for approval.',
@@ -480,20 +483,23 @@ function body(input: BriefInput, cut: ReadonlySet<Truncation>): string {
 /**
  * The text a write worker starts from (§3.5.2), built only from the graph
  * and the facts of the dispatch: the model writes none of it. English, at most
- * 9000 characters; when it is longer, first the lessons, then the details of
- * earlier attempts, then the main agent's context are replaced by a
- * "(truncated)" note, in that order, until it fits. The footer carries the
- * digest of everything above it and the graph revision it was written at.
+ * 9000 characters; when it is longer, first the component-doc line, then the
+ * lessons, then the details of earlier attempts, then the main agent's
+ * context are cut, in that order, until it fits (docs-at-hand design 0.3
+ * §4.4: the component-doc line yields before the lessons — the reminder at a
+ * file names it again on the first write). The footer carries the digest of
+ * everything above it and the graph revision it was written at.
  */
 export function renderBrief(input: BriefInput): Brief {
   const cut = new Set<Truncation>()
   const present: Readonly<Record<Truncation, boolean>> = {
+    docs: (input.docs ?? []).length > 0,
     lessons: (input.lessons ?? []).length > 0,
     earlier: input.earlier.some(attempt => attempt.details.length > 0),
     context: (input.context ?? '').trim() !== '',
   }
   let text = body(input, cut)
-  for (const step of ['lessons', 'earlier', 'context'] as const) {
+  for (const step of ['docs', 'lessons', 'earlier', 'context'] as const) {
     if (text.length <= BRIEF_LIMIT) break
     if (!present[step]) continue
     cut.add(step)
@@ -578,8 +584,8 @@ export interface ReviewBriefInput {
   readonly reviewed: GraphNode
   readonly childId: string
   readonly depth: 'full' | 'light'
-  /** The done handback under review, as the task's comment carries it. */
-  readonly handback?: { readonly head?: string, readonly base?: string, readonly status: string }
+  /** The done handback under review, as the task's comment carries it; `docs` are its component-doc lines (docs-at-hand design 0.3 §6.2). */
+  readonly handback?: { readonly head?: string, readonly base?: string, readonly status: string, readonly docs?: readonly string[] }
   /** The previous round's blocking findings, one line each (§3.7.3). */
   readonly findings?: readonly string[]
   /** The commands of `norm-merge-gate`, for context. */
@@ -609,6 +615,7 @@ export function renderReviewBrief(input: ReviewBriefInput): Brief {
     '## Context',
     `- Reviewed: commit ${head}, made from base ${base}. Read the change with git diff ${base}..${head} in the worktree.`,
     `- The handback status was ${input.handback?.status ?? 'unknown'}; the task body carries its summary comment and the plan section.`,
+    ...(input.handback?.docs !== undefined && input.handback.docs.length > 0 ? ['- The handback says of the component docs:', ...input.handback.docs.map(line => `  - ${line}`)] : []),
     ...(input.findings === undefined || input.findings.length === 0 ? [] : ['- Findings of the previous round (these come first):', ...input.findings.map(finding => `  - ${finding}`)]),
     `- Project checks for context: ${input.gateCommands.length === 0 ? 'none recorded' : input.gateCommands.join(' ; ')}.`,
     '',
@@ -616,6 +623,7 @@ export function renderReviewBrief(input: ReviewBriefInput): Brief {
     `- You write nothing: the worktree is read-only for you. Long notes go to ".hourness/${input.childId}.md"; only the verdict comes back.`,
     '- Questions that need the main agent: ask_main (state the assumption you will use if no answer comes).',
     '- Blocking criteria (docs/DEVELOPMENT.md §1.1): acceptance:<i> names the unmet acceptance item of the reviewed task; irreversible-loss; failure-plan. A finding that names none of the three does not block.',
+    '- Component docs: if the handback names a component whose AGENTS.md was not updated, check that "still true" holds; a doc that carries a to-do list, progress or decision conclusions is misplaced. A stale doc is a non-blocking finding unless an acceptance item covers docs.',
     `- How far this round goes: ${depthLine}`,
     '',
     '## Done when',

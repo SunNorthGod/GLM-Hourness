@@ -7,7 +7,9 @@ import {
   nextAttempt,
   parseChildId,
   parseDispatchComment,
+  parseHandbackComment,
   renderDispatchComment,
+  renderHandbackComment,
   renderLostComment,
   runningGlm,
   runningOn,
@@ -123,4 +125,21 @@ test('nextAttempt and latestDispatch count only the harness\'s own dispatch comm
   // A model that writes a comment shaped like a dispatch comment does not count.
   const forged = node({ id: 't', type: 'task' }, 0, 'llm', [comment(1, first, 'llm')])
   assert.equal(nextAttempt(forged), 1)
+})
+
+test('the handback comment: the component-doc lines sit between the depth and the problems, each with the Docs: prefix, and read back verbatim', () => {
+  const base = { attempt: 2, status: 'done', childId: 'hz-t-a2-000001', commits: 1, head: 'abc123def456', files: 1, base: 'aaa111bbb222', questions: 0, assumptions: 0, asked: 0, answered: 0, timeouts: 0, plans: 0, incoming: 0, lessons: 0, depth: '轻审' as const, problems: ['files[0] is not a repository-relative path'] }
+  const bare = renderHandbackComment(base)
+  assert.ok(!bare.includes('Docs:'))
+  assert.deepEqual(parseHandbackComment(bare)?.docs, undefined)
+  const withDocs = renderHandbackComment({ ...base, docs: ['src/guarded changed code but its AGENTS.md was not touched and the handback says nothing about it.', '文档缺口没算成：git gone'] })
+  const lines = withDocs.split('\n')
+  assert.ok(lines[3].startsWith('有效深浅 轻审'))
+  assert.equal(lines[4], 'Docs: src/guarded changed code but its AGENTS.md was not touched and the handback says nothing about it.')
+  assert.equal(lines[5], 'Docs: 文档缺口没算成：git gone')
+  assert.ok(lines[6].startsWith('校验不过：'))
+  const read = parseHandbackComment(withDocs)
+  assert.deepEqual(read?.docs, ['src/guarded changed code but its AGENTS.md was not touched and the handback says nothing about it.', '文档缺口没算成：git gone'])
+  assert.deepEqual(read?.problems, ['files[0] is not a repository-relative path'])
+  assert.equal(read?.depth, '轻审')
 })

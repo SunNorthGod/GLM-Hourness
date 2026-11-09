@@ -47,6 +47,7 @@ import { createUserNotice } from '../shared/dsh-min.ts'
 import { deliver } from '../rules/wake.ts'
 import { looksSecret } from '../data/secret-shape.ts'
 import { LESSONS_SERVICE } from '../lessons/service.ts'
+import { docsGaps, docsLines } from '../lessons/docs.ts'
 import { projectOf } from '../data/project-root.ts'
 import type { Attempt, HandbackComment } from './attempts.ts'
 import type { LoopEmit } from './loop-link.ts'
@@ -359,9 +360,18 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
   let floorHit: string | undefined
   // The event's `floorHit` (§2.5): `unparsed`, the class that was hit, or empty.
   let hitClass = ''
+  // The component-doc lines (docs-at-hand design 0.3 §6): the worker's `docs` line verbatim, then one sentence per component the change touched whose AGENTS.md it did not.
+  let docs: readonly string[] = []
   if (status === 'done' && stale.length === 0) {
     const floor = parseFloor(graph.nodes.get('norm-review-floor'))
-    const change = await changeOf(deps.git, worktree, attempt.baseSha, commits.at(-1))
+    const head = commits.at(-1)
+    // One git diff read serves the floor and the docs gaps: the change as `--no-renames --name-status` prints it (§3.7.1, §6.1).
+    const changed = attempt.baseSha === undefined || head === undefined
+      ? undefined
+      : await deps.git.changedFiles(worktree, attempt.baseSha, head)
+    const change: FloorChange = changed !== undefined && changed.ok
+      ? { paths: changed.value.map(file => file.path), deleted: changed.value.filter(file => file.status === 'D').map(file => file.path) }
+      : { paths: [], deleted: [] }
     const calls = await readCalls(join(deps.execDir(projectRoot), 'tasks', node.id, `${attempt.childId}.commands.jsonl`))
     const hits = floorHits(floor, change, calls, worktree)
     const declared = attempt.review ?? 'full'
@@ -377,6 +387,21 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
       hitClass = hits[0].index
     }
     else depth = declared === 'light' ? '轻审' : declared === 'skip' ? undefined : '全审'
+    // The docs gaps (§6.1): which components exist is read from the head commit's tree, so a worktree nobody cleaned cannot answer for the handback. A git that will not say — the diff or the tree — leaves the gaps uncomputed and says so once, degraded.
+    const withAgents = new Set<string>()
+    let gitReason = changed !== undefined && !changed.ok ? changed.reason : undefined
+    for (const dir of ancestorDirsOf(change.paths)) {
+      // A change list that is not empty names a head, so the loop cannot reach here without one.
+      const entry = await deps.git.entryAt(worktree, head!, `${dir}/AGENTS.md`)
+      if (!entry.ok) {
+        gitReason = entry.reason
+        break
+      }
+      if (entry.value !== undefined) withAgents.add(dir)
+    }
+    const gaps = gitReason === undefined ? docsGaps(change.paths, file => componentAtHead(file, withAgents)) : undefined
+    docs = docsLines(gaps, typeof structured.docs === 'string' ? structured.docs : undefined, gitReason === undefined ? undefined : `git 没说出组件的 AGENTS.md 在不在（${gitReason}）`)
+    if (gitReason !== undefined) deps.report(attempt.parentSession, 'degraded', `文档缺口没算成（${node.id}，${attempt.childId}）：${gitReason}`)
     emitMetric({
       event: 'execute.review-depth',
       task: node.id,
@@ -407,6 +432,7 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
     ...(lessonsResult.rejected === undefined ? {} : { lessonsRejected: lessonsResult.rejected }),
     ...(depth === undefined ? {} : { depth }),
     ...(floorHit === undefined ? {} : { floorHit }),
+    ...(docs.length > 0 ? { docs } : {}),
     problems,
   }
   const commentOk = await comment(deps, attempt.graphDir, node.id, renderHandbackComment(summary))
@@ -452,7 +478,7 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
   emitMetric({ event: 'execute.handback', task: node.id, attempt: attempt.attempt, status, commits: commits.length, files: files.length, ms: Date.now() - started, outside: await outsideCount(join(deps.execDir(projectRoot), 'tasks', node.id, `${attempt.childId}.commands.jsonl`)) })
   const depthWord = depth === undefined ? '不审' : depth
   const summaryText = `Task ${node.id} attempt ${attempt.attempt} handed back done: ${commits.length} commit(s), ${files.length} file(s), effective review depth ${depth === undefined ? 'none (skip)' : depthWord}${depth === undefined ? '' : reviewTask === undefined ? ', but its review task could not be created' : `, waiting for your review dispatch of ${reviewTask.id}`}.`
-  notify(deps, attempt.graphDir, 'handback', attempt, `Task ${node.id} handed back done.`, `${summaryText}${problems.length > 0 ? `\nSemantic problems of the handback: ${problems.join('; ')}` : ''}`)
+  notify(deps, attempt.graphDir, 'handback', attempt, `Task ${node.id} handed back done.`, `${summaryText}${problems.length > 0 ? `\nSemantic problems of the handback: ${problems.join('; ')}` : ''}${docs.length > 0 ? `\n${docs.map(line => `Docs: ${line}`).join('\n')}` : ''}`)
   // The loop board's entries take it from here (§2.5): dispatch the review, or integrate a task that is not reviewed.
   if (depth === undefined) deps.emit?.(projectRoot, attempt.parentSession, { event: 'hourness.review-skipped', key: `review-skipped:${node.id}:${attempt.childId}`, payload: { task: node.id } })
   else {
@@ -474,6 +500,32 @@ export async function changeOf(git: Git, worktree: string, base: string | undefi
   const changed = await git.changedFiles(worktree, base, head)
   if (!changed.ok) return { paths: [], deleted: [] }
   return { paths: changed.value.map(file => file.path), deleted: changed.value.filter(file => file.status === 'D').map(file => file.path) }
+}
+
+/** The ancestor directories of the changed paths, the checkout root excluded, once each (§6.1's component candidates). */
+function ancestorDirsOf(paths: readonly string[]): readonly string[] {
+  const dirs = new Set<string>()
+  for (const file of paths) {
+    const segments = file.split('/')
+    segments.pop()
+    while (segments.length > 0) {
+      dirs.add(segments.join('/'))
+      segments.pop()
+    }
+  }
+  return [...dirs]
+}
+
+/** The nearest directory above `file` that the head commit's tree gives an `AGENTS.md`: the component the handback's own commit says the file belongs to. */
+function componentAtHead(file: string, withAgents: ReadonlySet<string>): string | undefined {
+  const segments = file.split('/')
+  segments.pop()
+  while (segments.length > 0) {
+    const dir = segments.join('/')
+    if (withAgents.has(dir)) return dir
+    segments.pop()
+  }
+  return undefined
 }
 
 /** The command record of one dispatch, as the floor reads it (§3.8.5). */

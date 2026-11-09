@@ -410,6 +410,14 @@ test('schemas: the semantic checks name what a handback or a review got wrong', 
   assert.deepEqual(reviewProblems({ commit: 'main', checked: 'no' }), ['commit is not a hexadecimal commit id', 'checked is not a list of strings'])
 })
 
+test('schemas: the docs line stays one line within its 300 characters (docs-at-hand design 0.3 §6.2)', () => {
+  assert.deepEqual(handbackProblems({ ...sampleHandback, docs: 'updated: src/guarded' }), [])
+  assert.deepEqual(handbackProblems({ ...sampleHandback, docs: 'still true: the guard is unchanged, the commits only add a file' }), [])
+  for (const docs of ['   ', 'two\nlines', 'x'.repeat(301), 7]) {
+    assert.deepEqual(handbackProblems({ ...sampleHandback, docs }), ['docs must be one line of 1-300 characters'], JSON.stringify(docs))
+  }
+})
+
 test('metrics: emitMetric hands events to the injected sink and is silent without one', () => {
   const seen: MetricEvent[] = []
   const previous = setMetricSink(event => { seen.push(event) })

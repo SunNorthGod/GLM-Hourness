@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Attempt } from '../src/execute/attempts.ts'
-import { BRIEF_LIMIT, briefGate, parseDispatchArgs, renderAcceptanceBrief, renderBrief, type BriefContext, type BriefInput, type GateResult } from '../src/execute/brief.ts'
+import { BRIEF_LIMIT, briefGate, parseDispatchArgs, renderAcceptanceBrief, renderBrief, renderReviewBrief, type BriefContext, type BriefInput, type GateResult } from '../src/execute/brief.ts'
 import { digest12 } from '../src/execute/digest.ts'
 import { releaseOf } from '../src/graph/execute-stage.ts'
 import type { LoadedGraph } from '../src/graph/parse.ts'
@@ -388,6 +388,36 @@ test('renderBrief: a quick task and a carried plan change the constraint, earlie
   assert.ok(full.includes('- Rules in effect: writes go to the worktree; no pushes'))
 })
 
+test('renderBrief: a write scope that touches a component carries the component-doc line, right after the write boundary (docs-at-hand design 0.3 §4.4)', () => {
+  const text = renderBrief(briefInput({ docs: ['site/feed'] })).text
+  const line = '- Component doc covering your scope: site/feed/AGENTS.md. Keep it true: update it in the same commits when your change alters what it says; otherwise say in the handback field "docs" why it still holds.'
+  assert.ok(text.includes(line))
+  const lines = text.split('\n')
+  const writeLine = lines.findIndex(entry => entry.startsWith('- Write only inside:'))
+  assert.ok(writeLine >= 0 && lines.indexOf(line) === writeLine + 1, 'the duty sits with the boundary it qualifies')
+  const both = renderBrief(briefInput({ docs: ['site/feed', 'src/other'] })).text
+  assert.ok(both.includes('scope: site/feed/AGENTS.md.') && both.includes('scope: src/other/AGENTS.md.'))
+  assert.ok(!renderBrief(briefInput()).text.includes('Component doc'), 'no component, no line')
+})
+
+test('renderBrief: over the limit the component-doc line yields before the lessons (docs-at-hand design 0.3 §4.4)', () => {
+  const room = BRIEF_LIMIT - renderBrief(briefInput()).text.length
+  const quarter = Math.floor(room / 4)
+  const input = (sizes: { docs: number, lessons: number, details: number, context: number }) => briefInput({
+    docs: [`c${'x'.repeat(sizes.docs)}`],
+    lessons: [`l ${'x'.repeat(sizes.lessons)}`],
+    earlier: [{ outcome: 'blocked', details: [`d ${'y'.repeat(sizes.details)}`] }],
+    context: `c ${'z'.repeat(sizes.context)}`,
+  })
+  const docsOnly = renderBrief(input({ docs: room, lessons: quarter, details: quarter, context: quarter }))
+  assert.deepEqual(docsOnly.truncated, ['docs'])
+  assert.ok(!docsOnly.text.includes('Component doc covering'), 'the line is cut whole, no stub')
+  assert.ok(docsOnly.text.includes('- Lessons that match this task:'), 'the lessons stay')
+  const all = renderBrief(input({ docs: quarter, lessons: room, details: room, context: room }))
+  assert.deepEqual(all.truncated, ['docs', 'lessons', 'earlier', 'context'])
+  assert.ok(all.text.length <= BRIEF_LIMIT + 80)
+})
+
 test('renderBrief: over 9000 characters, lessons go first, then the details of earlier attempts, then the main agent\'s context', () => {
   const room = BRIEF_LIMIT - renderBrief(briefInput()).text.length
   const quarter = Math.floor(room / 4)
@@ -449,4 +479,24 @@ test('renderBrief: a task with no source decisions, no non-goals and no write sc
   assert.ok(text.includes('- Not in scope: nothing recorded'))
   assert.ok(text.includes('- Write only inside: nothing. Writes elsewhere are refused.'))
   assert.ok(text.includes('Why it exists: "goal-1" > this task.'))
+})
+
+test('renderReviewBrief: the handback\'s docs lines ride in the context, and the checklist carries the component-docs rule verbatim (docs-at-hand design 0.3 §6.2)', () => {
+  const graph = plain()
+  const input = (docs?: readonly string[]) => ({
+    graph,
+    task: get(graph, 'review-1'),
+    reviewed: get(graph, 'task-1'),
+    childId: 'hz-review-1-a1-k3x9ab',
+    depth: 'full' as const,
+    handback: { head: 'abc123def456', base: 'aaa111bbb222', status: 'done', ...(docs === undefined ? {} : { docs }) },
+    gateCommands: [] as readonly string[],
+  })
+  const CHECKLIST = '- Component docs: if the handback names a component whose AGENTS.md was not updated, check that "still true" holds; a doc that carries a to-do list, progress or decision conclusions is misplaced. A stale doc is a non-blocking finding unless an acceptance item covers docs.'
+  const brief = renderReviewBrief(input(['src changed code but its AGENTS.md was not touched and the handback says nothing about it.', 'still true: site']))
+  assert.ok(brief.text.includes('- The handback says of the component docs:\n  - src changed code but its AGENTS.md was not touched and the handback says nothing about it.\n  - still true: site'))
+  assert.ok(brief.text.includes(CHECKLIST))
+  const bare = renderReviewBrief(input())
+  assert.ok(!bare.text.includes('The handback says of the component docs'), 'no docs line in the handback, nothing to carry')
+  assert.ok(bare.text.includes(CHECKLIST), 'the checklist item is a standing rule')
 })
