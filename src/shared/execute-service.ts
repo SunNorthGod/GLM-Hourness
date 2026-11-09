@@ -7,9 +7,9 @@
  *
  * Four members: the one M3's rules judge with; the one the guard row's
  * scratch-only rule asks for a registered worker's planned files; the trunk advance a running
- * call was allowed to make, which the rules board's gate is to read for
- * `gate.trunk-advance` (R4-F4, §18.2; src/rules/gate.ts does not read it
- * yet); and `runAction`, the loop board's `run` for the row's harness
+ * call was allowed to make, which the rules board's gate reads for
+ * `gate.trunk-advance` (R4-F4, §18.2; src/rules/gate.ts, after `next()`);
+ * and `runAction`, the loop board's `run` for the row's harness
  * actions (§2.5 point 2, src/execute/loop-link.ts), with the loop board's
  * record and result types (src/shared/loop-records.ts).
  */

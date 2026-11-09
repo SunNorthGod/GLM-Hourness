@@ -48,3 +48,4 @@
 （随批次更新）
 
 - 2026-11-07 01:50 开工：工作树、节点状态 doing（`c3866429`，已推 origin rules-r4d）。
+- 2026-11-09 追 main（M7 已合入，`fb88f941`，合并提交 `9219edb6`：package.json 测试链取并集、ORCHESTRATION 保留 §16.15/§16.16 加 main 的 §17 头、graph.svg 重渲染），随后接上 §4 等的那段：`src/rules/gate.ts` 在 `next()` 返回之后读 `glmHournessExecute.trunkAdvanceFor(exec.callId)`，读到才推 `gate.trunk-advance`（rules 设计 0.11 §6.2 第 4 步、§6.6；M7 对手件 `src/execute/advance.ts` 的 `installTrunkGate`，:1429 记、:1619 读、`src/shared/execute-service.ts` 的 `executeService` 契约读法）；带脚本规则在门里仍不跑，事件声明的失败默认（拦下）决定不跑的判法。L2 `tests/rules-gate.spec.ts` 加五例：交了前进才推并记流水、没交不推、服务形状不对按不在、trunk-advance 上脚本默认拦下、tool-call 上默认放行对照。ORCHESTRATION §16.11 第 3 步、遗留清单、§16.16 标题与「没有做」、§17.12 括注、`execute-service.ts` 头注释同批改。

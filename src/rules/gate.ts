@@ -14,11 +14,20 @@
  *    of it, and the project's `.llm/rules/`. Reads pass. This needs no state,
  *    so it holds when the state cannot be read.
  * 3. The call's events are built (`gateEvents`: `gate.tool-call` always,
- *    `gate.dispatch` for the native dispatch tools; `gate.trunk-advance` is
- *    declared and not pushed: the execute row reports a passing local trunk
- *    advance through `glmHournessExecute.trunkAdvanceFor(callId)` since M7
- *    E7, and this gate does not read it yet) and judged with the same
- *    `judgeInput`, `judge` and table of rules `checkCall` uses.
+ *    `gate.dispatch` for the native dispatch tools, and `gate.trunk-advance`
+ *    when the execute row reports a passing local trunk advance for this
+ *    call) and judged with the same `judgeInput`, `judge` and table of rules
+ *    `checkCall` uses. The advance is read after `next()` returns, by the
+ *    execute row's service `glmHournessExecute.trunkAdvanceFor(exec.callId)`
+ *    (design 0.11 §6.2 step 4 and §6.6; M7's trunk gate keeps it by call id
+ *    from its own pre-execute until post-execute or 60 seconds —
+ *    src/shared/execute-service.ts:46, src/execute/advance.ts:1619, recorded
+ *    at src/execute/advance.ts:1429). No service, no callId, or no recorded
+ *    advance pushes no `gate.trunk-advance`: rules listening to it then do
+ *    not fire, as the rules page says (「要等派活与合入那一块装上」). A script
+ *    rule on the event is still not run here (`NOT_RUN_BY_THE_GATE`), but
+ *    the event's declared `gateOnErrorDefault: 'block'` now decides how the
+ *    not-run refusal judges (src/rules/events.ts).
  * 4. A rule that blocks refuses the call with the four-part text; a rule that
  *    records lets it run and leaves a line; informing rules change nothing. A
  *    rule of the person that queues refuses the call once with a ticket, and
@@ -55,6 +64,7 @@ import { sessionIdOf, type RowHealth } from '../shared/health.ts'
 import type { JsonValue } from '../shared/json.ts'
 import { sessionRoute } from '../shared/route.ts'
 import { DISPATCH_TOOL_NAMES } from '../shared/tool-names.ts'
+import { executeService } from '../shared/execute-service.ts'
 import { callerOf } from './caller.ts'
 import { describeCall } from './call.ts'
 import { denialText } from './denial.ts'
@@ -246,6 +256,9 @@ export function installRulesGate(deps: GateDeps): () => void {
     const described = describeCall(tool, exec.arguments, caller.workspace)
     const why = (item: 'role' | 'model' | 'session'): string => caller.unknown[item] ?? `the ${item} of this call is not known`
     const unreadable = { role: why('role'), model: why('model'), session: why('session') }
+    // The advance the execute row's trunk gate recorded for this call (header point 3): read after
+    // next() returned, so the row's own pre-execute has run; absent for every call it did not gate.
+    const advance = typeof exec.callId === 'string' ? executeService(deps.ctx, warn)?.trunkAdvanceFor(exec.callId) : undefined
     const events = gateEvents({
       at: now.toISOString(),
       project: project.root,
@@ -259,6 +272,7 @@ export function installRulesGate(deps: GateDeps): () => void {
       ...(caller.sessionId === undefined ? {} : { session: caller.sessionId }),
       nested: exec.parent !== undefined,
       ...(DISPATCH_TOOL_NAMES.includes(tool) ? { dispatch: dispatchOf(exec.arguments) } : {}),
+      ...(advance === undefined ? {} : { trunkAdvance: advance }),
     })
     const judgedAt = deps.now()
     const verdict = judge(judgeInput({ now, project: project.root, events, signals: [...readings.values()], unreadable }), table, { approved: approvedScriptRules(state), notRunHere: NOT_RUN_BY_THE_GATE })

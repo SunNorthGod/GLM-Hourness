@@ -69,8 +69,7 @@ export interface CheckOptions {
   readonly metrics?: MetricExit
   /** The moment of the judgement in milliseconds; only a test sets it. */
   readonly now?: number
-  /** Starts a script a person approved; default the shared executor's 
-unScript (src/loops/script.ts), the one place a process is started. A test gives a stand-in. */
+  /** Starts a script a person approved; default the shared executor's runScript (src/loops/script.ts), the one place a process is started. A test gives a stand-in. */
   readonly runScript?: RunScript
 }
 

@@ -24,9 +24,10 @@ import { RULES_FILES_ONLY } from '../src/rules/gate.ts'
 import { repoJson, type RepoRules } from '../src/rules/model.ts'
 import { rulesPaths } from '../src/rules/store.ts'
 import { DATA_SERVICE } from '../src/shared/data-home.ts'
+import { EXECUTE_SERVICE, type ExecuteService } from '../src/shared/execute-service.ts'
 import { METRICS_SERVICE, type EmittedEvent, type RulesBodies } from '../src/shared/metrics.ts'
 import { readViolations } from './fake-rc3.ts'
-import { ruleOf } from './rules-fixtures.ts'
+import { ruleOf, scriptRef } from './rules-fixtures.ts'
 import { injectRecord } from './rules-helpers.ts'
 import { health, PEAK_NOW, rowTest, subagentOf, textOf, type Fixture } from './rules-host.ts'
 
@@ -188,6 +189,63 @@ rowTest('the target model of a dispatch is the provider and model the call names
 }, {
   natives: NATIVES,
   rules: file([ruleOf({ id: 'r-glm-dispatch', title: 'No GLM subagents', when: { kind: 'event', events: ['gate.dispatch'] }, filter: { targetModel: { matches: '^[^/]*/glm' } } })]),
+})
+
+/** A fake of the execute row's service whose trunk gate reports `advance` for every call id (M7, src/execute/index.ts). */
+const executeRowWith = (advance: ExecuteService['trunkAdvanceFor']): Record<string, unknown> => ({
+  [EXECUTE_SERVICE]: { isWorker: () => false, inApprovedScope: () => false, trunkAdvanceFor: advance, runAction: () => Promise.resolve({ outcome: 'skipped', reason: 'test' }) } satisfies ExecuteService,
+})
+const TRUNK_RULE = ruleOf({ id: 'r-trunk-main', title: 'No advance past main', when: { kind: 'event', events: ['gate.trunk-advance'] }, filter: { branch: { in: ['main'] } } })
+
+rowTest('the execute row reports the call moves the trunk: gate.trunk-advance is pushed, the rules on it fire and are journaled', async ({ exec, calls, violations }) => {
+  const result = await exec('pwsh', shell('git push origin main'))
+  assert.equal(result.isError, true)
+  assert.match(reasonOf(result), /Rule r-trunk-main "No advance past main"/)
+  assert.deepEqual(calls, [], 'the call never ran')
+  assert.deepEqual((await violations(1)).map(record => record.rule), ['rules:r-trunk-main'])
+}, { rules: file([TRUNK_RULE]), services: executeRowWith(() => ({ branch: 'main', from: 'aaa', to: 'bbb' })) })
+
+rowTest('no advance recorded for the call pushes no gate.trunk-advance: the rules on it do not fire', async ({ exec, calls, violations }) => {
+  assert.equal((await exec('pwsh', shell('git push origin main'))).isError, false)
+  assert.deepEqual(calls.map(call => call.name), ['pwsh'])
+  assert.deepEqual(await violations(), [], 'nothing journaled')
+}, { rules: file([TRUNK_RULE]), services: executeRowWith(() => undefined) })
+
+rowTest('an execute row whose service has the wrong shape reads as absent: no gate.trunk-advance, the call runs', async ({ exec, calls, violations }) => {
+  assert.equal((await exec('pwsh', shell('git push origin main'))).isError, false)
+  assert.deepEqual(calls.map(call => call.name), ['pwsh'])
+  assert.deepEqual(await violations(), [])
+}, { rules: file([TRUNK_RULE]), services: { [EXECUTE_SERVICE]: { isWorker: () => false } } })
+
+rowTest('a script rule on gate.trunk-advance is still not run by this gate, and the event\'s declared default blocks the call', async ({ exec, calls, violations }) => {
+  const result = await exec('pwsh', shell('git push origin main'))
+  assert.equal(result.isError, true)
+  const reason = reasonOf(result)
+  assert.match(reason, /Rule r-gate-script "Script on the trunk" .+ blocks it now\. The script of rule r-gate-script is not approved on this machine, so it was not run\. The rule's failure setting blocks the call\./)
+  assert.deepEqual(calls, [], 'the call never ran')
+  assert.deepEqual((await violations(1)).map(record => record.rule), ['rules:r-gate-script'])
+}, {
+  rules: file([ruleOf({
+    id: 'r-gate-script',
+    title: 'Script on the trunk',
+    when: { kind: 'event', events: ['gate.trunk-advance'] },
+    action: { kind: 'script', script: scriptRef('r-gate-script') },
+  })], { scripts: { 'r-gate-script': scriptRef('r-gate-script') } }),
+  services: executeRowWith(() => ({ branch: 'main', from: 'aaa', to: 'bbb' })),
+})
+
+rowTest('the same script rule on gate.tool-call alone is judged by the plain default: the call runs', async ({ exec, calls, violations }) => {
+  assert.equal((await exec('pwsh', shell('git push origin main'))).isError, false, 'no entry onError and no declaration default means allow')
+  assert.deepEqual(calls.map(call => call.name), ['pwsh'])
+  assert.deepEqual(await violations(), [])
+}, {
+  rules: file([ruleOf({
+    id: 'r-call-script',
+    title: 'Script on every call',
+    when: { kind: 'event', events: ['gate.tool-call'] },
+    action: { kind: 'script', script: scriptRef('r-call-script') },
+  })], { scripts: { 'r-call-script': scriptRef('r-call-script') } }),
+  services: executeRowWith(() => ({ branch: 'main', from: 'aaa', to: 'bbb' })),
 })
 
 rowTest('the paths a rule on writes sees are relative to the session workspace', async ({ root, exec }) => {
