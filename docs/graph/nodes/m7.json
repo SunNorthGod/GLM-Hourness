@@ -753,6 +753,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "批次 L4（2026-11-09，隔离实例，main fb88f941）：执行行首趟全过——真派发链走通（dispatch_task 带理由与轻审标记→hz/task-1 工作树提交→审查任务交回→norm-merge-gate 人批后 check_commit 过→master 快进→advances 记录→task done→goal 整体审查 APPROVED→goal done）；dispatch-chain-readonly 拒绝成立（plain subagent 直写图目录被拒，违规流水一行）；档位提示修复桌面成立（turbo 拒绝列出 low/high/max，无 [object Object]）；21 行组合健康。五条非阻断观察进 HANDOFF §10（metrics 积分口径 undefined、no_gate_norm 提示形状、read-tree 不在 worker-git 门内、档位核对次序、locale 过期文案已修）。M7 第一批 L4 欠账核销。"
+    },
+    {
+      "at": "2026-11-09T18:54:28.125Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "sweep 线收账（13f6a196 + 37b8657e，并入 main，2026-11-10）：③ no_gate_norm 提示写明形状（id 恰为 norm-merge-gate、命令为验收里整行单个反引号段、单行示例、其余形式列出，check.ts 发点与 ORCHESTRATION §17.12 同批）；⑤ 档位次序发现前提被推翻——四组实跑 + 历史核对证明 bad_task 自 c0bd42f 起先于档位核对、症状不存在，改按原指令重排反而重新引入症状，回归钉测试锁住设计次序。L4 观察过时的一次实证纠错。门禁 test 3583、probe 553/553（首跑两败为 rules-peak-stop 唤醒窗抖动，重跑全绿，先例一致）。"
     }
   ]
 }

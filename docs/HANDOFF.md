@@ -184,7 +184,7 @@ Cursor 的 shell 会注入 `GIT_CONFIG_COUNT`、`GIT_CONFIG_KEY_0`、`GIT_CONFIG
 
 1. **bootstrap。** `origin/bootstrap` = `1e7136f6`（B8），已解锁：M7 在 main 后冲突已消。下一步：追 main、门禁、合入（先关桌面），接着做 B7、B9、B10；`ui/src/guide/NoGraphCard.tsx` 过渡文字改指 `/wish` 随批做。
 2. **rules-r4d。** `origin/rules-r4d` = `72647c1e`，已解锁：接 `trunkAdvanceFor` 的一段（M7 在 main）。下一步：追 main、门禁、评审、合入。
-3. **L4 的五条非阻断发现（待人排期）**：① `metrics` 行「积分口径：未提供」——`src/metrics/index.ts:593` 的 `pricingService(ctx)` 取到 undefined 而计价服务实际在出数（跨包激活时序？）；② 执行行 locale 的「默认关闭」过时文案（已随本节同批修掉）；③ `no_gate_norm` 提示没说清门禁行的写法形状，模型多绕数轮；④ worker 用 `git read-tree` 动主检出 index 现有门不覆盖，是否纳入 worker-git 判定待人定；⑤ 档位核对先于任务存在性核对（对不存在且坏档位的 task 返回档位错误）。
+3. **L4 的五条非阻断发现（2026-11-10 起清账）**：① `metrics` 行「积分口径：未提供」——`src/metrics/index.ts:593` 的 `pricingService(ctx)` 取到 undefined 而计价服务实际在出数（跨包激活时序？待人查）；② locale 过期文案已修（d7a9f953）；③ `no_gate_norm` 提示已写明形状（`13f6a196`，sweep 线）；④ worker 用 `git read-tree` 动主检出 index 现有门不覆盖——是否纳入 worker-git 判定待人定；⑤ 档位核对次序的发现前提**被推翻**（sweep 线四组实跑 + 历史核对：`bad_task` 自 `c0bd42f` 起先于档位核对，症状在现行代码不存在），回归钉测试锁住设计次序（`37b8657e`）。
 4. **glm-subdir-instructions。** `origin/glm-subdir-instructions` = `9399278a`。不合入 main，等人选报告 §7 的 A/B/C（推荐 C：合入但缺省关）。
 5. **ablation 去留拍板。** 结论在 `docs/DESIGN.md` §5.2a（A1 保留、A2 可缩、A3 采纳延迟、A4 保留、A5 保留），注入文字未动；人看过结论后才动生产提示词。A3 采纳前要补一次真实会话核对（重用图/记忆工具的会话不在样本里）。
 6. **transcript。** 已在 main 出厂启用（`ac6413cf`，图 `e381f062`）。视频字幕 `source-transcript.md` 不入库（主检出 `.agents/tasks/docs-at-hand/`，未跟踪）。
