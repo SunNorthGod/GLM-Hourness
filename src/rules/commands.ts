@@ -6,20 +6,26 @@
  * one line of Chinese; a request the board refuses answers the board's reason
  * in one line and writes nothing.
  *
- * Not here, because the path of a person's agreement they belong to is not
- * built: writing a rule, defining a switch, accepting or rejecting a proposal.
- * Those words are not subcommands, and they get the usage like any other.
+ * A rule or a switch is not typed here: it is proposed by an agent
+ * (`rules_propose`) and put to the person in the chat. `accept` and `reject`
+ * settle a proposal for the person when the chat is not the way: the proposal
+ * was made while the project graph was not available, or the person would
+ * rather type it. A proposal that runs a script, or removes rules, is shown
+ * whole by the first `accept` and takes effect on the second, within 30
+ * minutes.
  */
 import { basename } from 'node:path'
 import type { ProjectLocation } from '../data/project-root.ts'
 import type { CommandResultLike } from '../shared/dsh-min.ts'
 import { PEAK_LEVEL_WORDS, peakModeIntro, type PeakModeState } from '../shared/peak-mode.ts'
 import { localMinute } from './denial.ts'
-import { openRulesBoard, type ApplyError } from './engine.ts'
+import { openRulesBoard, type ApplyError, type RulesBoard } from './engine.ts'
 import { judgeInput } from './judge.ts'
 import { openTickets, projectSignals, rulesInForce } from './listing.ts'
 import { effectivePeakMode, parsePeakLevel, type PeakLevel, type ProjectState, type Rule } from './model.ts'
 import { stateOf, type PeakReading, type ProjectView } from './peak.ts'
+import { SHOWN_VALID_MS } from './plan.ts'
+import { proposalDetail } from './proposal.ts'
 import type { SignalReading } from './signals.ts'
 import { GLM_PEAK } from './signals.ts'
 import type { StoreIo } from './store.ts'
@@ -27,7 +33,7 @@ import { readingsOf, tableOf } from './table.ts'
 import { isStopTicket } from './wake.ts'
 
 /** What the subcommands say, as the usage of the command (input.hint) and as the reply to a line that is none of them. */
-export const RULES_HINT = 'show | peak [无影响|少做|不做] | lift <规则> | delete <规则或开关> | on <开关> [时长] | off <开关> | set <信号> <值> [时长] | clear <信号> | let <单号> | cancel <单号> | recovery <编号…|文件> 照改|忽略'
+export const RULES_HINT = 'show | peak [无影响|少做|不做] | lift <规则> | delete <规则或开关> | on <开关> [时长] | off <开关> | set <信号> <值> [时长] | clear <信号> | let <单号> | cancel <单号> | accept <提议> | reject <提议> | recovery <编号…|文件> 照改|忽略'
 
 const RULES_USAGE = [
   '用法：/rules 后面跟下面几种之一：',
@@ -38,6 +44,7 @@ const RULES_USAGE = [
   '/rules set <信号> <值> [时长]、/rules clear <信号>：手设、清掉一个信号的值',
   '/rules delete <开关名>：删掉一个开关',
   '/rules let <单号>、/rules cancel <单号>：放行一张等待单这一次、取消它',
+  '/rules accept <提议>、/rules reject <提议>：同意、否掉一条 agent 提的规则；带脚本或要删规则的提议，第一次 accept 只给你看原文，看过了 30 分钟内再打一次才生效',
   '/rules recovery <编号> 照改|忽略（几个编号用逗号隔开）：处理变更记录里没有生效的记录',
   '/rules recovery 文件 照改|忽略：仓库里的规则文件被规则板以外改过时，照文件改，或让规则板按自己的存档写回',
 ].join('\n')
@@ -102,6 +109,9 @@ type Parsed =
   | { readonly kind: 'peak', readonly level?: PeakLevel, readonly word?: string }
   | { readonly kind: 'write', readonly request: Record<string, unknown>, readonly done: string }
   | { readonly kind: 'repo', readonly adopt: boolean }
+  | { readonly kind: 'accept', readonly id: string }
+
+const PROPOSAL = /^p-[0-9a-f]{8}$/
 
 function parse(input: string): Parsed | string {
   const [sub, ...rest] = input.trim().split(/\s+/).filter(word => word !== '')
@@ -146,6 +156,10 @@ function parse(input: string): Parsed | string {
       return count === 1 ? { kind: 'write', request: { op: 'ticket-let-once', id: rest[0], reason: `人用 /rules let 放行了 ${rest[0]}` }, done: `${rest[0]} 放行这一次：10 分钟内同样的调用再来会放行。` } : RULES_USAGE
     case 'cancel':
       return count === 1 ? { kind: 'write', request: { op: 'ticket-cancel', id: rest[0], reason: `人用 /rules cancel 取消了 ${rest[0]}` }, done: `${rest[0]} 已取消。` } : RULES_USAGE
+    case 'accept':
+      return count === 1 && PROPOSAL.test(rest[0] ?? '') ? { kind: 'accept', id: rest[0] } : RULES_USAGE
+    case 'reject':
+      return count === 1 && PROPOSAL.test(rest[0] ?? '') ? { kind: 'write', request: { op: 'proposal-reject', id: rest[0], by: 'human', reason: `人用 /rules reject 否掉了提议 ${rest[0]}` }, done: `提议 ${rest[0]} 已否掉。` } : RULES_USAGE
     case 'recovery': {
       const verb = rest.at(-1)
       const accept = verb !== undefined && ACCEPT.includes(verb)
@@ -252,6 +266,8 @@ export async function runRulesCommand(input: string, project: ProjectLocation | 
     return { kind: 'success', text: `高峰模式改成了「${words.name}」（${words.half}）。${line}${file}\n档位已记下，从下一次工具调用和派活起生效。` }
   }
 
+  if (parsed.kind === 'accept') return await acceptCommand(parsed.id, board, env)
+
   if (parsed.kind === 'repo') {
     const result = await board.apply('human', { op: parsed.adopt ? 'repo-adopt' : 'repo-restore', reason: parsed.adopt ? '人照仓库里的规则文件改了' : '人让规则板按自己的存档写回仓库里的规则文件' })
     await env.settle()
@@ -278,6 +294,33 @@ export async function runRulesCommand(input: string, project: ProjectLocation | 
   await env.settle()
   if (!result.ok) return error(failureText(result.error))
   return { kind: 'success', text: result.changed ? done : '已经是这样，没有改动。' }
+}
+
+/** What `/rules accept` says once the proposal took effect. */
+const TOOK_EFFECT = (id: string, describe: string): string => `提议 ${id} 生效了：${describe}。`
+
+/**
+ * `/rules accept <proposal>`: the person's word that it be so. A proposal with text to read (a script, rules to
+ * remove) is shown whole the first time and takes effect on the second `accept` within 30 minutes: the person sees the
+ * text in the command's own reply, not in what an agent said about it.
+ */
+async function acceptCommand(id: string, board: RulesBoard, env: RulesCommandEnv): Promise<CommandResultLike> {
+  const view = await env.settle()
+  const proposal = view?.read.state.proposals?.[id]
+  if (proposal === undefined) return error(`没有提议 ${id}（可能已经处理过了）。`)
+  if (proposal.status !== 'open') return error(`提议 ${id} 已经 ${proposal.status}，不用再同意。`)
+  const detail = proposalDetail(proposal)
+  const shown = proposal.shownAt === undefined ? Number.NaN : Date.parse(proposal.shownAt)
+  if (detail !== undefined && !(env.now() - shown <= SHOWN_VALID_MS)) {
+    const showing = await board.apply('human', { op: 'proposal-show', id })
+    if (!showing.ok) return error(failureText(showing.error))
+    return { kind: 'success', text: `${proposal.describe}\n\n${detail.markdown}\n\n这条提议还没有生效。看过了，30 分钟内再打一次 /rules accept ${id} 才生效；不要就打 /rules reject ${id}。` }
+  }
+  const result = await board.apply('human', { op: 'proposal-accept', id, by: 'human', board: true, reason: `人用 /rules accept 同意了提议 ${id}` })
+  await env.settle()
+  if (!result.ok) return error(failureText(result.error))
+  const file = result.file === 'deferred' ? '仓库里的规则文件等 git 做完合并或变基再写。' : result.file === 'failed' ? '仓库里的规则文件没写成，下次读状态时补写。' : ''
+  return { kind: 'success', text: result.changed ? `${TOOK_EFFECT(id, proposal.describe)}${file}` : `提议 ${id} 已经生效过了，没有改动。` }
 }
 
 /** How long a let lasts when the end of the peak cannot be read. */

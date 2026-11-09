@@ -136,6 +136,8 @@ function clauseOf(entry: Entry, effect: 'block' | 'queue', peakUntil: string | u
   const { rule, hit } = entry
   if (rule.scope === 'builtin') return `Rule ${rule.id} defers ${builtinDeferral(rule.id) ?? 'it'}.`
   const head = `Rule ${rule.id} "${rule.title}" (${setByPhrase(rule)})`
+  // What a script that was run made of the call is the rule's sentence: it ran its script, and the script said so (design §6.4).
+  if (hit.verdict !== undefined) return `${head} ${hit.verdict}`
   const reason = hit.reason === undefined ? '' : ` ${hit.reason}`
   if (effect === 'block') return `${head} blocks it now${rule.condition === undefined ? '' : `: ${conditionPhrase(rule.condition, peakUntil)}`}.${reason}`
   return `${head} defers it${rule.condition === undefined ? '' : ` while ${conditionPhrase(rule.condition, peakUntil)}`}.${reason}`
@@ -151,6 +153,12 @@ function boundaryOf(input: DenialInput, codeEntries: readonly Entry[]): string {
 }
 
 function rightPathOf(input: DenialInput, onlyCode: boolean): string {
+  const scripts = input.rules.filter(entry => entry.hit.verdict !== undefined)
+  if (input.effect === 'block' && scripts.length > 0 && scripts.length === input.rules.length) {
+    return scripts.some(entry => entry.hit.scriptFailed === true)
+      ? 'The call did not run. Try again in a minute; if it fails again, tell the human that this rule\'s script is failing.'
+      : 'Fix what the script reports and try again; if you think the rule is wrong, tell the human.'
+  }
   if (input.effect === 'block') return 'Do not repeat the call. Continue with other planned work, or tell the human what you need and why.'
   if (input.unrecorded === true) return 'The call did not run, and no message will come when the rule stops holding: run the call again yourself once it does not.'
   if (input.ticket === undefined && onlyCode) return `Run it again after ${input.peak.until === undefined ? 'peak ends' : localClock(input.peak.until)}.`
