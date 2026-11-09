@@ -19,6 +19,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { ENTRY_GONE_GAP_MS, ENTRY_GONE_WARMUP_MS, fingerprintOf, NOT_DELIVERED_MS, promptOf, reconcile, selectorOf, specDigestOf, timeEntries, titleOf, type BindDeps } from '../src/loops/bind.ts'
 import type { DeliverRequest, DeliverResult } from '../src/loops/deliver.ts'
+import { LOOP_DEFAULTS } from '../src/loops/defaults.ts'
 import type { HolderState } from '../src/loops/holder.ts'
 import { emptyState, type RunnableEntry, type RuntimeState } from '../src/loops/inbox.ts'
 import type { DriftRecord, LoopRecord, TaskDeleteRecord } from '../src/loops/records.ts'
@@ -165,6 +166,17 @@ test('bind: a plugin\'s entry says whose default it is, and the timing of each k
   // An event entry and a command entry are not reminders of DSH.
   assert.equal(selectorOf({ kind: 'event', events: ['loops.host-restarted'] }, ZONE), undefined)
   assert.equal(selectorOf({ kind: 'command', names: ['hourness'] }, ZONE), undefined)
+})
+
+test('bind: the loop row\'s end-of-day entry is a time entry that becomes one daily reminder of DSH at 18:05, with the words of the entry and no event to fill', () => {
+  const entry = LOOP_DEFAULTS.find(candidate => candidate.id === 'loops.unsynced-daily')
+  assert.ok(entry !== undefined)
+  const item: RunnableEntry = { entry, source: 'plugin', plugin: 'dsh-hourness', row: 'glm-hourness/loops' }
+  assert.deepEqual(timeEntries([item]).map(candidate => candidate.entry.id), ['loops.unsynced-daily'])
+  assert.deepEqual(selectorOf(entry.when, ZONE), { daily: { time: '18:05:00', time_zone: ZONE } })
+  const prompt = promptOf(item)
+  assert.ok(prompt.startsWith(`${TASK_PROMPT_PREFIX}loops.unsynced-daily (default of dsh-hourness). Change it on the loop board, not here.`))
+  assert.ok(entry.action.kind === 'tell-main' && prompt.includes(entry.action.text))
 })
 
 test('bind: the main agent moves to another session: the new reminder is made first, the old one removed as moved with its whole text kept', async () => {

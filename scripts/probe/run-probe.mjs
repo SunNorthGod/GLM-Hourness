@@ -210,7 +210,7 @@ import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
 import { pinsOf } from '../../packages/hourness/dist/graph/pins.js'
 import { parseDispatchComment } from '../../packages/hourness/dist/execute/attempts.js'
 import { sha256Hex } from '../../packages/hourness/dist/execute/digest.js'
-import { FAILURE_SOURCE } from '../../packages/hourness/dist/lessons/failure.js'
+import { FAILURE_SOURCE, PATH_SOURCE } from '../../packages/hourness/dist/lessons/failure.js'
 import { GUARD_CORRECTION_SOURCE, GUARD_LIFT_LINE } from '../../packages/hourness/dist/guard/index.js'
 import { PENDING_SOURCE as LESSONS_PENDING_SOURCE, RECUR_SOURCE as LESSONS_RECUR_SOURCE } from '../../packages/hourness/dist/lessons/notices.js'
 import { INDEX_SOURCE as MEMORY_INDEX_SOURCE } from '../../packages/hourness/dist/memory/index.js'
@@ -2257,6 +2257,50 @@ const stageFocus = id => ({ tool: { name: 'graph_focus', arguments: { id } } })
 const stageRead = name => ({ tool: { name: 'Read', arguments: { file_path: join(stageWs(name), 'README.md') } } })
 const STAGE_BODY = '需求：记一下每天花了多少钱'
 
+// The reminder at a file (docs/ORCHESTRATION.md §8.6, §8.7; docs-at-hand design
+// 0.3 §5, assumption U3). The workspace is a project with a root AGENTS.md (so
+// the host has an opening baseline), a component src/comp whose AGENTS.md lists
+// one decision, a graph with that decision and a task whose write scope holds
+// the component, and a lesson for files under it. The main agent reads a file
+// of the component, reads another, then writes a new one. After the first read
+// the request carries one reminder of the lessons row right after the tool
+// result: with the lesson and the graph's lines, and with the document itself
+// on GLM (the host's trigger table does not know Read), without it on the
+// native route (the host delivers the document, once). The second read tells
+// nothing new, the write adds the sentence that asks to keep the document true.
+const PATH_MARK = 'COMP-DOC-MARK-7f3a'
+const PATH_ROOT_MARK = 'ROOT-DOC-MARK-91c2'
+const PATH_LESSON = 'L-0c0ffe'
+const PATH_PITFALL = 'The component runner reads the inbox twice when two beats overlap.'
+const seedPathProject = async (name) => {
+  const ws = stageWs(name)
+  mkdirSync(join(ws, 'src', 'comp'), { recursive: true })
+  writeFileSync(join(ws, 'AGENTS.md'), `# Project rules\n${PATH_ROOT_MARK}\n`)
+  writeFileSync(join(ws, 'src', 'comp', 'AGENTS.md'), `# Component\n${PATH_MARK}\nWhat it is.\n\n## Decisions\n- decision-1\n\n## Flow\n\`\`\`mermaid\nflowchart LR\n\`\`\`\n`)
+  writeFileSync(join(ws, 'src', 'comp', 'a.ts'), '// a\n')
+  writeFileSync(join(ws, 'src', 'comp', 'b.ts'), '// b\n')
+  await stageGraph(name, [
+    ['human', { type: 'goal', title: 'A goal' }],
+    ['human', { type: 'decision', title: 'Entries are data', parent: 'goal-1' }],
+    ['human', { type: 'decision', title: 'The task decision', parent: 'goal-1' }],
+    ['human', { type: 'task', title: 'Write the runner', parent: 'goal-1', kind: 'implement', writeScope: ['src/comp/'], edges: [{ type: 'source', to: 'decision-2' }] }],
+  ])
+  const home = join(runDir, name, 'home')
+  mkdirSync(home, { recursive: true })
+  const lesson = { v: 1, seq: 1, at: hoursAgo(5), actor: 'llm', op: 'new', id: PATH_LESSON, reason: 'seed from the probe', evidence: ['docs/HANDOFF.md §6'], data: { situation: { files: ['src/comp/**'], tools: [], commands: [], errors: [] }, pitfall: PATH_PITFALL, fix: 'Chain the beats.' } }
+  writeFileSync(join(home, 'lessons.jsonl'), `${JSON.stringify(lesson)}\n`)
+  return ws
+}
+const runPath = async (name, model, glmRoute) => {
+  const ws = await seedPathProject(name)
+  const file = rel => join(ws, 'src', 'comp', rel)
+  const read = rel => ({ tool: { name: glmRoute ? 'Read' : 'read', arguments: { file_path: file(rel) } } })
+  const script = [read('a.ts'), read('b.ts'), { tool: { name: glmRoute ? 'Write' : 'write', arguments: { file_path: file('c.ts'), content: '// c\n' } } }, { text: 'done', status: true }]
+  return runScenario(name, model, script, 'Read two files of the component, write a third, then reply done.', LESSONS_ROW, ws)
+}
+const pathGlm = await runPath('glm-lessons-path', 'glm-5.3', true)
+const pathPlain = await runPath('non-glm-lessons-path', 'deepseek-probe', false)
+
 // An interview: the goal is the main agent's own proposal. Request 1 has no focus, so the first child's write is refused for want of a goal; the second child is dispatched at stage interview; the main agent's edit of the goal body is answered by the reminder again.
 const STAGE = 'glm-design-stage'
 const stageGraphPath = await stageGraph(STAGE, [['llm', { type: 'goal', title: '记账小工具', stage: 'interview', body: STAGE_BODY }]])
@@ -3203,7 +3247,7 @@ const transcriptReplaced = transcriptLines.slice(0, 5).map(line => /Replaced in 
 const usageOf = scenario => jsonl(join(runDir, scenario, 'dsh-home', 'glm-hourness', 'audit', 'usage.jsonl'))
 const glmUsage = usageOf('glm').filter(record => record.purpose === undefined)
 const compactUsage = usageOf('glm-compact').filter(record => record.purpose === 'compaction')
-const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory', 'glm-memory-depth', 'glm-memory-habit', 'glm-lessons', 'non-glm-lessons', 'glm-lessons-failure', 'non-glm-lessons-failure'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
+const projectUsage = ['glm', 'glm-flash', 'glm-todo', 'glm-compact', 'glm-shadow', 'glm-guard-paths', 'non-glm', 'non-glm-guard', 'glm-no-dialect', 'glm-peak', 'limits-steps', 'limits-time', 'glm-dispatch', 'glm-goal', 'goal-headless', 'glm-only', 'hourness-only', 'client-modules', 'glm-memory', 'non-glm-memory', 'glm-memory-compact', 'glm-worker-memory', 'glm-memory-depth', 'glm-memory-habit', 'glm-lessons', 'non-glm-lessons', 'glm-lessons-failure', 'non-glm-lessons-failure', 'glm-lessons-path', 'non-glm-lessons-path'].filter(scenario => existsSync(join(runDir, scenario, 'home', 'audit', 'usage.jsonl')))
 const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
@@ -4250,6 +4294,38 @@ function lessonsFailureChecks() {
   })
 }
 
+/**
+ * The reminder at a file (scenarios glm-lessons-path, non-glm-lessons-path):
+ * where it sits in the request (U3), what it carries, and the promise that the
+ * component's document reaches the model once, from the host or from the row.
+ */
+function lessonsPathChecks() {
+  const route = [[pathGlm, 'glm-lessons-path', 'GLM'], [pathPlain, 'non-glm-lessons-path', 'non-GLM']]
+  return route.flatMap(([scenario, name, label]) => {
+    const steps = scenario.steps
+    const glmRoute = label === 'GLM'
+    const told = step => messagesOf(step, PATH_SOURCE)
+    const host = step => messagesOf(step, 'agent-instructions')
+    const afterResult = step => step !== undefined && step.messages.some((message, index) => message.source === PATH_SOURCE && step.messages[index - 1]?.role === 'tool')
+    const everywhere = (step, mark) => (step?.messages ?? []).filter(message => message.text.includes(mark)).length
+    const first = told(steps[1])[0]
+    return [
+      [`lessons path (${label}): the first request has the host's opening baseline with the root document, once, and no reminder yet`, steps.length >= 4 && host(steps[0]).length === 1 && host(steps[0])[0].text.includes(PATH_ROOT_MARK) && !host(steps[0])[0].text.includes(PATH_MARK) && told(steps[0]).length === 0, steps.length === 0 ? `no request (exit ${scenario.status})` : `host messages ${host(steps[0]).length}, reminders ${told(steps[0]).length}`],
+      [`lessons path (${label}): the request after the first read carries one reminder right after its tool result, with the decision from the document and the one behind the task, the open task and the lesson`, steps.length >= 4 && told(steps[1]).length === 1 && afterResult(steps[1]) && first.text.includes('Decisions on this path (project graph): decision-1 "Entries are data"') && first.text.includes('decision-2 "The task decision"') && first.text.includes('Open work on this path: task-1 "Write the runner"') && first.text.includes(PATH_LESSON) && first.text.includes(PATH_PITFALL) && !first.text.includes('Keep the component doc true') && lastToolResult(steps[1])?.isError !== true, steps.length < 2 ? 'no second request' : `reminders per request: ${steps.map(step => told(step).length).join(', ')}; ${(first?.text ?? 'none').replace(/\n/g, ' | ').slice(0, 260)}`],
+      [glmRoute
+        ? `lessons path (GLM): the host does not deliver the component's document for the alias Read, so the reminder carries it, and the host's messages stay the one baseline`
+        : `lessons path (non-GLM): the host delivers the component's document (one more message from agent-instructions, naming the directory), so the reminder does not carry it`,
+      steps.length >= 4 && (glmRoute
+        ? first.text.includes(PATH_MARK) && first.text.includes('src/comp/AGENTS.md:') && host(steps[1]).length === 1
+        : !first.text.includes(PATH_MARK) && host(steps[1]).length === 2 && host(steps[1])[1].text.includes(PATH_MARK)),
+      steps.length < 2 ? 'no second request' : `host messages per request: ${steps.map(step => host(step).length).join(', ')}; the mark in the reminder: ${first?.text.includes(PATH_MARK)}`],
+      [`lessons path (${label}): the document's text reaches the model exactly once in the last request, from the row or from the host, and the second read brought nothing`, steps.length >= 4 && everywhere(steps[3], PATH_MARK) === 1 && told(steps[2]).length === 1 && told(steps[3]).length === 2, steps.length === 0 ? 'no request' : `mark counts per request: ${steps.map(step => everywhere(step, PATH_MARK)).join(', ')}; reminders per request: ${steps.map(step => told(step).length).join(', ')}`],
+      [`lessons path (${label}): the write adds the reminder that asks to keep the document true, alone: nothing told before is told again`, steps.length >= 4 && told(steps[3])[1]?.text.includes('Keep the component doc true: if your change alters what src/comp/AGENTS.md says') === true && !told(steps[3])[1].text.includes(PATH_LESSON) && !told(steps[3])[1].text.includes('Decisions on this path') && afterResult(steps[3]), steps.length < 4 ? 'no fourth request' : (told(steps[3])[1]?.text ?? 'none').replace(/\n/g, ' | ').slice(0, 200)],
+      [`lessons path (${label}): the files were written, the row reports itself loaded and the run warned of nothing`, existsSync(join(stageWs(name), 'src', 'comp', 'c.ts')) && healthOf(scenario).lessons?.status !== '未加载' && !JSON.stringify(healthOf(scenario).lessons ?? {}).includes('路径提醒有一部分没送') && quiet(name), `${healthLine(healthOf(scenario), 'lessons')}; ${healthOf(scenario).lessons?.reason.slice(0, 120) ?? ''}; stderr ${stderrOf(name).length} byte(s)`],
+    ]
+  })
+}
+
 // Metrics journal (docs/ORCHESTRATION.md §10.6; metrics design §12 step 2).
 // The row ships disabled; both runs enable it with the overlay, in scratch git
 // workspaces where the person has set the stop level through the real board
@@ -4568,6 +4644,7 @@ const checks = [
   ...memoryChecks(),
   ...lessonsChecks(),
   ...lessonsFailureChecks(),
+  ...lessonsPathChecks(),
   ['data: usage lands only in the user-level directory, never in a project directory or the real one', projectUsage.length === 0 && realUsageBefore === realUsageAfter, `project usage files: ${projectUsage.join(', ') || 'none'}; real ${realUsage}: ${realUsageBefore} -> ${realUsageAfter}`],
   ['guard: a shell write is denied with the four-part correction naming the ZCode tools, and the file is not created', blockedResult?.isError === true && blockedResult.text.includes('Shell file writes are not permitted') && blockedResult.text.includes(RIGHT_PATH_ZCODE) && !existsSync(blocked), blockedResult === undefined ? 'no tool result' : blockedResult.text.slice(0, 100).replace(/\n/g, ' ')],
   ['guard: the denial is journaled in the scenario project directory with rule, tool and the calling agent ids, and the turn end after the reply settles one follow-up as none (m4-gate G2)', glmViolations.length === 2 && glmViolations[0].rule === 'file-tools-only' && glmViolations[0].tool === 'Bash' && typeof glmViolations[0].agentId === 'string' && glmViolations[0].agentId.length > 0 && glmViolations[0].sessionId === glmUsage[0]?.sessionId && glmViolations[1].kind === 'followup' && glmViolations[1].outcome === 'none' && glmViolations[1].rule === 'file-tools-only' && typeof glmViolations[1].denial === 'string' && glmViolations[1].denial.length === 12, `${glmViolations.length} record(s); first: ${JSON.stringify(glmViolations[0] ?? null).slice(0, 140)}`],

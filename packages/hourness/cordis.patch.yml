@@ -137,9 +137,9 @@
       # happens or the time comes. Rows hand their entries, events and harness
       # actions to the service glmHournessLoops; the board validates and lists
       # them, an entry whose event nobody declares waits greyed, and the row
-      # brings four entries of its own (dependency check after a merge,
-      # a reminder for what waits for you too long, the two ends of a GLM
-      # peak). It keeps the entries a person agreed to (docs/loops/ in the
+      # brings five entries of its own (dependency check after a merge,
+      # a reminder for what waits for you too long, the end-of-day check
+      # for work not committed or not pushed, the two ends of a GLM peak). It keeps the entries a person agreed to (docs/loops/ in the
       # repository, the change record in the project's .llm/loops/), gives the
       # person /loops, keeps its own files to itself (loops:files-only), and in
       # a process that has a session controller it holds the project's run
