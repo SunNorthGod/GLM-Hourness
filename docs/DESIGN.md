@@ -668,6 +668,20 @@ start-plan 档只有第 1、2、5 节，后接 DSH 的节与 `glm:guard`。
 `reportingDepth`〔2026-11-01，`m3-main-persona`〕：`glm-prompt` 行的汇报细度配置原名 `persona`，与人设不是一回事，改名 `reportingDepth`（`concise`、`balanced`、`detailed`）；`src/glm-prompt/persona.ts` 改名 `reporting-depth.ts`，节名 `glm:persona` 改 `glm:reporting-depth`，模型看到的 `# Reporting Depth` 正文一个字没改。旧键 `persona` 照读：cordis 在激活前用导出的 `Config` 规整配置，本仓库的 schemastery 在值缺席时填默认值，所以两个键都不带默认值，规整之后哪个键在就是人写了哪个键；`apply` 取 `reportingDepth`，没有再取 `persona`，再没有取 `balanced`。只有 `persona` 时告警一次并在行健康里写「glm-prompt 的 persona 已改名为 reportingDepth，这次按旧键生效」；两个键都有且不同时用 `reportingDepth`，告警一次；都有且相同时不告警，行健康写「旧键 persona 可以删掉」。说明写在 GLM 路由的会话报告里（会话报告会盖掉激活说明），非 GLM 路由的步骤照旧。用户桌面版 profile 的 `glm-prompt` 行写着 `persona: balanced`，本仓库不改用户 profile，由上面的读法接住。L2 `tests/glm-reporting-depth.spec.ts`。
 原先的 `glm:deferred-tools` 节（order 2500）已删除：ZCode 的系统提示词里没有 deferred 声明段，deferred 名单以 `<system-reminder>` 公告递送（§5.7）。
 
+### 5.2a 注入文字的消融结论〔实测 2026-11-06–07，项目图 `ablation`〕
+
+六臂 × 两档模型（`glm-5.3`、`glm-5.3-flash`）× 三个标定任务（`bugfix-csv-quotes`、`bugfix-shell-redirect`、`feature-parse-duration`），有效 176 次，另有 6 次上游断开不计入。臂的定义见 `.agents/tasks/ablation/plan.md` §2；每格次数与每臂每档表在 `results.md`，有效次数、Wilson 区间与检验在 `report-tables.md`；口径同 `ORCHESTRATION.md` §10.5.1。p 值是分层置换检验（同任务同模型内换臂标签，10,000 次）与 Fisher 双侧，未做多重比较校正；每臂约 28–30 次有效，只有中到大的效应测得出，p 值是提示不是定论。事后扫事件流：182 次、2,119 次调用，圈禁零拦下、无圈外执行，消融开关无异常记录（逐臂是否恰好改到该臂那几段由 L3 场景 `ablation-A0` 到 `ablation-A5` 核对）。`bugfix-shell-redirect` 的失败（含被取代的试次，28 次）里 26 次只卡同一项（`x=>y` 的比较箭头被误判为重定向），各臂含 A0 一致，是这道题的难度不是臂的差异。以下是建议；注入文字本身一律不动，去留等人看过再定（节点验收 3）。
+
+| 段 | 臂（有效次数） | 数据（对 A0） | 结论 |
+| --- | --- | --- | --- |
+| `# Reporting Depth`（`glm:reporting-depth`） | A1，两档 28 | 完成 24/28 对 29/31（p=0.409）；最终回复字数 +24%（p<0.001）；工具失败与拦截各 +0.29 次/运行（均 p=0.009） | **保留**。去掉后回复显著变长，工具失败与拦截上升，这一节在管汇报粒度；完成下降未达显著。这是较薄的结论之一：flash 档的 shell-redirect 只有 3 次有效（断开 2）。 |
+| `# Workspace rules`（`glm:guard`）缩成一句、拦截不变 | A2，两档 30 | 完成 25/30 对 29/31（p=0.255）；步数 +12%（p=0.085）；积分 +10%（p=0.177）；拦截不变（+0.18，p=0.141） | **保留但可缩**（question-31 C 的方向）。行为由拦截兜住时，文本缩到一句没有测得的显著代价；整节去掉没有测过，shell-redirect 5/10 对 9/11（p=0.183）是弱信号，不要全删。 |
+| 15 个图工具与 3 个记忆工具常驻在 GLM 工具面 | A3，两档 29 | 完成 27/29 对 29/31（p=1）；积分 −20%（p<0.001）、分钟 −18%（p=0.003）；无显著负向项 | **采纳延迟，常驻可去**。完成不掉、每次运行省两成积分；重用图与记忆工具的会话不在这三个任务里，采纳前先核一次延迟加载与公告在真实会话上的表现。 |
+| Dynamic Behavior（`glm:dynamic-behavior`，3.17.1 原文） | A4，两档 30 | 完成 28/30 对 29/31（p=1）；全部行为指标不显著，仅回复字数 +9%（p=0.022） | **保留**。这个样本既量不出它的好处，也量不出坏处；去留按 §5.1 的 3.17.1 逐字镜像原则，删它要动逐字门禁链（`DYNAMIC_BEHAVIOR`），省约 1k 字符不值得破例。要删由人在数据之外另定。 |
+| DSH 五节 `tool:read`、`tool:write`、`tool:edit`、`tool:glob`、`tool:grep` | A5，两档 28 | 完成 27/28 对 29/31（p=1）；步数 +24%（p=0.003）、shell 调用 +38%（p=0.006）、积分 +19%（p=0.006）、工具失败 +0.22 次（p=0.024） | **保留**。去掉后模型退回 shell（`cat`、`rg` 一类），步数、shell 调用与积分显著变差，这五节的工具纪律在起作用；全表里信号最强的一条。 |
+
+数据薄的格子：A1 与 A5 在 flash 档的 shell-redirect 各只有 3 次有效（断开各 2），A3 在 5.3 档的 shell-redirect 4 次（断开 1）；六个断开全在 shell-redirect、分布跨臂，像上游掐流，不是臂的效应。`review/review.md`（2026-11-06）评审的是只有计划的那一版，不是这批数据。
+
 ### 5.3 本地化清单（coding-plan）
 
 | # | 节 | 处理 |
