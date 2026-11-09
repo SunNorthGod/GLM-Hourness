@@ -747,6 +747,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "M7 real-model-run-3（wf_36d1d690c7e1de90）完成：第三次真实模型在 headless、glm-5.3 主 Agent 下达到设计 §10.3 第 2 条：主 Agent 把 goal-1 从 release 推到 complete，没有工人、没有人问题。进程后来以退出码 1 结束，但那时 goal-1 已经完成了 18 分钟。下一步 land-2。desktop-lock 已释放。"
+    },
+    {
+      "at": "2026-11-09T14:11:03.646Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "批次 L4（2026-11-09，隔离实例，main fb88f941）：执行行首趟全过——真派发链走通（dispatch_task 带理由与轻审标记→hz/task-1 工作树提交→审查任务交回→norm-merge-gate 人批后 check_commit 过→master 快进→advances 记录→task done→goal 整体审查 APPROVED→goal done）；dispatch-chain-readonly 拒绝成立（plain subagent 直写图目录被拒，违规流水一行）；档位提示修复桌面成立（turbo 拒绝列出 low/high/max，无 [object Object]）；21 行组合健康。五条非阻断观察进 HANDOFF §10（metrics 积分口径 undefined、no_gate_norm 提示形状、read-tree 不在 worker-git 门内、档位核对次序、locale 过期文案已修）。M7 第一批 L4 欠账核销。"
     }
   ]
 }
