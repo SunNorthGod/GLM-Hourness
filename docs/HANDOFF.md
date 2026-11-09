@@ -121,6 +121,8 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 
 反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，用户 2026-10-28 把清理交给 agent。批次 L4 于 2026-10-29 通过后，这条路由已于同日从 profile 删除（项目图 `m1-cleanup`），含这条路由的改前备份也按用户要求删除；重启后模型菜单只有「DeepSeek 账号」与「GLM (ZCode native)」两组（本包这一组随后改名为「GLM（ZCode 原生通道）」，`m8-ui-audit` V-02）。
 
+3. **`rules-peak-stop` 探针场景的唤醒窗计时抖动**〔2026-11-09 起多次复发立案〕：失败签名恒定为两条——「子会话首调被拒后，`/rules peak 无影响` 恢复时子会话多走一个请求、唤醒晚一步」（`0,0,0,0,1 wake(s)` 而 `no wake in the last request`）；同树红绿交替已证实四案（r4d 合并、sweep、docs-at-hand-2 合并各两次，src 逐字节相同的树两跑结果不同），负载相关（并发 lane 活跃时段）。处理：见到即复跑一次，全绿放行；两连红才立缺陷查 `src/rules/wake.ts` 的唤醒时序（steer/inject 在子会话恢复回合的落点）。
+
 ## 6. 环境事实
 
 - 凭证：`~/.dsh/glm-hourness/credentials.json`（AES-256-GCM；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖密钥）。记录为版本 2，只存登录令牌与项目 key 定位：2026-10-29 桌面版以 m1-parity 代码重启后，第一个 GLM 请求把旧的版本 1 记录迁移过来，去掉了 API Key 与 secret，并定位到已有的 `zcode-api-key`（`DESIGN.md` §4.1）。现在可以用新代码读这个目录；桌面版运行时另起进程写同一个文件没有测过。仓库 `.llm/` 里的原件已于 2026-10-29 删除（项目图 `m1-cleanup`）。`glm-llm`、`glm-login` 不配 `home` 时默认读用户级目录（`DESIGN.md` §2.4）。
