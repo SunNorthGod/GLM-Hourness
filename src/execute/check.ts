@@ -740,7 +740,11 @@ const OUTPUT = {
 
 const DESCRIPTION = 'Run the merge checks of norm-merge-gate on one commit before the main branch moves to it. Pass the commit you built for the main branch (with the "Hourness-Task: <task>" trailer), or <upstream>/<main> after git fetch. The commands run in the gate worktree in the background; the verdict arrives as a notice. After a pass, fast-forward the main branch with git merge --ff-only <commit> in the main checkout. Main agent only.'
 
-const NO_GATE_HINT = 'Propose norm-merge-gate under the goal: read the project\'s build and test setup and list each command as `$ <command>`.'
+// The hint states the shape parseGateNorm reads (gate-norm.ts: the id is
+// exactly `norm-merge-gate`, and an acceptance line is a command only when
+// the whole line is one backticked segment) — L4 finding ③ (HANDOFF §10
+// item 3): the old hint named no shape and the model circled extra rounds.
+const NO_GATE_HINT = 'Propose the norm with the id exactly "norm-merge-gate" under the goal: read the project\'s build and test setup, and write each command as one acceptance line that is exactly one backticked segment, like `$ npm test`; at least one `$ <command>` line is required (the other forms: `$ <command> when <paths>`, `setup $ …`, `patrol $ …`, `push`, `only <paths>`).'
 
 interface CheckOutput {
   readonly commit: string
