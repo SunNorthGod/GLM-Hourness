@@ -759,6 +759,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "sweep 线收账（13f6a196 + 37b8657e，并入 main，2026-11-10）：③ no_gate_norm 提示写明形状（id 恰为 norm-merge-gate、命令为验收里整行单个反引号段、单行示例、其余形式列出，check.ts 发点与 ORCHESTRATION §17.12 同批）；⑤ 档位次序发现前提被推翻——四组实跑 + 历史核对证明 bad_task 自 c0bd42f 起先于档位核对、症状不存在，改按原指令重排反而重新引入症状，回归钉测试锁住设计次序。L4 观察过时的一次实证纠错。门禁 test 3583、probe 553/553（首跑两败为 rules-peak-stop 唤醒窗抖动，重跑全绿，先例一致）。"
+    },
+    {
+      "at": "2026-11-09T20:09:42.466Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "docs-at-hand gen/sync 对本模块的请求（2026-11-10 记录）：execute.release 的提示加一句组件文档（gen 节点验收第三句）；设计 §5.5 简报上下文栏的 docsFor 块未实现（对已放行 M7 设计的请求）——记批注或立下一批，待人定。sync 主体已落地（交回 docs 行 + 审查清单常在，504048ea）。"
     }
   ]
 }
