@@ -236,6 +236,9 @@
 | 隔离实例窗口不在前台时，CDP `Page.captureScreenshot` 不返回（30 秒超时），`--disable-renderer-backgrounding` 与 `--disable-backgrounding-occluded-windows` 也不改变；DOM 读取与 `Input.dispatch*` 照常 | panel-2 Q4 隔离实例〔实证 2026-11-05〕 |
 | DSH fs-local 发布一次编辑是先写暂存文件再对目标调 `ReplaceFileW`；目标上另有一个不带删除共享的句柄时返回 Win32 1175（`ERROR_UNABLE_TO_REMOVE_REPLACED`），工具结果是 `ReplaceFileW EIO (Win32 1175)`。本机上本仓库树内（主检出与工作树、`.llm/` 下、是不是 git 仓库、在不在 `node_modules` 下都一样）写文件、等 40 ms、`ReplaceFileW`，500 次败 6–19 次；`%TEMP%`、用户目录、仓库的上一级目录与另一个没在编辑器里打开的 git 仓库都是 0/500。失败时 Restart Manager 查不到持有者（句柄已关）。Defender 实时保护关闭，Windows Search 索引里没有仓库下的行，OneDrive 不管桌面；与数据相合的是打开着本仓库的 Kiro 工作区的文件监视或代码索引，属推断，没有用句柄工具证实。探针运行目录因此放在系统临时目录下（`DEVELOPMENT.md` §3） | `reference/deepseek-harness` `packages/fs/fs-local/src/win32.ts`、`fsio.ts`〔实读〕；`.agents/tasks/compact-recall-redact/land.md`、`.agents/tasks/probe-run-dir-outside-repo/report.md` 的 PowerShell 循环〔实测 2026-11-06〕 |
 
+| `dsh-llm-pi-ai` 的声明式 provider 路由在已装 rc.3 上实证可用：profile 里声明 `api: openai-completions`（协议表只有 `openai-completions`、`openai-responses`、`anthropic-messages` 三个名字）+ `baseURL` + `apiKeyEnv` 凭证 + models 列表（`id`、`contextWindow`、`maxTokens`），`--dump-config` 组合零告警，headless 请求到达网络层（哑端点返回干净连接错误而非配置错误）；未声明模型报 `UNKNOWN_MODEL`，models 列表即目录边界。baseURL 不带 `/chat/completions`（pi-ai 用官方 OpenAI SDK 自动拼）。Gemini 的 OpenAI 兼容端点 `https://generativelanguage.googleapis.com/v1beta/openai` 适用此路（线上行为未验，无真 key 测试） | scratch 实证〔2026-11-09，provider-verify lane〕；`origin/provider-verify` findings.md 含 asar 行号引用；架构笔记 `reference/deepseek-harness/.agents/notes/archived/architecture/2026-08-03-pi-ai-declared-provider-catalog.md`〔实读〕 |
+| 社区 Gemini provider 插件元数据核查：`dsh-vertex-argon`（1.6.4，活跃，peer 兼容 rc.3，用自己的 key）> `dsh-gateway-provider`（活跃但自带旧版 pi-ai 0.84.4）> `dsh-gemini-argon`（三天龄、exact-pin rc.2）≫ `dsh-gemini-subscription`（2.5 个月未动、无 license、peer 钉 rc.2、OAuth 镜像写 `~/.dsh/gemini-subscription-token.json`） | npm registry 元数据〔2026-11-09 检索，均未安装未实测〕 |
+
 ## 4. 许可与来源
 
 | 来源 | 许可 | 本仓库的使用 |
