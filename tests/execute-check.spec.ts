@@ -154,7 +154,7 @@ test('check_commit refuses a caller that is not the main agent, a name that is n
   try {
     const refused = await without.refusal(without.repo.git('rev-parse', 'HEAD'))
     assert.equal(refused.code, 'no_gate_norm')
-    assert.equal(refused.hint, 'Propose norm-merge-gate under the goal: read the project\'s build and test setup and list each command as `$ <command>`.')
+    assert.equal(refused.hint, 'Propose the norm with the id exactly "norm-merge-gate" under the goal: read the project\'s build and test setup, and write each command as one acceptance line that is exactly one backticked segment, like `$ npm test`; at least one `$ <command>` line is required (the other forms: `$ <command> when <paths>`, `setup $ …`, `patrol $ …`, `push`, `only <paths>`).')
   }
   finally {
     without.dispose()
