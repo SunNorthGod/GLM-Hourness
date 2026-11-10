@@ -1,0 +1,24 @@
+{
+  "id": "nowait",
+  "type": "feature",
+  "title": "主会话禁长等待：守卫规则与驱动提示",
+  "status": "approved",
+  "parent": "m7",
+  "body": "盘点判定已大体合规（八行等待七行有据保留），唯一缺口：主 Agent 直接跑的长 shell 与长 job 等待——宿主全有后台机制（run_in_background、promoteOnTimeout 默认 true、job 完成通知），提示词一句没有、守卫一条没有。设计：按 main-agent-rules.ts 表模式加一条 guard 规则（拒主 Agent 的 sleep、点名 timeoutMs>30s、job_output 等待超 5s，拒绝语给正路），DRIVE_BODY 加一句「长命令放后台，结果自己到来」。新行为默认 disabled，启用前过 L3。设计 0.1 在 origin/nowait（4ef89f41），四个岔路待人定。",
+  "acceptance": [
+    "等待盘点表八行逐行有出处与裁决",
+    "guard 规则与 DRIVE_BODY 句按人定落地，默认 disabled",
+    "L3 场景两态（开/关）通过",
+    "偏离记录在设计"
+  ],
+  "history": [
+    {
+      "at": "2026-11-10T15:17:20.487Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "super-agent 借鉴机制 2 的设计 0.1 已成稿，人 2026-11-10 批准各立设计节点",
+      "relay": "那就都按你的建议来",
+      "to": "approved"
+    }
+  ]
+}
