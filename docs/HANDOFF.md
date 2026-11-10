@@ -176,9 +176,9 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 - **编排运行**：属于 Kiro 的会话，换 IDE 即断。它们的产出都已落盘（设计文稿与分支提交），换过去之后照项目图重新派活。
 - **起步读法**：`AGENTS.md` → `docs/CHARTER.md` → 本文件第 10 节，再看第 8、9 节 → `npm run -s graph -- open`。
 
-## 10. 接着做什么（2026-11-10 桌面 runtime 换代之后）
+## 10. 接着做什么（2026-11-10 桌面 runtime 换代之后；2026-11-11 清单更新）
 
-**桌面 runtime 基线变了（主人 2026-11-10 亲手升级 nightly，0.2.2-rc.1）**：新运行时的 `system-prompt/assemble` 载荷是 `PromptPresentation`（只有 sections/contexts/variables，**无 tools**——工具面归 provider 所有，运行时 api-catalog 原话 "tool declarations remain provider-owned"）。8 处 assemble 监听器（design/execute/bootstrap/glm-prompt/lessons/memory）的面改写按旧契约读 `assembled.tools`，防护降级已落 `85970b6b`（面板缺失原样返回，rows 不崩）；**面类功能（主 Agent 工具过滤、A3 延迟公告、worker 面、工具检索公告）在新 runtime 上不可用，直到面层迁移完成**。迁移任务：把面改写从 assemble 瀑布迁到 `tools.restrict()` 作用域过滤（`DESIGN.md` §2.4a 已记录该机制），数天级，现在就是关键路径。探针的面类检查在迁移完成前预期红（本期红名单：52 工具面、A3 deferral 公告、guard-lift 脚本流的 lifts journal、主 Agent 面过滤类），HANDOFF §5 不当缺陷；非面类场景必须保持绿。bootstrap 合并（`0fff129e`，B7/B9 完成）随本节同批入库；**B10 的桌面验收排在迁移完成之后**（`/wish` 与派发都吃面改写）。`engines.dsh` 的声明范围随迁移一并核对。
+**桌面 runtime 基线变了（主人 2026-11-10 亲手升级 nightly，0.2.2-rc.1）**：新运行时的 `system-prompt/assemble` 载荷是 `PromptPresentation`（只有 sections/contexts/variables，**无 tools**——工具面归 provider 所有，运行时 api-catalog 原话 "tool declarations remain provider-owned"）。8 处 assemble 监听器（design/execute/bootstrap/glm-prompt/lessons/memory）的面改写按旧契约读 `assembled.tools`，防护降级已落 `85970b6b`（面板缺失原样返回，rows 不崩）；**面类功能（主 Agent 工具过滤、A3 延迟公告、worker 面、工具检索公告）在新 runtime 上不可用，直到面层迁移完成**。迁移走 wireFace 方案（适配器 wire 层，不用 `tools.restrict()`——rc.1 上它是真执行边界，会把 guard 纠偏语义变成 UNKNOWN_TOOL）：蓝图 `.agents/tasks/face-migration/design.md` 0.1（提交 `78d01651`：接缝图、`glmHournessFaces` 服务契约、批次 A→E、rc.3 兼容删除清单），迁移车道在主检出按批推进，数天级，现在就是关键路径。探针的面类检查在迁移完成前预期红（本期红名单：52 工具面、A3 deferral 公告、guard-lift 脚本流的 lifts journal、主 Agent 面过滤类），HANDOFF §5 不当缺陷；非面类场景必须保持绿。**B10 的桌面验收排在迁移完成之后**（`/wish` 与派发都吃面改写）。`engines.dsh` 的声明范围随批次 E 一并核对。
 
 批次合入与 L4 历史：批次 L4（2026-11-09，隔离实例）四项全过；批次 L4 二（2026-11-10，main `1044890d`）六项全过（A2 提示词、A3 真桌面检索链、dream 条目与候选隔离、subdir 两态）——这些判定在 rc.3 基线上做出，rc.1 上的对应面行为以迁移后的 L4 为准。
 
@@ -186,14 +186,16 @@ Cursor 的 shell 会注入 `GIT_CONFIG_COUNT`、`GIT_CONFIG_KEY_0`、`GIT_CONFIG
 
 按卡住别人的程度：
 
-1. **bootstrap。** `origin/bootstrap` = `1e7136f6`（B8），已解锁：M7 在 main 后冲突已消。下一步：追 main、门禁、合入（先关桌面），接着做 B7、B9、B10；`ui/src/guide/NoGraphCard.tsx` 过渡文字改指 `/wish` 随批做。
-2. **rules-r4d。** `origin/rules-r4d` = `72647c1e`，已解锁：接 `trunkAdvanceFor` 的一段（M7 在 main）。下一步：追 main、门禁、评审、合入。
-3. **L4 的五条非阻断发现（2026-11-10 起清账）**：① `metrics` 行「积分口径：未提供」——`src/metrics/index.ts:593` 的 `pricingService(ctx)` 取到 undefined 而计价服务实际在出数（跨包激活时序？待人查）；② locale 过期文案已修（d7a9f953）；③ `no_gate_norm` 提示已写明形状（`13f6a196`，sweep 线）；④ worker 用 `git read-tree` 动主检出 index 现有门不覆盖——是否纳入 worker-git 判定待人定；⑤ 档位核对次序的发现前提**被推翻**（sweep 线四组实跑 + 历史核对：`bad_task` 自 `c0bd42f` 起先于档位核对，症状在现行代码不存在），回归钉测试锁住设计次序（`37b8657e`）。
-4. **glm-subdir-instructions。** 人已定 2026-11-10：报告 §7 的 C，合入但缺省关。分支已合并 origin/main（`ab867f47`）并落地缺省关：`glm-prompt` 行配置键 `subdirInstructions` 缺省 `false`，缺省请求与现状逐项相同，要用的 profile 设 `true`（`DESIGN.md` §5.11）。全量门禁通过后待编排方快进合入；L4 在 GLM 真会话看一次再定缺省值去留。
-5. **ablation 去留拍板。** 结论在 `docs/DESIGN.md` §5.2a（A1 保留、A2 可缩、A3 采纳延迟、A4 保留、A5 保留），注入文字未动；人看过结论后才动生产提示词。A3 采纳前要补一次真实会话核对（重用图/记忆工具的会话不在样本里）。
-6. **transcript。** 已在 main 出厂启用（`ac6413cf`，图 `e381f062`）。视频字幕 `source-transcript.md` 不入库（主检出 `.agents/tasks/docs-at-hand/`，未跟踪）。
-7. **别动。** `.worktrees/ablation-trial` 停在游离提交 `db2bbc69`。
+1. **face-migration（关键路径）。** 设计 0.1 已成稿入库（`78d01651`）；车道执行批次 A（方言 wire 层）→ B（design 角色）→ C（execute）→ D（bootstrap/memory/lessons）→ E（收尾：engines.dsh、README、DESIGN §2.4a、HANDOFF 本节、棘轮重测），每批全门禁，红名单类按批转绿、非面场景全程保绿；迁移全程不推 origin/main，批次 E 后全量探针三绿才推。
+2. **B10 桌面 L4（随迁移解锁）。** 接管行启用提交（disabled→false，附 L3/L4 说明）、impl-plan §3/§9 回填 `0cc628a5`、`/wish`→首次派发在两个草稿工作区对照 mockup-takeover.svg、`/hourness-init` 状态核对。
+3. **L4 的五条非阻断发现（2026-11-10 起清账）**：① `metrics` 行「积分口径：未提供」——`src/metrics/index.ts:593` 的 `pricingService(ctx)` 取到 undefined 而计价服务实际在出数（跨包激活时序？待人查）；② locale 过期文案已修（`d7a9f953`）；③ `no_gate_norm` 提示已写明形状（`13f6a196`，sweep 线）；④ worker 用 `git read-tree` 动主检出 index 现有门不覆盖——是否纳入 worker-git 判定待人定；⑤ 档位核对次序的发现前提**被推翻**（sweep 线四组实跑 + 历史核对：`bad_task` 自 `c0bd42f` 起先于档位核对，症状在现行代码不存在），回归钉测试锁住设计次序（`37b8657e`）。
+4. **ablation 尾巴。** A2 已采纳并落字（`src/guard/sections.ts` 的一句话文本）；A3 已批，实现属面类（随迁移），采纳前要补一次真实会话核对（重用图/记忆工具的会话不在样本里）；注入文字未动，人看过 `docs/DESIGN.md` §5.2a 后才动生产提示词。
+5. **glm-subdir-instructions。** 已按人定 2026-11-10 的 C 合入并落地缺省关（`ab867f47`；行配置键 `subdirInstructions` 缺省 `false`，要用的 profile 设 `true`，`DESIGN.md` §5.11）。剩：L4 在 GLM 真会话看一次再定缺省值去留。
+6. **reval / nowait（super-agent 借用两机制）。** 设计 0.1 分支驻留（origin/reval `9e23cff5`、origin/nowait `4ef89f41`），确认问已递上人的决策队列（图 question-40、question-41）；人答后走设计评审线，再排实现。comms-split 设计同样分支驻留（`4b39fa66`），实现搁置。
+7. **别动。** `.worktrees/ablation-trial` 停在游离提交 `db2bbc69`；其 node_modules junction 因 ablation 工作树被清已悬空，要在那里跑构建得先重装依赖。
+
+卫生清扫（2026-11-11）：本地 17 支、origin 5 支已合并分支与 8 个工作树删除；按「改基之后才算合入→删」的定案再删 origin 的 m3-flow 与 rules-board-page 三变体、本地 m3-flow 及其工作树，连同 15 个未注册残骸目录（其中三处直插主检出 node_modules 的 junction 先摘链后删，主检出 node_modules 核验无恙）。驻留工作树：comms-split / reval / nowait（设计驻留）、zcode-drift（漂移审计线在用）、ablation-trial（钉住）。transcript 已在 main 出厂启用（`ac6413cf`）；视频字幕 `source-transcript.md` 留主检出 `.agents/tasks/docs-at-hand/` 不入库。GitHub 镜像落后（代理 7890 断续），恢复后补推 main 并清 github 侧旧里程碑分支。
 
 人已定、接着守：`d-no-run-cap` 取代 `d-five-runs`（不限同时运行条数；硬限制仍是两把探针锁、一把桌面锁、GLM 高峰 14:00–18:00）；自举按 `d-finish-then-bootstrap`（B8 开工凭据记在 `23acb4d1`，人可推翻）。
 
-待人定：宣传视频三件；申请通道接面板「需要你」时三种事改四种事；改基之后才算合入的远端分支删不删；ablation A2/A3 的采纳。
+待人定：图 question-40（reval 五问）、question-41（nowait 四岔）；宣传视频三件；subdir 缺省值去留（随 L4）；ablation 注入文字（待人读 §5.2a）。
