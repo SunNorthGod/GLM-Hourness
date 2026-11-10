@@ -16,6 +16,7 @@ import { designHost, healthOf, type DesignHost, type FakeAgent } from './design-
 import { GOAL_BODY, design, graphOf, interview, node, splitDesign } from './graph-memory.ts'
 import { stageEdit, withNode } from './execute-helpers.ts'
 import { captureWarnings, seedAsHuman } from './graph-helpers.ts'
+import { provideTakeover } from './takeover-stub.ts'
 
 /** Words a stage reminder must not carry: the question cards are gone, the human is asked in plain chat. */
 const BANNED = ['ask_user_question', 'decision_card', 'design_review', 'ask_human', '(Recommended)', '(推荐)', '（推荐）']
@@ -398,6 +399,58 @@ test('a graph that cannot be read: the step goes without the reminder and the se
   const missing = await captureWarnings(() => stepNotices(agent))
   assert.deepEqual(missing.result, [])
   assert.equal(healthOf(host, agent)?.state, 'degraded')
+})
+
+// ---------------------------------------------------------------- the takeover's seam (takeover design 0.6 §3.1)
+
+test('takeover seam: the interview reminder stays out for a goal the takeover holds, only an interview stage yields, and the reminder is back when the takeover lets go', async () => {
+  const { host, agent, graphDir } = await wiredMainAgent()
+  const stub = provideTakeover(host)
+  const cwd = host.workspace('ws')
+  await seedAsHuman(graphDir, [
+    { type: 'goal', title: '记账', stage: 'interview', body: GOAL_BODY, acceptance: ['a'], nonGoals: ['n'] },
+    { type: 'goal', title: '导出', stage: 'design', body: GOAL_BODY, acceptance: ['a'], nonGoals: ['n'] },
+  ])
+  host.focuses.set('s1', 'goal-1')
+  stub.holding.add('goal-1')
+  await agent.assemble()
+  assert.deepEqual(await stepNotices(agent), [], 'held: no interview reminder')
+  assert.deepEqual(stub.asked.holds, [{ cwd, goalId: 'goal-1' }])
+
+  stub.holding.clear()
+  await agent.assemble()
+  const back = await stepNotices(agent)
+  assert.equal(back.length, 1, 'let go: the reminder is there')
+  assert.ok(back[0].content[0].text.includes('Stage reminder: goal goal-1 "记账" is at stage interview'))
+
+  host.focuses.set('s1', 'goal-2')
+  stub.holding.add('goal-2')
+  stub.asked.holds.length = 0
+  await agent.assemble()
+  const design = await stepNotices(agent)
+  assert.equal(design.length, 1, 'a design stage is not the interview: the takeover is asked, yields nothing and the reminder stands')
+  assert.ok(design[0].content[0].text.includes('is at stage design'))
+  assert.deepEqual(stub.asked.holds, [{ cwd, goalId: 'goal-2' }])
+})
+
+test('takeover seam: no takeover row, or a takeover that throws, leaves the reminder as it was; the throw is the session\'s degraded health', async () => {
+  const { host, agent, graphDir } = await wiredMainAgent()
+  await seedAsHuman(graphDir, [
+    { type: 'goal', title: '记账', stage: 'interview', body: GOAL_BODY, acceptance: ['a'], nonGoals: ['n'] },
+    { type: 'goal', title: '导出', stage: 'interview', body: GOAL_BODY, acceptance: ['a'], nonGoals: ['n'] },
+  ])
+  host.focuses.set('s1', 'goal-1')
+  await agent.assemble()
+  assert.equal((await stepNotices(agent)).length, 1, 'no takeover service: the reminder as before')
+
+  const stub = provideTakeover(host)
+  stub.holdsError = new Error('takeover broke')
+  host.focuses.set('s1', 'goal-2')
+  await agent.assemble()
+  const { result } = await captureWarnings(() => stepNotices(agent))
+  assert.equal(result.length, 1, 'the takeover could not be asked: the reminder goes out')
+  assert.equal(healthOf(host, agent)?.state, 'degraded')
+  assert.match(healthOf(host, agent)?.reason ?? '', /阶段提醒问不到接管（takeover broke）/)
 })
 
 // ---------------------------------------------------------------- the interview in chat, and the kinds handed to the main agent

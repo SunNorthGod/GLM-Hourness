@@ -33,6 +33,7 @@
  * next script of `others`. Both record the result and the events the session
  * logged meanwhile; `{rev:<node id>}` in the arguments of a scripted call is
  * the current revision of that node on the session's project graph;
+ * `{takeover}` is the id of the takeover last opened in the session's project;
  * `{transcript}` in the arguments of a scripted call is the path that ends the
  * transcript sentence (`read the full transcript at: <path>`) in the last
  * request message carrying one, the GLM compaction checkpoint; a step
@@ -137,6 +138,23 @@ async function withRevisions(ctx, request, call) {
   text = text.replace(/\{worker:([A-Za-z0-9._-]+)\}/g, (whole, task) => registeredDispatches().find(attempt => attempt.node === task && attempt.childId !== agent?.id)?.childId ?? whole)
   if (text === original) return call
   return { ...call, arguments: JSON.parse(text) }
+}
+
+/**
+ * `{takeover}` in the arguments of a scripted call becomes the id of the last
+ * takeover opened in the project of the request's session (the
+ * `takeover-open` records of `<cwd>/.llm/bootstrap/journal.jsonl`), so a
+ * script can name `attach: bootstrap:{takeover}:cost` without knowing the
+ * generated id. No such record leaves the text as it was.
+ */
+function withTakeover(ctx, request, call) {
+  const text = JSON.stringify(call.arguments ?? {})
+  if (!text.includes('{takeover}')) return call
+  const cwd = ctx.get('agents')?.get(request.sessionId)?.session?.header?.cwd
+  const file = typeof cwd === 'string' ? join(cwd, '.llm', 'bootstrap', 'journal.jsonl') : undefined
+  if (file === undefined || !existsSync(file)) return call
+  const opened = readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)).filter(record => record.op === 'takeover-open').at(-1)
+  return opened === undefined ? call : { ...call, arguments: JSON.parse(text.replaceAll('{takeover}', opened.id)) }
 }
 
 const TRANSCRIPT_MARK = 'read the full transcript at: '
@@ -666,7 +684,7 @@ class ProbeAdapter {
     // A step calls one tool (`tool`) or several in one assistant turn (`tools`).
     const scriptedCalls = step.tools ?? (step.tool === undefined ? [] : [step.tool])
     const goal = step.goal === true ? this.goalOf(request) : undefined
-    const calls = await Promise.all(scriptedCalls.map(call => withRevisions(this.ctx, request, withTranscript(request, withRef(request, withGoal(call, goal))))))
+    const calls = await Promise.all(scriptedCalls.map(call => withRevisions(this.ctx, request, withTakeover(this.ctx, request, withTranscript(request, withRef(request, withGoal(call, goal)))))))
     if (calls.length > 0) {
       for (const [index, call] of calls.entries()) {
         const id = `probe-call-${this.requests}-${index}`

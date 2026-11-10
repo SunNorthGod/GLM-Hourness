@@ -4,8 +4,9 @@
  * `info/exclude` (never committed), and `git check-ignore` verifies it took
  * effect — a negation pattern in a tracked `.gitignore` wins over
  * `info/exclude`, and only the check sees that. The work runs once per
- * process and repository; the caller turns the outcome into its row health
- * and writes its records all the same.
+ * process and repository; `no-git` is not kept, because the folder can
+ * become a repository later (the takeover's `git init`). The caller turns the
+ * outcome into its row health and writes its records all the same.
  */
 import { statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
@@ -79,13 +80,19 @@ const done = new Map<string, Promise<LlmIgnoreOutcome>>()
 /**
  * Make `<root>`'s `.llm/` git-ignored, once per process and repository:
  * every call for the same root waits for (or reuses) the first run's
- * outcome. Never rejects.
+ * outcome. A `no-git` outcome is dropped once it has settled, so the call
+ * after a `git init` runs the work. Never rejects.
  */
 export function ensureLlmIgnored(root: string): Promise<LlmIgnoreOutcome> {
   const key = root.replace(/[\\/]+$/, '')
   const known = done.get(key)
   if (known !== undefined) return known
-  const run = once(root).catch((error: unknown): LlmIgnoreOutcome => ({ kind: 'unwritable', reason: error instanceof Error ? error.message : String(error) }))
+  const run = once(root)
+    .catch((error: unknown): LlmIgnoreOutcome => ({ kind: 'unwritable', reason: error instanceof Error ? error.message : String(error) }))
+    .then(outcome => {
+      if (outcome.kind === 'no-git') done.delete(key)
+      return outcome
+    })
   done.set(key, run)
   return run
 }

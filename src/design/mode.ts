@@ -14,6 +14,7 @@
  * main agent. `isMainAgent` combines them: the projection must be on, and
  * where a record exists it must name this session.
  */
+import type { PrepareResult, WishSeam } from '../bootstrap/service.ts'
 import { MAIN_AGENT_KEY, type MainAgentView } from '../graph/main-agent.ts'
 import { claimHolder, holderFileOf, projectKey, readHolder, releaseHolder, replaceHolder, type HolderReading, type HolderRecord } from '../graph/main-agent-holder.ts'
 import type { GraphService } from '../graph/service.ts'
@@ -246,6 +247,8 @@ export interface WishDeps {
   /** Put a notice before the agent's next step without waking it or filling its inbox (src/shared/step-mailbox.ts); one that reaches nobody is the session's degraded health. */
   readonly tell: (agent: DesignAgentLike, notice: UserNotice) => void
   readonly now: () => Date
+  /** The takeover's service (src/bootstrap/service.ts); undefined while the takeover row is off, and /wish then does what it did without it. */
+  readonly takeover: () => WishSeam | undefined
   /** The holder record of the session's project was written, moved or deleted by this /wish (`design.holder-moved`). Optional; never throws. */
   readonly moved?: (session: SessionLike, move: HolderMove) => void
 }
@@ -306,6 +309,45 @@ function pointerText(deps: WishDeps, record: HolderRecord, standing: 'open' | 'c
 
 const MOVED_HERE = '主 Agent 已从另一个会话移到这里；那个会话变回普通会话。那个会话派出去还在跑的子 agent 从现在起按普通会话的规矩。'
 
+type Prepared = Extract<PrepareResult, { readonly ok: true }>
+
+/**
+ * The takeover's turn of /wish (takeover design 0.6 §3.1), before the record
+ * is claimed: undefined when the takeover is not in this /wish (its row is
+ * off, or the project has a graph and no open takeover); a reply to give as
+ * it is (another session is the main agent, so this /wish does not change
+ * the role and the takeover is not asked to open; or the takeover refused);
+ * else what `prepare` handed back. A project without a graph directory has
+ * no record yet, so it counts as having none.
+ */
+async function takeoverTurn(deps: WishDeps, invocation: DesignInvocationLike, dir: string, input: Extract<Input, { kind: 'on' }>): Promise<CommandResultLike | Prepared | undefined> {
+  const seam = deps.takeover()
+  const { agent } = invocation
+  const cwd = agent.session.header.cwd
+  if (seam === undefined || cwd === undefined) return undefined
+  try {
+    if (!(await seam.wants(cwd))) return undefined
+  }
+  catch (error) {
+    console.warn(`dsh-glm-hourness/design: the takeover cannot say whether it wants this /wish, so /wish goes on without it: ${message(error)}`)
+    return undefined
+  }
+  if (!input.here && deps.dirExists(dir)) {
+    const reading = readHolder(holderFileOf(deps.userHome(), dir))
+    if (reading.kind === 'held' && reading.record.sessionId !== agent.session.id) {
+      const standing = await standingOf(deps, reading.record.sessionId)
+      if (standing === 'open' || standing === 'closed') return done(pointerText(deps, reading.record, standing, input.wish !== ''))
+    }
+  }
+  try {
+    const prepared = await seam.prepare(invocation, { trigger: 'wish', ...input.wish === '' ? {} : { wish: input.wish } })
+    return prepared.ok ? prepared : fail(prepared.text)
+  }
+  catch (error) {
+    return fail(`接管没能开始：${message(error)}`)
+  }
+}
+
 /** The handler of /wish. */
 export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) => Promise<CommandResultLike> {
   const leave = (invocation: DesignInvocationLike): CommandResultLike => {
@@ -344,8 +386,14 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
     if (graph === undefined) return fail('项目图行 glm-hourness/graph 没有启用，主 Agent 没有图可用')
     const dir = graph.dirFor(session.header.cwd)
     if (dir === undefined) return fail('这个会话没有工作目录，找不到项目图')
-    if (!deps.dirExists(dir)) return fail(`这个工作区还没有项目图：先建空目录 ${dir}`)
     if (input.wish.length > MAX_WISH_LENGTH) return fail('愿望太长，请先用一两句话说')
+    // The takeover's seam (design 0.6 §3.1): before the missing-directory refusal, since it makes the directory.
+    const turn = await takeoverTurn(deps, invocation, dir, input)
+    if (turn !== undefined && !('ok' in turn)) return turn
+    const prepared = turn
+    // Every success of this /wish starts with what the takeover did, when it opened or resumed one.
+    const said = (text: string): CommandResultLike => done(prepared === undefined ? text : `${prepared.text}\n${text}`)
+    if (!deps.dirExists(dir)) return fail(`这个工作区还没有项目图：先建空目录 ${dir}`)
 
     // A /wish of this session that was cancelled earlier is superseded by this one. Reading the mode settles it, so that no reader deletes the record this /wish is about to rely on.
     modeOf(deps.role.projections(), session)
@@ -387,7 +435,11 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
           break
         }
         const standing = await standingOf(deps, reading.record.sessionId)
-        if (standing === 'open' || standing === 'closed') return done(pointerText(deps, reading.record, standing, input.wish !== ''))
+        if (standing === 'open' || standing === 'closed') {
+          // The reply must start with the pointer: the projection reads it to see that the role did not change. A takeover this /wish opened in the meantime is told after it.
+          const pointer = pointerText(deps, reading.record, standing, input.wish !== '')
+          return done(prepared === undefined ? pointer : `${pointer}\n${prepared.text}`)
+        }
         mark()
         replaceHolder(file, record)
         move = { how: 'takeover', from: reading.record.sessionId, to: session.id }
@@ -406,7 +458,7 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
       catch (reason) {
         deps.role.report(session, 'degraded', staleRecordKept(message(reason)))
       }
-      return fail(`主 Agent 的持有者记录写不了：${message(error)}`)
+      return fail(`主 Agent 的持有者记录写不了：${message(error)}${prepared === undefined ? '' : '。接管已经开着：在主 Agent 会话里发 /hourness-init off 可放弃，再发 /wish 接着做'}`)
     }
     finally {
       // The pending state (set right below, in the same synchronous stretch) carries the claim from here on; a handler that did not claim the record leaves no marker behind.
@@ -415,12 +467,24 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
 
     // Hooks first, also for a session that is the main agent already: it may have been open before this row loaded.
     deps.installHooks(agent)
-    if (input.wish === '' && isMainAgent(deps.role, agent)) return done(`${lead}这个会话已经是主 Agent`)
+    const already = isMainAgent(deps.role, agent)
+    // The takeover keeps the wish (an existing project, the gaps): no wish notice, its own start notice instead, whatever the words and whether or not the session was the main agent.
+    const held = prepared !== undefined && prepared.holdWish
+    if (input.wish === '' && already && !held) return said(`${lead}这个会话已经是主 Agent`)
     setPending(session, commandId, true)
-    if (input.wish === '') deps.tell(agent, createUserNotice(NOTICE_KIND, 'main agent mode on', ENTER_NOTICE))
+    if (held) {
+      if (!already) deps.tell(agent, createUserNotice(NOTICE_KIND, 'main agent mode on', ENTER_NOTICE))
+      if (prepared.notice !== undefined) {
+        if (agent.status === 'running') agent.steer(prepared.notice)
+        else agent.followup(prepared.notice)
+      }
+    }
+    else if (input.wish === '') deps.tell(agent, createUserNotice(NOTICE_KIND, 'main agent mode on', ENTER_NOTICE))
     else if (agent.status === 'running') agent.steer(wishNotice(input.wish, commandId))
     else agent.followup(wishNotice(input.wish, commandId))
-    return done(`${lead}已让这个会话的 agent 当主 Agent（项目经理）：它按项目图推进，不写文件；/wish off 退出${input.wish === '' ? '' : '。已把你的愿望交给它'}。${STRONG_MODEL_NOTE}`)
+    const handed = input.wish === '' || held ? '' : '。已把你的愿望交给它'
+    const reply = `${lead}已让这个会话的 agent 当主 Agent（项目经理）：它按项目图推进，不写文件；/wish off 退出${handed}。${STRONG_MODEL_NOTE}`
+    return said(reply)
   }
 
   return (invocation) => {

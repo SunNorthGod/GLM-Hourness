@@ -227,6 +227,26 @@
       # own words stays in the plain-text file (docs/DESIGN.md §2.4).
       name: dsh-hourness/transcript
       config: {}
+    - id: glm-hourness/bootstrap
+      # Take over a project (docs/ORCHESTRATION.md §19; takeover design 0.6):
+      # the command /hourness-init and the service glmHournessBootstrap. In a
+      # workspace without a project graph the main agent's /hourness-init
+      # scans the project read-only (git and file reads only), decides new
+      # project, existing project or gaps of an existing graph, git-inits an
+      # empty folder, keeps .llm/ out of git, makes <graph>/nodes/, opens a
+      # takeover in .llm/bootstrap/journal.jsonl and wakes the main agent
+      # with the takeover-start notice; every step of the main agent then
+      # carries the takeover reminder, and once the first goal is on the
+      # graph the harness proposes the three norm templates under it. Until
+      # the design row's /wish calls the takeover, the path is an empty graph
+      # directory, /wish without words, then /hourness-init in the same
+      # session. Installs no guard rule. Ships disabled until the L3 probe
+      # (scenarios bootstrap-new, bootstrap-gaps, bootstrap-reopen) and the
+      # first batch L4 (docs/DEVELOPMENT.md §3, AGENTS.md rule 4).
+      name: dsh-hourness/bootstrap
+      inject: [commands]
+      disabled: true
+      config: {}
     - id: glm-hourness/ui
       # The package's client face (dsh.client in package.json, host half
       # ./ui/index.js, bundle ./ui/client.js): the project graph tab of the

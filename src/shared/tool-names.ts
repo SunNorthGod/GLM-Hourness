@@ -145,6 +145,16 @@ export const LESSONS_TOOL_NAMES: readonly string[] = [LESSONS_QUERY_TOOL, LESSON
  */
 export const EXECUTE_TOOL_NAMES: readonly string[] = ['dispatch_task', 'answer_worker', 'check_commit', 'await_human']
 
+
+/**
+ * The takeover row's tool (takeover design 0.6 §7.2): the list round. Resident
+ * on the GLM route, like the design row's two: the review stage touches it
+ * every round. The row registers it; its face filter keeps it for the main
+ * agent of a project with an open takeover, and the tool body checks its
+ * caller too. tests/contracts.spec.ts pins the registration to this list.
+ */
+export const BOOTSTRAP_TOOL_NAMES: readonly string[] = ['bootstrap_review']
+
 /**
  * The execute row's tools for a dispatched worker. A reviewer keeps only
  * `ask_main`: the face filter removes `submit_plan` from its face (§2.3.2).
@@ -189,6 +199,8 @@ export const ORCHESTRATION_RESIDENT_TOOLS: ReadonlySet<string> = new Set([
   ...EXECUTE_TOOL_NAMES,
   ...WORKER_TOOL_NAMES,
   ...OPERATE_TOOL_NAMES,
+  // the takeover row (main agent, takeover design 0.6 §7.2)
+  ...BOOTSTRAP_TOOL_NAMES,
   STRUCTURED_OUTPUT_TOOL,
 ])
 

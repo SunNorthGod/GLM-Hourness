@@ -34,6 +34,7 @@
  * the row health. It ships disabled (packages/hourness/cordis.patch.yml).
  */
 import { statSync } from 'node:fs'
+import { bootstrapWishSeam } from '../bootstrap/service.ts'
 import { holderFile, holderHome, projectKey, readHolder, releaseHolder } from '../graph/main-agent-holder.ts'
 import { graphFocus, graphService } from '../graph/service.ts'
 import { installMainAgentRules, type BypassAlert } from '../guard/main-agent.ts'
@@ -373,6 +374,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
       const uninstall = installStageNotice(agent, {
         eligible: () => assembledAsMain.get(agent) === true,
         graph: () => graphFocus(ctx),
+        holds: (cwd, goalId) => bootstrapWishSeam(ctx)?.holds(cwd, goalId) ?? false,
         report: (reported, state, reason) => { health.report(sessionIdOf(reported), state, reason) },
         executeOn: () => executeService(ctx) !== undefined,
       })
@@ -452,6 +454,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
       if (posted.via === 'none') health.report(agent.id, 'degraded', `提示没能送到这个会话：${posted.reason}`)
     },
     now: () => new Date(),
+    takeover: () => bootstrapWishSeam(ctx),
     moved: holderMove,
   }
 

@@ -72,9 +72,9 @@ function agentAt(id: string, cwd: string): AgentLike {
 }
 
 /** A project with the goal, task-1 and (unless `undefined`) the gate; the launcher runs jobs in the call unless the test attaches it. */
-async function rig(gate: readonly string[] | undefined, over: Partial<CheckDeps> = {}, extra: Record<string, unknown> = {}, launcher: GateLauncher = createGateLauncher()): Promise<Rig> {
+async function rig(gate: readonly string[] | undefined, over: Partial<CheckDeps> = {}, extra: Record<string, unknown> = {}, launcher: GateLauncher = createGateLauncher(), more: readonly Record<string, unknown>[] = []): Promise<Rig> {
   const repo = testRepo()
-  await stageNodes(repo.graphDir, [GOAL, TASK, ...(gate === undefined ? [] : [gateNode(gate)])])
+  await stageNodes(repo.graphDir, [GOAL, TASK, ...(gate === undefined ? [] : [gateNode(gate)]), ...more])
   const { lookup, sent } = noticeHost({ root: repo.root, graphDir: repo.graphDir }, extra)
   const reports: string[] = []
   const metrics: MetricEvent[] = []
@@ -266,6 +266,62 @@ test('a failing check leaves no passed record, comments the trailer task 检查�
   }
   finally {
     r.dispose()
+  }
+})
+
+// ---- a `changed` line: the ratchet (takeover design 0.6 §5.6) ----
+
+/** Exit 1 with one eslint-json finding per STALE line of the named files, else exit 0 with `[]`. */
+const COUNTER = [
+  "const fs = require('node:fs')",
+  'const found = []',
+  'for (const file of process.argv.slice(2)) {',
+  "  fs.readFileSync(file, 'utf8').split('\\n').forEach((line, index) => {",
+  "    if (line.includes('STALE')) found.push({ filePath: file, line: index + 1, column: 1, severity: 2, message: 'stale', ruleId: 'stale/ratchet' })",
+  '  })',
+  '}',
+  'console.log(JSON.stringify(found))',
+  'process.exit(found.length > 0 ? 1 : 0)',
+].join('\n')
+
+const STALE_ENV = { type: 'feature', id: 'env', title: '环境', parent: 'goal-1' }
+const STALE_TOOL = { type: 'tool', id: 'tool-1', title: 'Stale counter', parent: 'env', acceptance: ['`check stale eslint-json $ node scripts/counter.js {files}` when src/'] }
+
+test('a `changed` line runs on the files the change still holds and fails only on findings the change added; no baseline on the tool node fails with its reason (takeover design 0.6 §5.6)', async () => {
+  const r = await rig(['`changed eslint-json $ node scripts/counter.js {files}`'], {}, {}, undefined, [STALE_ENV, STALE_TOOL])
+  try {
+    const base = r.repo.commit({ 'scripts/counter.js': COUNTER, 'src/a.js': 'kept\nSTALE old warning\n', 'src/b.js': 'clean\n' }, 'base: the old warning sits in src/a.js')
+    const engine = openEngine(r.repo.graphDir)
+    assert.ok((await engine.apply('harness', { op: 'comment', id: 'tool-1', text: `基线：1 条（${base.slice(0, 7)}，2026-11-10）` })).ok)
+    // a change that touches only the clean file: the old warning of src/a.js is not in the run, the gate passes
+    const clean = r.repo.commit({ 'src/b.js': 'clean\ntouched\n' }, 'touch the clean file only')
+    await r.call(clean)
+    await until(() => (async () => (await readChecks(r.execDir)).length === 1)(), 'the first check record')
+    assert.deepEqual((await readChecks(r.execDir)).map(record => record.passed), [true])
+    assert.match(textOf(r.sent.at(-1)), /passed the merge checks/)
+    // a change that adds a new STALE line: the fresh finding fails the gate
+    const dirty = r.repo.commit({ 'src/a.js': 'kept\nSTALE old warning\nSTALE new warning\n' }, 'add a new stale warning')
+    await r.call(dirty)
+    await until(() => (async () => (await readChecks(r.execDir)).length === 2)(), 'the second check record')
+    assert.deepEqual((await readChecks(r.execDir)).map(record => record.passed), [true, false])
+    assert.match(textOf(r.sent.at(-1)), /failed the merge checks/)
+    assert.match(textOf(r.sent.at(-1)), /exit 1/)
+  }
+  finally {
+    r.dispose()
+  }
+  // without the baseline comment the change line refuses with its reason
+  const bare = await rig(['`changed eslint-json $ node scripts/counter.js {files}`'], {}, {}, undefined, [STALE_ENV, STALE_TOOL])
+  try {
+    bare.repo.commit({ 'scripts/counter.js': COUNTER, 'src/a.js': 'kept\nSTALE old warning\n', 'src/b.js': 'clean\n' }, 'base')
+    const touched = bare.repo.commit({ 'src/b.js': 'clean\ntouched\n' }, 'touch')
+    await bare.call(touched)
+    await until(() => (async () => (await readChecks(bare.execDir)).length === 1)(), 'the record of the baseline-less run')
+    assert.deepEqual((await readChecks(bare.execDir)).map(record => record.passed), [false])
+    assert.match(textOf(bare.sent.at(-1)), /no baseline on its tool node/)
+  }
+  finally {
+    bare.dispose()
   }
 })
 

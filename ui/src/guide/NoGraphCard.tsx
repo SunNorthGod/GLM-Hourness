@@ -2,12 +2,13 @@
  * The no-graph card on the opening screen (plain-ui 1.3 §6.6): when a
  * blank session's workspace has no project graph, this dock entry - right
  * after M3's wish card in the order, so the two never show together -
- * explains what a graph is for and how one comes to be. The 接管行
- * (/hourness-init) is not registered on main, so there is no
- * 建一张项目图 button: the wording is the without-bootstrap branch. The
- * card shows once per workspace: five visible seconds write the local
- * record (§6.8), and the record keeps it away from then on. It rides M3's
- * card styles, so the opening screen keeps one look.
+ * explains what a graph is for and how one comes to be. The takeover row
+ * answers /wish in a workspace without a graph (bootstrap-row B8): it
+ * interviews the person and builds the graph, so the wording points at
+ * /wish, the same entry the wish card teaches. The card shows once per
+ * workspace: five visible seconds write the local record (§6.8), and the
+ * record keeps it away from then on. It rides M3's card styles, so the
+ * opening screen keeps one look.
  */
 import { useEffect, useMemo, type ReactElement } from 'react'
 import type { ClientContext, RemoteRoot, SessionSlotProps, SessionsClient } from '../dsh.ts'
@@ -45,7 +46,7 @@ function makeCard(remote: RemoteRoot, sessions: SessionsClient): (props: Session
         <style>{WISH_CSS}</style>
         <h2 className="hw-title">这个工作区还没有项目图</h2>
         <p className="hw-body">项目图记下这个项目要做成什么、接下来做什么、哪些要你回话。有了它，主 Agent 才能接手。</p>
-        <div className="hw-hint">在对话里让 agent 建空目录 docs/graph/nodes，面板会自己跟上。</div>
+        <div className="hw-hint">在对话里说 /wish：主 Agent 接管这里，问清要做什么，项目图随之建起来。</div>
       </div>
     )
   }
