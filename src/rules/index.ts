@@ -89,7 +89,7 @@ import { gitOperationIn, readProject } from './repo.ts'
 import { installReminder } from './reminder.ts'
 import type { HostRef } from './request.ts'
 import { projectHealth } from './row-health.ts'
-import { RULES_DECLARATION, RULES_SERVICE } from './service.ts'
+import { RULES_SERVICE } from './service.ts'
 import { rulesStatusItems } from './status.ts'
 import { DEFAULT_RULES_DIR, realStoreIo, type RulesPaths, type StoreIo } from './store.ts'
 import { createTicketDesk } from './tickets.ts'
@@ -386,11 +386,11 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
       problems.push(`服务 ${PEAK_MODE_SERVICE} 没提供上：${message(error)}（派活照原来的槽位，GLM 提醒照原文）`)
     }
     try {
-      disposers.push(ctx.provide(RULES_SERVICE, createRulesService(acceptDeps, RULES_DECLARATION)))
+      disposers.push(ctx.provide(RULES_SERVICE, createRulesService(acceptDeps)))
     }
     catch (error) {
-      console.warn(`${name}: ${RULES_SERVICE} is not provided (the guard declares no rules board): ${message(error)}`)
-      problems.push(`服务 ${RULES_SERVICE} 没提供上：${message(error)}（guard 的提示词里不写规则板那一行）`)
+      console.warn(`${name}: ${RULES_SERVICE} is not provided (a proposal cannot ride a question; the attach path reads this service): ${message(error)}`)
+      problems.push(`服务 ${RULES_SERVICE} 没提供上：${message(error)}（提议挂不上问题：attach 路径读这个服务）`)
     }
     // The row's status view (status hub design 0.3 §3.2, §12 rules row): the one rules/peak entry —
     // the peak-hours line from the pricing service with the project's level in the fields — served

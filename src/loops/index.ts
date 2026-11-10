@@ -86,7 +86,7 @@ import { installLoopStepNotice, machineStepFile } from './reminder.ts'
 import { BEAT_MS, createProjectRuntime, type LoopChecks, type ProjectRuntime } from './run.ts'
 import { envService, fillCheckArgv, formatCheckOutput, isCheckFormat } from '../env/env-service.ts'
 import { ensureRuntimeDir } from './store.ts'
-import { LOOPS_DECLARATION, LOOPS_SERVICE, type Contribution, type LoopEventInput, type LoopsService } from './service.ts'
+import { LOOPS_SERVICE, type Contribution, type LoopEventInput, type LoopsService } from './service.ts'
 import type { PeakView } from './view.ts'
 
 /** cordis plugin identity: needs the commands service. */
@@ -663,7 +663,6 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
         try {
           // What the contract says and no more: other rows get these members, not the registry's readers.
           const service: LoopsService = {
-            declaration: LOOPS_DECLARATION,
             contribute: (source, contribution) => registry.contribute(source, contribution),
             emit: async (event: LoopEventInput) => {
               const project = typeof event.cwd === 'string' && event.cwd !== '' ? projectOf(event.cwd) : undefined

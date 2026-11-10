@@ -82,8 +82,6 @@ function writeFactOf(call: ToolCall): string | undefined {
 function mainAgentNoWrite(executeOn: () => boolean): GuardRule {
   return {
     id: NO_WRITE_RULE,
-    // The main agent reads the rules in its identity section (src/design/identity.ts), not in the guard section every session gets.
-    declare: '',
     detect(call) {
       const fact = writeFactOf(call)
       if (fact === undefined) return ALLOW
@@ -96,7 +94,6 @@ function mainAgentNoWrite(executeOn: () => boolean): GuardRule {
 function mainAgentAsk(hidden: readonly string[]): GuardRule {
   return {
     id: ASK_RULE,
-    declare: '',
     detect(call, face) {
       if (!hidden.includes(call.name)) return ALLOW
       return {

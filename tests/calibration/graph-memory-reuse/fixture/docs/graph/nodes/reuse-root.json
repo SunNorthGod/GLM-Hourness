@@ -1,0 +1,20 @@
+{
+  "id": "reuse-root",
+  "type": "goal",
+  "title": "核验目标",
+  "why": "给 reuse-check 一个父节点",
+  "status": "doing",
+  "body": "A3 采纳核验用的根节点。",
+  "acceptance": [
+    "核验完成"
+  ],
+  "history": [
+    {
+      "at": "2026-11-10T00:00:00.000Z",
+      "actor": "human",
+      "op": "propose",
+      "reason": "种子",
+      "to": "doing"
+    }
+  ]
+}

@@ -22,13 +22,13 @@ import { activeRules, apply as guardApply } from '../src/guard/index.ts'
 import { installMetricsFileGuard, metricsFilesOnly } from '../src/metrics/rules.ts'
 import { habitAskFirst, installHabitRule } from '../src/memory/habit-rule.ts'
 import { installLoopsFileGuard, installLoopsScheduleGuard, loopsFilesOnly, loopsScheduleTools, LOOPS_FILES_ONLY } from '../src/loops/guard.ts'
-import { LOOPS_DECLARATION, LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
+import { LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
 import { MAIN_AGENT_RULES } from '../src/guard/main-agent-rules.ts'
 import { CATALOG } from '../src/rules/builtin.ts'
 import { RULES_FILES_ONLY } from '../src/rules/gate.ts'
 import { apply as rulesApply, type RulesContext } from '../src/rules/index.ts'
-import { RULES_DECLARATION, RULES_SERVICE, rulesService } from '../src/rules/service.ts'
-import { DECLARATION_SECTION } from '../src/guard/sections.ts'
+import { RULES_SERVICE, rulesBoardService } from '../src/rules/service.ts'
+import { DECLARATION_SECTION, WORKSPACE_RULES_TEXT } from '../src/guard/sections.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
 import { loopDefaultsOf, type ChannelLoopDefault } from '../src/shared/channel-loop.ts'
 import type { AgentLike, CommandDefinitionLike, LlmCatalog, SessionQueryService, ToolFinalResult } from '../src/shared/dsh-min.ts'
@@ -154,21 +154,16 @@ test('rules catalog: the main agent\'s rules are listed as design:<id>, titles c
   }
 })
 
-test('rules service: absent and malformed values read as none and say so; a wider one still reads', () => {
-  const problems: string[] = []
-  const problem = (message: string) => { problems.push(message) }
+test('rules service: absent and board-less values read as none; a service with the path of agreement reads', () => {
   const store = serviceStore()
-  assert.equal(rulesService(store, problem), undefined)
-  assert.equal(rulesService({}, problem), undefined) // a context without get
-  assert.deepEqual(problems, [])
-  store.provide(RULES_SERVICE, { declaration: '' })
-  assert.equal(rulesService(store, problem), undefined)
-  assert.equal(problems.length, 1)
-  const wider = { declaration: RULES_DECLARATION, acceptProposal: () => 1 }
+  assert.equal(rulesBoardService(store), undefined)
+  assert.equal(rulesBoardService({}), undefined) // a context without get
+  store.provide(RULES_SERVICE, { attachable: 'yes' })
+  assert.equal(rulesBoardService(store), undefined)
+  const board = { attachable: () => 1, proposalLine: () => 2, acceptProposal: () => 3 }
   const store2 = serviceStore()
-  store2.provide(RULES_SERVICE, wider)
-  assert.equal(rulesService(store2, problem), wider)
-  assert.equal(problems.length, 1)
+  store2.provide(RULES_SERVICE, board)
+  assert.equal(rulesBoardService(store2), board)
 })
 
 test('loops service: absent reads as none without a word, a wrong shape reads as none and says so, a wider service still reads', () => {
@@ -179,31 +174,32 @@ test('loops service: absent reads as none without a word, a wrong shape reads as
   assert.equal(loopsService({}, problem), undefined) // a context without get
   assert.equal(problems.length, 0)
   const runtime = { emit: () => 1, listens: () => true, recordRun: () => undefined }
-  for (const [count, value] of [[1, { ...runtime, contribute: 'yes', declaration: LOOPS_DECLARATION }], [2, 42], [3, {}], [4, { ...runtime, contribute: () => ({ ok: false, reason: 'x' }) }], [5, { ...runtime, contribute: () => ({ ok: false, reason: 'x' }), declaration: '' }], [6, { contribute: () => ({ ok: false, reason: 'x' }), declaration: LOOPS_DECLARATION }]] as const) {
+  for (const [count, value] of [[1, { ...runtime, contribute: 'yes' }], [2, 42], [3, {}]] as const) {
     const store = serviceStore()
     store.provide(LOOPS_SERVICE, value)
     assert.equal(loopsService(store, problem), undefined)
     assert.equal(problems.length, count)
     assert.ok(problems[count - 1]?.includes(LOOPS_SERVICE))
   }
-  const wider = { ...runtime, contribute: () => ({ ok: false, reason: 'x' }), declaration: LOOPS_DECLARATION, staleEntries: () => [] }
+  // A service with the four members reads, whatever its functions return; extra members ride along.
+  const wider = { ...runtime, contribute: () => ({ ok: false, reason: 'x' }), staleEntries: () => [] }
   const store2 = serviceStore()
   store2.provide(LOOPS_SERVICE, wider)
   assert.equal(loopsService(store2, problem), wider)
-  assert.equal(problems.length, 6)
+  assert.equal(problems.length, 3)
   const wrong = serviceStore()
   wrong.provide(LOOPS_SERVICE, 0)
   assert.equal(loopsService(wrong), undefined, 'the callback is optional')
 })
 
 /**
- * The lines of the glm:guard section the guard row declares on a GLM route,
+ * The text of the glm:guard section the guard row declares on a GLM route,
  * with the rules service as given (none when undefined) and the loop row in
- * the activation state given (not loaded when undefined): the loop board's gate
- * is in every host process while its service is only in the one that can reach
- * a session, so its line follows the row's health (loops design §6.1, §11.1).
+ * the activation state given (not loaded when undefined): since the ablation
+ * arm A2 (DESIGN.md §5.2a) the section is one fixed sentence, so neither
+ * changes it.
  */
-async function guardDeclaration(rules: unknown, loops?: HealthState): Promise<{ lines: string[], warnings: string[] }> {
+async function guardDeclaration(rules: unknown, loops?: HealthState): Promise<{ text: string, warnings: string[] }> {
   const rt = fakeRuntime({ route: GLM })
   if (rules !== undefined) rt.services.set(RULES_SERVICE, rules)
   if (loops !== undefined) rt.services.set(healthServiceName('loops'), { row: 'loops', activation: () => ({ state: loops, reason: '循环板', at: new Date() }), session: () => undefined } satisfies RowHealthView)
@@ -212,27 +208,20 @@ async function guardDeclaration(rules: unknown, loops?: HealthState): Promise<{ 
   const assembled = await quietly(() => rt.assemble(GLM))
   const section = assembled.value.sections.find(candidate => candidate.name === DECLARATION_SECTION)
   assert.ok(section !== undefined)
-  return { lines: section.text.split('\n'), warnings: [...warnings, ...assembled.warnings] }
+  return { text: section.text, warnings: [...warnings, ...assembled.warnings] }
 }
 
-test('guard declaration: the glm:guard section gets exactly one extra line when the rules service is present, and none when it is absent or malformed', async () => {
+test('guard declaration: the glm:guard section is the one fixed sentence, with or without the rules service or the loop row', async () => {
   const without = await guardDeclaration(undefined)
-  const present = await guardDeclaration({ declaration: RULES_DECLARATION })
-  assert.equal(present.lines.length, without.lines.length + 1)
-  assert.deepEqual(present.lines.slice(0, -1), without.lines)
-  assert.equal(present.lines.at(-1), `- ${RULES_DECLARATION}`)
-  const malformed = await guardDeclaration({ declaration: 42 })
-  assert.deepEqual(malformed.lines, without.lines)
-  assert.equal(malformed.warnings.filter(warning => warning.includes(RULES_SERVICE)).length, 1, 'a service of the wrong shape is warned about once')
-})
-test('guard declaration: the loop board\'s line follows its row, not its service, so a process that runs no entry still declares the gate', async () => {
-  const without = await guardDeclaration(undefined)
-  const both = await guardDeclaration({ declaration: RULES_DECLARATION }, 'active')
-  assert.equal(both.lines.length, without.lines.length + 2)
-  assert.deepEqual(both.lines.slice(-2), [`- ${RULES_DECLARATION}`, `- ${LOOPS_DECLARATION}`])
-  assert.equal((await guardDeclaration(undefined, 'degraded')).lines.at(-1), `- ${LOOPS_DECLARATION}`, 'a row that is partly in effect still has its gate')
-  assert.deepEqual((await guardDeclaration(undefined, 'inactive')).lines, without.lines, 'a row that cannot act declares nothing')
-  assert.deepEqual(without.lines.filter(line => line.includes(LOOPS_DECLARATION)), [], 'and neither does one that is not loaded')
+  assert.equal(without.text, WORKSPACE_RULES_TEXT)
+  const withBoard = await guardDeclaration({ attachable: () => 1, proposalLine: () => 2, acceptProposal: () => 3 })
+  assert.equal(withBoard.text, WORKSPACE_RULES_TEXT)
+  const loopsActive = await guardDeclaration(undefined, 'active')
+  assert.equal(loopsActive.text, WORKSPACE_RULES_TEXT)
+  const loopsDegraded = await guardDeclaration(undefined, 'degraded')
+  assert.equal(loopsDegraded.text, WORKSPACE_RULES_TEXT, 'a row that is partly in effect changes nothing either')
+  const loopsInactive = await guardDeclaration(undefined, 'inactive')
+  assert.equal(loopsInactive.text, WORKSPACE_RULES_TEXT)
 })
 
 test('guard catalog: each listed rule is the id of a rule object its row installs, and nothing the row installs is missing', () => {
@@ -442,9 +431,9 @@ test('persona section: the name the design row adds and the dialect places is on
   assert.equal(OUTPUT_STYLE_SECTION, 'hourness:output-style')
 })
 
-test('tool names: the learning tool is the main agent\'s read-only view and stays deferred in the GLM face; the memory tools and memory_habit stay resident', () => {
-  for (const name of LEARNING_TOOL_NAMES.filter(name => name !== MEMORY_HABIT)) assert.ok(!ORCHESTRATION_RESIDENT_TOOLS.has(name) && !RESIDENT_TOOLS.has(name), name)
-  for (const name of [...MEMORY_TOOL_NAMES, MEMORY_HABIT]) assert.ok(ORCHESTRATION_RESIDENT_TOOLS.has(name) && RESIDENT_TOOLS.has(name), name)
+test('tool names: the learning tools and the memory tools are deferred in the GLM face (arm A3 adopted, DESIGN.md 5.2a); memory_habit stays resident, named by habit-ask-first as the right path', () => {
+  for (const name of [...LEARNING_TOOL_NAMES.filter(name => name !== MEMORY_HABIT), ...MEMORY_TOOL_NAMES]) assert.ok(!ORCHESTRATION_RESIDENT_TOOLS.has(name) && !RESIDENT_TOOLS.has(name), name)
+  assert.ok(ORCHESTRATION_RESIDENT_TOOLS.has(MEMORY_HABIT) && RESIDENT_TOOLS.has(MEMORY_HABIT), MEMORY_HABIT)
 })
 
 test('tool names: the env row registers exactly the contract names, check_limit stays deferred in the GLM face (m4-checks design §6.3.1), and the row ships enabled', () => {

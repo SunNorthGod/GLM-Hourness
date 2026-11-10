@@ -28,7 +28,6 @@ const CORRECTION = (text: string): Correction => ({ fact: text, violation: 'no',
 /** Denies the calls `denyFor` names, optionally with a right path for the settlement to look for. */
 const denyRule = (id: string, denyFor: (call: ToolCall) => boolean = call => call.name === 'write', rightPath?: GuardRule['rightPath']): GuardRule => ({
   id,
-  declare: id,
   detect: call => denyFor(call) ? { kind: 'deny', rule: id, correction: CORRECTION(`${id} says no to ${call.name}`) } : { kind: 'allow' },
   ...(rightPath === undefined ? {} : { rightPath }),
 })

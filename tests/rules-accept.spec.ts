@@ -23,7 +23,7 @@ import type { ProjectState } from '../src/rules/model.ts'
 import { prepareProposal, sha256Of } from '../src/rules/proposal.ts'
 import { rulesProposeTool, RULES_PROPOSE_EXAMPLES } from '../src/rules/propose-tool.ts'
 import { readProject } from '../src/rules/repo.ts'
-import { RULES_DECLARATION, RULES_SERVICE, proposalLine } from '../src/rules/service.ts'
+import { RULES_SERVICE, proposalLine } from '../src/rules/service.ts'
 import { projectOf } from '../src/data/project-root.ts'
 import { toolDeps, mainAgentWithGoal, type MainAgentFixture } from './design-tools-helpers.ts'
 import { draftOf } from './rules-fixtures.ts'
@@ -48,7 +48,7 @@ async function setup(withService = true, now: () => number = () => Date.now()): 
   const root = fixture.host.workspace('ws')
   mkdirSync(join(root, '.git'), { recursive: true })
   const deps: AcceptDeps = { rulesDir: 'docs/rules', now }
-  const service = createRulesService(deps, RULES_DECLARATION)
+  const service = createRulesService(deps)
   const design = toolDeps(fixture, ATTACH_BOARDS, { lookup: { get: name => (withService && name === RULES_SERVICE ? service : undefined) } })
   const board = openRulesBoard({ projectRoot: root, rulesDir: 'docs/rules' })
   return { fixture, root, deps, design, board, state: () => readProject(board.paths).state }
@@ -108,7 +108,7 @@ test('an agreement on the graph that is not the human\'s, or that does not say t
   const setupped = await setup()
   const id = await propose(setupped, { kind: 'rule', body: scriptRule() })
   await putAndAgree(setupped, id)
-  const service = createRulesService(setupped.deps, RULES_DECLARATION)
+  const service = createRulesService(setupped.deps)
   const dir = setupped.fixture.dir
   const cwd = setupped.root
   const ask = (): Promise<string> => service.acceptProposal({ questionId: 'question-1', graphDir: dir, cwd, by: { actor: 'llm', relay: '可以' } })
@@ -127,7 +127,7 @@ test('a decision with the mark of an agreement but not of the exact text the hum
   await putAndAgree(setupped, id)
   const marked = await setupped.fixture.engine.apply('llm', { op: 'decide', id: 'question-1', rev: (await setupped.fixture.engine.load()).revisions.get('question-1'), conclusion: '同意', reason: '人在对话里同意 · 已给人看原文 0123456789ab', relay: '可以' })
   assert.ok(marked.ok, JSON.stringify(marked))
-  const service = createRulesService(setupped.deps, RULES_DECLARATION)
+  const service = createRulesService(setupped.deps)
   const line = await service.acceptProposal({ questionId: 'question-1', graphDir: setupped.fixture.dir, cwd: setupped.root, by: { actor: 'llm', relay: '可以' } })
   assert.match(line, /carries no mark that the human saw the exact text/)
   assert.equal(setupped.state().rules, undefined)
@@ -136,7 +136,7 @@ test('a decision with the mark of an agreement but not of the exact text the hum
 
 test('the question is attachable only while the proposal is open, made for the chat, and in this project', async () => {
   const setupped = await setup()
-  const service = createRulesService(setupped.deps, RULES_DECLARATION)
+  const service = createRulesService(setupped.deps)
   const ask = async (cwd: string | undefined, proposal: string): Promise<Attachable> => await service.attachable({ cwd, proposal })
   const refusal = async (cwd: string | undefined, proposal: string): Promise<string> => {
     const answer = await ask(cwd, proposal)
@@ -160,7 +160,7 @@ test('an agreement the board did not hear is carried out from the graph: the row
   const setupped = await setup(false)
   const id = await propose(setupped, { kind: 'rule', body: draftOf({ id: 'r-no-evening-push' }) })
   // The design row finds no rules service: the question cannot be put with attach, so the main agent puts it as it is and the human agrees on the graph.
-  const live = createRulesService(setupped.deps, RULES_DECLARATION)
+  const live = createRulesService(setupped.deps)
   const withService = toolDeps(setupped.fixture, ATTACH_BOARDS, { lookup: { get: name => (name === RULES_SERVICE ? live : undefined) } })
   const outcome = await setupped.fixture.host.invoke(setupped.fixture.agent, proposeTool(withService), { ...exampleArgs('recommend'), attach: `rules:${id}` })
   assert.equal(outcome.kind, 'ok')

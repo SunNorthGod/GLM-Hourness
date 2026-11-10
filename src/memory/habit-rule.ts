@@ -45,9 +45,6 @@ import type { JournalOutcome } from './audit.ts'
 /** The rule's id: the denial's `rule`, the id guard_lift takes; the rules board lists it as `memory:habit-ask-first`. */
 export const HABIT_ASK_FIRST = 'habit-ask-first'
 
-/** The rule's line in the guard section of the system prompt (src/guard/index.ts adds it while the memory row is in effect). */
-export const HABIT_RULE_DECLARATION = `Habits you only guessed from how the user works are asked with ${MEMORY_HABIT} (ask, then confirm or decline on their words), never on a question card; a preference whose relay only agrees to a question you asked is refused.`
-
 /** The question tool of DSH (dsh-tool-ask-user), by its native name. */
 const QUESTION_TOOL = 'ask_user_question'
 
@@ -146,7 +143,6 @@ const deny = (correction: Correction): RuleVerdict => ({ kind: 'deny', rule: HAB
 export function habitAskFirst(talk: HabitTalk): GuardRule {
   return {
     id: HABIT_ASK_FIRST,
-    declare: HABIT_RULE_DECLARATION,
     detect(call) {
       const args = recordOf(call.arguments)
       if (call.name === QUESTION_TOOL) {

@@ -14,7 +14,7 @@ import { apply as envApply } from '../src/env/index.ts'
 import { envNotice, envNoticeBody, ENV_NOTICE_SOURCE, NO_BOARD_LINE, NO_CHECKS_LINE, SCRATCH_LINE } from '../src/env/notice.ts'
 import { openEngine } from '../src/graph/engine.ts'
 import { serializeNode } from '../src/graph/format.ts'
-import { LOOPS_DECLARATION, LOOPS_SERVICE } from '../src/loops/service.ts'
+import { LOOPS_SERVICE } from '../src/loops/service.ts'
 import { GRAPH_SERVICE } from '../src/graph/service.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import type { DerivedMessage, ServiceLookup, SessionLike, UserNotice } from '../src/shared/dsh-min.ts'
@@ -194,7 +194,7 @@ test('the checks line names M4\'s own checks with the board on; a changed check 
   assert.ok(line.length <= 300, String(line.length))
 
   await withGraph(async (runtime, workspace) => {
-    runtime.ctx.provide(LOOPS_SERVICE, { declaration: LOOPS_DECLARATION, contribute: () => ({ ok: true, dispose: () => {}, accepted: [], dropped: [] }), emit: () => Promise.resolve({ ok: true, id: 'ev-x', duplicate: false }), listens: () => false, recordRun: () => {} })
+    runtime.ctx.provide(LOOPS_SERVICE, { contribute: () => ({ ok: true, dispose: () => {}, accepted: [], dropped: [] }), emit: () => Promise.resolve({ ok: true, id: 'ev-x', duplicate: false }), listens: () => false, recordRun: () => {} })
     const graph = join(workspace, 'docs', 'graph')
     const engine = openEngine(graph)
     const set = async (acceptance: readonly string[]): Promise<void> => {

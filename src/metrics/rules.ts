@@ -39,13 +39,6 @@ import type { ToolExecutionPayload } from '../shared/dsh-min.ts'
  */
 export const METRICS_FILES_ONLY = 'metrics-files-only'
 
-/**
- * The rule's `declare` line. No row adds it to a system prompt, and it must
- * not be wired into one: reads of the journal pass (§15.42) because nothing
- * the model reads points at the journal, and this line names its directory.
- */
-export const METRICS_DECLARATION = 'The metrics journal (.llm/metrics/) is written by the harness alone; you cannot change it, and npm run metrics -- prune is the human\'s own command.'
-
 const ALLOW: RuleVerdict = { kind: 'allow' }
 
 /** Command names that delete, move or rename (POSIX utilities, cmd built-ins, PowerShell cmdlets and their aliases): the shell actions the journal's rule judges a mention with (§3.4). */
@@ -239,7 +232,6 @@ export function metricsFilesOnly(root: string, cwd: string | undefined): GuardRu
   const writes = writesInto(protectedPaths, cwd)
   return {
     id: METRICS_FILES_ONLY,
-    declare: METRICS_DECLARATION,
     detect(call: ToolCall): RuleVerdict {
       const write = writes(call)
       if (write !== undefined) {

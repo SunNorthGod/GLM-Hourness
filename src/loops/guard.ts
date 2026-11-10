@@ -39,7 +39,6 @@ import { dialectNames, dialectService, dialectWarner, type DialectProblem } from
 import { sessionRoute } from '../shared/route.ts'
 import type { ToolExecutionPayload } from '../shared/dsh-min.ts'
 import { TASK_PROMPT_PREFIX } from './remove.ts'
-import { LOOPS_DECLARATION } from './service.ts'
 
 /** The id the gate carries in the violation journal and the rules board's catalog (`<row>:<id>`). */
 export const LOOPS_FILES_ONLY = 'loops:files-only'
@@ -65,7 +64,6 @@ export function loopsFilesOnly(checkouts: readonly string[], cwd: string | undef
   const writes = writesInto(boardDirs(checkouts), cwd)
   return {
     id: 'files-only',
-    declare: LOOPS_DECLARATION,
     detect(call) {
       const write = writes(call)
       if (write === undefined) return ALLOW
@@ -123,7 +121,6 @@ function scheduleCorrection(fact: string): Correction {
 export function loopsScheduleTools(ours: boolean | undefined): GuardRule {
   return {
     id: 'schedule-tools',
-    declare: LOOPS_DECLARATION,
     detect(call) {
       const args = (call.arguments ?? {}) as Record<string, unknown>
       if (call.name === 'schedule_create') {

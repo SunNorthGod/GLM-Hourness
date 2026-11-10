@@ -12,9 +12,6 @@ import type { ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
 
 export const GRAPH_SERVICE = 'glmHournessGraph'
 
-/** The declaration line of graph-files-only, in the guard's GLM rule section and on the rule itself. */
-export const GRAPH_FILES_DECLARATION = 'Change the project graph only with the graph tools; never write its files directly.'
-
 /** The members the guard row and the design row's /wish read. */
 export interface GraphService {
   /** The graph directory for a session working directory; undefined when there is none to resolve against. */

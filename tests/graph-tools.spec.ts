@@ -178,7 +178,7 @@ toolTest('graph_propose takes a proposal; graph_decide decides it with a conclus
   assert.equal(decided.node.conclusion, '默认少做')
 })
 
-test('every graph tool stays resident on GLM requests', () => {
+test('every graph tool is deferred on GLM requests since the ablation arm A3 carried (DESIGN.md 5.2a): search reaches all of them, the face holds none', () => {
   const contract = (tool: ToolDefinitionLike) => ({ name: tool.name, description: tool.description, parameters: tool.parameters })
   const face = [
     ...graphTools('docs/graph', new Map()).map(contract),
@@ -186,11 +186,11 @@ test('every graph tool stays resident on GLM requests', () => {
     { name: LOCAL_TOOL_SEARCH_NAME, description: 'search', parameters: { type: 'object' } },
     { name: DEFERRED_TOOL_CALL_NAME, description: 'call', parameters: { type: 'object' } },
   ]
-  for (const name of GRAPH_TOOL_NAMES) assert.ok(RESIDENT_TOOLS.has(name), name)
+  for (const name of GRAPH_TOOL_NAMES) assert.ok(!RESIDENT_TOOLS.has(name), name)
   const exposure = buildToolExposure(face)
   assert.ok(exposure.enabled)
-  assert.deepEqual([...exposure.deferred], ['web_fetch'])
-  assert.deepEqual(exposure.tools.map(tool => tool.name).filter(name => name.startsWith('graph_')), GRAPH_TOOL_NAMES)
+  assert.deepEqual([...exposure.deferred].sort(), [...GRAPH_TOOL_NAMES, 'web_fetch'].sort())
+  assert.deepEqual(exposure.tools.map(tool => tool.name).filter(name => name.startsWith('graph_')), [])
 })
 
 toolTest('graph_show returns the projection with the revs a change needs', async ({ call, rev }) => {

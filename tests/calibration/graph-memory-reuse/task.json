@@ -1,0 +1,5 @@
+{
+  "kind": "feature",
+  "touches": ["docs/", ".llm/"],
+  "limits": { "maxSteps": 30, "minutes": 12 }
+}

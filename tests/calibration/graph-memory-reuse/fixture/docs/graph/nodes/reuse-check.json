@@ -1,0 +1,22 @@
+{
+  "id": "reuse-check",
+  "type": "feature",
+  "title": "延迟加载复用核验",
+  "why": "核验 deferred 的图工具在真实会话里能否找到并复用",
+  "status": "approved",
+  "parent": "reuse-root",
+  "slope": "downhill",
+  "body": "A3 采纳核验用的节点：会话对它写一条批注即算走到。",
+  "acceptance": [
+    "节点历史上有一条 llm 的批注"
+  ],
+  "history": [
+    {
+      "at": "2026-11-10T00:00:00.000Z",
+      "actor": "human",
+      "op": "propose",
+      "reason": "种子",
+      "to": "approved"
+    }
+  ]
+}

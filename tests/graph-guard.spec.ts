@@ -9,7 +9,7 @@ import { loadGraph } from '../src/graph/store.ts'
 import { dialectServiceFor } from '../src/glm-prompt/index.ts'
 import { GRAPH_FILES_RULE, graphFilesOnly, installGraphFileGuard } from '../src/guard/graph-files.ts'
 import { apply as applyGuard, type ViolationRecord } from '../src/guard/index.ts'
-import { declarationOf, NATIVE_FACE } from '../src/guard/rules.ts'
+import { NATIVE_FACE } from '../src/guard/rules.ts'
 import { DIALECT_SERVICE } from '../src/shared/dialect.ts'
 import type { ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
@@ -237,10 +237,9 @@ test('disposing the row removes the rule', async () => {
   }
 })
 
-test('the rule is guard data: its id and declaration, and arguments it cannot read pass', () => {
+test('the rule is guard data: its id, and arguments it cannot read pass', () => {
   const rule = graphFilesOnly(join(tmpdir(), 'ws', 'docs', 'graph'), join(tmpdir(), 'ws'))
   assert.equal(rule.id, GRAPH_FILES_RULE)
-  assert.match(declarationOf(rule, NATIVE_FACE), /graph tools/)
   // The rule judges DSH native names; installGraphFileGuard maps the aliases first.
   assert.deepEqual(rule.detect({ name: 'write', arguments: 'docs/graph/x.json' }, NATIVE_FACE), { kind: 'allow' })
   assert.deepEqual(rule.detect({ name: 'write', arguments: { file_path: 7 } }, NATIVE_FACE), { kind: 'allow' })

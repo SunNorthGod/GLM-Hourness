@@ -15,7 +15,7 @@ import test from 'node:test'
 import { CHECKS_NOTICE_SOURCE } from '../src/env/check-notice.ts'
 import { EDITED_FILES_LIMIT, editedGroups, editedSince } from '../src/env/edited.ts'
 import { apply as envApply } from '../src/env/index.ts'
-import { LOOPS_DECLARATION, LOOPS_SERVICE, type LoopEventInput, type LoopsService } from '../src/loops/service.ts'
+import { LOOPS_SERVICE, type LoopEventInput, type LoopsService } from '../src/loops/service.ts'
 import { matchesFilter } from '../src/loops/trigger.ts'
 import { toNativeTool } from '../src/shared/dialect.ts'
 import type { DerivedMessage } from '../src/shared/dsh-min.ts'
@@ -112,8 +112,7 @@ function fakeBoard(): FakeBoard {
     emitted: [],
     hears: true,
     service: {
-      declaration: LOOPS_DECLARATION,
-      contribute: () => ({ ok: true, dispose: () => {}, accepted: [], dropped: [] }),
+            contribute: () => ({ ok: true, dispose: () => {}, accepted: [], dropped: [] }),
       emit: (event) => {
         board.emitted.push(event)
         return Promise.resolve({ ok: true as const, id: 'ev-x', duplicate: false })

@@ -25,7 +25,7 @@ import { apply as guardApply } from '../src/guard/index.ts'
 import { keyOf } from '../src/guard/records.ts'
 import { apply as metricsApply } from '../src/metrics/index.ts'
 import { readLog } from '../src/metrics/read.ts'
-import { installMetricsFileGuard, isPruneCall, metricsFilesOnly, METRICS_DECLARATION, METRICS_FILES_ONLY } from '../src/metrics/rules.ts'
+import { installMetricsFileGuard, isPruneCall, metricsFilesOnly, METRICS_FILES_ONLY } from '../src/metrics/rules.ts'
 import { NATIVE_FACE, renderCorrection, type RuleVerdict, type ToolCall } from '../src/guard/rules.ts'
 import type { ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { METRICS_SERVICE, type MetricsService } from '../src/shared/metrics.ts'
@@ -202,9 +202,7 @@ test('a shell command that only reads or only mentions the journal passes, whate
   }
 })
 
-test('the rule declares itself once, and the gate it installs is a gate listener over the metrics row', () => {
-  assert.equal(typeof METRICS_DECLARATION, 'string')
-  assert.ok(METRICS_DECLARATION.length > 0 && METRICS_DECLARATION.length <= 200)
+test('the gate the rule installs is a gate listener over the metrics row', () => {
   const installed: Array<{ event: string, listener: unknown }> = []
   const ctx = { on: (event: string, listener: unknown) => { installed.push({ event, listener }); return () => {} }, get: () => undefined }
   const uninstall = installMetricsFileGuard({ ctx, journal: () => {} })

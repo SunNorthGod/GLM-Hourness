@@ -13,13 +13,13 @@
  * reports the row health of its session (src/shared/health.ts).
  *
  * Declaration (告知, docs/ORCHESTRATION.md §6.1): on every route the active
- * rules are declared in one system prompt section, appended after the
+ * rules are declared by one system prompt section, appended after the
  * agent-scoped assembly (`glm:guard`; the runtime renders section text, not
- * names); with the graph row active the section also declares its
- * graph-files-only. A rule the human lifted (src/guard/lift.ts) neither
- * judges nor declares. Rules only change with the session directory, which
- * is immutable, and with the graph row loading, so the prompt stays stable
- * step to step.
+ * names). Since the ablation arm A2 (DESIGN.md §5.2a, adopted 2026-11-10)
+ * the section is one general sentence: it names no rule per line, so it does
+ * not vary with the route, the lifted rules or the other rows. A rule the
+ * human lifted (src/guard/lift.ts) still stops judging; the rules teach
+ * through their denials.
  *
  * Scope (ORCHESTRATION.md §6.2): every root call, on every route and model,
  * while this row is loaded. The route of a tool call is the session's
@@ -47,15 +47,14 @@ import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import { stat, mkdir, copyFile, writeFile } from 'node:fs/promises'
-import { MAIN_AGENT_KEY } from '../graph/main-agent.ts'
 import { loadGraph } from '../graph/store.ts'
-import { GRAPH_FILES_DECLARATION, graphFocus, graphService } from '../graph/service.ts'
-import { declarationOf, fileToolTargetOf, fileToolsOnly, NATIVE_FACE, workspaceContainment, type GuardRule, type ToolCall, type ToolFace } from './rules.ts'
+import { graphFocus } from '../graph/service.ts'
+import { fileToolTargetOf, fileToolsOnly, NATIVE_FACE, workspaceContainment, type GuardRule, type ToolCall } from './rules.ts'
 import { installRuleGate, cwdOf } from './gate.ts'
-import { DECLARATION_SECTION } from './sections.ts'
+import { DECLARATION_SECTION, WORKSPACE_RULES_TEXT } from './sections.ts'
 import { takeCorrection, workspaceFallback } from './fallback.ts'
 import { originOf } from './origin.ts'
-import { guardLift, liftedRules, liftedRulesOf, liftRecordPath } from './lift.ts'
+import { guardLift, liftedRulesOf, liftRecordPath } from './lift.ts'
 import { LIFT_SERVICE, liftServiceOver } from './lift-service.ts'
 import { checkerConfigOnly } from './checker-config.ts'
 import { prepareContext, type RuleContext } from './context.ts'
@@ -72,27 +71,21 @@ import { projectJournal, auditPaths, type AuditFs } from '../memory/audit.ts'
 import { ensureLlmIgnored, type LlmIgnoreOutcome } from '../data/llm-ignore.ts'
 import { projectHomeFor, projectRootOf } from '../data/project-home.ts'
 import { dialectNames, dialectService, dialectWarner, type DialectProblem } from '../shared/dialect.ts'
-import { LOOPS_DECLARATION } from '../loops/service.ts'
-import { HABIT_ASK_FIRST, HABIT_RULE_DECLARATION } from '../memory/habit-rule.ts'
-import { rulesService } from '../rules/service.ts'
 import { executeService } from '../shared/execute-service.ts'
-import { activationState, provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
+import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
-import { assemblyRoute, sessionRoute } from '../shared/route.ts'
+import { sessionRoute } from '../shared/route.ts'
 import { createUserNotice, type AgentsService, type ToolExecutionContext } from '../shared/dsh-min.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { emitMetric } from '../shared/metrics.ts'
-import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, SessionProjectionsService, WorkingDirectoryService } from '../shared/dsh-min.ts'
+import type { AgentLike, AssembledSection, PluginContext, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, WorkingDirectoryService } from '../shared/dsh-min.ts'
 
 export type { FollowupRecord, GuardRecord, RecordedCall, ViolationRecord } from './records.ts'
 export type { ShadowRecord } from './fallback.ts'
 
 /** The source kind of the guard row's post-hoc correction notice (design §3.4). */
 export const GUARD_CORRECTION_SOURCE = 'hourness-guard'
-
-/** The declaration's head line for root agents only (design §3.1): what to call when the human asks to stop enforcing a rule. */
-export const GUARD_LIFT_LINE = 'If the human asks you to stop enforcing one of these rules, call guard_lift with the rule id and the human\'s own words (the tool may be deferred: look it up first).'
 
 export interface GuardConfig {
   /** Workspace roots writes are confined to; defaults to the calling agent's session directory. */
@@ -175,26 +168,6 @@ function workingDirectoryService(ctx: ServiceLookup): WorkingDirectoryService | 
 }
 
 /**
- * Whether the session is in main-agent mode by the projection the design row
- * registers (src/graph/main-agent.ts): its identity section then holds the
- * boundary, and the file-tools-only line would tell it to use the Write/Edit
- * tools it does not have (review finding S4-4). Anything unreadable counts
- * as not, which declares the rules as before.
- */
-function mainAgentMode(ctx: ServiceLookup, agent: AgentLike | undefined): boolean {
-  const service: unknown = typeof ctx.get === 'function' ? ctx.get('sessionProjections') : undefined
-  const stateOf = typeof service === 'object' && service !== null ? (service as { stateOf?: SessionProjectionsService['stateOf'] }).stateOf : undefined
-  if (stateOf === undefined || agent?.session === undefined) return false
-  try {
-    const state = stateOf(agent.session, MAIN_AGENT_KEY)
-    return typeof state === 'object' && state !== null && (state as { active?: unknown }).active === true
-  }
-  catch {
-    return false
-  }
-}
-
-/**
  * Where one agent's relative write targets resolve: the session's effective
  * working directory (the file tools resolve against it, and `cd` moves it),
  * else the recorded session directory; undefined leaves the default (the
@@ -215,20 +188,16 @@ export function baseFor(ctx: ServiceLookup, agent: AgentLike | undefined): strin
 }
 
 /**
- * The rule declaration section: the head (the guard_lift line for a root
- * agent, design §3.1), one line per rule that declares itself, then the
- * lines of rules other rows enforce (graph-files-only, when the graph row is
- * active). Tool names in the lines come from `face`.
+ * The rule declaration section (ablation arm A2, DESIGN.md §5.2a): one
+ * general sentence on every route; the rules it summarizes are enforced
+ * unchanged and teach through their denials. It no longer lists the active
+ * rules per line, so it does not vary with the route, the lifted rules or
+ * the other rows.
  */
-export function declarationSection(rules: readonly GuardRule[], others: readonly string[] = [], face: ToolFace = NATIVE_FACE, root = false): AssembledSection {
+export function declarationSection(): AssembledSection {
   return {
     name: DECLARATION_SECTION,
-    text: [
-      '# Workspace rules',
-      'The harness checks every tool call against these rules before it runs; a call that breaks one is denied with the reason and the right way to proceed.',
-      ...(root ? [GUARD_LIFT_LINE] : []),
-      ...[...rules.map(rule => declarationOf(rule, face)), ...others].filter(line => line.length > 0).map(line => `- ${line}`),
-    ].join('\n'),
+    text: WORKSPACE_RULES_TEXT,
     // Declarations are literal text; a rule may mention `{{` without meaning a prompt variable.
     interpolate: false,
   }
@@ -304,7 +273,6 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
   const ignored = new Map<string, LlmIgnoreOutcome>()
   const fallback = workspaceFallback(ctx, (record, cwd) => { void violation(record, cwd) })
   const warn = dialectWarner('guard')
-  const rulesWarn = dialectWarner('guard')
   const installed = new WeakSet<AgentLike>()
   const disposers: Array<() => void> = [() => health.dispose()]
 
@@ -561,31 +529,12 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
     const seenCwd = agent.session?.header.cwd
     if (seenSession !== undefined && typeof seenCwd === 'string' && seenCwd.length > 0) sessions.set(seenSession, seenCwd)
     try {
-      // Prepend, like the dialect row: post-`next()` sees the route the
-      // model selection injected, which picks the tool names. Every route
-      // gets the section, appended last either way, whichever of the two
+      // Append the one-sentence declaration after everything the other rows
+      // assembled, on every route: post-`next()`, whichever of the two
       // listeners is outermost.
       disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
         const assembled = await next()
-        const route = assemblyRoute(assembled)
-        const cwd = typeof agent.session?.header.cwd === 'string' && agent.session.header.cwd.length > 0 ? agent.session.header.cwd : undefined
-        const root = projectRootOf(cwd)
-        const lifted = root === undefined ? undefined : liftedRules(root)
-        const rules = activeRules({ ...config, workspaceRoots: rootsFor(agent, config) })
-        const own = lifted === undefined || lifted.size === 0 ? rules : rules.filter(rule => !lifted.has(rule.id))
-        // The main agent reads its boundary in the identity section the design row assembles: the file-tools-only line would name the Write/Edit tools it does not have (S4-4).
-        const declared = mainAgentMode(ctx, agent) ? own.map(rule => rule === fileToolsOnly ? { ...rule, declare: '' } : rule) : own
-        // graph-files-only is the graph row's rule, and the gates of the rules board and the loop board are their rows'; declared here so the model reads every rule in one place. A lifted rule stops declaring too.
-        const board = rulesService(ctx, rulesWarn)
-        // The loop board's gate is in every host process, while its service is only in the one that can reach a session (loops design §6.1), so the line follows the row, not the service.
-        const loops = activationState(ctx, 'loops')
-        const graphDeclares = graphService(ctx) !== undefined && lifted?.has('graph-files-only') !== true
-        // The memory row's habit-ask-first follows the row like the loop board's gate: its gate is installed with the memory tools.
-        const memory = activationState(ctx, 'memory')
-        const habitDeclares = memory !== 'absent' && memory !== 'inactive' && lifted?.has(HABIT_ASK_FIRST) !== true
-        const others = [...(graphDeclares ? [GRAPH_FILES_DECLARATION] : []), ...(board === undefined ? [] : [board.declaration]), ...(loops === 'absent' || loops === 'inactive' ? [] : [LOOPS_DECLARATION]), ...(habitDeclares ? [HABIT_RULE_DECLARATION] : [])]
-        const face = dialectNames(dialectService(ctx, warn), agent, route, warn) ?? NATIVE_FACE
-        return { ...assembled, sections: [...assembled.sections, declarationSection(declared, others, face, isRoot)] }
+        return { ...assembled, sections: [...assembled.sections, declarationSection()] }
       }, { prepend: true }))
     }
     catch (error) {
