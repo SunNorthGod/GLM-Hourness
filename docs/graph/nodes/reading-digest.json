@@ -99,6 +99,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "续读摘要 2026-11-10（aa682f4b，origin/reading-2026-11-10，6 篇实读）：① DeepSeek 团队 11 月初发 super-agent 文章并开源同构原型 dsh-superagent-prototype（约 21.7k star，即 DSH bundle）——C7「主 Agent 只编排」获宿主厂公开实践旁证；它有两处我们没有的机制：策略改版对在跑工单重验证、主会话禁长等待（两处都属设计层，待人定要不要借）。② 上期 10 条候选已落地 7 条（d-recommend-last、converge、简报 pins、标定目录搬临时、隔离实例、第三次返工问人、六臂消融），仍开 3 条：G3 误伤语料、提示词评测门槛、凭证影子规则。③ Anthropic 记忆组件文（11-06）指出我们最短的板：离线整固（dreaming）没有——transcript 落盘把抓取半边补齐了；「只记失败」式指令实测伤表现，glm:memory 节未消融。digest 候选第 1 条：循环板脚本条目做离线整固（窄版 B 起步，要人批积分）。方法注记：Anthropic 索引 WebFetch 可直读，developers.openai.com 全 403，GitHub 镜像路线够用；下次起点两边 11-07 后。文件 .agents/tasks/reading-2026-11-10/digest.md 不进 main（分支 origin/reading-2026-11-10）。"
+    },
+    {
+      "at": "2026-11-10T00:12:37.180Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人 2026-11-10 批准（relay「那就都按你的建议来」）：① 离线整固窄版 B 立项（循环板脚本条目，确定性抽取非模型总结，dream 线已派）；② super-agent 两机制（策略改版重验在跑工单、主会话禁长等待）各立设计节点，设计线待派。设计节点建立后按正常设计评审走。"
     }
   ]
 }
