@@ -127,6 +127,9 @@ export function apply(ctx, config = {}) {
     return () => {}
   }
   if (arm === 'A3') {
+    // The production set holds none of the 18 since the arm carried (DESIGN.md
+    // §5.2a): on an adopted build the arm deletes nothing, records none, and
+    // the run measures the adopted prompt — like A2.
     const resident = RESIDENT_TOOLS
     const taken = DEFERRED_BY_A3.filter(tool => resident.delete(tool))
     note({ kind: 'deferred', names: taken })

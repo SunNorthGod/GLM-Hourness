@@ -6,8 +6,10 @@
  * Classification (docs/DESIGN.md §5.10): ZCode defers tools that declare
  * `shouldDefer` and MCP tools; a DSH tool with a ZCode counterpart follows
  * the counterpart, and a DSH tool without one follows the MCP rule (deferred).
- * Memory and project graph tools stay resident by project decision
- * (ORCHESTRATION.md §8, §2.10).
+ * The project graph and memory tools are deferred the same way since the
+ * ablation arm A3 carried (docs/DESIGN.md §5.2a, adopted 2026-11-10); the
+ * habit question, the lessons lookup and the execute path stay resident by
+ * project decision (ORCHESTRATION.md §2.3.2).
  *
  * ZCode recomputes history projections on every request; DSH persists each
  * tool result once. So the projection runs when LocalToolSearch executes,

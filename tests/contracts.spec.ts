@@ -431,9 +431,9 @@ test('persona section: the name the design row adds and the dialect places is on
   assert.equal(OUTPUT_STYLE_SECTION, 'hourness:output-style')
 })
 
-test('tool names: the learning tool is the main agent\'s read-only view and stays deferred in the GLM face; the memory tools and memory_habit stay resident', () => {
-  for (const name of LEARNING_TOOL_NAMES.filter(name => name !== MEMORY_HABIT)) assert.ok(!ORCHESTRATION_RESIDENT_TOOLS.has(name) && !RESIDENT_TOOLS.has(name), name)
-  for (const name of [...MEMORY_TOOL_NAMES, MEMORY_HABIT]) assert.ok(ORCHESTRATION_RESIDENT_TOOLS.has(name) && RESIDENT_TOOLS.has(name), name)
+test('tool names: the learning tools and the memory tools are deferred in the GLM face (arm A3 adopted, DESIGN.md 5.2a); memory_habit stays resident, named by habit-ask-first as the right path', () => {
+  for (const name of [...LEARNING_TOOL_NAMES.filter(name => name !== MEMORY_HABIT), ...MEMORY_TOOL_NAMES]) assert.ok(!ORCHESTRATION_RESIDENT_TOOLS.has(name) && !RESIDENT_TOOLS.has(name), name)
+  assert.ok(ORCHESTRATION_RESIDENT_TOOLS.has(MEMORY_HABIT) && RESIDENT_TOOLS.has(MEMORY_HABIT), MEMORY_HABIT)
 })
 
 test('tool names: the env row registers exactly the contract names, check_limit stays deferred in the GLM face (m4-checks design §6.3.1), and the row ships enabled', () => {

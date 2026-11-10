@@ -215,7 +215,7 @@ function runHeadless(dir, ws, task, model) {
 function runChecker(task, dir, ws) {
   const scratch = join(dir, 'check')
   mkdirSync(scratch, { recursive: true })
-  const result = spawnSync(process.execPath, [join(task.dir, 'check.mjs'), '--workspace', ws, '--fixture', task.fixture, '--scratch', scratch], { encoding: 'utf8', timeout: 180_000 })
+  const result = spawnSync(process.execPath, [join(task.dir, 'check.mjs'), '--workspace', ws, '--fixture', task.fixture, '--scratch', scratch, '--home', join(dir, 'home')], { encoding: 'utf8', timeout: 180_000 })
   writeFileSync(join(dir, 'check.txt'), `${result.stdout ?? ''}${result.stderr ?? ''}`)
   try {
     return JSON.parse((result.stdout ?? '').trim().split('\n').at(-1))
