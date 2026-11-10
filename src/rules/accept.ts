@@ -20,10 +20,11 @@ import type { GraphNode } from '../graph/schema.ts'
 import { loadGraph } from '../graph/store.ts'
 import { ANSWER_MARKS } from '../shared/answer-marks.ts'
 import { openRulesBoard, type RulesBoard } from './engine.ts'
+import type { AttachService } from '../shared/attach.ts'
 import type { Proposal, ProjectState, RulesActor } from './model.ts'
 import { proposalDetail } from './proposal.ts'
 import { readProject } from './repo.ts'
-import { proposalIdOf, proposalLine, type RulesBoardService } from './service.ts'
+import { proposalIdOf, proposalLine } from './service.ts'
 import { rulesPaths, type StoreIo } from './store.ts'
 
 export interface AcceptDeps {
@@ -92,10 +93,9 @@ function lineFor(id: string, proposal: Proposal | undefined, result: Applied): s
   return `Rules board has no open proposal ${id} for this question; nothing took effect. Propose again with rules_propose and put the new one to the human.`
 }
 
-/** The rules row's service: the guard's line and the members M3 calls for `attach: 'rules:<proposal>'`. Nothing in it throws. */
-export function createRulesService(deps: AcceptDeps, declaration: string): RulesBoardService {
+/** The rules row's service: the members M3 calls for `attach: 'rules:<proposal>'`. Nothing in it throws. */
+export function createRulesService(deps: AcceptDeps): AttachService {
   return {
-    declaration,
     attachable({ cwd, proposal }) {
       try {
         const project = cwd === undefined ? undefined : projectOf(cwd)

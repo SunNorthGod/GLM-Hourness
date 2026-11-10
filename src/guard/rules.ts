@@ -1,6 +1,6 @@
 /**
  * dsh-guard — rule framework (S1 subset): each discipline is data
- * { declare, detect, correct, apply }, enforced hard at the execution
+ * { detect, correct, apply }, enforced hard at the execution
  * boundary with a four-part corrective message (fact / violation / right
  * path / exception). No soft-allow tier: a denied action never executes.
  */
@@ -33,8 +33,6 @@ export const NATIVE_FACE: ToolFace = native => native
 
 export interface GuardRule {
   readonly id: string
-  /** The rule as the model is told it: one line of the guard section in every route's system prompt (src/guard/index.ts); the function form names tools through the face. */
-  readonly declare: string | ((face: ToolFace) => string)
   /**
    * Decide for one tool call. `call.name` is the DSH native the call runs
    * (src/shared/dialect.ts toNativeTool); tool names in the correction come
@@ -44,11 +42,6 @@ export interface GuardRule {
   detect(call: ToolCall, face: ToolFace): RuleVerdict
   /** Whether `next` took this rule's right path after `denied` was denied (design §3.3); absent: never counted as right. A rule object carries no `this`. */
   rightPath?(this: void, next: ToolCall, denied: ToolCall): boolean
-}
-
-/** A rule's declaration line: a string as it is, the function form rendered with `face`. */
-export function declarationOf(rule: GuardRule, face: ToolFace): string {
-  return typeof rule.declare === 'string' ? rule.declare : rule.declare(face)
 }
 
 /**
@@ -98,7 +91,6 @@ export function workspaceContainment(roots: readonly string[], base: string | un
   }
   return {
     id: 'workspace-containment',
-    declare: 'You may only create and modify files inside the user\'s workspace. Writes anywhere else are rejected.',
     detect(call) {
       const target = fileToolTargetOf(call)
       if (target === undefined) return { kind: 'allow' }
@@ -167,7 +159,6 @@ export function isFileWrite(call: ToolCall): boolean {
  */
 export const fileToolsOnly: GuardRule = {
   id: 'file-tools-only',
-  declare: face => `Modify files and code only with the dedicated ${face('write')}/${face('edit')} tools. The shell is for execution (tests, builds, git), not for writing files: a redirection into a file (\`>\`, \`>>\`) or a file-changing command (Set-Content, Add-Content, Clear-Content, Out-File, Tee-Object, New-Item, Copy-Item, Move-Item, Remove-Item, rm, rmdir, mv, cp, dd, touch, truncate, tee, sed -i) is denied.`,
   detect(call, face = NATIVE_FACE) {
     const shell = shellWriteOf(call)
     if (shell === undefined) return { kind: 'allow' }

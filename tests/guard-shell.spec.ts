@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { describeWrite, simpleCommands, shellWrites, type ShellDialect } from '../src/guard/shell.ts'
-import { declarationOf, fileToolsOnly, NATIVE_FACE, renderCorrection, shellCommandOf } from '../src/guard/rules.ts'
+import { fileToolsOnly, NATIVE_FACE, renderCorrection, shellCommandOf } from '../src/guard/rules.ts'
 
 // file-tools-only reads shell text quote-aware (docs/ORCHESTRATION.md §6.4):
 // only command positions and real redirections count. The three recorded
@@ -138,16 +138,13 @@ test('file-tools-only: the denial names the write; the shell tools and their arg
   assert.equal(fileToolsOnly.detect({ name: 'Read', arguments: { command: 'rm x' } }, NATIVE_FACE).kind, 'allow')
 })
 
-test('file-tools-only declares the boundary it enforces, naming the file tools as the model sees them', () => {
+test('file-tools-only names the file tools of the correction as the model sees them', () => {
   const faces = new Map([['read', 'Read'], ['write', 'Write'], ['edit', 'Edit']])
   const zcode = (native: string) => faces.get(native) ?? native
-  const declared = declarationOf(fileToolsOnly, zcode)
-  for (const term of ['Write/Edit', '`>`', '`>>`', 'Set-Content', 'Out-File', 'Add-Content', 'Remove-Item', 'rm', 'rmdir', 'sed -i']) {
-    assert.ok(declared.includes(term), term)
-  }
-  assert.ok(declarationOf(fileToolsOnly, NATIVE_FACE).startsWith('Modify files and code only with the dedicated write/edit tools.'))
   const verdict = fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'Set-Content f x' } }, zcode)
   assert.equal(verdict.kind === 'deny' ? verdict.correction.rightPath : undefined, 'Read the target with Read, then apply the change with Write or Edit.')
+  const native = fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'Set-Content f x' } }, NATIVE_FACE)
+  assert.equal(native.kind === 'deny' ? native.correction.rightPath : undefined, 'Read the target with read, then apply the change with write or edit.')
 })
 
 // simpleCommands is what the git snapshot reads (docs/ORCHESTRATION.md §6.1): the words of every simple command, in the order shellWrites meets them.

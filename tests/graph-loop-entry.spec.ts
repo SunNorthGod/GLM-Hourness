@@ -9,7 +9,7 @@ import { REOPEN_LIMIT, SECOND_FIX_NOTICE } from '../src/graph/reopen.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import type { ServiceLookup, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
-import { LOOPS_DECLARATION, LOOPS_SERVICE, type ContributeResult, type ContributionSource, type ListedRun, type LoopsService } from '../src/loops/service.ts'
+import { LOOPS_SERVICE, type ContributeResult, type ContributionSource, type ListedRun, type LoopsService } from '../src/loops/service.ts'
 import { validateContribution } from '../src/loops/registry.ts'
 import { seedAsHuman } from './graph-helpers.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
@@ -24,8 +24,7 @@ interface FakeBoard {
 function fakeBoard(options: { refused?: string, recordRunThrows?: boolean } = {}): FakeBoard {
   const handed: FakeBoard['handed'] = { contributes: 0, runs: [] }
   const service: LoopsService = {
-    declaration: LOOPS_DECLARATION,
-    contribute: (source, contribution) => {
+        contribute: (source, contribution) => {
       handed.source = source
       handed.contribution = contribution
       handed.contributes++

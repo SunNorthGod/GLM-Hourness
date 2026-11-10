@@ -22,7 +22,6 @@ const CORRECTION = (text: string): Correction => ({ fact: text, violation: 'no',
 
 const rule = (id: string, denyFor: (call: ToolCall) => boolean = call => call.name === 'write'): GuardRule => ({
   id,
-  declare: id,
   detect(call) {
     if (denyFor(call)) return { kind: 'deny', rule: id, correction: CORRECTION(`${id} says no to ${call.name}`) }
     return { kind: 'allow' }
@@ -31,7 +30,6 @@ const rule = (id: string, denyFor: (call: ToolCall) => boolean = call => call.na
 
 const BROKEN: GuardRule = {
   id: 'broken-rule',
-  declare: 'broken-rule',
   detect() { throw new Error('detector gone') },
 }
 

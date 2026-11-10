@@ -64,7 +64,7 @@ test('file-tools-only allows execution-style shell commands, quoted arrows and g
 })
 
 test('a throwing detector fails open: the broken rule does not deny, the healthy one still does', () => {
-  const broken = { id: 'broken', declare: '', detect(): never { throw new Error('boom') } }
+  const broken = { id: 'broken', detect(): never { throw new Error('boom') } }
   const verdict = judge([broken, rule], write('C:\\Windows\\x'))
   assert.deepEqual([verdict.denies.length, verdict.errors], [1, ['broken']])
 })

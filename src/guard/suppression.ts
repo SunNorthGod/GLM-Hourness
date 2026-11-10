@@ -24,8 +24,6 @@ import type { RuleContext } from './context.ts'
 
 const NODE_BRACKET = /\[([a-z][a-z0-9-]{0,47})\]/
 
-const SUPPRESSION_DECLARATION = 'New suppressions carry a reason and a graph node id on the same line.'
-
 const correctionOf = (marker: string): Correction => ({
   fact: `You added \`${marker}\` without a reason and a graph node.`,
   violation: 'New suppressions need a reason and a node id on the same line.',
@@ -89,7 +87,6 @@ function lineQualifies(line: string, marker: string, nodeIds: ReadonlySet<string
 export function suppressionOnly(context: RuleContext): GuardRule {
   return {
     id: 'suppression-reason',
-    declare: SUPPRESSION_DECLARATION,
     detect(call) {
       if (fileToolTargetOf(call) === undefined) return ALLOW
       const texts = addedTextOf(call)

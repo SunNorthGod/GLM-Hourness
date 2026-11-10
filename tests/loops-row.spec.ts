@@ -16,7 +16,7 @@ import { holderFileOf, projectKey } from '../src/graph/main-agent-holder.ts'
 import { inject, LOOPS_COMMAND, name } from '../src/loops/index.ts'
 import { LOOP_STEP_SOURCE, machineStepFile, STEP_NOTE_MS, type MachineStepNote, type StepNote } from '../src/loops/reminder.ts'
 import { LOOPS_KEY } from '../src/loops/projection.ts'
-import { LOOPS_DECLARATION, loopsService } from '../src/loops/service.ts'
+import { loopsService } from '../src/loops/service.ts'
 import { NOT_A_PROJECT } from '../src/loops/commands.ts'
 import { entryFileText } from '../src/loops/model.ts'
 import { openLoopStore } from '../src/loops/store.ts'
@@ -61,8 +61,12 @@ test('the row is a cordis plugin that needs the commands service, and registers 
   })
 })
 
-rowTest('the service the row provides carries the line the guard adds to its prompt section', ({ runtime }) => {
-  assert.equal(loopsService(runtime.ctx)?.declaration, LOOPS_DECLARATION)
+rowTest('the service the row provides reads as a loops service with the members other rows hand over through', ({ runtime }) => {
+  const service = loopsService(runtime.ctx)
+  assert.equal(typeof service?.contribute, 'function')
+  assert.equal(typeof service?.emit, 'function')
+  assert.equal(typeof service?.listens, 'function')
+  assert.equal(typeof service?.recordRun, 'function')
 })
 
 // ------------------------------------------------------------------ /loops
