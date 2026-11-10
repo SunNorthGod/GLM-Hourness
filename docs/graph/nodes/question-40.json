@@ -1,0 +1,36 @@
+{
+  "id": "question-40",
+  "type": "question",
+  "title": "reval 设计的五个开放问题按推荐定吗",
+  "status": "approved",
+  "parent": "reval",
+  "body": "设计 0.1 在 origin/reval（9e23cff5），正文 .agents/tasks/reval/design.md §10。Q1 rules 类摘要的源：用导出的 docs/rules/rules.json（git 可考、人可看 diff；scripts pin 要并入就拼进同一摘要），不用运行时 state 切片。Q2 checker 基线文件（knip-baseline.json 等）第一版不进政策摘要，只摘图上的 env config 行；等真实发生过一次基线漂移再加类。Q3 在跑 worker 不中途收政策差：原型的 policy-changed 投给在跑工单，我们的 worker 是分钟级单任务会话，交回与审查两点已把评判层对齐，中途注入的收益盖不过一次交互的代价。Q4 政策差不挡审查派发、不算 stale：政策差不否证工作本身，挡路判据不变。Q5 norm-directions 不进 worker 政策摘要：worker 不读方向清单，进了只制造与设计审查无关的漂移。",
+  "options": [
+    {
+      "key": "A",
+      "label": "有要改的，逐条说",
+      "gain": "只翻你想翻的那几条，其余照推荐",
+      "cost": "要逐条点名"
+    },
+    {
+      "key": "B",
+      "label": "五问全按推荐",
+      "gain": "一行拍板，实现按 0.1 开工",
+      "cost": "后面再翻要按推翻重记"
+    }
+  ],
+  "recommend": "B",
+  "crux": "五条推荐里有没有你想翻的？",
+  "verdict": "是 → B；否 → A",
+  "weight": "two-way",
+  "decider": "human",
+  "history": [
+    {
+      "at": "2026-11-10T18:37:30.253Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "reval 设计 0.1 成稿（origin/reval 9e23cff5），五个开放问题合成一个确认问递人；逐条想翻的在回话里点名",
+      "to": "approved"
+    }
+  ]
+}
