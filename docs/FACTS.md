@@ -67,6 +67,8 @@
 | off-peak 是服务端排队协议（`x-off-peak-ticket-id`、429/3105 排队豁免重试、3102 续跑），客户端没有本地峰谷窗口常量 | S1 进度台账 Round 17（git 历史） |
 | 使用统计口径（summary、heatmap、按模型、按工具） | `reference/zcode-capabilities.md` §12 |
 | 3.17.1 不加载子目录的 AGENTS.md：会话开始时解析一次用户指令（`resolveContextSources`，只在 `contextInitialized` 为假时跑一次），来源只有 `~/.zcode/AGENTS.md`（`mPs`）与从工作目录向上到项目根的最近一份 `AGENTS.md`（`fPs`，候选名单默认只有 `AGENTS.md`，`sPs`），没有向下发现，也没有由 Read、Write、Edit 触发的加载；内容放进 `Request User Context` 元消息（`Mxt`，`injectionTarget: "meta_user"`，开头「Codebase and user instructions are shown below…」） | 3.17.1 pristine 包 `reference/zcode-3.17.1/zcode.cjs` 行 1994（`cPs`）、1996（`fPs`、`mPs`、`sPs`、`resolveContextSources`）、14352–14358（`Mxt`、`u3a`、`p3a`）、14678（`y9o`）〔实读 2026-11-07〕；全包不分大小写的 `AGENTS.md`、`CLAUDE.md`、`AGENTS.local` 另外只出现在 `/init` 的说明与提示（88、15512、15513）、记忆提示（14361、14675）、子 agent 的禁改声明（14498、14534）；`priorityFiles` 由调用方传入，包内没有调用方，所以「默认只有 `AGENTS.md`」之外的名单是否被桌面壳放宽没有核到，「没有向下发现」不受影响 |
+| 本机安装 ZCode 已随自动更新到 3.18.0（`@zcode/desktop`，2026-11-10 21:15 落地；安装目录 .bak 链 3163→3171→3172→3180），运行的 bundle 是 `C:\Program Files\ZCode\resources\glm\zcode.cjs`（15,670,610 字节，MD5 `09a364f6b2ff132ad39bb6cabc3c372f`，2026-11-11 01:23），内容为上游 3.18.0 加用户功能补丁（+5,717 字节，11 处，不碰受审段落）；DSH 桌面（0.2.2-rc.1）自身不带任何 ZCode bundle | 卸载注册表与安装目录〔实读 2026-11-11〕；`.agents/tasks/zcode-drift/findings.md` §1 |
+| 逐字基线复核（3.18.0 装机后）：仓库门禁的 502 项逐字条目对三份副本（pristine 3.17.1、上游 3.18.0 bak、当前装机）逐行比对，500 项三方逐字节一致，仅 2 项上游移动——LocalToolSearch 描述的示例工具由 TodoWrite 换成 TaskStop（查询示例行与尾部 example 块同步）；用户补丁零触碰。**3.17.1 pristine 钉定继续有效，不换基线**；两条示例字面量跟到 3.18.0 措辞属纯装饰性，暂不做 | `scripts/check-verbatim.mjs` 条目集逐行比对〔实读 2026-11-11〕；`.agents/tasks/zcode-drift/findings.md`（main `59b48543`） |
 
 ## 2. BigModel
 

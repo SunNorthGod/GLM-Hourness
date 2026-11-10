@@ -194,7 +194,7 @@ Cursor 的 shell 会注入 `GIT_CONFIG_COUNT`、`GIT_CONFIG_KEY_0`、`GIT_CONFIG
 6. **reval / nowait（super-agent 借用两机制）。** 设计 0.1 分支驻留（origin/reval `9e23cff5`、origin/nowait `4ef89f41`），确认问已递上人的决策队列（图 question-40、question-41）；人答后走设计评审线，再排实现。comms-split 设计同样分支驻留（`4b39fa66`），实现搁置。
 7. **别动。** `.worktrees/ablation-trial` 停在游离提交 `db2bbc69`；其 node_modules junction 因 ablation 工作树被清已悬空，要在那里跑构建得先重装依赖。
 
-卫生清扫（2026-11-11）：本地 17 支、origin 5 支已合并分支与 8 个工作树删除；按「改基之后才算合入→删」的定案再删 origin 的 m3-flow 与 rules-board-page 三变体、本地 m3-flow 及其工作树，连同 15 个未注册残骸目录（其中三处直插主检出 node_modules 的 junction 先摘链后删，主检出 node_modules 核验无恙）。驻留工作树：comms-split / reval / nowait（设计驻留）、zcode-drift（漂移审计线在用）、ablation-trial（钉住）。transcript 已在 main 出厂启用（`ac6413cf`）；视频字幕 `source-transcript.md` 留主检出 `.agents/tasks/docs-at-hand/` 不入库。GitHub 镜像落后（代理 7890 断续），恢复后补推 main 并清 github 侧旧里程碑分支。
+卫生清扫（2026-11-11）：本地 17 支、origin 5 支已合并分支与 8 个工作树删除；按「改基之后才算合入→删」的定案再删 origin 的 m3-flow 与 rules-board-page 三变体、本地 m3-flow 及其工作树，连同 15 个未注册残骸目录（其中三处直插主检出 node_modules 的 junction 先摘链后删，主检出 node_modules 核验无恙）。驻留工作树：comms-split / reval / nowait（设计驻留）、zcode-drift（漂移审计线在用）、ablation-trial（钉住）。transcript 已在 main 出厂启用（`ac6413cf`）；视频字幕 `source-transcript.md` 留主检出 `.agents/tasks/docs-at-hand/` 不入库。zcode-drift 审计（2026-11-11）：装机 ZCode 已自动更新到 3.18.0，DSH 桌面不带 ZCode bundle；502 项逐字条目 500 项三方一致、仅 LocalToolSearch 两条示例字面量上游换了例子，3.17.1 pristine 钉定继续有效，证据 `.agents/tasks/zcode-drift/findings.md`（main `59b48543`）。GitHub 镜像落后（代理 7890 断续），恢复后补推 main 并清 github 侧旧里程碑分支。
 
 人已定、接着守：`d-no-run-cap` 取代 `d-five-runs`（不限同时运行条数；硬限制仍是两把探针锁、一把桌面锁、GLM 高峰 14:00–18:00）；自举按 `d-finish-then-bootstrap`（B8 开工凭据记在 `23acb4d1`，人可推翻）。
 
