@@ -22,6 +22,9 @@ import { projectTest, type Project } from './rules-helpers.ts'
 const MAIN = { sessionId: 's-main', agentId: 'agent-main' }
 let counter = 0
 
+/** The moment of every judgement, pinned: the fixture draft (tests/rules-fixtures.ts) carries `not clock 09:00–21:00 +08:00`, so with the wall clock inside that window no condition holds and no script would run — the spec was green only at night. 16:30 UTC is 00:30 the next day in +08:00, outside the window. */
+const NOW = Date.parse('2026-11-04T16:30:00.000Z')
+
 /** A script of node that ends as the case says; it writes what it got on standard input to `seen.json` in the project first when asked. */
 const script = (body: string, options: { readonly seen?: boolean } = {}): string => `${options.seen === true ? 'import { readFileSync, writeFileSync } from \'node:fs\'\nwriteFileSync(\'seen.json\', readFileSync(0, \'utf8\'))\n' : ''}${body}\n`
 
@@ -49,7 +52,7 @@ function standIn(result: ScriptResult): { readonly run: RunScript, readonly star
   return { started, run: (request) => { started.push(request.envelope.entry); return Promise.resolve(result) } }
 }
 
-const check = (project: Project, command: string, over: Partial<Parameters<typeof checkCall>[1]> = {}): Promise<CheckResult> => checkCall({ tool: 'pwsh', args: { command } }, { project: project.root, ...over })
+const check = (project: Project, command: string, over: Partial<Parameters<typeof checkCall>[1]> = {}): Promise<CheckResult> => checkCall({ tool: 'pwsh', args: { command } }, { project: project.root, now: NOW, ...over })
 const scriptsOf = (result: CheckResult): Array<[string, string]> => result.scripts.map(entry => [entry.rule, entry.outcome])
 
 // ---------------------------------------------------------------- the endings
@@ -99,7 +102,7 @@ projectTest('exit 3 defers the call, exit code 5; a rule that filters on writes 
   assert.match(queued.text ?? '', /ran its script docs\/rules\/scripts\/r-queue\.mjs, which deferred the call: "wait for the build"\./)
   assert.match(queued.text ?? '', /Would be deferred; the command line opens no ticket\./)
   await approve(project, 'r-queue-write', 'unused', script('process.stderr.write("later")\nprocess.exit(3)'), { filter: { writes: { paths: ['locales/'] } } })
-  const write = await checkCall({ tool: 'write', args: { file_path: 'locales/zh.json', content: '{}' } }, { project: project.root })
+  const write = await checkCall({ tool: 'write', args: { file_path: 'locales/zh.json', content: '{}' } }, { project: project.root, now: NOW })
   assert.equal(write.effect, 'block')
   assert.equal(write.exitCode, 4)
   assert.match(write.text ?? '', /which asked to defer the call; a write is not deferred, so it is blocked: "later"\./)
