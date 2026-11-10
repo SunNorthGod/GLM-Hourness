@@ -33,6 +33,10 @@ async function approve(project: Project, id: string, word: string, text: string,
     title: `Script of ${id}`,
     filter: { command: { matches: word } },
     action: { kind: 'script', lang: 'node', text, timeoutSeconds: 10 },
+    // draftOf's default condition keeps the rule off between 09:00 and 21:00
+    // (+08:00), which would leave every scripted call unjudged during the
+    // day; these cases are about the endings, so no condition applies.
+    condition: undefined,
     ...over,
   })
   const state = loadState(project.board.paths).state
