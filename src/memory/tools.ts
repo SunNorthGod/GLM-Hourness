@@ -19,7 +19,7 @@ import { invalid, isObject, isRefusal, refuse, type Refusal } from '../data/refu
 import type { AgentLike, SessionLike, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
 import { metricsWhereOf } from '../shared/metrics.ts'
 import { MEMORY_HABIT } from '../shared/tool-names.ts'
-import { checkSourceKnown, checkStore, classify, judgeStore, revokeRecord, revokeRefusal, reviewRecord, storeRecord, strength, askRecord, declineRecord, HABIT_DECLINE_DAYS, type MemoryEntry, type MemoryState, type MemoryType, type Scope, type HabitFields } from './model.ts'
+import { checkSourceKnown, checkStore, classify, forgetProposalRecord, judgeStore, revokeRecord, revokeRefusal, reviewRecord, storeRecord, strength, askRecord, declineRecord, HABIT_DECLINE_DAYS, type MemoryEntry, type MemoryState, type MemoryType, type Scope, type HabitFields } from './model.ts'
 import { firstReply, saidInReply, saidLatest, shownSinceLastPerson } from './answers.ts'
 import { askText, checkHabitAsk, checkWords, planAnswer, planAsk } from './habit.ts'
 import { readDigest } from './digest.ts'
@@ -342,8 +342,10 @@ async function forget(env: MemoryEnv, args: unknown, exec: unknown): Promise<unk
   const places = env.places(caller.session)
   const both = await readBoth(places)
   const notes: string[] = []
+  // A consolidation proposal is dropped the same way (dreaming design §3.3): it is not a preference, so no words are owed.
   const scopes: ReadonlyArray<readonly [Scope, MemoryState | undefined]> = [['project', usable('project', both.project, notes)], ['all', usable('user-level', both.user, notes)]]
-  const found = scopes.find(([scope, state]) => (request.scope === undefined || request.scope === scope) && state?.entries.get(request.name)?.status === 'active')
+  const found = scopes.find(([scope, state]) => (request.scope === undefined || request.scope === scope)
+    && (state?.entries.get(request.name)?.status === 'active' || state?.proposals.get(request.name) !== undefined))
   if (found === undefined) fail(notes.length > 0 ? refuse('io', notes.join('; ')) : notFound(request.name))
   const [scope] = found
   const dir = dirOfScope(places, scope)
@@ -357,11 +359,16 @@ async function forget(env: MemoryEnv, args: unknown, exec: unknown): Promise<unk
   let kind: MemoryEntry['kind'] = 'fact'
   const result = await writeScope<Failure>(scope, dir, (state) => {
     const entry = state.entries.get(request.name)
-    if (entry?.status !== 'active') return { refused: notFound(request.name) }
-    const refusal = revokeRefusal(entry, who, 'forget')
-    if (refusal !== undefined) return { refused: refusal }
-    kind = entry.kind
-    return { records: [revokeRecord('forget', entry, request.reason, { actor: 'llm', ...(request.relay === undefined ? {} : { relay: request.relay }), by: originOf(caller, 'memory_forget') })] }
+    if (entry?.status === 'active') {
+      const refusal = revokeRefusal(entry, who, 'forget')
+      if (refusal !== undefined) return { refused: refusal }
+      kind = entry.kind
+      return { records: [revokeRecord('forget', entry, request.reason, { actor: 'llm', ...(request.relay === undefined ? {} : { relay: request.relay }), by: originOf(caller, 'memory_forget') })] }
+    }
+    const proposal = state.proposals.get(request.name)
+    if (proposal === undefined) return { refused: notFound(request.name) }
+    kind = classify(proposal.type)
+    return { records: [forgetProposalRecord(proposal, request.reason, { actor: 'llm', by: originOf(caller, 'memory_forget') })] }
   }, env.append)
   settle(env, caller, result)
   return { forgotten: true, name: request.name, scope, kind }
