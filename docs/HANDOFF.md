@@ -176,9 +176,11 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 - **编排运行**：属于 Kiro 的会话，换 IDE 即断。它们的产出都已落盘（设计文稿与分支提交），换过去之后照项目图重新派活。
 - **起步读法**：`AGENTS.md` → `docs/CHARTER.md` → 本文件第 10 节，再看第 8、9 节 → `npm run -s graph -- open`。
 
-## 10. 接着做什么（2026-11-09 批次合入与 L4 之后）
+## 10. 接着做什么（2026-11-10 桌面 runtime 换代之后）
 
-批次合入（`fb88f941`，origin/main 与 github/main 都在这里）：m7 快进（execute 行出厂启用、探针共存语义修正 `20da5074`）、ablation 结论（`6e2dbeb1`）、docs-at-hand（`fb88f941`）。批次 L4（2026-11-09，隔离实例）：A 启动健康（21 行）、B 执行行首趟（真派发→工作树→轻审→check_commit→快进→完成门禁；dispatch-chain-readonly 拒绝成立）、C 档位提示无 `[object Object]`、D 经验行两提醒（AGENTS.md 按路径送达 + `loops.unsynced-daily` 登记可见）——四项全过，main 未动。
+**桌面 runtime 基线变了（主人 2026-11-10 亲手升级 nightly，0.2.2-rc.1）**：新运行时的 `system-prompt/assemble` 载荷是 `PromptPresentation`（只有 sections/contexts/variables，**无 tools**——工具面归 provider 所有，运行时 api-catalog 原话 "tool declarations remain provider-owned"）。8 处 assemble 监听器（design/execute/bootstrap/glm-prompt/lessons/memory）的面改写按旧契约读 `assembled.tools`，防护降级已落 `85970b6b`（面板缺失原样返回，rows 不崩）；**面类功能（主 Agent 工具过滤、A3 延迟公告、worker 面、工具检索公告）在新 runtime 上不可用，直到面层迁移完成**。迁移任务：把面改写从 assemble 瀑布迁到 `tools.restrict()` 作用域过滤（`DESIGN.md` §2.4a 已记录该机制），数天级，现在就是关键路径。探针的面类检查在迁移完成前预期红（本期红名单：52 工具面、A3 deferral 公告、guard-lift 脚本流的 lifts journal、主 Agent 面过滤类），HANDOFF §5 不当缺陷；非面类场景必须保持绿。bootstrap 合并（`0fff129e`，B7/B9 完成）随本节同批入库；**B10 的桌面验收排在迁移完成之后**（`/wish` 与派发都吃面改写）。`engines.dsh` 的声明范围随迁移一并核对。
+
+批次合入与 L4 历史：批次 L4（2026-11-09，隔离实例）四项全过；批次 L4 二（2026-11-10，main `1044890d`）六项全过（A2 提示词、A3 真桌面检索链、dream 条目与候选隔离、subdir 两态）——这些判定在 rc.3 基线上做出，rc.1 上的对应面行为以迁移后的 L4 为准。
 
 Cursor 的 shell 会注入 `GIT_CONFIG_COUNT`、`GIT_CONFIG_KEY_0`、`GIT_CONFIG_VALUE_0`，带着跑 `npm run probe` 会失败，跑之前清掉。桌面只走 `--remote-debugging-port`，不注入系统鼠标键盘，不杀桌面版进程；出现 `#32770` 确认框就停下来请人点。
 
