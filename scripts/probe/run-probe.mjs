@@ -1862,6 +1862,54 @@ const instructionsAfterCheckpoint = (step) => {
 const bothMarks = messages => messages.some(message => message.text.includes(USER_MARK) && message.text.includes(PROJECT_MARK))
 const instructionsCheckpointed = instructionsMain.filter(step => step.messages.some(message => message.source === 'compact-checkpoint'))
 
+// Subdirectory instructions (docs/DESIGN.md §5.11): rc.3 loads the AGENTS.md
+// files between the working directory and a file a native read touched, and
+// its trigger table does not know the ZCode alias. The same script runs on a
+// GLM route through the alias Read and on a non-GLM route through the native
+// read; the alias route's notice must carry what the host's own message
+// carries on the native route, and the tool face must not change. The
+// scripted model reads one file two directories down, runs a trivial shell
+// command, and replies.
+const SUBDIR_PKG_MARK = 'PROBE-SUBDIR-PKG-MARK'
+const SUBDIR_DEEP_MARK = 'PROBE-SUBDIR-DEEP-MARK'
+const subdirWorkspace = name => {
+  const ws = join(runDir, name, 'ws')
+  mkdirSync(join(ws, 'pkg', 'sub'), { recursive: true })
+  writeFileSync(join(ws, 'pkg', 'AGENTS.md'), `# probe package instructions\n\n${SUBDIR_PKG_MARK}\n`)
+  writeFileSync(join(ws, 'pkg', 'sub', 'AGENTS.md'), `# probe deep instructions\n\n${SUBDIR_DEEP_MARK}\n`)
+  writeFileSync(join(ws, 'pkg', 'sub', 'file.txt'), 'probe file\n')
+  return ws
+}
+const subdirGlmWs = subdirWorkspace('glm-subdir-instructions')
+// The row's shipped default is off (a ZCode deviation when enabled, docs/DESIGN.md §5.11); this scenario pins the enabled state, the next one pins the default.
+const subdirGlm = runScenario('glm-subdir-instructions', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(subdirGlmWs, 'pkg', 'sub', 'file.txt') } } },
+  { tool: { name: 'Bash', arguments: { command: 'Write-Output probe-subdir' } } },
+  { text: 'done' },
+], 'Read the nested file, run a command, then reply done.', ['- id: glm-hourness/glm-prompt', '  config: { subdirInstructions: true }'], subdirGlmWs)
+const subdirOffWs = subdirWorkspace('glm-subdir-instructions-off')
+const subdirOff = runScenario('glm-subdir-instructions-off', 'glm-5.3', [
+  { tool: { name: 'Read', arguments: { file_path: join(subdirOffWs, 'pkg', 'sub', 'file.txt') } } },
+  { tool: { name: 'Bash', arguments: { command: 'Write-Output probe-subdir' } } },
+  { text: 'done' },
+], 'Read the nested file, run a command, then reply done.', [], subdirOffWs)
+const subdirNativeWs = subdirWorkspace('non-glm-subdir-instructions')
+const subdirNative = runScenario('non-glm-subdir-instructions', 'deepseek-probe', [
+  { tool: { name: 'read', arguments: { file_path: join(subdirNativeWs, 'pkg', 'sub', 'file.txt') } } },
+  { tool: { name: 'pwsh', arguments: { command: 'Write-Output probe-subdir', description: 'probe: run a command' } } },
+  { text: 'done' },
+], 'Read the nested file, run a command, then reply done.', [], subdirNativeWs)
+const SUBDIR_KIND = 'glm-subdir-instructions'
+/** The messages of a request that carry both subdirectory marks, from the host's source or this row's. */
+const subdirMessages = (step, kind) => (step?.messages ?? []).filter(message => message.source === kind)
+const subdirInOrder = message => {
+  const text = message?.text ?? ''
+  const pkg = text.indexOf(SUBDIR_PKG_MARK)
+  const deep = text.indexOf(SUBDIR_DEEP_MARK)
+  return pkg > 0 && deep > pkg
+}
+const subdirFaces = [...subdirGlm.steps].map(step => [...names(step)].sort().join(','))
+
 const graphGoalDir = join(runDir, 'glm-graph-goal')
 const graphGoalWs = join(graphGoalDir, 'ws')
 mkdirSync(graphGoalWs, { recursive: true })
@@ -4676,6 +4724,11 @@ const checks = [
   ['host instructions: the first request carries the workspace baseline (agent-instructions) with the user-level $DSH_HOME/AGENTS.md and the project AGENTS.md', bothMarks(instructionsAfterCheckpoint(instructionsMain[0])), `exit ${compactInstructions.status}; first request sources: ${(instructionsMain[0]?.messages ?? []).map(message => message.source).join(',')}`],
   ['host instructions: after every compaction checkpoint the next request carries the baseline again with both files', instructionsCheckpointed.length > 0 && instructionsCheckpointed.every(step => bothMarks(instructionsAfterCheckpoint(step))), `${compactInstructions.compactions.length} compaction(s); baseline messages after the checkpoint per request: ${instructionsCheckpointed.map(step => `${instructionsAfterCheckpoint(step).length}${bothMarks(instructionsAfterCheckpoint(step)) ? '' : '(marks missing)'}`).join(', ') || 'no checkpointed request'}`],
   ['host instructions: the dispatched subagent\'s first request carries the baseline with both files', instructionsChildId !== undefined && bothMarks(instructionsAfterCheckpoint(instructionsChild[0])), `child ${instructionsChildId ?? 'not started'}; ${instructionsChild.length} child request(s); first request sources: ${(instructionsChild[0]?.messages ?? []).map(message => message.source).join(',')}`],
+  ['subdirectory instructions: no notice before the alias Read; the next request carries exactly one, with the package and the deeper file, shallow before deep', subdirMessages(subdirGlm.steps[0], SUBDIR_KIND).length === 0 && subdirMessages(subdirGlm.steps[1], SUBDIR_KIND).length === 1 && subdirInOrder(subdirMessages(subdirGlm.steps[1], SUBDIR_KIND)[0]), `exit ${subdirGlm.status}; ${subdirGlm.steps.length} request(s); notices per request: ${subdirGlm.steps.map(step => subdirMessages(step, SUBDIR_KIND).length).join(', ')}`],
+  ['subdirectory instructions: the third request still carries that one notice and no second; the host messages do not carry those files on the GLM route', subdirGlm.steps.length === 3 && subdirMessages(subdirGlm.steps[2], SUBDIR_KIND).length === 1 && subdirGlm.steps[2].messages.filter(message => message.source === 'agent-instructions').every(message => !message.text.includes(SUBDIR_PKG_MARK)), `notices per request: ${subdirGlm.steps.map(step => subdirMessages(step, SUBDIR_KIND).length).join(', ')}`],
+  ['subdirectory instructions: the tool face is the ZCode face before and after the notice (Read, no native read), the same in every request', subdirFaces.length === 3 && new Set(subdirFaces).size === 1 && [...names(subdirGlm.steps[0])].includes('Read') && !names(subdirGlm.steps[0]).has('read') && !names(subdirGlm.steps[0]).has('pwsh'), subdirFaces.join(' | ')],
+  ['subdirectory instructions: on a non-GLM route the host itself delivers the same two files after the native read, and this row sends no notice', subdirNative.steps.length === 3 && subdirMessages(subdirNative.steps[1], 'agent-instructions').some(subdirInOrder) && subdirNative.steps.every(step => subdirMessages(step, SUBDIR_KIND).length === 0), `exit ${subdirNative.status}; host messages per request: ${subdirNative.steps.map(step => subdirMessages(step, 'agent-instructions').length).join(', ')}; row notices: ${subdirNative.steps.map(step => subdirMessages(step, SUBDIR_KIND).length).join(', ')}`],
+  ['subdirectory instructions: with the shipped default (no key) the GLM request stays today\'s — no notice on any request over the same script', subdirOff.steps.length === 3 && subdirOff.status === 0 && subdirOff.steps.every(step => subdirMessages(step, SUBDIR_KIND).length === 0), `exit ${subdirOff.status}; notices per request: ${subdirOff.steps.map(step => subdirMessages(step, SUBDIR_KIND).length).join(', ')}`],
   ['graph row: a goal round carries the projection (goal-round)', graphNotices(graphRoundTwo).some(notice => notice.projection === 'goal-round'), graphRoundTwo === undefined ? `no round 2 request (${graphGoalSteps.length} goal-agent request(s), exit ${graphGoal.status})` : graphNotices(graphRoundTwo).map(notice => notice.projection).join(', ')],
   ['graph row: Write and Bash into the copy\'s node files are denied by graph-files-only and journaled; a write elsewhere runs (the recorder\'s follow-up records carry a kind)', [8, 9].every(index => graphResult(index)?.isError === true && graphResult(index)?.text.includes('inside the project graph') === true) && graphResult(10)?.isError !== true && !existsSync(graphNodeFile) && existsSync(graphNotes) && graphViolations.filter(record => record.rule === 'graph-files-only' && record.kind === undefined).map(record => record.tool).join(',') === 'Write,Bash', `records: ${graphViolations.map(record => `${record.kind ?? 'denial'}${record.rule.startsWith('graph-files-only') ? '' : `(${record.rule})`}${record.mode === 'shadow' ? '(shadow)' : ''}:${record.tool ?? ''}`).join(', ')}`],
   ['graph row: the workspace-change fallback runs and counts the graph tool writes as known (no late record names a node file)', healthOf(graphRun).guard?.reason.includes('事后纠正启用：工作区变更记录') === true && graphViolations.filter(record => record.mode === 'late').every(record => record.paths.every(path => !path.startsWith('docs/graph/'))), JSON.stringify(graphViolations.filter(record => record.mode === 'late').map(record => record.paths))],
