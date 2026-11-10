@@ -7,7 +7,7 @@
  * the command id. The texts are Chinese: the person reads them.
  */
 import type { AgentCommandInvocationLike, CommandDefinitionLike, CommandResultLike } from '../shared/dsh-min.ts'
-import { revokeRecord, type MemoryEntry, type MemoryState, type Scope } from './model.ts'
+import { forgetProposalRecord, revokeRecord, type MemoryEntry, type MemoryState, type Scope } from './model.ts'
 import { dirOfScope, noteWrite, readBoth, writeScope, type MemoryEnv, type ReadOutcome, type WriteResult } from './storage.ts'
 
 const MEMORY_COMMAND = 'memory'
@@ -54,9 +54,10 @@ function failureText(result: Exclude<WriteResult<string>, { readonly status: 'ok
   }
 }
 
-/** The scope whose entry the command acts on: the named one, else the project's first; the entry must be in the state the operation needs. */
+/** The scope whose entry the command acts on: the named one, else the project's first; the entry must be in the state the operation needs. A consolidation proposal (dreaming design §3.3) a `forget` drops too. */
 function targetOf(states: ReadonlyArray<readonly [Scope, MemoryState | undefined]>, name: string, scope: Scope | undefined, wanted: MemoryEntry['status']): Scope | undefined {
-  return states.find(([candidate, state]) => (scope === undefined || scope === candidate) && state?.entries.get(name)?.status === wanted)?.[0]
+  return states.find(([candidate, state]) => (scope === undefined || scope === candidate)
+    && (state?.entries.get(name)?.status === wanted || (wanted === 'active' && state?.proposals.get(name) !== undefined)))?.[0]
 }
 
 async function change(env: MemoryEnv, invocation: AgentCommandInvocationLike, op: 'forget' | 'restore', rest: readonly string[]): Promise<CommandResultLike> {
@@ -78,8 +79,15 @@ async function change(env: MemoryEnv, invocation: AgentCommandInvocationLike, op
   if (dir === undefined) return { kind: 'error', text: `没有${verb}「${name}」：这个会话找不到${SCOPE_WORDS[target]}记忆的目录。` }
   const result = await writeScope<string>(target, dir, (state) => {
     const entry = state.entries.get(name)
-    if (entry?.status !== wanted) return { refused: `「${name}」刚刚被别处改过，现在不能${verb}，/memory show 看一下。` }
-    return { records: [revokeRecord(op, entry, `人用 /memory ${op} 做的`, { actor: 'human', by: { session: session.id, agent: invocation.agent.id, commandId: invocation.commandId } })] }
+    if (entry?.status === wanted) {
+      return { records: [revokeRecord(op, entry, `人用 /memory ${op} 做的`, { actor: 'human', by: { session: session.id, agent: invocation.agent.id, commandId: invocation.commandId } })] }
+    }
+    // A proposal has no restore: a pattern the person asks for again is proposed again (dreaming design §3.2).
+    const proposal = op === 'forget' ? state.proposals.get(name) : undefined
+    if (proposal !== undefined) {
+      return { records: [forgetProposalRecord(proposal, '人用 /memory forget 做的', { actor: 'human', by: { session: session.id, agent: invocation.agent.id, commandId: invocation.commandId } })] }
+    }
+    return { refused: `「${name}」刚刚被别处改过，现在不能${verb}，/memory show 看一下。` }
   }, env.append)
   noteWrite(env, session.id, result)
   if (result.status !== 'ok') return { kind: 'error', text: failureText(result) }

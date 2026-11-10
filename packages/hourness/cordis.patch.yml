@@ -24,6 +24,13 @@
       inject: [tools]
       config: {}
     - id: glm-hourness/memory
+      # Memory (docs/ORCHESTRATION.md §8): the memory tools, the session-start
+      # index, /memory, the learning pipeline, and since 2026-11-11 the nightly
+      # consolidation entry memory.dream-nightly on the loop board
+      # (src/memory/loop-entry.ts): the person's recurring requests, read out of
+      # .llm/transcripts/ deterministically, become memory candidates (propose
+      # records) for the person to confirm (memory_store) or drop
+      # (memory_forget); recall never shows them before that.
       name: dsh-hourness/memory
       inject: [tools]
       config: {}

@@ -35,6 +35,7 @@ import { HABIT_ASK_FIRST, installHabitRule } from './habit-rule.ts'
 import { memoryCommand } from './commands.ts'
 import { answersOf } from './answers.ts'
 import { learningNotice } from './notices.ts'
+import { installDreamEntry } from './loop-entry.ts'
 import { liveDeclines, renderIndex, visibleEntries } from './recall.ts'
 import { memoryRowService } from './service.ts'
 import { readBoth, type Both, type GraphRead, type MemoryEnv, type NoteKey, type Places, type SourceCheck } from './storage.ts'
@@ -331,6 +332,13 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
     const assembled = await next()
     return { ...assembled, tools: assembled.tools.filter(tool => !MEMORY_TOOL_NAMES.includes(tool.name) && !LEARNING_TOOL_NAMES.includes(tool.name)) }
   })
+
+  // The nightly consolidation pass on the loop board (dreaming design §3.1): a refused hand-over is warned once and
+  // kept on the row health, the way the graph row keeps its third-rework entry; the tools and the index go on either way.
+  disposers.push(installDreamEntry(ctx, { now, ...(config.append === undefined ? {} : { append: config.append }) }, message => {
+    console.warn(`${name}: ${message}`)
+    health.reactivate('degraded', message)
+  }))
 
   /** The learning digest reminder of a root agent: installed first, so the index comes before it in a step that has both. */
   const installLearning = learningNotice({ ctx, env, report, warn: warnOnce })
