@@ -58,7 +58,8 @@ let counter = 0
 /** Per row, how many hits the reminders it gave will leave in the journal. */
 const owed = new WeakMap<Row, number>()
 async function call(row: Row, agent: AgentLike | undefined, name: string, extra: Partial<ToolExecuteInput> = {}): Promise<ToolFinalResult> {
-  const result = await row.runtime.ctx.tools.execute({ callId: `call-${++counter}`, name, arguments: {}, signal: new AbortController().signal, ...(agent === undefined ? {} : { agent }), ...extra })
+  const batch = await row.runtime.ctx.tools.execute({ calls: [{ id: `call-${++counter}`, name, arguments: {} }], signal: new AbortController().signal, log: { turn: row.runtime.progress.turn, step: row.runtime.progress.step }, ...(agent === undefined ? {} : { agent }), ...extra })
+  const result = batch.results[0].result
   const told = (result.additionalContexts ?? []).flatMap(context => (context as UserNotice).source?.kind === FAILURE_SOURCE ? [((context as UserNotice).source.lessons as string[]).length] : [])
   owed.set(row, told.reduce((sum, count) => sum + count, owed.get(row) ?? 0))
   return result

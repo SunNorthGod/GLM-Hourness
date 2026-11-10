@@ -53,6 +53,12 @@ export interface FakeAgent extends DesignAgentLike {
   woken: Promise<AssemblePayload> | undefined
   /** The scoped `system-prompt/assemble` listeners, outermost first. */
   readonly listeners: AssembleListener[]
+  /**
+   * The registry view `ctx.tools.schemas(agent)` returns: a spec stages the
+   * face a wire-face projection reads here (the base payload's `tools` is
+   * the 0.2.1-rc.3-era field the design row's face listener still reads).
+   */
+  stagedFace: AssembledTool[]
   /** Assemble one step the way the agent loop does: the base assembly through the agent's own listeners. */
   assemble(options?: { readonly sections?: readonly AssembledSection[], readonly tools?: readonly AssembledTool[], readonly variables?: Record<string, unknown> }): Promise<AssemblePayload>
   /** Run `agent/pre-step` for one step the way the agent loop does: the claimed messages through the scoped listeners; what the step admits is appended to the session history and logged as `user/message`. Returns the decision. */
@@ -326,6 +332,7 @@ export function designHost(options: { readonly graph?: boolean, readonly project
         ctx: agentCtx,
         status: agentOptions.status ?? 'idle',
         sent: [],
+        stagedFace: [],
         woken: undefined,
         listeners,
         assemble(assembleOptions = {}) {

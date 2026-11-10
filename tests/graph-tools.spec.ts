@@ -53,7 +53,7 @@ async function seed(graph: string): Promise<void> {
 
 function caller(runtime: FakeRuntime): Fixture['call'] {
   let callCounter = 0
-  return (name, args = {}) => runtime.ctx.tools.execute({ callId: `call-${++callCounter}`, name, arguments: args, agent: runtime.agent, signal: new AbortController().signal })
+  return (name, args = {}) => runtime.ctx.tools.execute({ calls: [{ id: `call-${++callCounter}`, name, arguments: args }], agent: runtime.agent, signal: new AbortController().signal, log: { turn: runtime.progress.turn, step: runtime.progress.step } }).then(batch => batch.results[0].result)
 }
 
 function toolTest(name: string, body: (fixture: Fixture) => Promise<void>): void {
@@ -224,7 +224,7 @@ toolTest('graph_focus sets the session focus and writes nothing to the graph', a
   assert.equal((await loadGraph(graph)).revision, before)
   refused(await call('graph_focus', { id: 'task-9' }), 'not_found', 'id')
   refused(await call('graph_focus', { id: 'task-1', depth: 1 }), 'invalid', 'depth')
-  refused(await runtime.ctx.tools.execute({ callId: 'no-agent', name: 'graph_focus', arguments: { id: 'task-1' }, signal: new AbortController().signal }), 'invalid')
+  refused(await runtime.ctx.tools.execute({ calls: [{ id: 'no-agent', name: 'graph_focus', arguments: { id: 'task-1' } }], signal: new AbortController().signal, log: { turn: runtime.progress.turn, step: runtime.progress.step } }).then(batch => batch.results[0].result), 'invalid')
 })
 
 toolTest('graph_propose writes as llm: planned work starts approved, a new branch waits for a human', async ({ call, graph }) => {

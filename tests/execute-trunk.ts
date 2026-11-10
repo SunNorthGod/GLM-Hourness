@@ -162,7 +162,8 @@ export async function trunkRig(options: {
     reports,
     async run(command, over = {}) {
       const callId = over.callId ?? `call-${++calls}`
-      const result = await runtime.ctx.tools.execute({ callId, name: 'pwsh', arguments: { command }, agent: over.agent ?? runtime.agent, signal: new AbortController().signal })
+      const batch = await runtime.ctx.tools.execute({ calls: [{ id: callId, name: 'pwsh', arguments: { command } }], agent: over.agent ?? runtime.agent, signal: new AbortController().signal, log: { turn: runtime.progress.turn, step: runtime.progress.step } })
+      const result = batch.results[0].result
       return { result, callId, text: result.error?.message ?? result.content.map(block => block.text ?? '').join('\n') }
     },
     async check(commit) {

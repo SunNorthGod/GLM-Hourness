@@ -505,7 +505,7 @@ async function rows(broken = false): Promise<FakeRuntime> {
   return rt
 }
 
-const shellWrite = (rt: FakeRuntime): Promise<ToolFinalResult> => rt.ctx.tools.execute({ callId: 'c1', name: 'Bash', arguments: { command: 'Set-Content f.txt x' }, agent: rt.agent, signal: new AbortController().signal })
+const shellWrite = (rt: FakeRuntime): Promise<ToolFinalResult> => rt.ctx.tools.execute({ calls: [{ id: 'c1', name: 'Bash', arguments: { command: 'Set-Content f.txt x' } }], agent: rt.agent, signal: new AbortController().signal, log: { turn: rt.progress.turn, step: rt.progress.step } }).then(batch => batch.results[0].result)
 
 test('dialect: glm-prompt provides the service; it claims an agent it installed on, on GLM routes only', async () => {
   const rt = await rows()

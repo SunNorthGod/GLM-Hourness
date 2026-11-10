@@ -17,6 +17,7 @@
 import { randomUUID } from 'node:crypto'
 import type { GenerateOptions, LlmRuntime } from '@deepseek-ai/dsh-llm'
 import type { ProvideHost, ServiceLookup } from './cordis-min.ts'
+import type { FacePolicyRegistry } from './face-policy.ts'
 import type { StreamChunk } from './lm-min.ts'
 
 export type { ProvideHost, ServiceLookup } from './cordis-min.ts'
@@ -94,7 +95,7 @@ export interface ToolExecutionContext {
   concludeTurn(): void
 }
 
-/** Input of `ctx.tools.execute`. */
+/** One tool call as the runtime's batch machinery carries it (the per-call record the pipeline's exec object mirrors). */
 export interface ToolExecuteInput {
   readonly callId: string
   readonly rootCallId?: string
@@ -104,6 +105,44 @@ export interface ToolExecuteInput {
   /** Transport sub-dispatch token; listeners treat a call carrying it as nested. */
   readonly parent?: unknown
   readonly signal: AbortSignal
+}
+
+/**
+ * One call of a `tools.execute` batch (rc.1 dsh-tools `executeToolBatch`; the
+ * agent loop hands the model's tool-call blocks over). The batch parses
+ * `arguments` when it is the provider's JSON text and passes objects through.
+ */
+interface ToolBatchCall {
+  readonly type?: 'tool-call'
+  /** The call id the result settles under. */
+  readonly id: string
+  readonly name: string
+  readonly arguments?: unknown
+}
+
+/**
+ * Input of `ctx.tools.execute` (rc.1 dsh-tools `execute`: a raw call batch the
+ * selected executor settles; the 0.2.1-rc.3 service took the single
+ * same-process call, docs/DESIGN.md §2.4a). A batch the agent loop runs
+ * carries `log` and the step's `toolSet`; an inner batch carries neither, so
+ * its calls log no session events and resolve against the registry view.
+ */
+interface ToolBatchExecuteInput {
+  readonly calls: readonly ToolBatchCall[]
+  readonly agent?: AgentLike
+  readonly signal?: AbortSignal
+  readonly log?: { readonly turn: number, readonly step: number }
+  readonly toolSet?: unknown
+  readonly maxParallelToolCalls?: number
+  /** Test doubles only: the transport sub-dispatch token the 0.2.1-rc.3 singular input carried (run_code's precedent). */
+  readonly parent?: unknown
+}
+
+/** What `ctx.tools.execute` settles to (rc.1 `BatchSettlement.result`). */
+interface ToolBatchExecuteResult {
+  readonly results: ReadonlyArray<{ readonly callId: string, readonly result: ToolFinalResult }>
+  readonly additionalContexts?: readonly unknown[]
+  readonly concluded?: boolean
 }
 
 /** The materialized final result `ctx.tools.execute` resolves to. */
@@ -237,6 +276,14 @@ export interface PreStepPayload {
   readonly signal: AbortSignal
   readonly turn: number
   readonly step: number
+  /**
+   * The step's model selection (rc.1 dsh-agent-loop `preStep`,
+   * agent-loop:685–690, `modelSelection: selection`; the shape is
+   * `toSelection`, agent:102–107). Optional only so test doubles may leave it
+   * out; the rows read it through a guard and a missing selection reads as a
+   * non-GLM step.
+   */
+  readonly modelSelection?: { readonly provider?: string, readonly model?: string, readonly reasoningEffort?: string }
 }
 
 /**
@@ -305,8 +352,17 @@ export interface ToolsLike {
   register(definition: ToolDefinitionLike): () => void
   /** The definition a scope resolves (scoped shadows global; a restricted-away global reads as absent). */
   get(name: string, scope?: unknown): ToolDefinitionLike | undefined
-  /** Run one call through the full tool pipeline. */
-  execute(input: ToolExecuteInput): Promise<ToolFinalResult>
+  /**
+   * The registered definitions of a scope as model-facing schemas, without
+   * execution and presentation callbacks (rc.1 dsh-tools `schemas`,
+   * tools:585–591, `projectToolSchema` tools:366–377): the registry view the
+   * wire-face projection reads, with scoped shadowing and without step
+   * admission. Not a boundary: a tool off this projection still executes by
+   * name (docs/DESIGN.md §2.4a).
+   */
+  schemas(scope?: unknown): readonly AssembledTool[]
+  /** Run one batch of calls through the full tool pipeline. */
+  execute(input: ToolBatchExecuteInput): Promise<ToolBatchExecuteResult>
 }
 
 /**
@@ -339,13 +395,16 @@ export interface AssembledSection {
 
 /**
  * The assembly object passed through the `system-prompt/assemble` waterfall.
- * Whether `tools` is on the payload is runtime-version-dependent: the
- * 0.2.1-rc.3 desktop export (docs/DESIGN.md §2.4a) composes the payload with
- * the tool face, while the installed 0.2.2-rc.1 runtime composes it without
- * one and appends the collected tools to the request after the waterfall
- * (dsh-system-prompt lib/index.js, the `assemble` method). Every listener
- * that rewrites the face reads `tools` through an `undefined` guard and
- * degrades to the payload as `next()` returned it.
+ * The installed 0.2.2-rc.1 runtime composes the waterfall payload with
+ * sections, contexts and variables only, and appends the collected tool face
+ * to the request after the waterfall, overwriting anything the waterfall
+ * wrote back (dsh-system-prompt lib/index.js, the `assemble` method, "tool
+ * declarations remain provider-owned"; docs/DESIGN.md §2.4a). The wire face
+ * is rewritten at the channel adapter's stream (src/glm-llm/face-wire.ts),
+ * not in the waterfall. `tools` is the 0.2.1-rc.3-era field the face
+ * listeners still reading it take their degrade path on (a payload without
+ * one returns unchanged); the face-migration batches B–D remove those
+ * listeners and the field with the last of them.
  */
 export interface AssemblePayload {
   readonly sections: readonly AssembledSection[]
@@ -418,6 +477,14 @@ export interface InjectHost {
 /** The services rows take optionally through `ctx.inject`. */
 export interface InjectableServices {
   readonly sessionProjections: SessionProjectionsService
+  /**
+   * The face-policy registry the glm-llm row provides (src/shared/
+   * face-policy.ts): the orchestration rows register their wire-face sources
+   * here, each inside a child fiber, so a source follows its row's life
+   * cycle. Absent while the channel row is off; a row's face rewrite then
+   * stays out and the row health says so.
+   */
+  readonly glmHournessFaces: FacePolicyRegistry
   readonly agents: AgentsService
   readonly subagents: SubagentsService
   readonly tools: ToolsLike

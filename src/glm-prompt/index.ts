@@ -2,23 +2,25 @@
  * dsh-glm-prompt — dialect row: in GLM-routed requests the model-visible
  * prompt and tool face mirror the ZCode training distribution.
  *
- * Seam (rc.3 runtime, docs/DESIGN.md §2.4a and §3): every step runs the
- * agent-scoped `system-prompt/assemble` waterfall before `agent/pre-step`,
- * and the request carries exactly the assembled `tools`. At agent creation
- * this row registers the ZCode-facing aliases in the agent scope (so they can
- * execute) and one prepend `system-prompt/assemble` listener. After `next()`
- * that listener reads the route the model-selection listener injected and,
- * for that request alone, rewrites the sections and the tool face: a GLM
- * request sees the ZCode identity and aliases instead of the natives they
- * cover, with ZCode's local tool search applied on top (src/toolsearch/);
- * any other request sees the natives and not the aliases or the search
- * controls. Nothing is restricted or unmounted, so a mid-session route
- * switch takes effect on the next step. The ZCode todo reminder rides the
- * same step: its `agent/pre-step` listener reads what this step's rewrite
- * decided. So does the peak-hour reminder (docs/ORCHESTRATION.md §11.4), a
- * harness notice of this project, not a ZCode text. Each assembled request
- * reports the row health of its session (src/shared/health.ts). Activation
- * never throws; one agent's failure leaves the others.
+ * Seam (0.2.2-rc.1 runtime, docs/DESIGN.md §2.4a and the face-migration
+ * design 0.1): the assemble waterfall carries no tool face — the runtime
+ * appends its collected face to the request after the waterfall — so the
+ * request's face is the wire face the channel adapter composes
+ * (src/glm-llm/face-wire.ts). This row registers the ZCode-facing aliases in
+ * the agent scope (so they can execute) and one prepend
+ * `system-prompt/assemble` listener that, after `next()`, reads the route
+ * the model-selection listener injected and rewrites the sections: a GLM
+ * request sees the ZCode identity and the dialect sections; any other
+ * request keeps the DSH sections. The section judgments and the todo
+ * eligibility read the step's pre-exposure wire face (the projection of the
+ * agent's registry view), whose dialect layer the same wire module applies.
+ * Nothing is restricted or unmounted, so a mid-session route switch takes
+ * effect on the next step. The ZCode todo reminder rides the same step: its
+ * `agent/pre-step` listener reads what this step's judgment decided. So does
+ * the peak-hour reminder (docs/ORCHESTRATION.md §11.4), a harness notice of
+ * this project, not a ZCode text. Each assembled request reports the row
+ * health of its session (src/shared/health.ts). Activation never throws; one
+ * agent's failure leaves the others.
  *
  * The row provides the dialect service (src/shared/dialect.ts,
  * `glmHournessDialect`): which agents and routes it rewrites, and how its
@@ -32,18 +34,20 @@ import { CLI_PREFIX, DYNAMIC_BEHAVIOR } from './verbatim.ts'
 import { readReportingDepth, reportingDepthSection, REPORTING_DEPTHS, type ReportingDepth } from './reporting-depth.ts'
 import { standingDepthReader, type StandingDepth } from './standing-depth.ts'
 import { buildEnvInfoSection, buildMemorySectionDsh, CONTEXT_MANAGEMENT_DSH, SESSION_GUIDANCE_DSH, SKILLS_NOTE_DSH } from './localize.ts'
-import { CONTEXT_MANAGEMENT_SECTION, hasOutputStyle, isGlmAssembly, rewriteDialectSections, rewriteToolFace } from './assembly.ts'
+import { CONTEXT_MANAGEMENT_SECTION, hasOutputStyle, isGlmAssembly, rewriteDialectSections } from './assembly.ts'
 import { mapTodoWriteToDsh } from './todowrite.ts'
 import { TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from './zcode-tool-text.ts'
 import { installTodoReminder, TODO_NATIVE, TODO_WRITE_NAME } from './todo-reminder.ts'
 import { installPeakReminder, readPeakMode, type PeakModeRead } from './peak-reminder.ts'
 import { installSubdirInstructions, sessionWorkingDirectory } from './subdir-instructions.ts'
 import { glmMetricSink, type GlmMetricSink } from '../glm-llm/metrics.ts'
+import { wireFaceProjection } from '../glm-llm/face-wire.ts'
 import { installToolSearch } from '../toolsearch/index.ts'
 import { DIALECT_SERVICE, type DialectService } from '../shared/dialect.ts'
 import { peakModeService } from '../shared/peak-mode.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { assemblyRoute, isGlmModel, type Route } from '../shared/route.ts'
+import { facePolicyOf, type FacePolicyRegistry } from '../shared/face-policy.ts'
 import { LESSONS_QUERY_TOOL, MEMORY_TOOL_NAMES } from '../shared/tool-names.ts'
 import type { AgentLike, AssemblePayload, PluginContext, ProvideHost, ServiceLookup, ToolDefinitionLike } from '../shared/dsh-min.ts'
 import Schema from '../shared/schemastery.ts'
@@ -125,20 +129,18 @@ export function dialectSections(outputStyleActive = false, reportingDepth: Repor
 }
 
 /**
- * Whether the glm:memory section belongs in this request: every memory
- * tool is in the tools the assembly's `next()` returned. Without the
- * orchestration package, or with the memory row disabled or without a home
- * (it then registers no tools), GLM is not taught tools that are not there.
- * The argument is `next()`'s result itself, read before the alias rewrite
- * and before tool search, so a memory tool that tool search would defer
- * still counts (it stays loadable). Memory tools are resident today
- * (src/shared/tool-names.ts); the change that defers them adds an
- * end-to-end case through tool search.
+ * Whether the glm:memory section belongs in this request: every memory tool
+ * is on the step's pre-exposure wire face (the projection of the agent's
+ * registry view, src/glm-llm/face-wire.ts). Without the orchestration
+ * package, or with the memory row disabled or without a home (it then
+ * registers no tools), GLM is not taught tools that are not there. The
+ * projection is read before the tool-search split, so a memory tool that
+ * tool search defers still counts (it stays loadable) — and on a delegated
+ * child the memory row's source removes them, so the section does not apply,
+ * as the old rewrite made it.
  */
-export function memorySectionApplies(assembled: AssemblePayload): boolean {
-  // A payload without a tool face (the installed 0.2.2-rc.1 runtime composes one without, docs/DESIGN.md §2.4a) carries no memory tools: the section does not apply.
-  const tools = assembled.tools
-  return tools !== undefined && MEMORY_TOOL_NAMES.every(name => tools.some(tool => tool.name === name))
+export function memorySectionApplies(face: readonly Readonly<{ name: string }>[]): boolean {
+  return MEMORY_TOOL_NAMES.every(name => face.some(tool => tool.name === name))
 }
 
 /**
@@ -210,10 +212,14 @@ export function buildAgentAliases(agent: AgentLike): BuiltAlias[] {
 
 /**
  * Install the dialect on one agent: scoped alias registrations, tool search
- * (unless `toolSearchMode` is `off`), the per-request rewrite and the todo
- * reminder. Tool search runs on the alias face, so its resident/deferred
- * split sees ZCode names. The reminder reads this step's rewrite: GLM route
- * and TodoWrite on the face before tool search defers it (ZCode checks the
+ * (unless `toolSearchMode` is `off`), the per-request section rewrite and the
+ * todo reminder. The tool face itself is the adapter's wire face
+ * (src/glm-llm/face-wire.ts); this listener judges the step's sections and
+ * the todo eligibility on the step's pre-exposure wire face, computed from
+ * the agent's registry view with `policy` reading the face-policy registry.
+ * Tool search runs on the projection, so its resident/deferred split sees
+ * ZCode names. The reminder reads this step's judgment: GLM route and
+ * TodoWrite on the projection before tool search defers it (ZCode checks the
  * turn tools, not the request's resident face). The peak-hour reminder
  * reads the GLM route of the step and the wall clock `now`, and words itself
  * by the peak mode `peakMode` reads (once per notice sent); without a reader
@@ -225,7 +231,7 @@ export function buildAgentAliases(agent: AgentLike): BuiltAlias[] {
  * (src/glm-prompt/standing-depth.ts), which wins over the configured one; a
  * reading that could not be used is part of the row health of every GLM step.
  */
-export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now(), peakMode?: () => PeakModeRead, standingDepth?: () => StandingDepth, metric?: GlmMetricSink, workingDirectory?: () => string | undefined): () => void {
+export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now(), peakMode?: () => PeakModeRead, standingDepth?: () => StandingDepth, metric?: GlmMetricSink, workingDirectory?: () => string | undefined, policy?: () => FacePolicyRegistry | undefined): () => void {
   const env = sessionEnv(config.env, agent)
   const standing = standingDepth?.() ?? {}
   const depth = standing.level ?? readReportingDepth(config).depth
@@ -240,11 +246,9 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
   const plain = sectionSets(false)
   const styled = sectionSets(true)
   const aliases = buildAgentAliases(agent)
-  const aliasNames = new Set(aliases.map(alias => alias.tool.name))
-  const coveredNatives = new Set(aliases.flatMap(alias => alias.covers))
   const disposers = aliases.map(alias => agent.ctx.tools.register(alias.tool))
   const searchMode = config.toolSearchMode ?? 'local'
-  const toolSearch = searchMode === 'local' ? installToolSearch(agent) : undefined
+  const toolSearch = searchMode === 'local' ? installToolSearch(agent, ...(policy === undefined ? [] : [{ policy }])) : undefined
   if (toolSearch !== undefined) disposers.push(() => toolSearch.dispose())
   let todoReminderEligible = false
   let glmStep = false
@@ -253,16 +257,17 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
     const glm = isGlmAssembly(assembled)
     glmStep = glm
     health?.report(sessionIdOf(agent), ...withDepthProblem(dialectHealth(assemblyRoute(assembled), glm, searchMode === 'off' ? 'off' : toolSearch === undefined ? 'missing' : 'local'), standing.problem))
-    // Judged on next()'s tools, before the face rewrite and tool search (memorySectionApplies); the lessons sentence follows the same tools.
+    // The step's pre-exposure wire face, from the agent's registry view (the
+    // assemble payload carries no tool face on the installed runtime,
+    // docs/DESIGN.md §2.4a): the section judgments and the todo eligibility
+    // read it — on a delegated child the role layer's removals leave the
+    // memory tools off it, so the section does not apply, as the old rewrite
+    // made it.
+    const face = wireFaceProjection(agent.ctx.tools.schemas(agent), { glm, sessionId: sessionIdOf(agent) ?? '', policy: policy?.() })
     const set = hasOutputStyle(assembled) ? styled : plain
-    const wanted = !memorySectionApplies(assembled) ? set.withoutMemory : assembled.tools?.some(tool => tool.name === LESSONS_QUERY_TOOL) === true ? set.withLessons : set.all
-    const withSections = glm ? rewriteDialectSections(assembled, wanted) : assembled
-    // A payload without a tool face (the installed 0.2.2-rc.1 runtime composes one without, docs/DESIGN.md §2.4a) keeps the dialect sections and skips the face rewrite and tool search: the runtime's collected tools serve the request.
-    if (withSections.tools === undefined) return withSections
-    const face = rewriteToolFace(withSections.tools, glm, aliasNames, coveredNatives)
+    const wanted = !memorySectionApplies(face) ? set.withoutMemory : face.some(tool => tool.name === LESSONS_QUERY_TOOL) ? set.withLessons : set.all
     todoReminderEligible = glm && face.some(tool => tool.name === TODO_WRITE_NAME)
-    const tools = toolSearch === undefined ? face : glm ? toolSearch.expose(face) : toolSearch.hide(face)
-    return { ...withSections, tools }
+    return glm ? rewriteDialectSections(assembled, wanted) : assembled
   }, { prepend: true }))
   // Registered after tool search's pre-step listener, so it runs inside it
   // and the reminder precedes the deferred-tools announcement, the order in
@@ -364,7 +369,7 @@ export function apply(ctx: PluginContext & Partial<ProvideHost> & ServiceLookup,
     if (installed.has(agent)) return
     installed.add(agent)
     try {
-      disposers.push(installDialect(agent, config, reporter, now, peakModeReader(ctx, agent), standingDepthReader(ctx, agent, warnDepth), metric, () => sessionWorkingDirectory(ctx, agent.session)))
+      disposers.push(installDialect(agent, config, reporter, now, peakModeReader(ctx, agent), standingDepthReader(ctx, agent, warnDepth), metric, () => sessionWorkingDirectory(ctx, agent.session), () => facePolicyOf(ctx)))
       active.add(agent)
     }
     catch (error) {

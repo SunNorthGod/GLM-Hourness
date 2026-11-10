@@ -139,7 +139,7 @@ test('a delegated child loses the memory tools and the learning tool from its re
     const assembled = await row.runtime.assemble({ provider: 'glm-probe', model: 'glm-5.3' })
     assert.deepEqual(assembled.tools.map(tool => tool.name), ['pwsh'], 'the memory tools and the learning tool are not in the child\'s face')
     for (const [callId, name, args] of [['c1', 'memory_store', PREFERENCE], ['c2', 'learning_signals', {}]] as const) {
-      const result = await row.runtime.ctx.tools.execute({ callId, name, arguments: args, agent: child, signal: new AbortController().signal })
+      const result = (await row.runtime.ctx.tools.execute({ calls: [{ id: callId, name, arguments: args }], agent: child, signal: new AbortController().signal, log: { turn: row.runtime.progress.turn, step: row.runtime.progress.step } })).results[0].result
       assert.equal(result.isError, true, name)
       assert.ok(result.content[0]?.text?.includes('"code":"role"') === true, name)
     }

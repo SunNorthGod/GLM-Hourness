@@ -186,7 +186,7 @@ test('the LocalToolSearch description is the 3.17.1 local text', () => {
   assert.ok(LOCAL_TOOL_SEARCH_DESCRIPTION.endsWith('"status":"in_progress","priority":"high"}]}})\n</example>'))
 })
 
-// --- wiring on the rc.3 double (glm-prompt row) ---
+// --- wiring on the rc.1 double (glm-prompt row) ---
 
 async function glmAgent(model = 'glm-5.3') {
   const rt = fakeRuntime()
@@ -237,6 +237,8 @@ test('no announcement for an empty first step or a non-GLM request', async () =>
 test('LocalToolSearch returns the projected content and renders it as text blocks', async () => {
   const { rt } = await glmAgent()
   const search = rt.scoped.find(entry => entry.name === 'LocalToolSearch')!
+  // The exposure state of a step is computed at its pre-step.
+  await rt.preStep({ messages: [userInput] })
   const value = await rt.execute('LocalToolSearch', { query: 'select:web_fetch', max_results: 5 }) as { matches: string[], total_deferred_tools: number, content: string[] }
   assert.deepEqual(value.matches, ['web_fetch'])
   assert.equal(value.total_deferred_tools, 2)
@@ -247,12 +249,13 @@ test('LocalToolSearch returns the projected content and renders it as text block
   assert.deepEqual(none.content, [NO_MATCHING_DEFERRED_TOOLS])
 })
 
-/** A GLM runtime that logs the calls its tools receive. */
+/** A GLM runtime that logs the calls its tools receive, one step admitted. */
 async function loggingGlmRuntime(calls: Array<{ name: string, args: unknown }>) {
   const rt = fakeRuntime({ calls })
   glmPromptApply(rt.ctx)
   await rt.create()
   await rt.assemble({ model: 'glm-5.3' })
+  await rt.preStep({ messages: [userInput] })
   return rt
 }
 
@@ -277,6 +280,7 @@ test('DeferredToolCall is no way round the write tools: Write is resident on GLM
 
 test('DeferredToolCall rejects resident, control, unknown and malformed calls with the ZCode texts', async () => {
   const { rt } = await glmAgent()
+  await rt.preStep({ messages: [userInput] })
   await assert.rejects(rt.execute('DeferredToolCall', { name: 'Read', input: {} }), { message: 'Call Read directly using its normal tool call; DeferredToolCall only accepts deferred tools.' })
   await assert.rejects(rt.execute('DeferredToolCall', { name: 'ToolSearch', input: {} }), { message: 'Call ToolSearch directly using its normal tool call; DeferredToolCall only accepts deferred tools.' })
   await assert.rejects(rt.execute('DeferredToolCall', { name: 'LocalToolSearch', input: {} }), { message: 'Tool not available in this request: LocalToolSearch' })
@@ -284,5 +288,6 @@ test('DeferredToolCall rejects resident, control, unknown and malformed calls wi
   await assert.rejects(rt.execute('DeferredToolCall', { name: 'web_fetch' }), { message: 'Invalid DeferredToolCall input.' })
   await assert.rejects(rt.execute('DeferredToolCall', { name: 'web_fetch', input: {}, extra: 1 }), { message: 'Invalid DeferredToolCall input.' })
   await rt.assemble({ model: 'deepseek-flash' })
+  await rt.preStep({ messages: [userInput] })
   await assert.rejects(rt.execute('DeferredToolCall', { name: 'web_fetch', input: {} }), { message: 'DeferredToolCall is not available for this request.' })
 })

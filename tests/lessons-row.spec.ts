@@ -164,13 +164,13 @@ test('a delegated child loses lessons_merge from its request and gets no notice,
 
     const assembled = await row.runtime.assemble({ provider: 'glm-probe', model: 'glm-5.3' })
     assert.deepEqual(assembled.tools.map(tool => tool.name).sort(), ['lessons_query', 'pwsh'], 'lessons_merge is not in the child\'s face')
-    const merge = await row.runtime.ctx.tools.execute({ callId: 'c1', name: 'lessons_merge', arguments: LESSON, agent: child, signal: new AbortController().signal })
+    const merge = (await row.runtime.ctx.tools.execute({ calls: [{ id: 'c1', name: 'lessons_merge', arguments: LESSON }], agent: child, signal: new AbortController().signal })).results[0].result
     assert.equal(merge.isError, true)
     const refusal = JSON.parse(merge.content[0]?.text?.replace(/^Error: /, '') ?? '{}') as { code: string, hint: string }
     assert.equal(refusal.code, 'role')
     assert.ok(refusal.hint.includes('handback'), refusal.hint)
     assert.deepEqual(row.journal(), [])
-    const query = await row.runtime.ctx.tools.execute({ callId: 'c2', name: 'lessons_query', arguments: { text: 'anything' }, agent: child, signal: new AbortController().signal })
+    const query = (await row.runtime.ctx.tools.execute({ calls: [{ id: 'c2', name: 'lessons_query', arguments: { text: 'anything' } }], agent: child, signal: new AbortController().signal })).results[0].result
     assert.equal(query.isError, false)
   })
 })

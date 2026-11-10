@@ -70,7 +70,7 @@ async function setup(board: FakeBoard | undefined): Promise<Fixture> {
     workspace,
     graph,
     runtime,
-    call: async (name, args = {}, agent) => runtime.ctx.tools.execute({ callId: `call-${++counter}`, name, arguments: args, agent: agent ?? runtime.agent, signal: new AbortController().signal }),
+    call: async (name, args = {}, agent) => runtime.ctx.tools.execute({ calls: [{ id: `call-${++counter}`, name, arguments: args }], agent: agent ?? runtime.agent, signal: new AbortController().signal, log: { turn: runtime.progress.turn, step: runtime.progress.step } }).then(batch => batch.results[0].result),
     rev: async id => (await loadGraph(graph)).revisions.get(id)!,
     question: async id => (await loadGraph(graph)).nodes.get(id) as unknown as Record<string, unknown>,
   }
