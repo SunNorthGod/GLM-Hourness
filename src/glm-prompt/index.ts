@@ -63,7 +63,7 @@ export interface GlmPromptConfig {
   readonly skills?: boolean
   /** ZCode tool search for GLM requests: `local` (default, DESIGN.md §5.10) or `off` (every tool loads directly). */
   readonly toolSearchMode?: 'local' | 'off'
-  /** Deliver the AGENTS.md / CLAUDE.md files of the directories an alias Read, Write or Edit reaches below the working directory, as the host does for the natives (subdir-instructions.ts); on unless `false`. */
+  /** Deliver the AGENTS.md / CLAUDE.md files of the directories an alias Read, Write or Edit reaches below the working directory, as the host does for the natives (subdir-instructions.ts); off by default (ZCode 3.17.1 does not load subdirectory instructions, so the default request is unchanged), on only with `true` (DESIGN.md §5.11). */
   readonly subdirInstructions?: boolean
 }
 
@@ -84,7 +84,7 @@ export const Config = Schema.object({
   }); delete (env.meta as { default?: unknown }).default; return env })().description('Host facts for the Environment section; omitted skips the section.'),
   skills: Schema.boolean().default(false).description('Whether user-invocable skills exist (adds the skills note).'),
   toolSearchMode: Schema.union(['local', 'off'].map(value => Schema.const(value))).default('local').description('ZCode tool search for GLM requests: local defers tools behind LocalToolSearch and DeferredToolCall; off loads every tool directly.'),
-  subdirInstructions: Schema.boolean().default(true).description('Deliver the AGENTS.md and CLAUDE.md files of the subdirectories a Read, Write or Edit reaches, as DSH does for its native file tools (ZCode 3.17.1 does not load them).'),
+  subdirInstructions: Schema.boolean().default(false).description('Deliver the AGENTS.md and CLAUDE.md files of the subdirectories a Read, Write or Edit reaches, as DSH does for its native file tools. Off by default: ZCode 3.17.1 does not load subdirectory instructions, so a default profile\'s request is unchanged (DESIGN.md §5.11); set true to enable.'),
 })
 
 /** Order of the harness identity section this row shadows (SECTION_ORDERS.HARNESS_IDENTITY). */
@@ -270,7 +270,7 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
   const peakReminder = installPeakReminder(agent, () => glmStep, now, peakMode, metric)
   if (peakReminder !== undefined) disposers.push(peakReminder)
   // Registered after the peak reminder, so it runs innermost and its notice comes first after the admitted messages, where the host puts its own instruction messages.
-  const subdir = config.subdirInstructions === false || workingDirectory === undefined ? undefined : installSubdirInstructions(agent, () => glmStep, workingDirectory)
+  const subdir = config.subdirInstructions !== true || workingDirectory === undefined ? undefined : installSubdirInstructions(agent, () => glmStep, workingDirectory)
   if (subdir !== undefined) disposers.push(subdir)
   return () => { for (const dispose of disposers.splice(0)) dispose() }
 }

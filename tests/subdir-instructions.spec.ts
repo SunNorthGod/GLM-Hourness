@@ -41,10 +41,10 @@ function turn(calls: ReadonlyArray<{ name: string, args?: unknown, failed?: bool
 const subdirNotices = (decision: PreStepDecision): UserNotice[] =>
   decision.kind === 'enter' ? decision.messages.filter((message): message is UserNotice => (message as UserNotice).source?.kind === SUBDIR_INSTRUCTIONS_SOURCE) : []
 
-/** The dialect row applied, an agent created in `cwd`, and one GLM step assembled over `history`. */
+/** The dialect row applied, an agent created in `cwd`, and one GLM step assembled over `history`. The shipped default of `subdirInstructions` is off; unless a test passes its own `config`, the row runs with the switch on, the state every notice behavior needs (the shipped default has its own test). */
 async function step(cwd: string, history: readonly DerivedMessage[], options: { model?: string, config?: Parameters<typeof apply>[1], messages?: readonly unknown[] } = {}) {
   const rt = fakeRuntime({ cwd })
-  apply(rt.ctx, options.config ?? {}, () => Date.parse('2026-10-28T10:00:00+08:00'))
+  apply(rt.ctx, options.config ?? { subdirInstructions: true }, () => Date.parse('2026-10-28T10:00:00+08:00'))
   await rt.create()
   rt.history.push(...history)
   await rt.assemble({ model: options.model ?? 'glm-5.3' })
@@ -167,19 +167,21 @@ test('identical candidates of one directory are sent once; directories without f
   finally { cleanup() }
 })
 
-test('non-GLM routes and the off switch get no notice; the request is otherwise untouched', async () => {
+test('the switch: the shipped default (no key) and explicit false get no notice, true enables; the request is otherwise untouched', async () => {
   const { root, cleanup } = project()
   try {
     const history = turn([{ name: 'Read', args: { file_path: join(root, 'pkg', 'sub', 'file.txt') } }])
     assert.deepEqual(subdirNotices((await step(root, history, { model: 'deepseek-flash' })).decision), [])
-    const off = await step(root, history, { config: { subdirInstructions: false } })
-    assert.deepEqual(subdirNotices(off.decision), [])
-    // Nothing below the working directory was touched: the decision is what the row decides without the notice.
+    // The shipped default carries no key: the notice is not installed and the request is today's (DESIGN.md §5.11).
+    assert.deepEqual(subdirNotices((await step(root, history, { config: {} })).decision), [])
+    assert.deepEqual(subdirNotices((await step(root, history, { config: { subdirInstructions: false } })).decision), [])
+    assert.match(subdirNotices((await step(root, history, { config: { subdirInstructions: true } })).decision)[0]?.content[0].text ?? '', /SUB-MARK/)
+    // Nothing below the working directory was touched: with the switch on the decision carries the same messages as with it off.
     const untouched = turn([{ name: 'Read', args: { file_path: join(root, 'AGENTS.md') } }])
     const on = await step(root, untouched)
-    const without = await step(root, untouched, { config: { subdirInstructions: false } })
+    const off = await step(root, untouched, { config: {} })
     assert.deepEqual(subdirNotices(on.decision), [])
-    assert.deepEqual(on.decision.kind === 'enter' ? on.decision.messages.map(message => (message as UserNotice).source.kind) : [], without.decision.kind === 'enter' ? without.decision.messages.map(message => (message as UserNotice).source.kind) : ['unexpected'])
+    assert.deepEqual(on.decision.kind === 'enter' ? on.decision.messages.map(message => (message as UserNotice).source.kind) : [], off.decision.kind === 'enter' ? off.decision.messages.map(message => (message as UserNotice).source.kind) : ['unexpected'])
   }
   finally { cleanup() }
 })
@@ -226,13 +228,13 @@ test('the working directory comes from the workingDirectory service, else the se
     const history = turn([{ name: 'Read', args: { file_path: join(root, 'pkg', 'sub', 'file.txt') } }])
     const rt = fakeRuntime()
     rt.services.set('workingDirectory', { get: () => root })
-    apply(rt.ctx, {}, () => Date.parse('2026-10-28T10:00:00+08:00'))
+    apply(rt.ctx, { subdirInstructions: true }, () => Date.parse('2026-10-28T10:00:00+08:00'))
     await rt.create()
     rt.history.push(...history)
     await rt.assemble({ model: 'glm-5.3' })
     assert.equal(subdirNotices(await rt.preStep({ step: 2 })).length, 1)
     const bare = fakeRuntime()
-    apply(bare.ctx, {}, () => Date.parse('2026-10-28T10:00:00+08:00'))
+    apply(bare.ctx, { subdirInstructions: true }, () => Date.parse('2026-10-28T10:00:00+08:00'))
     await bare.create()
     bare.history.push(...history)
     await bare.assemble({ model: 'glm-5.3' })

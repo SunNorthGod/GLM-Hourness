@@ -21,7 +21,9 @@
  * ZCode 3.17.1 itself does not load subdirectory instructions (it reads
  * ~/.zcode/AGENTS.md and the nearest AGENTS.md from the working directory up
  * to the project root once, at session start), so this notice is a request
- * difference from ZCode, recorded in docs/DESIGN.md §5.8.
+ * difference from ZCode, recorded in docs/DESIGN.md §5.8. It is off by
+ * default (the row's `subdirInstructions`), so a default profile's request is
+ * unchanged; a profile that wants the files sets the switch to true.
  */
 import { stat, readFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'

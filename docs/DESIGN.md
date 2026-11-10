@@ -838,7 +838,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 | 19 | Dynamic Behavior 节 | 方言 | 3.17.1 原文，coding-plan 与 start-plan 都发（§5.3） | 已实现 2026-10-30 |
 | 20 | Memory 节 | 方言 | 3.17.1 `buildMemorySection` 的十行放进镜像文件，两句改写、两句新增，白名单测试钉住只改了这几处（§5.3 ⑧） | 已实现 2026-11-01（m5-3） |
 | 21 | 压缩后读原文 | 方言 | 3.17.1 `Bxt` 的原文路径一句逐字接在 GLM 压缩摘要末尾，路径指向编排层导出的纯文本（§5.6、§2.4「会话原文」）；位置在 DSH 的 `<compacted-summary>` 外框里，不在 ZCode 的续接消息里；3.17.1 的正式调用不传 `transcriptPath`，ZCode 正式流量里没有这一句 | 已实现 2026-11-05，L3 探针通过，桌面版 L4 2026-11-06 在隔离实例上通过，行 2026-11-06 起默认启用 |
-| 22 | 子目录指令：别名 Read、Write、Edit 触到工作目录之下的文件后，送该文件所在各层的 AGENTS.md 等 | 缺口 | glm-prompt 内的步前通知（§5.11）；ZCode 3.17.1 不送子目录指令，这一项是请求上的偏离 | 已实现于分支 `glm-subdir-instructions`，未合入，等人定是否偏离（`.agents/tasks/glm-subdir-instructions/report.md`） |
+| 22 | 子目录指令：别名 Read、Write、Edit 触到工作目录之下的文件后，送该文件所在各层的 AGENTS.md 等 | 缺口 | glm-prompt 内的步前通知（§5.11）；ZCode 3.17.1 不送子目录指令，这一项是请求上的偏离 | 已实现 2026-11-10，人定报告 §7 的 C：合入但缺省关（`subdirInstructions`），开启才偏离（§5.11） |
 
 第 1、2、4、6、8 项的文本对齐状态以 §5.9 为准。
 
@@ -899,7 +899,7 @@ L3 探针：沙盒里把压缩阈值调低，摘要请求末条是 ZCode 提示�
 
 ZCode 3.17.1 不送子目录指令：它只在会话开始解析一次用户指令，来源是 `~/.zcode/AGENTS.md` 与从工作目录向上到项目根的最近一份 `AGENTS.md`（`cPs`、`fPs`，zcode.cjs 行 1994、1996），没有向下的发现，也没有由工具触发的加载。所以别名路由的现状与 ZCode 一致，补上是对 ZCode 请求的偏离（§5.8 第 22 项）。
 
-实现（`src/glm-prompt/subdir-instructions.ts`，配置键 `subdirInstructions`，缺省开）：
+实现（`src/glm-prompt/subdir-instructions.ts`，配置键 `subdirInstructions`，缺省关——2026-11-10 人定报告 §7 的 C：合入不改变默认请求，要子目录规则的 profile 自己设 `true`，缺省值去留等 L4 在 GLM 真会话里看过一次再定）：
 
 - 不动工具面：别名的名字、描述、schema 与执行体都不变，不经注册表再派一次调用（再派会让 `tools/pre-execute`、`tools/post-execute` 上的 guard、规则板、指标、经验、权限各看到一次原生调用）。
 - 复用 `installStepNotice`（`agent/pre-step`，GLM 步才发）：从请求可见历史找成功的 `Read`、`Write`、`Edit` 调用（有结果且不是错误）的 `file_path`，相对路径按会话工作目录解析；路径在工作目录之下时，取工作目录（不含）到文件所在目录的每一层，读宿主同一组候选文件（顺序同宿主：`AGENTS.md`、`CLAUDE.md`、`AGENTS.local.md`、`CLAUDE.local.md`；同目录里修剪后内容相同的只留一份，空文件与超过 1 MiB 的不送）。
@@ -908,7 +908,7 @@ ZCode 3.17.1 不送子目录指令：它只在会话开始解析一次用户指�
 - 与宿主不同处：不做「文件改了整份替换」和「文件删了声明移除」（宿主每步按版本重查已加载的文件，这里只送一次）；只认直接调用的 `Read`、`Write`、`Edit`（三者都是常驻工具，不经 `DeferredToolCall`）；预算 64 KiB、单文件 1 MiB、候选名与 `.git` 标记是固定常量，不跟宿主行的配置走；空文件与只含空白的文件不送（宿主送一段空内容）；段落外框用 `wrapSystemReminder`（改写任何 `<system-reminder` 标签），宿主只转义结束标签；相对 `file_path` 按现在的工作目录解析，不是调用当时的；直接读文件系统，不经宿主的 fs 服务；去重只有一个方向（宿主已送的算已送，本通知送过的宿主不知道，会话中途从 GLM 路由换回原生路由再触碰同一目录会重送一次）。
 - 读失败（除「不存在」以外的探测与读取错误）、会话没有工作目录、构建通知时的意外错误：每个 agent 告警一次，该步不带这部分通知，下一步再试（失败要出声，不拦步）。
 
-请求偏离：GLM 请求在触碰子目录文件之后多一条 user 消息，文字用宿主的措辞，不是 ZCode 的任何文本。基线里 DSH 的 `agent-instructions` 消息已经是 ZCode 没有的形态（ZCode 把指令放进 `Request User Context` 元消息），峰时提醒、编排层的图投影也是 ZCode 没有的 user 通知，所以偏离的形态不新；对 1.5 倍用量（`risk-signing`）的影响没有验证，与那几条同一等级。
+请求偏离：缺省关，缺省请求与现状逐项相同；开启后，GLM 请求在触碰子目录文件之后多一条 user 消息，文字用宿主的措辞，不是 ZCode 的任何文本。基线里 DSH 的 `agent-instructions` 消息已经是 ZCode 没有的形态（ZCode 把指令放进 `Request User Context` 元消息），峰时提醒、编排层的图投影也是 ZCode 没有的 user 通知，所以偏离的形态不新；对 1.5 倍用量（`risk-signing`）的影响没有验证，与那几条同一等级。与经验行路径提醒的交叠：路径提醒按调用名判「DSH 会送」（`src/lessons/path.ts` 的 `hostDelivers`），别名 `Read`、`Write`、`Edit` 不在触发表里，GLM 路由上它照送组件 `AGENTS.md` 正文，也不看本通知——开启时同一组件首触的正文会在路径提醒与本通知里各出现一次（`ORCHESTRATION.md` §8.6 的路径提醒一行）；这是开启的已知代价，两条机制合流时再清。
 
 ## 6. 注入约定〔定案〕
 

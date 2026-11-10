@@ -187,11 +187,11 @@ Cursor 的 shell 会注入 `GIT_CONFIG_COUNT`、`GIT_CONFIG_KEY_0`、`GIT_CONFIG
 1. **bootstrap。** `origin/bootstrap` = `1e7136f6`（B8），已解锁：M7 在 main 后冲突已消。下一步：追 main、门禁、合入（先关桌面），接着做 B7、B9、B10；`ui/src/guide/NoGraphCard.tsx` 过渡文字改指 `/wish` 随批做。
 2. **rules-r4d。** `origin/rules-r4d` = `72647c1e`，已解锁：接 `trunkAdvanceFor` 的一段（M7 在 main）。下一步：追 main、门禁、评审、合入。
 3. **L4 的五条非阻断发现（2026-11-10 起清账）**：① `metrics` 行「积分口径：未提供」——`src/metrics/index.ts:593` 的 `pricingService(ctx)` 取到 undefined 而计价服务实际在出数（跨包激活时序？待人查）；② locale 过期文案已修（d7a9f953）；③ `no_gate_norm` 提示已写明形状（`13f6a196`，sweep 线）；④ worker 用 `git read-tree` 动主检出 index 现有门不覆盖——是否纳入 worker-git 判定待人定；⑤ 档位核对次序的发现前提**被推翻**（sweep 线四组实跑 + 历史核对：`bad_task` 自 `c0bd42f` 起先于档位核对，症状在现行代码不存在），回归钉测试锁住设计次序（`37b8657e`）。
-4. **glm-subdir-instructions。** `origin/glm-subdir-instructions` = `9399278a`。不合入 main，等人选报告 §7 的 A/B/C（推荐 C：合入但缺省关）。
+4. **glm-subdir-instructions。** 人已定 2026-11-10：报告 §7 的 C，合入但缺省关。分支已合并 origin/main（`ab867f47`）并落地缺省关：`glm-prompt` 行配置键 `subdirInstructions` 缺省 `false`，缺省请求与现状逐项相同，要用的 profile 设 `true`（`DESIGN.md` §5.11）。全量门禁通过后待编排方快进合入；L4 在 GLM 真会话看一次再定缺省值去留。
 5. **ablation 去留拍板。** 结论在 `docs/DESIGN.md` §5.2a（A1 保留、A2 可缩、A3 采纳延迟、A4 保留、A5 保留），注入文字未动；人看过结论后才动生产提示词。A3 采纳前要补一次真实会话核对（重用图/记忆工具的会话不在样本里）。
 6. **transcript。** 已在 main 出厂启用（`ac6413cf`，图 `e381f062`）。视频字幕 `source-transcript.md` 不入库（主检出 `.agents/tasks/docs-at-hand/`，未跟踪）。
 7. **别动。** `.worktrees/ablation-trial` 停在游离提交 `db2bbc69`。
 
 人已定、接着守：`d-no-run-cap` 取代 `d-five-runs`（不限同时运行条数；硬限制仍是两把探针锁、一把桌面锁、GLM 高峰 14:00–18:00）；自举按 `d-finish-then-bootstrap`（B8 开工凭据记在 `23acb4d1`，人可推翻）。
 
-待人定：宣传视频三件；申请通道接面板「需要你」时三种事改四种事；改基之后才算合入的远端分支删不删；子目录 `AGENTS.md` 的 A/B/C；ablation A2/A3 的采纳。
+待人定：宣传视频三件；申请通道接面板「需要你」时三种事改四种事；改基之后才算合入的远端分支删不删；ablation A2/A3 的采纳。
