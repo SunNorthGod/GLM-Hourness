@@ -27,6 +27,12 @@
       "relay": "那就都按你的建议来",
       "from": "proposed",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-10T07:59:18.066Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "桌面 L4 两态（批次二，2026-11-10）：off 态默认 profile 子目录 AGENTS.md 触碰后无任何本行通知（宿主只送根基线）；on 态（profile 覆盖 subdirInstructions: true）通知逐字同宿主原生形、浅到深两目录、Read 成功。缺省关的出厂语义保持；缺省值去留待主人看过两态后随口定。"
     }
   ]
 }

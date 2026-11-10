@@ -329,6 +329,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-06 人问记忆怎么存、要不要上向量库。编排方核对现状：记忆是只追加的流水 memory.jsonl，项目事实与规范在项目 .llm/memory.jsonl，关于人的在 $DSH_HOME/glm-hourness/memory/memory.jsonl（d-memory-scope）；召回是会话开局与压缩后的索引加常驻的 memory_query，按类型、名字与组键匹配，没有 embedding。实读本仓库：两份记忆流水都还不存在（本仓库主要在 Kiro 里开发，没在 DSH 里写过记忆），经验流水 .llm/lessons.jsonl 21 条。编排方建议现在不上向量库：条目量小到可以整份放进索引，人要能读、能删、能追到原话，jsonl 进 git 也好审；向量检索的近似匹配会让「为什么召回这条」说不清，也多一个本地服务的依赖。触发重议的条件：单个项目的记忆或经验超过约 500 条、索引放不下，或 learning_signals 显示同一问题因措辞不同反复没被召回（m5-habit-rule 的实测已出现过一例，那次靠软检查加让模型看到拒绝解决）。届时先试本地的词法检索（BM25），再考虑向量。"
+    },
+    {
+      "at": "2026-11-10T07:59:17.428Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "dream 窄版 B 桌面 L4（批次二，2026-11-10，ec5532ef 并入 main 1044890d）：memory.dream-nightly 上 /loops 板（每天 18:35，明细呈候选行格式 dream-xxxxxxxx(N 个会话，最近日期)）；候选隔离性实证——流水 proposals 表里的候选 /memory show 与 memory_query 都看不到，确认走 memory_store（带主人原话）、丢弃走 /memory forget 的拍板指引在明细末行。18:35 首跑时间门控未到，注册与无 LLM 确定性表述按验收核（design.md §1/§3：拍内没有任何 LLM 调用，候选不进召回、不进索引、不进 /memory show）。"
     }
   ]
 }
