@@ -330,6 +330,8 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
   /** A delegated child's request loses the memory tools and the learning tool. */
   const hideTools = (agent: AgentLike): (() => void) => agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
     const assembled = await next()
+    // A payload without a tool face (the installed 0.2.2-rc.1 runtime composes one without, docs/DESIGN.md §2.4a) leaves the face to the runtime's collected tools.
+    if (assembled.tools === undefined) return assembled
     return { ...assembled, tools: assembled.tools.filter(tool => !MEMORY_TOOL_NAMES.includes(tool.name) && !LEARNING_TOOL_NAMES.includes(tool.name)) }
   })
 

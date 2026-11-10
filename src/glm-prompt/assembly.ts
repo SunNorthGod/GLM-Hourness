@@ -1,12 +1,16 @@
 /**
  * Per-request assembly rewrite for the ZCode dialect.
  *
- * In the rc.3 runtime the agent-scoped `system-prompt/assemble` waterfall
- * runs every step before `agent/pre-step`, the rendered prompt comes from the
- * returned `sections`, and the request carries exactly the returned `tools`
- * (docs/DESIGN.md §2.4a). A prepend-registered listener sees the route the
- * model-selection listener injected after its own `next()` and rewrites both
- * for that request alone.
+ * In the agent-scoped `system-prompt/assemble` waterfall — which runs every
+ * step before `agent/pre-step` — the rendered prompt comes from the returned
+ * `sections`. The returned `tools` become the request's face on runtimes
+ * whose payload composes one (the 0.2.1-rc.3 desktop export,
+ * docs/DESIGN.md §2.4a); on the installed 0.2.2-rc.1 runtime the payload
+ * carries no `tools` and the runtime appends its own collected face after
+ * the waterfall, so the listeners' face rewrite degrades (the caller skips
+ * it). A prepend-registered listener sees the route the model-selection
+ * listener injected after its own `next()` and rewrites both for that
+ * request alone.
  */
 import type { AssembledSection, AssembledTool, AssemblePayload } from '../shared/dsh-min.ts'
 import { OUTPUT_STYLE_SECTION } from '../shared/output-style.ts'

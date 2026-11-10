@@ -337,11 +337,20 @@ export interface AssembledSection {
   readonly interpolate?: boolean
 }
 
-/** The assembly object passed through the `system-prompt/assemble` waterfall. */
+/**
+ * The assembly object passed through the `system-prompt/assemble` waterfall.
+ * Whether `tools` is on the payload is runtime-version-dependent: the
+ * 0.2.1-rc.3 desktop export (docs/DESIGN.md §2.4a) composes the payload with
+ * the tool face, while the installed 0.2.2-rc.1 runtime composes it without
+ * one and appends the collected tools to the request after the waterfall
+ * (dsh-system-prompt lib/index.js, the `assemble` method). Every listener
+ * that rewrites the face reads `tools` through an `undefined` guard and
+ * degrades to the payload as `next()` returned it.
+ */
 export interface AssemblePayload {
   readonly sections: readonly AssembledSection[]
   readonly contexts: readonly unknown[]
-  readonly tools: readonly AssembledTool[]
+  readonly tools?: readonly AssembledTool[]
   readonly variables: Record<string, unknown>
   readonly [key: string]: unknown
 }

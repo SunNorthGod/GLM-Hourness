@@ -155,7 +155,7 @@ GLM-Hourness（同仓两包，§2.3）
 - 工具服务没有 `executable()`；按名查定义用 `get(name, scope)`（受限制隐藏的全局工具读作不存在）。
 - `register(definition)` 没有第二个参数，不存在 `when` 激活谓词；作用域内注册遮蔽全局同名工具。
 - `restrict()` 只能在作用域上下文调用，只过滤继承来的工具，不影响本作用域自己的注册；名字必须是已知的全局工具。
-- 每一步先执行 `system-prompt/assemble`，再执行 `agent/pre-step`。发给模型的工具列表就是组装结果里的 `assembly.tools`（名称、描述、参数、`deferLoading`），组装瀑布可以逐请求改写它。
+- 每一步先执行 `system-prompt/assemble`，再执行 `agent/pre-step`。组装瀑布能不能改写发给模型的工具列表随运行时版本而定〔实读 2026-11-10〕：0.2.1-rc.3 桌面导出的载荷带 `assembly.tools`（名称、描述、参数、`deferLoading`），瀑布可逐请求改写；实装的 0.2.2-rc.1（`dsh-system-prompt` lib/index.js 的 `assemble`）载荷不含工具面，运行时在瀑布结束后把收集到的工具直接附加到请求上，监听器写回的 `tools` 被覆盖。因此各行对面板缺失的载荷只降级不改写（`AssemblePayload.tools` 可选，`src/shared/dsh-min.ts`），面板存在时按 rc.3 契约照常改写。
 - 路由只出现在组装变量 `variables.provider` / `variables.model` 中（由 `installModelSelection` 注入）；`agent/pre-step` 载荷只有 `{agent, messages, turn, step, signal}`。
 - 工具执行按名在调用方作用域的可见定义中解析，与本次请求的工具面无关：不在工具面里的已注册工具被直接调用时照常执行。
 - `tools.execute(input)` 让一次调用走完 pre-execute、guard、执行、post-execute 与结果渲染；带 `parent` 令牌的调用是传输层子调用（`run_code` 的先例）：会话检查点等监听器跳过它，跳不跳由各监听器自己定（主 Agent 的边界规则照判，`ORCHESTRATION.md` §6.7）。

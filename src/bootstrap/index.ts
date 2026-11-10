@@ -225,6 +225,8 @@ export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () =
         disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
           const assembled = await next()
           if (await runtime.face(agent)) return assembled
+          // A payload without a tool face (the installed 0.2.2-rc.1 runtime composes one without, docs/DESIGN.md §2.4a) leaves the face to the runtime's collected tools.
+          if (assembled.tools === undefined) return assembled
           const tools = assembled.tools.filter(tool => tool.name !== REVIEW_TOOL)
           return tools.length === assembled.tools.length ? assembled : { ...assembled, tools }
         }))

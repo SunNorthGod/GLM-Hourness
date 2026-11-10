@@ -217,6 +217,8 @@ export function apply(ctx: LessonsContext, config: LessonsConfig = {}): () => vo
   /** A delegated child's request loses the tool that only the main agent has. */
   const hideMerge = (agent: AgentLike): (() => void) => agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
     const assembled = await next()
+    // A payload without a tool face (the installed 0.2.2-rc.1 runtime composes one without, docs/DESIGN.md §2.4a) leaves the face to the runtime's collected tools.
+    if (assembled.tools === undefined) return assembled
     return { ...assembled, tools: assembled.tools.filter(tool => tool.name !== LESSONS_MERGE_TOOL) }
   })
 

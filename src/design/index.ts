@@ -355,6 +355,11 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
       const assembled = await next()
       const step = steps.get(agent)
       const dialect = dialectService(ctx, problem)
+      // A payload without a tool face (the installed 0.2.2-rc.1 runtime composes one without, docs/DESIGN.md §2.4a) leaves the face to the runtime's collected tools; the persona placement stays, the rewrite degrades.
+      if (assembled.tools === undefined) {
+        const sections = persona.section === undefined ? assembled.sections : insertHournessSection(assembled.sections, persona.section)
+        return { ...assembled, sections }
+      }
       // The two tools of this row are the main agent's only: every other session's face is without them.
       if (!(step?.role ?? roleForStep(agent)).main) {
         const tools = ordinaryFace(assembled.tools, tool => toNativeTool(dialect, tool, problem))

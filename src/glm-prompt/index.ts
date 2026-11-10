@@ -136,7 +136,9 @@ export function dialectSections(outputStyleActive = false, reportingDepth: Repor
  * end-to-end case through tool search.
  */
 export function memorySectionApplies(assembled: AssemblePayload): boolean {
-  return MEMORY_TOOL_NAMES.every(name => assembled.tools.some(tool => tool.name === name))
+  // A payload without a tool face (the installed 0.2.2-rc.1 runtime composes one without, docs/DESIGN.md §2.4a) carries no memory tools: the section does not apply.
+  const tools = assembled.tools
+  return tools !== undefined && MEMORY_TOOL_NAMES.every(name => tools.some(tool => tool.name === name))
 }
 
 /**
@@ -253,8 +255,10 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
     health?.report(sessionIdOf(agent), ...withDepthProblem(dialectHealth(assemblyRoute(assembled), glm, searchMode === 'off' ? 'off' : toolSearch === undefined ? 'missing' : 'local'), standing.problem))
     // Judged on next()'s tools, before the face rewrite and tool search (memorySectionApplies); the lessons sentence follows the same tools.
     const set = hasOutputStyle(assembled) ? styled : plain
-    const wanted = !memorySectionApplies(assembled) ? set.withoutMemory : assembled.tools.some(tool => tool.name === LESSONS_QUERY_TOOL) ? set.withLessons : set.all
+    const wanted = !memorySectionApplies(assembled) ? set.withoutMemory : assembled.tools?.some(tool => tool.name === LESSONS_QUERY_TOOL) === true ? set.withLessons : set.all
     const withSections = glm ? rewriteDialectSections(assembled, wanted) : assembled
+    // A payload without a tool face (the installed 0.2.2-rc.1 runtime composes one without, docs/DESIGN.md §2.4a) keeps the dialect sections and skips the face rewrite and tool search: the runtime's collected tools serve the request.
+    if (withSections.tools === undefined) return withSections
     const face = rewriteToolFace(withSections.tools, glm, aliasNames, coveredNatives)
     todoReminderEligible = glm && face.some(tool => tool.name === TODO_WRITE_NAME)
     const tools = toolSearch === undefined ? face : glm ? toolSearch.expose(face) : toolSearch.hide(face)
