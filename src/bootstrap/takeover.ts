@@ -27,16 +27,50 @@ export interface OpenTakeover {
   readonly openedAt: string
   readonly trigger: Trigger
   readonly graphDir: string
+  /** The project root the takeover was opened for (records from before this field existed name none; the root is found again from the graph directory). */
+  readonly projectRoot?: string
   /** The person's words of the latest `/wish` that gave any: the one the takeover opened with, or a later `takeover-wish`. */
   readonly wish?: string
   /** The `note` codes this takeover already recorded. */
   readonly noted: readonly string[]
   /** The two things the human agreed to, by question (`asked` records, §7.4). */
   readonly asked: readonly { readonly which: 'cost' | 'touch', readonly questionId: string }[]
+  /** The stage of §2.3: propose (reading and proposing), review (a list round is out), apply (writing the agreement). */
+  readonly stage: 'propose' | 'review' | 'apply'
+  /** The latest opened list round; 0 while none is out. */
+  readonly round: number
+  /** The stored round of §7.2 (`review-open`): the attach, the digests and the snapshot the write compares against. */
+  readonly list?: TakeoverList
+  /** The question of the latest round, once propose_to_human made it (the resume reads the decision off it). */
+  readonly listQuestion?: string
+  /** Whether the `apply {step: 'wish'}` record is in (the wish was handed back; §7.4 step 5). */
+  readonly wishDone: boolean
+}
+
+/** One stored list round (§7.2's `review-open` record). */
+interface TakeoverList {
+  readonly attach: string
+  readonly askDigest: string
+  /** The command detail exactly as shown (§7.4 compares the digest, never recomputes). */
+  readonly detail: string
+  /** The pieces of it the human must have seen (M3's AttachDetail.mustShow). */
+  readonly detailShow: readonly string[]
+  readonly detailDigest: string
+  readonly snapshot: readonly { readonly id: string, readonly rev: string }[]
+}
+
+/** A closed takeover the graph-in-git check still follows (§7.6). */
+export interface ClosedTakeover {
+  readonly id: string
+  readonly graphDir: string
+  /** The step reminders already spent on 「项目图还没进 git」(at most two, §7.6). */
+  readonly graphReminders: number
+  readonly graphTracked: boolean
 }
 
 interface TakeoverState {
   readonly open?: OpenTakeover
+  readonly closed?: ClosedTakeover
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -53,7 +87,25 @@ function opened(record: JournalRecord): OpenTakeover | string {
   if (typeof path !== 'string' || !PATHS.includes(path)) return 'takeover-open without a path'
   if (trigger !== 'init' && trigger !== 'wish') return 'takeover-open without a trigger'
   if (typeof graphDir !== 'string') return 'takeover-open without a graph directory'
-  return { id: record.id, path: path as TakeoverPath, openedAt: record.at, trigger, graphDir, ...typeof wish === 'string' ? { wish } : {}, noted: [], asked: [] }
+  return {
+    id: record.id, path: path as TakeoverPath, openedAt: record.at, trigger, graphDir, stage: 'propose', round: 0, noted: [], asked: [], wishDone: false,
+    ...typeof data.projectRoot === 'string' ? { projectRoot: data.projectRoot } : {},
+    ...typeof wish === 'string' ? { wish } : {},
+  }
+}
+
+/** The snapshot of a `review-open` record (§7.2), as the fold reads it; a record without the shapes is a bad line. */
+function listRecord(data: Record<string, unknown>): TakeoverList | string {
+  const { attach, askDigest, detail, detailShow, detailDigest, snapshot } = data
+  if (typeof attach !== 'string' || typeof askDigest !== 'string' || typeof detail !== 'string' || typeof detailDigest !== 'string' || !Array.isArray(snapshot) || !Array.isArray(detailShow) || !detailShow.every(piece => typeof piece === 'string')) return 'review-open without its shapes'
+  const entries: { id: string, rev: string }[] = []
+  for (const entry of snapshot) {
+    const id = isRecord(entry) && typeof entry.id === 'string' ? entry.id : undefined
+    const rev = isRecord(entry) && typeof entry.rev === 'string' ? entry.rev : undefined
+    if (id === undefined || rev === undefined) return 'review-open with a snapshot entry that is not {id, rev}'
+    entries.push({ id, rev })
+  }
+  return { attach, askDigest, detail, detailShow, detailDigest, snapshot: entries }
 }
 
 const TAKEOVER_FOLD: Fold<TakeoverState> = {
@@ -65,19 +117,52 @@ const TAKEOVER_FOLD: Fold<TakeoverState> = {
       const next = opened(record)
       return typeof next === 'string' ? { bad: next } : { state: { open: next } }
     }
+    // A record about the closed takeover the graph check still follows (§7.6).
+    if (open === undefined) {
+      const closed = state.closed
+      if (closed !== undefined && record.id === closed.id && record.op === 'graph-reminder') {
+        return typeof record.data === 'object' && record.data !== null ? { state: { closed: { ...closed, graphReminders: closed.graphReminders + 1 } } } : { bad: 'graph-reminder without data' }
+      }
+      if (closed !== undefined && record.id === closed.id && record.op === 'graph-tracked') return { state: { closed: { ...closed, graphTracked: true } } }
+      return { state }
+    }
     // Every other record is about the takeover it names; one about another takeover changes nothing.
-    if (open === undefined || record.id !== open.id) return { state }
+    if (record.id !== open.id) return { state }
     const data = isRecord(record.data) ? record.data : {}
-    if (record.op === 'takeover-closed') return { state: {} }
+    if (record.op === 'takeover-closed') return { state: { closed: { id: open.id, graphDir: open.graphDir, graphReminders: 0, graphTracked: false } } }
     if (record.op === 'takeover-wish') return typeof data.text === 'string' ? { state: { open: { ...open, wish: data.text } } } : { bad: 'takeover-wish without a text' }
-    if (record.op === 'takeover-path') return typeof data.to === 'string' && PATHS.includes(data.to) ? { state: { open: { ...open, path: data.to as TakeoverPath } } } : { bad: 'takeover-path without a path' }
+    if (record.op === 'takeover-path') {
+      if (typeof data.to !== 'string' || !PATHS.includes(data.to)) return { bad: 'takeover-path without a path' }
+      // A re-judged path goes back to proposing (§2.3: review and apply come apart).
+      return { state: { open: { ...open, path: data.to as TakeoverPath, stage: 'propose' } } }
+    }
     if (record.op === 'note' && typeof data.code === 'string') return { state: { open: { ...open, noted: [...open.noted, data.code] } } }
     if (record.op === 'asked') {
       const { which, questionId } = data
       return (which === 'cost' || which === 'touch') && typeof questionId === 'string' ? { state: { open: { ...open, asked: [...open.asked, { which, questionId }] } } } : { bad: 'asked without which and questionId' }
     }
+    if (record.op === 'review-open') {
+      const list = listRecord(data)
+      if (typeof list === 'string') return { bad: list }
+      // The attach as the tool returns it, whole (the runtime stores the `bootstrap:` prefix).
+      const round = /^bootstrap:tk-[0-9a-z]{8}:list-([1-9][0-9]{0,3})$/.exec(list.attach)?.[1]
+      if (round === undefined) return { bad: 'review-open with an attach that is not a list round' }
+      return { state: { open: { ...open, stage: 'review', round: Number(round), list } } }
+    }
+    if (record.op === 'list-question') return typeof data.questionId === 'string' ? { state: { open: { ...open, listQuestion: data.questionId } } } : { bad: 'list-question without a question id' }
+    if (record.op === 'apply-start') {
+      if (typeof data.questionId !== 'string') return { bad: 'apply-start without a question id' }
+      return { state: { open: { ...open, stage: 'apply', listQuestion: data.questionId } } }
+    }
+    if (record.op === 'accept-refused') return { state: { open: { ...open, stage: 'review' } } }
+    if (record.op === 'apply') return data.step === 'wish' && data.outcome === 'done' ? { state: { open: { ...open, wishDone: true } } } : { state }
     return { state }
   },
+}
+
+/** The last closed takeover a project's graph check follows (§7.6); undefined while one is open or none ever closed. */
+export async function closedTakeoverOf(root: string): Promise<ClosedTakeover | undefined> {
+  return (await readJournal(journalPath(root), TAKEOVER_FOLD)).state.closed
 }
 
 /** The open takeover of a project root; undefined when there is none. Rejects when the journal cannot be read. */
@@ -125,23 +210,38 @@ export async function openTakeover(root: string, request: OpenRequest): Promise<
 
 /** One record about a takeover, as the row hands it over. */
 export interface TakeoverRecord {
-  readonly op: 'setup' | 'scan' | 'takeover-path' | 'takeover-wish' | 'takeover-closed' | 'note' | 'asked' | 'trial'
+  readonly op: 'setup' | 'scan' | 'takeover-path' | 'takeover-wish' | 'takeover-closed' | 'note' | 'asked' | 'trial' | 'review-open' | 'list-question' | 'apply-start' | 'apply' | 'accept-refused' | 'graph-reminder' | 'graph-tracked'
   readonly data: Readonly<Record<string, JsonValue>>
 }
 
 /**
- * Append records about the open takeover `id`. Nothing is appended when it
- * is no longer the open one (closed meanwhile): `false`. An I/O failure
- * rejects; the caller reports it and goes on (§13: only opening must be written).
+ * Append records while the takeover journal still holds `id` in `held`'s
+ * slot (open for §7.2-§7.4's writes, last closed for §7.6's follow-ups):
+ * nothing is appended otherwise, `false`. An I/O failure rejects; the
+ * caller reports it and goes on (§13: only opening must be written).
  */
-export async function appendTakeover(root: string, id: string, records: readonly TakeoverRecord[], by?: NewRecord['by']): Promise<boolean> {
+async function appendHeld(root: string, id: string, records: readonly TakeoverRecord[], by: NewRecord['by'] | undefined, held: (state: TakeoverState) => string | undefined): Promise<boolean> {
   if (records.length === 0) return true
-  const written = await appendJournal<TakeoverState, 'closed'>(journalPath(root), TAKEOVER_FOLD, reading => reading.state.open?.id === id
+  const written = await appendJournal<TakeoverState, 'closed'>(journalPath(root), TAKEOVER_FOLD, reading => held(reading.state) === id
     ? { records: records.map(record => ({ actor: 'harness', op: record.op, id, data: record.data, ...by === undefined ? {} : { by } })) }
     : { refused: 'closed' }, { directory: 'project', row: 'bootstrap' })
   if (written.status === 'ok') return true
   if (written.status === 'refused') return false
   throw new Error(written.status === 'io' ? `${written.stage}: ${written.message}` : written.status === 'busy' ? 'the takeover journal is locked by another writer' : written.message)
+}
+
+/** Append records about the open takeover `id`. Nothing is appended when it is no longer the open one (closed meanwhile): `false`. */
+export function appendTakeover(root: string, id: string, records: readonly TakeoverRecord[], by?: NewRecord['by']): Promise<boolean> {
+  return appendHeld(root, id, records, by, state => state.open?.id)
+}
+
+/**
+ * Append records about the closed takeover `id` (§7.6's graph-reminder and
+ * graph-tracked): the graph check follows a closed takeover until the graph
+ * is tracked. Nothing is appended when it is not the last closed one.
+ */
+export function appendClosed(root: string, id: string, records: readonly TakeoverRecord[], by?: NewRecord['by']): Promise<boolean> {
+  return appendHeld(root, id, records, by, state => state.closed?.id)
 }
 
 /** How recording one of the two things went: written, written before, the takeover is no longer open, or the journal could not take it. */

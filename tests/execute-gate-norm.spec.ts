@@ -39,8 +39,8 @@ test('parseGateNorm: an empty gate is empty, and a malformed line is prose', () 
   assert.deepEqual(prose.prose.map(line => line.index), [0, 1, 2])
 })
 
-test('GATE_LINE_FORMS: the seven forms the takeover proposes', () => {
-  assert.deepEqual([...GATE_LINE_FORMS], ['$ <command>', '$ <command> when <paths>', 'setup $ <command>', 'setup $ <command> when <paths>', 'patrol $ <command>', 'push', 'only <paths>'])
+test('GATE_LINE_FORMS: the eight forms the takeover proposes (the `changed` form arrives with the takeover row)', () => {
+  assert.deepEqual([...GATE_LINE_FORMS], ['$ <command>', '$ <command> when <paths>', 'setup $ <command>', 'setup $ <command> when <paths>', 'patrol $ <command>', 'push', 'only <paths>', 'changed <format> $ <command>'])
 })
 
 test('normDigest: the parsed entries in order, stable, and moved by a change', () => {
@@ -50,4 +50,18 @@ test('normDigest: the parsed entries in order, stable, and moved by a change', (
   const changed = parseGateNorm(gateNode(['`$ npm run test`', '`push`']))
   assert.notEqual(normDigest(gate, sha256), normDigest(changed, sha256))
   assert.match(normDigest(gate, sha256), /^[0-9a-f]{12}$/)
+})
+
+test('parseGateNorm: a `changed` line names the format of its findings; an unknown format is prose; the digest moves with the format (takeover design 0.6 §5.6)', () => {
+  const gate = parseGateNorm(gateNode(['`changed eslint-json $ node x.js {files}`', '`changed nope $ node x.js`', '`changed tsc $ node x.js when src/`']))
+  assert.deepEqual(gate.commands.map(command => [command.kind, command.command, command.changed, command.when]), [
+    ['check', 'node x.js {files}', 'eslint-json', undefined],
+    ['check', 'node x.js', 'tsc', ['src/']],
+  ])
+  assert.deepEqual(gate.prose.map(line => line.text), ['`changed nope $ node x.js`'])
+  const eslint = parseGateNorm(gateNode(['`changed eslint-json $ node x.js {files}`']))
+  const tsc = parseGateNorm(gateNode(['`changed tsc $ node x.js {files}`']))
+  assert.notEqual(normDigest(eslint, sha256), normDigest(tsc, sha256))
+  const plain = parseGateNorm(gateNode(['`$ node x.js`']))
+  assert.notEqual(normDigest(eslint, sha256), normDigest(plain, sha256), 'the changed form digests apart from the plain one')
 })

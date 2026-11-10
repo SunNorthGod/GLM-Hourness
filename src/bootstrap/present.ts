@@ -154,8 +154,10 @@ function spaced(text: string): string {
 }
 
 /** Why a question's words do not pass M3's checks, or undefined. */
-export function askRefusal(ask: AskDraft): string | undefined {
-  const record = { title: ask.title, ask: askOf(ask.text), form: 'recommend' as const, proposal: ask.proposal, reason: ask.reason, cost: ask.cost }
+export function askRefusal(ask: AskDraft | ListAsk): string | undefined {
+  const cost: string | undefined = ask.cost
+  const notTaken: string | undefined = 'notTaken' in ask ? ask.notTaken : undefined
+  const record = { title: ask.title, ask: askOf(ask.text), form: 'recommend' as const, proposal: ask.proposal, reason: ask.reason, ...(cost === undefined ? {} : { cost }), ...(notTaken === undefined ? {} : { notTaken }) }
   const refused = askTextRefusal('recommend', ask.text) ?? proposalTitleRefusal(ask.title) ?? proposalRecordRefusal(record)
   if (refused !== undefined) return refused.message
   const uncovered = textCoversRecord(ask.text, record, 'recommend')
@@ -250,6 +252,322 @@ export function questionsDraft(scan: ScanResult, files: readonly string[], rules
 }
 
 const LABEL: Readonly<Record<Thing, string>> = { cost: '花钱或独占 (norm-verify-tiers)', touch: '不许碰 (norm-decision-tiers)' }
+
+// ------------------------------------------------- the list round (§7.3)
+
+/** One command that will run once the human agrees, as one line of the list's detail. */
+export interface DetailCommand {
+  readonly cls: CommandClass
+  /** The command as written (a gate line's command, or a check line's with `{files}`). */
+  readonly text: string
+  /** A check line's `<预计>`, when it has one (§7.2 item 10 checked it against the trial). */
+  readonly estimateSec?: number
+  /** The usable trial run of this very text (§6.3 reuse): a gate-class line's measured seconds. */
+  readonly ranSec?: number
+  /** A `when` line's paths, or `夜里` for a patrol line: written next to the class. */
+  readonly scope?: readonly string[]
+}
+
+/** What the list round's texts are built from; review.ts computes it from the round's snapshot. */
+export interface ListView {
+  readonly takeover: { readonly id: string, readonly path: 'new' | 'existing' | 'gaps' }
+  readonly anchor: string
+  /** The anchor's title, as the human reads it (no `*`, at most 16 code points). */
+  readonly anchorTitle: string
+  /** The list round number (1 for the first). */
+  readonly round: number
+  readonly goals: number
+  readonly tasks: number
+  /** The tasks of the set that carry 完成证据. */
+  readonly done: number
+  /** The gaps of a gaps takeover, by id. */
+  readonly missing: readonly string[]
+  /** The commands of the detail, in run order. */
+  readonly commands: readonly DetailCommand[]
+  /** The change lines in the gate (§5.6): their count is the not-taken fact. */
+  readonly changed: number
+  /** The facts each cost candidate reads. */
+  readonly costs: {
+    /** A gate checker that failed in the trial (its command). */
+    readonly gateFailed?: string
+    /** Whether the gate has at least one command. */
+    readonly hasGateCommand: boolean
+    readonly testsMissing: boolean
+    /** Commands that gave no result in isolation (their count, and the one when it is a single gate command). */
+    readonly limitedCount: number
+    readonly limitedSingle?: string
+    /** Commands still running, and the minutes they still need (rounded). */
+    readonly runningCount: number
+    readonly runningEtaMin?: number
+    /** A 不许碰 path whose rule question is still waiting. */
+    readonly rulePending?: string
+    /** A repository path no rule question names. */
+    readonly uncoveredPath?: string
+    /** Commands read from documents, never run. */
+    readonly untriedCount: number
+    /** The title proposed twice. */
+    readonly duplicateTitle?: string
+  }
+  readonly notTaken: {
+    readonly changed: number
+    /** A checker left out of the gate because it is red on the code as it is. */
+    readonly leftOutChecker?: string
+    /** A candidate left out with its reason. */
+    readonly leftOut?: { readonly text: string, readonly why: '像在发布' | '会一直跑' | '多行脚本' }
+    /** The pending tasks a plain takeover leaves for the person's word. */
+    readonly pending: number
+  }
+}
+
+/** The fields of the list question, as propose_to_human takes them. */
+export interface ListAsk {
+  readonly title: string
+  readonly text: string
+  readonly proposal: string
+  readonly reason: string
+  readonly cost?: string
+  readonly notTaken?: string
+}
+
+/** A record field or question text as the human reads it: no `*`, at most `limit` code points. */
+const readerVariable = (text: string, limit: number): string => variable(text, limit)
+
+const GAPS_TAIL: Readonly<Record<'existing' | 'gaps', { readonly head: (view: ListView) => string, readonly proposal: (view: ListView) => string, readonly reason: (view: ListView) => string }>> = {
+  existing: {
+    head: view => `照这份清单接管「${view.anchorTitle}」：读出 ${view.goals} 个目标、${view.tasks} 件活`,
+    proposal: view => view.done > 0 ? spaced(`同意后把 ${view.done} 件已做完的标成完成、其余等你说再动`) : '同意后摆上项目图、还要做的等你说再动',
+    reason: view => view.done > 0 ? spaced(`这 ${view.done} 件都带提交号`) : '接管只把读出的现状摆上图',
+  },
+  gaps: {
+    head: view => `给「${view.anchorTitle}」补上 ${view.missing.length} 样缺的：${view.missing.slice(0, 3).join('、')}`,
+    proposal: () => '同意后补上这几样、已有的一样不改',
+    reason: () => '已有的节点都是你同意过的',
+  },
+}
+
+/** The first cost candidate that holds (§7.3's order), or undefined: a plain question then. */
+function costOf(view: ListView): string | undefined {
+  const { costs } = view
+  const candidates: readonly string[] = [
+    ...costs.gateFailed === undefined ? [] : [spaced(`${readerVariable(costs.gateFailed, COMMAND_LIMIT)} 在副本里没过，合入前会一直挡着`)],
+    ...costs.hasGateCommand ? [] : ['项目里没有一条检查命令，合入会被拒到补上为止'],
+    ...costs.testsMissing ? ['项目里没找到测试，合入会被挡到补上为止'] : [],
+    ...costs.limitedSingle !== undefined && costs.limitedCount === 1 ? [spaced(`${readerVariable(costs.limitedSingle, COMMAND_LIMIT)} 在副本里没跑通，合入前才知道结果`)] : [],
+    ...costs.limitedCount > 0 ? [`${costs.limitedCount} 条在隔离里没跑出结论，第一次真跑才知道`] : [],
+    ...costs.runningCount > 0 ? [`还有 ${costs.runningCount} 条在试跑，约 ${costs.runningEtaMin ?? 1} 分钟后有结果`] : [],
+    ...costs.rulePending === undefined ? [] : [spaced(`拦 ${readerVariable(costs.rulePending, PATH_LIMIT)} 的规则还在等你回话`)],
+    ...costs.uncoveredPath === undefined ? [] : [spaced(`${readerVariable(costs.uncoveredPath, PATH_LIMIT)} 写进了不许碰，没有规则拦它`)],
+    ...costs.untriedCount > 0 ? [`${costs.untriedCount} 条命令读自文档，没在副本里跑过`] : [],
+    ...costs.duplicateTitle === undefined ? [] : [spaced(`${readerVariable(costs.duplicateTitle, COMMAND_LIMIT)} 提了两次，同意时去掉后一个`)],
+  ]
+  return candidates[0]
+}
+
+/** The first not-taken fact that holds (§7.3), or undefined. */
+function notTakenOf(view: ListView): string | undefined {
+  const { notTaken } = view
+  const candidates: readonly string[] = [
+    ...notTaken.changed > 0 ? [`没让现在的 ${notTaken.changed} 条旧告警挡合入，只挡新出的`] : [],
+    ...notTaken.leftOutChecker === undefined ? [] : [spaced(`没把 ${readerVariable(notTaken.leftOutChecker, COMMAND_LIMIT)} 放进合入前的检查，它现在就不过`)],
+    ...notTaken.leftOut === undefined ? [] : [spaced(`没把 ${readerVariable(notTaken.leftOut.text, COMMAND_LIMIT)} 放进检查：${notTaken.leftOut.why}`)],
+    ...view.takeover.path === 'gaps' ? ['没改已有的节点，只补缺的'] : [spaced(`没自动开工，还要做的 ${notTaken.pending} 件等你说`)],
+  ]
+  return candidates[0]
+}
+
+/** The list question over one round (§7.3), or the fallback template with `fallback: true` when no wording passes M3's checks. */
+export function listAsk(view: ListView): ListAsk & { readonly fallback?: true } {
+  const tail = GAPS_TAIL[view.takeover.path === 'gaps' ? 'gaps' : 'existing']
+  const cost = costOf(view)
+  const notTaken = notTakenOf(view)
+  const build = (head: string, proposal: string, reason: string, withCost: boolean): ListAsk => {
+    const text = withCost && cost !== undefined ? spaced(`${head}，我建议${proposal}，因为${reason}，可以吗？代价是${cost}。`) : spaced(`${head}，我建议${proposal}，因为${reason}，可以吗？`)
+    const ask: ListAsk = { title: view.takeover.path === 'gaps' ? spaced(`给「${view.anchorTitle}」补上缺的几样`) : spaced(`照这份清单接管「${view.anchorTitle}」`), text, proposal, reason, ...withCost && cost !== undefined ? { cost } : {}, ...notTaken === undefined ? {} : { notTaken } }
+    return ask
+  }
+  const head = tail.head(view)
+  const full = build(head, tail.proposal(view), tail.reason(view), true)
+  if (askRefusal(full) === undefined) return full
+  const plain = build(head, tail.proposal(view), tail.reason(view), false)
+  if (askRefusal(plain) === undefined) return { ...plain, fallback: true }
+  return {
+    title: '照这份清单接管',
+    text: '我建议照这份清单写进图、还要做的等你说再动，因为清单里的都读自项目文件，可以吗？',
+    proposal: '照这份清单写进图、还要做的等你说再动',
+    reason: '清单里的都读自项目文件',
+    fallback: true,
+  }
+}
+
+/** The sentence a command line of the detail carries between the class and the command (§7.3 item 3 of the column). */
+function estimatePart(command: DetailCommand): string {
+  const timeout = classTimeout(command.cls, command.estimateSec)
+  const tail = timeoutPart(command.cls, timeout)
+  if (command.cls === 'check') {
+    if (command.estimateSec === undefined) return `没预计，${tail}`
+    if (command.estimateSec > timeout.timeoutSec) return `约 ${command.estimateSec} 秒，超过上限 ${timeout.timeoutSec} 秒，超时 ${timeout.timeoutSec} 秒`
+    return `约 ${command.estimateSec} 秒，${tail}`
+  }
+  if (command.ranSec !== undefined) return `试跑约 ${durationText(command.ranSec, 'gate')}；${tail}`
+  return `没预计，${tail}`
+}
+
+const kindLabel = (cls: CommandClass): string => cls === 'check' ? '改完文件就跑' : '合入前'
+
+/** One line of the detail's code block: the class, the estimate and the command text, joined by U+3000. */
+const detailLine = (command: DetailCommand): string =>
+  [kindLabel(command.cls) + (command.scope === undefined ? '' : `（${command.cls === 'patrol' ? '夜里' : `when ${command.scope.join(', ')}`}）`), estimatePart(command), command.text].join('　')
+
+/** The notes line: the fixed sentences, then the change-lines and isolation ones that hold (§7.3). */
+function notesLine(view: ListView): string {
+  const gateTimeout = classTimeout('gate')
+  const checkTimeout0 = classTimeout('check')
+  const sentences = [
+    '合入前的检查每次合入都在你电脑上真实环境里跑',
+    '没过时主干不前进',
+    `每条合入前的检查最多跑 ${gateTimeout.timeoutSec / 60} 分钟${gateTimeout.source === 'default' ? '（默认）' : ''}，超时算没过`,
+    '改完文件就跑的检查在改了文件的那个 agent 的下一步之前跑',
+    `改完文件就跑的检查每项最多跑 ${checkTimeout0.timeoutSec} 秒${checkTimeout0.source === 'default' ? '（默认）' : ''}，超时算没跑完`,
+    '这些检查调用的程序和配置文件不在这次同意里',
+    ...view.changed > 0 ? ['旧告警不挡合入，只挡新出的'] : [],
+    ...view.costs.limitedCount > 0 ? [`有 ${view.costs.limitedCount} 条在副本里没跑通，第一次真跑才知道`] : [],
+  ]
+  return `注意：${sentences.join('；')}`
+}
+
+/** The detail M3 shows after the list question (§7.3): the command lines in a fence, then the notes; `mustShow` is the block's pieces plus the notes. */
+export function commandsDetail(view: ListView): { readonly markdown: string, readonly mustShow: readonly string[] } {
+  const lines = view.commands.map(detailLine)
+  const block = lines.join('\n')
+  const notes = notesLine(view)
+  const pieces: string[] = []
+  let current: string[] = []
+  let size = 0
+  for (const line of lines) {
+    const lineSize = [...line].length
+    if (size > 0 && size + lineSize + 1 > 4000) {
+      pieces.push(current.join('\n'))
+      current = []
+      size = 0
+    }
+    current.push(line)
+    size += lineSize + 1
+  }
+  if (current.length > 0) pieces.push(current.join('\n'))
+  const fence = `${'`'.repeat(Math.max(3, Math.max(0, ...(block.match(/`+/g) ?? []).map(run => run.length)) + 1))}`
+  const markdown = [`同意之后会跑的命令（原文，在项目目录里，每次照这样跑）：`, '', `${fence}\n${block}\n${fence}`, '', notes].join('\n')
+  return { markdown, mustShow: [...pieces.slice(0, 2), notes] }
+}
+
+/** What listFull, statusText and releaseNote add to the list view: the round's nodes, the trial facts of every command, and what the takeover saw. */
+export interface FullView extends ListView {
+  /** The main agent's reading, with the open forks it left out (§7.2). */
+  readonly summary?: string
+  readonly nodes: readonly { readonly id: string, readonly title: string, readonly type: string, readonly parent?: string, readonly source?: string, readonly acceptance?: readonly string[], readonly duplicate?: boolean }[]
+  /** The commands with their trial facts; a line without a usable run names why none. */
+  readonly runs: Readonly<Record<string, { readonly outcome?: string, readonly ms?: number, readonly log?: string, readonly notRun?: string, readonly matchedLine?: string, readonly timedOutSec?: number }>>
+  /** Where the two things and the rule stand (§7.7), one line each. */
+  readonly statuses: readonly string[]
+  /** Other undecided questions of the anchor subtree, counted. */
+  readonly othersPending: number
+  /** The path decision's basis (§3.4), one sentence. */
+  readonly pathBasis: string
+  /** What the round saw that the question does not carry. */
+  readonly warnings: readonly string[]
+  /** Whether the graph directory is under git already (§7.6). */
+  readonly graphTracked?: boolean
+}
+
+/** `review-<n>.md` (§7.3): everything the round saw, for 说「讲细点」. */
+export function listFull(view: FullView): string {
+  return [
+    `# List round ${view.round} (.llm/bootstrap/${view.takeover.id}/review-${view.round}.md)`,
+    '',
+    'The harness wrote this file; the question the main agent puts to the human is word for word what bootstrap_review returned.',
+    '',
+    '## What the main agent read',
+    '',
+    view.summary ?? '(no summary)',
+    '',
+    '## Nodes of this round',
+    '',
+    ...view.nodes.map((node) => {
+      const head = `- ${node.id} (${node.type}${node.parent === undefined ? '' : `, under ${node.parent}`})${node.duplicate === true ? ' [duplicate: on agreement the later one is rejected]' : ''}: ${node.title}`
+      const source = node.source === undefined ? '' : ` — ${node.source}`
+      const acceptance = node.acceptance === undefined || node.acceptance.length === 0 ? '' : ` | acceptance: ${node.acceptance.join(' | ')}`
+      return `${head}${source}${acceptance}`
+    }),
+    '',
+    '## Commands',
+    '',
+    ...view.commands.map((command) => {
+      const run = view.runs[command.text]
+      const base = `- ${detailLine(command)}`
+      if (run === undefined) return base
+      if (run.notRun !== undefined) return `${base} — 没试跑：${run.notRun}`
+      if (run.outcome === undefined) return base
+      const time = run.ms === undefined ? '' : `，${durationText(run.ms / 1000, 'gate')}`
+      const tail = run.timedOutSec !== undefined ? `；${afterTrialText(command.cls, classTimeout(command.cls, command.estimateSec), run.timedOutSec)}` : ''
+      const matched = run.matchedLine === undefined ? '' : `；stderr：${run.matchedLine}`
+      return `${base} — ${run.outcome}${time}${run.log === undefined ? '' : `；日志 ${run.log}`}${tail}${matched}`
+    }),
+    '',
+    '## Cautions and what was left out',
+    '',
+    notesLine(view),
+    ...view.notTaken.changed > 0 ? [`- 没让现在的 ${view.notTaken.changed} 条旧告警挡合入，只挡新出的（${view.changed} 条 \`changed\` 行）。`] : [],
+    ...view.notTaken.leftOutChecker === undefined ? [] : [`- 没把 ${view.notTaken.leftOutChecker} 放进合入前的检查，它现在就不过。`],
+    ...view.statuses,
+    ...view.othersPending > 0 ? [`另有 ${view.othersPending} 件要你定的，在『需要你』里。`] : [],
+    '- 默认规则：高峰定价的规则写在产品里（builtin:glm-peak-pricing），接管不加任何规则。',
+    `- 判路依据：${view.pathBasis}`,
+    ...view.warnings.map(line => `- ${line}`),
+    '',
+  ].join('\n')
+}
+
+/** What the takeover writes into the graph when the human agrees (§7.4), as the result reports it. */
+export interface AppliedCounts {
+  readonly approved: number
+  readonly skipped: number
+  readonly rejected: number
+  readonly done: number
+}
+
+/** The message M3 puts into record_human_answer's result (§7.4's table). Pure. */
+export function resultMessage(outcome: string, takeoverId: string, round: number, parts: {
+  readonly counts?: AppliedCounts
+  readonly rules?: readonly string[]
+  readonly rulesLive?: boolean
+  readonly wish?: string
+  readonly graphDir?: string
+  readonly why?: string
+  readonly differing?: string
+  readonly round_current?: number
+}): string {
+  switch (outcome) {
+    case 'applied': {
+      const { counts, rules, rulesLive, wish, graphDir } = parts
+      const c = counts ?? { approved: 0, skipped: 0, rejected: 0, done: 0 }
+      return [
+        `Takeover ${takeoverId} written: approved ${c.approved}, skipped ${c.skipped}, rejected ${c.rejected} duplicates, closed ${c.done} done tasks (details in review-${round}.md).`,
+        ` Rules: ${rules === undefined || rules.length === 0 ? 'none were proposed.' : rules.join(' ')}`,
+        rulesLive === true ? ' Commit docs/rules/ with git when you next commit; that commit goes through the normal merge checks.' : '',
+        wish === undefined ? '' : ` The human's wish from the start of the takeover: ${wish}. After you report, propose its goal as in interview step 1; if a goal for it already exists, skip.`,
+        graphDir === undefined ? '' : ` Next: commit the project graph once: git add -- ${graphDir} && git commit -m "Add the project graph (hourness bootstrap ${takeoverId})" -- ${graphDir}; then tell the human the result in a few lines.`,
+      ].join('')
+    }
+    case 'noted-list': return `Takeover ${takeoverId} was already written for round ${round}; nothing more to do.`
+    case 'missing': return 'No open takeover matches this question; nothing was written. /hourness-init status shows the takeover.'
+    case 'stale': return `Round ${round} is not the current list (${parts.round_current ?? round}); nothing was written. Call bootstrap_review and put the new round to the human as a new question.`
+    case 'changed': return `The question differs from round ${round} (${parts.differing ?? 'its words'}); nothing was written. Put a new round to the human exactly as bootstrap_review returns it, and record with recordedAs exactly as given.`
+    case 'forbidden': return 'This decision does not carry the human\'s words; nothing was written. Ask the human and record their words with record_human_answer.'
+    case 'unseen': return 'The agreement carries no mark that the human saw the exact commands; nothing was written. Show the text from propose_to_human again, verbatim, and ask again; then call record_human_answer.'
+    case 'busy': return 'The takeover is being written by another call; it finishes from the graph before your next step.'
+    case 'io': return `The takeover journal could not be written (${parts.why ?? 'unknown reason'}); nothing was written. Tell the human; /hourness-init status shows it.`
+    default: return `Takeover ${takeoverId}: nothing was written (${outcome}).`
+  }
+}
 
 /** `questions.md`: the arguments of propose_to_human for each thing, or the guess to ask in the chat, and the remarks. */
 export function questionsMarkdown(draft: readonly ThingDraft[], takeoverId: string): string {

@@ -13,6 +13,7 @@ import { apply as graphApply } from '../src/graph/index.ts'
 import { graphTools } from '../src/graph/tools.ts'
 import { openEngine } from '../src/graph/engine.ts'
 import { apply as designApply } from '../src/design/index.ts'
+import { apply as bootstrapApply } from '../src/bootstrap/index.ts'
 import { apply as envApply, inject as envInject } from '../src/env/index.ts'
 import { plainWordsIn } from '../src/graph/plain-question.ts'
 import { GUARD_RULES } from '../src/guard/catalog.ts'
@@ -37,7 +38,7 @@ import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
 import { OUTPUT_STYLE_SECTION } from '../src/shared/output-style.ts'
 import { PRICING_SERVICE, peakHoursOf, pricingService, quotaOf, type UsagePricing } from '../src/shared/pricing.ts'
 import type { QuotaView } from '../src/shared/quota.ts'
-import { DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, ENV_TOOL_NAMES, EXECUTE_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_HABIT, MEMORY_TOOL_NAMES, OPERATE_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES, STRUCTURED_OUTPUT_TOOL, WORKER_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { BOOTSTRAP_TOOL_NAMES, DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, ENV_TOOL_NAMES, EXECUTE_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_HABIT, MEMORY_TOOL_NAMES, OPERATE_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES, STRUCTURED_OUTPUT_TOOL, WORKER_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { emitMetric, setMetricSink, type MetricEvent } from '../src/execute/metrics.ts'
 import { HANDBACK_SCHEMA, REVIEW_SCHEMA, handbackProblems, mergeHandbackSchema, reviewProblems } from '../src/execute/schemas.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
@@ -306,8 +307,13 @@ test('tool names: the design row registers exactly the contract names, and withd
   host.injector.remove('tools')
   assert.deepEqual([...host.tools.keys()], [])
 })
+test('tool names: the takeover row registers exactly the contract names (takeover design 0.6 §7.2)', () => {
+  const host = designHost()
+  bootstrapApply(host.ctx)
+  assert.deepEqual([...host.tools.keys()], BOOTSTRAP_TOOL_NAMES)
+})
 test('tool names: every orchestration tool kept resident exists, and GLM tool search keeps it resident', () => {
-  const known = new Set([...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES, ...DESIGN_TOOL_NAMES, ...LESSONS_TOOL_NAMES, ...EXECUTE_TOOL_NAMES, ...WORKER_TOOL_NAMES, ...OPERATE_TOOL_NAMES, STRUCTURED_OUTPUT_TOOL])
+  const known = new Set([...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES, ...DESIGN_TOOL_NAMES, ...LESSONS_TOOL_NAMES, ...EXECUTE_TOOL_NAMES, ...WORKER_TOOL_NAMES, ...OPERATE_TOOL_NAMES, ...BOOTSTRAP_TOOL_NAMES, STRUCTURED_OUTPUT_TOOL])
   for (const name of ORCHESTRATION_RESIDENT_TOOLS) {
     assert.ok(known.has(name), `${name} is resident but no orchestration row registers it`)
     assert.ok(RESIDENT_TOOLS.has(name), name)

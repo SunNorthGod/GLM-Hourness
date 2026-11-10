@@ -129,12 +129,14 @@ test('a round runs the gate\'s setup, plain, when and check lines, then patrol; 
     ['when', 'node scripts/pass.js', '没试跑：命令是 agent 写的（来自 norm-merge-gate）'],
     ['check', 'node node_modules/eslint/bin/eslint.js --format json {files}', ''],
     ['patrol', 'npm audit', '没试跑：命令是 agent 写的（来自 norm-merge-gate）'],
+    // The whole-project baseline run of §5.6 item 1 joins, after the patrol: the whole text without {files}, refused like any other agent-written text here.
+    ['baseline', 'node node_modules/eslint/bin/eslint.js --format json', '没试跑：命令是 agent 写的（来自 tool-1）'],
   ])
   const check = commands.find(item => item.kind === 'check')
   assert.deepEqual(check?.argv?.slice(-3), ['scripts/env.js', 'scripts/fail.js', 'scripts/pass.js'], 'the first three tracked *.js by path')
   assert.equal(check?.estimateSec, 8)
   assert.equal(check?.cls, 'check')
-  assert.deepEqual(commands.map(item => item.cls), ['gate', 'gate', 'gate', 'gate', 'check', 'patrol'])
+  assert.deepEqual(commands.map(item => item.cls), ['gate', 'gate', 'gate', 'gate', 'check', 'patrol', 'check'])
 })
 
 test('a settled run reads as sandbox-broken, confinement-limited with the matched line, denied, passed or failed (§6.2 item 5, bootstrap-trial #5, #7)', () => {

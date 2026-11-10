@@ -9,8 +9,8 @@
  * src/bootstrap/runtime.ts.
  *
  * M3 hands a board the part of `attach` after its prefix, so the members
- * here take `tk-<8>:cost` and `tk-<8>:touch`. The list rounds
- * (`list-<n>`) join with bootstrap_review.
+ * here take `tk-<8>:cost`, `tk-<8>:touch` and `tk-<8>:list-<n>`; the list
+ * rounds join with bootstrap_review (§7.2–§7.4).
  */
 import type { AttachService } from '../shared/attach.ts'
 import type { DesignInvocationLike, ServiceLookup, UserNotice } from '../shared/dsh-min.ts'
@@ -20,8 +20,8 @@ export const BOOTSTRAP_SERVICE = 'glmHournessBootstrap'
 /** The prefix of every takeover attach, as M3's attach table names it. */
 export const TAKEOVER_ATTACH_PREFIX = 'bootstrap:'
 
-/** A whole takeover attach: the two things only the human can say (§5.4). */
-export const ATTACH_PATTERN = /^bootstrap:tk-[0-9a-z]{8}:(cost|touch)$/
+/** A whole takeover attach: the two things only the human can say (§5.4), and a list round of bootstrap_review (§7.2). */
+export const ATTACH_PATTERN = /^bootstrap:tk-[0-9a-z]{8}:(cost|touch|list-[1-9][0-9]{0,3})$/
 
 const ATTACH_LINE = /^接管提议 `([^`\s]+)`$/
 

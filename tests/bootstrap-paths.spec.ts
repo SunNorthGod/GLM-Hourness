@@ -255,7 +255,8 @@ test('the seam with M3: the drafted questions go through propose_to_human with a
   const dir = join(ws, 'docs', 'graph')
   const service = made.services.get(BOOTSTRAP_SERVICE) as AttachService
   const board = ATTACH_BOARDS.find(entry => entry.prefix === 'bootstrap:')
-  assert.ok(board !== undefined && board.format.test(`bootstrap:${tk}:cost`) && !board.format.test(`bootstrap:${tk}:list-1`))
+  // The list round of §7.2 joined the board's format in B7; a round is 1–9999 without leading zeros.
+  assert.ok(board !== undefined && board.format.test(`bootstrap:${tk}:cost`) && board.format.test(`bootstrap:${tk}:list-1`) && !board.format.test(`bootstrap:${tk}:list-0`) && !board.format.test(`bootstrap:${tk}:list-12345`))
   assert.equal(board.idOf(`说明\n\n${takeoverAttachLine(`bootstrap:${tk}:touch`)}`), `${tk}:touch`)
 
   // Before the norms are on the graph the takeover refuses the attach; a takeover it does not have, and what is not its attach, too.

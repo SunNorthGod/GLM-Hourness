@@ -13,11 +13,12 @@
  */
 import { homedir } from 'node:os'
 import { isMainAgentFor } from '../data/main-agent.ts'
+import { runGit } from '../data/git-process.ts'
 import { projectOf } from '../data/project-root.ts'
 import { holderHome, mainAgentOf } from '../graph/main-agent-holder.ts'
 import { graphService } from '../graph/service.ts'
 import { loadGraph } from '../graph/store.ts'
-import type { AgentLike, CommandDefinitionLike, CommandResultLike, DesignInvocationLike, ProvideHost, ServiceLookup, SessionLike, UserNotice } from '../shared/dsh-min.ts'
+import type { AgentLike, CommandDefinitionLike, CommandResultLike, DesignInvocationLike, InjectHost, ProvideHost, ServiceLookup, SessionLike, UserNotice } from '../shared/dsh-min.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { rulesBoardService } from '../rules/service.ts'
@@ -25,6 +26,7 @@ import { anchorOf, gapsOf, lacksAnything, proposedSince } from './gaps.ts'
 import { pathNotice } from './notice.ts'
 import { hasProjectGraph } from './path.ts'
 import { PATH_LABELS, STAGE_NOTE, bootstrapRuntime, type BootstrapRuntime } from './runtime.ts'
+import { REVIEW_TOOL, questionStatus, type RulesLookup } from './review.ts'
 import { BOOTSTRAP_SERVICE } from './service.ts'
 import { settleWorkspace, trackedFiles, untrackedNodeFiles } from './setup.ts'
 import { appendTakeover, openTakeoverOf, type OpenTakeover } from './takeover.ts'
@@ -45,8 +47,8 @@ export const INIT_COMMAND = 'hourness-init'
 /** The reply to /hourness-init without a graph in a session that is not the main agent (F46): a success, the panel's button must not look failed. */
 export const NOT_MAIN_REPLY = '发 /wish 开始接管；如果它只让这个会话当了主 Agent、没有开始读项目，再发一次 /hourness-init'
 
-/** The row's context: the commands service, the agent lifecycle event, and service lookup. */
-export interface BootstrapContext extends ServiceLookup, Partial<ProvideHost> {
+/** The row's context: the commands service, the agent lifecycle event, and service lookup; injection brings the tools service. */
+export interface BootstrapContext extends ServiceLookup, Partial<InjectHost>, Partial<ProvideHost> {
   readonly commands: { register(definition: CommandDefinitionLike<DesignInvocationLike>): () => void }
   on(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
 }
@@ -76,7 +78,7 @@ function deliver(agent: DesignInvocationLike['agent'], notice: UserNotice): void
 }
 
 /** `/hourness-init status` (or no argument) while a takeover is open: what it is at, without writing anything. */
-async function openStatus(takeover: OpenTakeover, root: string): Promise<string> {
+async function openStatus(takeover: OpenTakeover, root: string, rules: RulesLookup): Promise<string> {
   const graph = await loadGraph(takeover.graphDir)
   const { total, byType } = proposedSince(graph, takeover.openedAt)
   const counts = Object.entries(byType).sort(([a], [b]) => a.localeCompare(b)).map(([type, count]) => `${type} ${count}`).join('、')
@@ -84,14 +86,16 @@ async function openStatus(takeover: OpenTakeover, root: string): Promise<string>
   return [
     `接管 ${takeover.id} 开着（${PATH_LABELS[takeover.path]}）：这次接管已提 ${total} 个节点${total === 0 ? '' : `（${counts}）`}。`,
     anchor === undefined ? '还没有锚点：主 Agent 提的第一个目标就是锚点，三个规范挂在它下面。' : `锚点 ${anchor}：三个规范挂在它下面。`,
+    ...takeover.stage === 'review' ? [`清单第 ${takeover.round} 版已出，在等你回话。`] : takeover.stage === 'apply' ? [`清单第 ${takeover.round} 版人已同意，正在照图写入。`] : [],
     ...thingLines(thingStates(graph, takeover)),
+    ...await questionStatus(graph, takeover, rules, undefined),
     ...trialStatusLines(readTrialFile(root, takeover.id)),
     ...takeover.noted.includes(STAGE_NOTE.code) ? ['设计行的阶段提醒还没有对接管让位：主 Agent 照接管的提醒走。'] : [],
     takeover.path === 'new' ? '下一步：主 Agent 在访谈里问你。' : '下一步：主 Agent 读项目、提节点。',
   ].join('\n')
 }
 
-export function initCommand(ctx: BootstrapContext, runtime: BootstrapRuntime, home: () => string): CommandDefinitionLike<DesignInvocationLike> {
+export function initCommand(ctx: BootstrapContext, runtime: BootstrapRuntime, home: () => string, rulesLookup: () => RulesLookup): CommandDefinitionLike<DesignInvocationLike> {
   const start = async (invocation: DesignInvocationLike, path: 'new' | 'existing' | undefined): Promise<CommandResultLike> => {
     const result = await runtime.service.prepare(invocation, { trigger: 'init', ...path === undefined ? {} : { path } })
     if (!result.ok) return fail(result.text)
@@ -101,7 +105,7 @@ export function initCommand(ctx: BootstrapContext, runtime: BootstrapRuntime, ho
 
   const withOpen = async (invocation: DesignInvocationLike, input: Argument, takeover: OpenTakeover, root: string): Promise<CommandResultLike> => {
     const by = { session: invocation.agent.session.id, commandId: invocation.commandId }
-    if (input === '' || input === 'status') return done(await openStatus(takeover, root))
+    if (input === '' || input === 'status') return done(await openStatus(takeover, root, rulesLookup()))
     if (input === 'off') {
       const graph = await loadGraph(takeover.graphDir)
       await appendTakeover(root, takeover.id, [{ op: 'takeover-closed', data: { reason: 'abandoned', counts: { proposed: proposedSince(graph, takeover.openedAt).total } } }], by)
@@ -216,6 +220,18 @@ export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () =
         }
       }, 'bootstrap')
       if (uninstall !== undefined) disposers.push(uninstall)
+      // The tool face: bootstrap_review stays only for the main agent of a project with an open takeover (§7.2).
+      try {
+        disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
+          const assembled = await next()
+          if (await runtime.face(agent)) return assembled
+          const tools = assembled.tools.filter(tool => tool.name !== REVIEW_TOOL)
+          return tools.length === assembled.tools.length ? assembled : { ...assembled, tools }
+        }))
+      }
+      catch (error) {
+        console.warn(`${name}: the tool face filter is not installed for agent ${agent.id}: ${message(error)}`)
+      }
     }
     catch (error) {
       console.warn(`${name}: takeover reminder not installed for agent ${agent.id}: ${message(error)}`)
@@ -223,6 +239,21 @@ export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () =
   }
   // The rules board takes a rule through the human's agreement when its service has the members of that path (src/rules/service.ts); rulesBoardService answers undefined while it does not.
   const rulesWhole = (): boolean => rulesBoardService(ctx) !== undefined
+  /** How the rules board answers about one of its proposals right now; undefined while it is not here (§7.7). */
+  const rulesLookup = (): RulesLookup => {
+    const service = rulesBoardService(ctx)
+    if (service === undefined) return () => Promise.resolve(undefined)
+    return async (cwd, proposal) => {
+      try {
+        return (await service.attachable({ cwd, proposal })).ok
+      }
+      catch {
+        return undefined
+      }
+    }
+  }
+  /** `git merge-base --is-ancestor <sha> HEAD` in the named project (§7.2 item 6, §7.4 step 3). */
+  const ancestor = (root: string, sha: string): Promise<boolean> => runGit(root, ['merge-base', '--is-ancestor', sha, 'HEAD']).then(run => run.code === 0, () => false)
   const trial = {
     sandbox: () => sandboxOf(ctx),
     emit: (event: EmittedEvent, dir: string) => { emitMetric(ctx, event, { dir }) },
@@ -238,7 +269,19 @@ export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () =
     },
     trialMinutes: trialMinutesOf(config),
   }
-  const runtime = bootstrapRuntime({ graphDir: cwd => graphService(ctx)?.dirFor(cwd), home: homedir, install, report, rulesWhole, trial })
+  const runtime = bootstrapRuntime({ graphDir: cwd => graphService(ctx)?.dirFor(cwd), home: homedir, install, report, isMain: agent => isMainAgent(ctx, agent), rulesWhole, rules: rulesLookup(), ancestor, trial })
+  // bootstrap_review registers globally; the face filter keeps it for the main agent of a project with an open takeover (§7.2), and the tool body checks its caller again.
+  try {
+    if (typeof ctx.inject === 'function') {
+      ctx.inject(['tools'], toolsCtx => {
+        disposers.push(toolsCtx.tools.register(runtime.tool))
+      })
+    }
+    else console.warn(`${name}: the host has no inject, bootstrap_review cannot register (the takeover works without it: the command /hourness-init and the reminders stay)`)
+  }
+  catch (error) {
+    console.warn(`${name}: registering bootstrap_review failed: ${message(error)}`)
+  }
   // The residue of a host that died mid-round (§6.3): best effort, never in the way of activation.
   void sweepTrialDirs().then((swept) => {
     if (swept.left.length > 0) health.reactivate('degraded', `试跑目录删不掉：${swept.left.join('、').slice(0, 200)}`)
@@ -246,7 +289,7 @@ export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () =
   try {
     if (typeof ctx.provide === 'function') disposers.push(ctx.provide(BOOTSTRAP_SERVICE, runtime.service))
     disposers.push(ctx.on('agent/created', ({ agent }) => { install(agent) }))
-    disposers.push(ctx.commands.register(initCommand(ctx, runtime, homedir)))
+    disposers.push(ctx.commands.register(initCommand(ctx, runtime, homedir, rulesLookup)))
   }
   catch (error) {
     console.warn(`${name}: activation incomplete: ${message(error)}`)

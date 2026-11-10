@@ -153,8 +153,8 @@ test('a git that fails, hangs or is missing is an outcome with a reason, never a
 
 test('the executor is a closed set of named operations: no entry point takes git arguments from the caller (E3 review, E3-3)', () => {
   assert.deepEqual(Object.keys(createGit()).sort(), [
-    'branchTip', 'changedFiles', 'commitsBetween', 'currentBranch', 'discardWorktree', 'ensureWorktree', 'entryAt', 'isAncestor', 'lastTaskCommit', 'listWorktrees', 'lsRemote', 'mergeBase',
-    'prepareGateWorktree', 'reflogSubject', 'remoteHeadBranch', 'remoteUrl', 'removeWorktree', 'resolveCommit', 'sameContent', 'stagedPaths', 'taskTrailers', 'toplevel', 'treeOf', 'trunkRefs', 'trunkUpstream',
+    'branchTip', 'changedFiles', 'commitsBetween', 'currentBranch', 'diffPatch', 'discardWorktree', 'ensureWorktree', 'entryAt', 'isAncestor', 'lastTaskCommit', 'listWorktrees', 'lsRemote', 'mergeBase',
+    'prepareGateWorktree', 'reflogSubject', 'remoteHeadBranch', 'remoteUrl', 'removeWorktree', 'resolveCommit', 'sameContent', 'stagedPaths', 'taskTrailers', 'toplevel', 'treeOf', 'treePaths', 'trunkRefs', 'trunkUpstream',
   ], 'a new operation is added here on purpose, with its argument checks, after review')
 })
 

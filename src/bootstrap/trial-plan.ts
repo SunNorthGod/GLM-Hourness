@@ -39,8 +39,8 @@ export type TrialOutcome = 'passed' | 'failed' | 'denied' | 'confinement-limited
 /** Where a command text came from: a scan candidate of HEAD, the default table, or the main agent (never run). */
 type TrialOrigin = 'scan' | 'default' | 'agent'
 
-/** What line a command stands on: the gate's setup, plain, `when` and patrol lines, a tool node's check line. */
-type TrialKind = 'setup' | 'gate' | 'when' | 'check' | 'patrol'
+/** What line a command stands on: the gate's setup, plain, `when` and patrol lines, a tool node's check line, and the whole-project run that baselines a check line (§5.6 item 1). */
+type TrialKind = 'setup' | 'gate' | 'when' | 'check' | 'patrol' | 'baseline'
 
 export interface TrialCommand {
   /** The first 12 hex digits of the text's SHA-256 (the scan's candidate id). */
@@ -103,8 +103,8 @@ export function eligibility(text: string, sources: TrialSources, where: string):
   return { origin }
 }
 
-const CLASS_OF: Readonly<Record<TrialKind, CommandClass>> = { setup: 'gate', gate: 'gate', when: 'gate', check: 'check', patrol: 'patrol' }
-const ORDER: readonly TrialKind[] = ['setup', 'gate', 'when', 'check', 'patrol']
+const CLASS_OF: Readonly<Record<TrialKind, CommandClass>> = { setup: 'gate', gate: 'gate', when: 'gate', check: 'check', patrol: 'patrol', baseline: 'check' }
+const ORDER: readonly TrialKind[] = ['setup', 'gate', 'when', 'check', 'patrol', 'baseline']
 
 /** How many files a check line's `{files}` gets in the trial (§6.3). */
 const CHECK_FILES = 3
@@ -136,6 +136,15 @@ export function trialCommands(gate: GraphNode | undefined, tools: readonly Graph
         ...entry.estimateSeconds === undefined ? {} : { estimateSec: entry.estimateSeconds },
         origin: allowed.origin,
         ...allowed.refused !== undefined ? { refused: allowed.refused } : empty ? { refused: '没试跑：没有已跟踪的文件对得上它的 when' } : {},
+      })
+      // The whole-project run that baselines the checker (§5.6 item 1): its own text, `{files}` left out, so its time is not the estimate's (one-page review P9).
+      const whole = entry.argv.filter(item => item !== '{files}')
+      const wholeText = whole.join(' ')
+      const wholeAllowed = eligibility(wholeText, sources, tool.id)
+      commands.push({
+        id: idOf(`${tool.id}:${wholeText}`), text: wholeText, kind: 'baseline', cls: 'check', node: tool.id, argv: whole,
+        origin: wholeAllowed.origin,
+        ...wholeAllowed.refused !== undefined ? { refused: wholeAllowed.refused } : {},
       })
     }
   }
