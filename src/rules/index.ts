@@ -16,8 +16,15 @@
  * - the service `glmHournessPeakMode`: the dispatch tool counts running GLM
  *   subagents against `glmWorkerCap` (at most 1 under `reduce` during a peak),
  *   and asks `peakHoldFor` whether the peak holds a session's work back;
- * - the service `glmHournessRules`, whose one member is the line the guard adds
- *   to its prompt section while this row is on;
+ * - `rules_propose` (propose-tool.ts): an agent records what the human asked for as
+ *   a proposal; nothing holds anybody until the human agrees in the chat, and the
+ *   board then writes it as theirs (accept.ts; `/rules accept` and `/rules reject`
+ *   for a proposal made while the project graph was not there);
+ * - the service `glmHournessRules`: the line the guard adds to its prompt section
+ *   while this row is on, and the three members the design row calls for a
+ *   proposal put to the human (`attachable`, `proposalLine`, `acceptProposal`); the
+ *   decisions the graph holds and the board did not hear are carried out every
+ *   minute (`reconcile`);
  * - the status view `glmHournessStatus/rules` (src/rules/status.ts): the status
  *   hub's one `rules/peak` entry, the peak-hours line from the pricing service
  *   with the project's level in the fields, the one source the report face and
@@ -58,6 +65,7 @@ import { existsSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { projectHomeFor } from '../data/project-home.ts'
 import { projectOf } from '../data/project-root.ts'
+import { graphService } from '../graph/service.ts'
 import { liftService } from '../guard/lift-service.ts'
 import { auditPaths, projectJournal, type ProjectJournal } from '../memory/audit.ts'
 import { collectStatus } from '../report/status.ts'
@@ -68,6 +76,7 @@ import { peakHoursOf, pricingService } from '../shared/pricing.ts'
 import { whenPresent } from '../shared/row-support.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
 import { RULES_TOOL_NAMES } from '../shared/tool-names.ts'
+import { createRulesService, reconcile, type AcceptDeps } from './accept.ts'
 import { CATALOG } from './builtin.ts'
 import { NOT_A_PROJECT, RULES_HINT, runRulesCommand } from './commands.ts'
 import { openRulesBoard } from './engine.ts'
@@ -75,11 +84,12 @@ import { installRulesGate } from './gate.ts'
 import { createHeartbeat, liveHeartbeats, readHeartbeats, type HostHeartbeat } from './heartbeat.ts'
 import { peakModeServiceFor, peakReader, projectReader, type ProjectView } from './peak.ts'
 import { RULES_KEY, rulesProjection } from './projection.ts'
+import { rulesProposeTool } from './propose-tool.ts'
 import { gitOperationIn, readProject } from './repo.ts'
 import { installReminder } from './reminder.ts'
 import type { HostRef } from './request.ts'
 import { projectHealth } from './row-health.ts'
-import { RULES_DECLARATION, RULES_SERVICE, type RulesService } from './service.ts'
+import { RULES_SERVICE } from './service.ts'
 import { rulesStatusItems } from './status.ts'
 import { DEFAULT_RULES_DIR, realStoreIo, type RulesPaths, type StoreIo } from './store.ts'
 import { createTicketDesk } from './tickets.ts'
@@ -94,6 +104,8 @@ export { clockText } from './commands.ts'
 /** The period of the host's re-judgement of its waiting tickets, and of its heartbeat (design §6.3, §5.4). */
 export const PASS_MS = 5_000
 export const BEAT_MS = 15_000
+/** The period of the reconciliation of the graph's decisions with the board (design §9.3 step 5). */
+export const RECONCILE_MS = 60_000
 
 /** A repeating timer: `tick` every `everyMs` until the returned function is called. A tick never rejects. */
 export type IntervalTimer = (tick: () => Promise<void>, everyMs: number) => () => void
@@ -195,6 +207,7 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
   disposers.push(() => { health.dispose() })
 
   const warn = onceWarner()
+  const acceptDeps: AcceptDeps = { rulesDir, now, ...(config.io === undefined ? {} : { io: config.io }) }
   const host: HostRef = { pid: process.pid, startedAt: Date.now() }
   const heartbeat = createHeartbeat({
     host,
@@ -334,8 +347,16 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
     disposers.push(ctx.tools.register(rulesShowTool({ ctx, now, project: read, peak: reading })))
   }
   catch (error) {
-    console.warn(`${name}: registering ${RULES_TOOL_NAMES.join(', ')} failed, agents cannot read the rules: ${message(error)}`)
-    problems.push(`工具 ${RULES_TOOL_NAMES.join('、')} 没注册上：${message(error)}`)
+    console.warn(`${name}: registering rules_show failed, agents cannot read the rules: ${message(error)}`)
+    problems.push(`工具 rules_show 没注册上：${message(error)}`)
+  }
+
+  try {
+    disposers.push(ctx.tools.register(rulesProposeTool({ ctx, rulesDir, now, ...(config.io === undefined ? {} : { io: config.io }) })))
+  }
+  catch (error) {
+    console.warn(`${name}: registering rules_propose failed, agents cannot propose rules: ${message(error)}`)
+    problems.push(`工具 rules_propose 没注册上：${message(error)}`)
   }
 
   // The gate's journal; once a line has landed (or failed), the rules page is written again after a quiet second.
@@ -365,12 +386,11 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
       problems.push(`服务 ${PEAK_MODE_SERVICE} 没提供上：${message(error)}（派活照原来的槽位，GLM 提醒照原文）`)
     }
     try {
-      const service: RulesService = { declaration: RULES_DECLARATION }
-      disposers.push(ctx.provide(RULES_SERVICE, service))
+      disposers.push(ctx.provide(RULES_SERVICE, createRulesService(acceptDeps)))
     }
     catch (error) {
-      console.warn(`${name}: ${RULES_SERVICE} is not provided (the guard declares no rules board): ${message(error)}`)
-      problems.push(`服务 ${RULES_SERVICE} 没提供上：${message(error)}（guard 的提示词里不写规则板那一行）`)
+      console.warn(`${name}: ${RULES_SERVICE} is not provided (a proposal cannot ride a question; the attach path reads this service): ${message(error)}`)
+      problems.push(`服务 ${RULES_SERVICE} 没提供上：${message(error)}（提议挂不上问题：attach 路径读这个服务）`)
     }
     // The row's status view (status hub design 0.3 §3.2, §12 rules row): the one rules/peak entry —
     // the peak-hours line from the pricing service with the project's level in the fields — served
@@ -398,6 +418,8 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
       }
       if (sessionId !== undefined && cwd !== undefined) await heartbeat.join(sessionId, cwd)
       await settle(sessionId, cwd)
+      // A decision the graph holds and the board did not hear (the row was off) is carried out at once, not a minute later.
+      await reconcileAll()
       // A session that appears after a restart may have a goal an earlier host paused for the stop level.
       await tickets.adopt(agent)
       if (cwd !== undefined) await pageView.write(cwd)
@@ -415,6 +437,21 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
     problems.push(`会话事件没注册上：${message(error)}`)
   }
 
+  /** The decisions the graph holds that the board did not hear (it was off, busy or could not write), for the projects of the known sessions. */
+  const reconcileAll = async (): Promise<void> => {
+    const graph = graphService(ctx)
+    if (graph === undefined) return
+    const done = new Set<string>()
+    for (const cwd of new Set(sessions.values())) {
+      const root = projectOf(cwd)?.root
+      const dir = graph.dirFor(cwd)
+      if (root === undefined || dir === undefined || done.has(root)) continue
+      done.add(root)
+      const settled = await reconcile(acceptDeps, cwd, dir)
+      if (settled.accepted.length + settled.rejected.length + settled.expired.length > 0) await pageView.write(cwd)
+    }
+  }
+
   const every = config.timer ?? realTimer
   const guarded = (run: () => Promise<void>) => async (): Promise<void> => {
     try {
@@ -427,6 +464,7 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
   disposers.push(
     every(guarded(() => tickets.reconcile()), PASS_MS),
     every(guarded(() => heartbeat.beat()), BEAT_MS),
+    every(guarded(reconcileAll), RECONCILE_MS),
     // The rules page's data follows what no event of this row announces: the guard's denials, the lifts, the clock.
     every(guarded(() => pageView.write()), BEAT_MS),
   )

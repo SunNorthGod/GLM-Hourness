@@ -37,6 +37,7 @@ import { mapTodoWriteToDsh } from './todowrite.ts'
 import { TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from './zcode-tool-text.ts'
 import { installTodoReminder, TODO_NATIVE, TODO_WRITE_NAME } from './todo-reminder.ts'
 import { installPeakReminder, readPeakMode, type PeakModeRead } from './peak-reminder.ts'
+import { installSubdirInstructions, sessionWorkingDirectory } from './subdir-instructions.ts'
 import { glmMetricSink, type GlmMetricSink } from '../glm-llm/metrics.ts'
 import { installToolSearch } from '../toolsearch/index.ts'
 import { DIALECT_SERVICE, type DialectService } from '../shared/dialect.ts'
@@ -62,6 +63,8 @@ export interface GlmPromptConfig {
   readonly skills?: boolean
   /** ZCode tool search for GLM requests: `local` (default, DESIGN.md §5.10) or `off` (every tool loads directly). */
   readonly toolSearchMode?: 'local' | 'off'
+  /** Deliver the AGENTS.md / CLAUDE.md files of the directories an alias Read, Write or Edit reaches below the working directory, as the host does for the natives (subdir-instructions.ts); off by default (ZCode 3.17.1 does not load subdirectory instructions, so the default request is unchanged), on only with `true` (DESIGN.md §5.11). */
+  readonly subdirInstructions?: boolean
 }
 
 /** Runtime Config schema: exposes the row knobs (reporting depth included) as real switches in the DSH plugin manager. */
@@ -81,6 +84,7 @@ export const Config = Schema.object({
   }); delete (env.meta as { default?: unknown }).default; return env })().description('Host facts for the Environment section; omitted skips the section.'),
   skills: Schema.boolean().default(false).description('Whether user-invocable skills exist (adds the skills note).'),
   toolSearchMode: Schema.union(['local', 'off'].map(value => Schema.const(value))).default('local').description('ZCode tool search for GLM requests: local defers tools behind LocalToolSearch and DeferredToolCall; off loads every tool directly.'),
+  subdirInstructions: Schema.boolean().default(false).description('Deliver the AGENTS.md and CLAUDE.md files of the subdirectories a Read, Write or Edit reaches, as DSH does for its native file tools. Off by default: ZCode 3.17.1 does not load subdirectory instructions, so a default profile\'s request is unchanged (DESIGN.md §5.11); set true to enable.'),
 })
 
 /** Order of the harness identity section this row shadows (SECTION_ORDERS.HARNESS_IDENTITY). */
@@ -219,7 +223,7 @@ export function buildAgentAliases(agent: AgentLike): BuiltAlias[] {
  * (src/glm-prompt/standing-depth.ts), which wins over the configured one; a
  * reading that could not be used is part of the row health of every GLM step.
  */
-export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now(), peakMode?: () => PeakModeRead, standingDepth?: () => StandingDepth, metric?: GlmMetricSink): () => void {
+export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now(), peakMode?: () => PeakModeRead, standingDepth?: () => StandingDepth, metric?: GlmMetricSink, workingDirectory?: () => string | undefined): () => void {
   const env = sessionEnv(config.env, agent)
   const standing = standingDepth?.() ?? {}
   const depth = standing.level ?? readReportingDepth(config).depth
@@ -265,6 +269,9 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
   // notices, which keep their collection order after it.
   const peakReminder = installPeakReminder(agent, () => glmStep, now, peakMode, metric)
   if (peakReminder !== undefined) disposers.push(peakReminder)
+  // Registered after the peak reminder, so it runs innermost and its notice comes first after the admitted messages, where the host puts its own instruction messages.
+  const subdir = config.subdirInstructions !== true || workingDirectory === undefined ? undefined : installSubdirInstructions(agent, () => glmStep, workingDirectory)
+  if (subdir !== undefined) disposers.push(subdir)
   return () => { for (const dispose of disposers.splice(0)) dispose() }
 }
 
@@ -353,7 +360,7 @@ export function apply(ctx: PluginContext & Partial<ProvideHost> & ServiceLookup,
     if (installed.has(agent)) return
     installed.add(agent)
     try {
-      disposers.push(installDialect(agent, config, reporter, now, peakModeReader(ctx, agent), standingDepthReader(ctx, agent, warnDepth), metric))
+      disposers.push(installDialect(agent, config, reporter, now, peakModeReader(ctx, agent), standingDepthReader(ctx, agent, warnDepth), metric, () => sessionWorkingDirectory(ctx, agent.session)))
       active.add(agent)
     }
     catch (error) {

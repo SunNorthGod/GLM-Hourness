@@ -23,6 +23,9 @@ import { classifyRecord, type GuardRecord } from '../src/guard/records.ts'
 import { checkCall, type CheckResult } from '../src/rules/check.ts'
 import { openRulesBoard } from '../src/rules/engine.ts'
 import { repoJson, type RepoRules, type Rule } from '../src/rules/model.ts'
+import { prepareProposal } from '../src/rules/proposal.ts'
+import type { ScriptResult } from '../src/loops/script.ts'
+import { loadState } from '../src/rules/store.ts'
 import { nextPeakChange } from '../src/shared/pricing.ts'
 import { morningReport } from '../src/workflow/morning-report.ts'
 import { OFFPEAK_CREDIT_RUNS } from './rules-fixtures.ts'
@@ -124,6 +127,20 @@ const config = JSON.parse(process.env.GATE_TEST)
 export const checkCall = (call, options) => judge(call, { ...options, metrics: (event) => { appendFileSync(config.log, JSON.stringify({ event }) + '\\n') } })
 `
 
+/** The real checkCall of the build output with the executor replaced by a stand-in that answers from a list (the last answer repeats) and records each run; its metrics events are recorded too. */
+const WITH_RUNNER = `import { appendFileSync } from 'node:fs'
+import { checkCall as judge } from ${JSON.stringify(href(BUILT.check))}
+const config = JSON.parse(process.env.GATE_TEST)
+let runs = 0
+const runScript = async (request) => {
+  const answer = config.runner[Math.min(runs, config.runner.length - 1)]
+  runs += 1
+  appendFileSync(config.log, JSON.stringify({ run: { entry: request.envelope.entry, purpose: request.purpose, timeoutMs: request.timeoutMs } }) + '\\n')
+  return answer
+}
+export const checkCall = (call, options) => judge(call, { ...options, runScript, metrics: (event) => { appendFileSync(config.log, JSON.stringify({ event }) + '\\n') } })
+`
+
 type Spend = 'optional' | 'necessary'
 /** A fake verdict: the fields of a CheckResult it answers with over an allow that echoes the signals it was given, or `throws` with the code of a RulesCheckError. */
 type Answer = Readonly<Record<string, unknown>>
@@ -138,7 +155,7 @@ interface GateRun {
   readonly args?: readonly string[]
   readonly npmScript?: string
   /** The rules library: the build output (default), the build output with its events recorded, a module without checkCall, a file that is not there, or a fake. */
-  readonly check?: 'built' | 'recorded' | 'no-export' | 'missing' | { readonly answers: readonly Answer[] }
+  readonly check?: 'built' | 'recorded' | 'no-export' | 'missing' | { readonly answers: readonly Answer[] } | { readonly runner: readonly Answer[] }
   /** Inject an appender that records each line, or one that also throws. */
   readonly append?: 'records' | 'throws'
   /** Turn the switch code-freeze off as the human after this many sleeps. */
@@ -162,6 +179,7 @@ interface LogEntry {
   readonly sleep?: number
   readonly append?: Appended
   readonly event?: { readonly event: string, readonly exitCode: number, readonly waitedMs?: number }
+  readonly run?: { readonly entry: string, readonly purpose: string, readonly timeoutMs?: number }
 }
 
 interface Ran {
@@ -173,6 +191,8 @@ interface Ran {
   readonly sleeps: readonly number[]
   readonly appends: readonly Appended[]
   readonly events: ReadonlyArray<NonNullable<LogEntry['event']>>
+  /** The scripts the stand-in executor was asked to run. */
+  readonly runs: ReadonlyArray<NonNullable<LogEntry['run']>>
 }
 
 /** Put the driver where the calibration runner sits. */
@@ -192,7 +212,7 @@ async function runGate(run: GateRun): Promise<Ran> {
     if (check === 'missing') checkModule = join(scratch, 'no-such-check.js')
     else if (check !== 'built') {
       checkModule = join(scratch, 'check.mjs')
-      await writeFile(checkModule, check === 'recorded' ? RECORDED : check === 'no-export' ? 'export const judge = 1\n' : FAKE)
+      await writeFile(checkModule, check === 'recorded' ? RECORDED : check === 'no-export' ? 'export const judge = 1\n' : 'runner' in check ? WITH_RUNNER : FAKE)
     }
     const config = {
       log,
@@ -201,7 +221,8 @@ async function runGate(run: GateRun): Promise<Ran> {
       peak: run.peak ?? 'credits',
       projectRoot: run.root,
       ...(checkModule === undefined ? {} : { checkModule }),
-      ...(typeof check === 'object' ? { answers: check.answers } : {}),
+      ...(typeof check === 'object' && 'answers' in check ? { answers: check.answers } : {}),
+      ...(typeof check === 'object' && 'runner' in check ? { runner: check.runner } : {}),
       ...(run.append === undefined ? {} : { append: run.append }),
       ...(run.freezeOffAfter === undefined ? {} : { freezeOffAfter: run.freezeOffAfter }),
     }
@@ -227,6 +248,7 @@ async function runGate(run: GateRun): Promise<Ran> {
       sleeps: entries.flatMap(entry => (entry.sleep === undefined ? [] : [entry.sleep])),
       appends: entries.flatMap(entry => (entry.append === undefined ? [] : [entry.append])),
       events: entries.flatMap(entry => (entry.event === undefined ? [] : [entry.event])),
+      runs: entries.flatMap(entry => (entry.run === undefined ? [] : [entry.run])),
     }
   }
   finally {
@@ -278,11 +300,11 @@ function gateTest(name: string, body: (base: string) => Promise<void>): void {
 }
 
 /** What src/rules/check.ts answers for the same command with the signals the gate computes at `at`. */
-async function expectedOf(root: string, at: string, glmSpend: Spend, command: string): Promise<CheckResult> {
+async function expectedOf(root: string, at: string, glmSpend: Spend, command: string, extra: Partial<Parameters<typeof checkCall>[1]> = {}): Promise<CheckResult> {
   const ms = Date.parse(at)
   const peak = creditPricing.peak(ms)
   const end = peak ? nextPeakChange(atMs => creditPricing.peak(atMs), ms) : undefined
-  return checkCall({ tool: 'pwsh', args: { command } }, { project: root, glmSpend, signals: { 'glm-peak': peak }, ...(end === undefined ? {} : { peakUntil: new Date(end).toISOString() }) })
+  return checkCall({ tool: 'pwsh', args: { command } }, { project: root, glmSpend, signals: { 'glm-peak': peak }, ...(end === undefined ? {} : { peakUntil: new Date(end).toISOString() }), ...extra })
 }
 
 const linesOf = (text: string): string[] => text.split('\n').filter(line => line !== '')
@@ -505,6 +527,84 @@ gateTest('the gate runs nothing and records no judgement (item 24): no child pro
   assert.equal(ran.started, undefined)
 })
 
+// ------------------------------------------------- item 24, with the real checkCall
+
+const BY_THE_BOARD = { kind: 'exited' as const, stdout: '', durationMs: 5, truncated: false }
+const exits = (exitCode: number, stderr = ''): ScriptResult => ({ ...BY_THE_BOARD, exitCode, stderr })
+const TIMED_OUT: ScriptResult = { kind: 'timeout', stdout: '', stderr: '', durationMs: 10_000 }
+/** The stand-in executor of a case, in this process, for the expected refusal. */
+const standIn = (...answers: readonly ScriptResult[]): NonNullable<Parameters<typeof checkCall>[1]['runScript']> => {
+  let runs = 0
+  return () => Promise.resolve(answers[Math.min(runs++, answers.length - 1)])
+}
+
+/** A rule that runs a script before the calibration, approved the way the human approves: the agent proposes it, the person's word makes it so. */
+async function approveGateScript(root: string, id: string, action: Record<string, unknown> = {}): Promise<void> {
+  const board = openRulesBoard({ projectRoot: root, io: quickIo({ now: () => Date.parse(SET_AT) }) })
+  const proposal = `p-${Math.floor(Math.random() * 0xFFFFFFFF).toString(16).padStart(8, '0')}`
+  const body = {
+    id,
+    title: 'Lint before the calibration',
+    scope: 'project',
+    when: { kind: 'event', events: ['gate.tool-call'] },
+    filter: { command: { matches: 'run-calibrate' } },
+    action: { kind: 'script', lang: 'node', text: 'process.exit(0)\n', timeoutSeconds: 10, ...action },
+    lifetime: { kind: 'until-lifted' },
+  }
+  const made = prepareProposal({ kind: 'rule', body, reason: 'the human asked for a lint before the calibration' }, { state: loadState(board.paths).state, rulesDirFromRoot: 'docs/rules', now: new Date(Date.parse(SET_AT)), via: 'graph', proposedBy: { sessionId: 's-main', agentId: 'agent-main' }, id: proposal, readScript: () => undefined })
+  assert.ok(made.ok, JSON.stringify(made))
+  assert.ok((await board.apply('llm', { op: 'propose', proposal: made.proposal })).ok)
+  assert.ok((await board.apply('human', { op: 'proposal-accept', id: proposal, by: 'llm', relay: '可以', question: 'question-1' })).ok)
+}
+
+gateTest('item 24 with the real checkCall: a script a person approved that exits 2 blocks the run, exit code 4, the refusal on standard error and nothing else, one journal line with the rule id', async (base) => {
+  const root = await makeProject(base, 'script-block')
+  await approveGateScript(root, 'r-lint-gate')
+  const answer = exits(2, 'lint fails')
+  const expected = await expectedOf(root, WED_1900, 'optional', COMMAND, { runScript: standIn(answer) })
+  assert.equal(expected.exitCode, 4)
+  assert.match(expected.text ?? '', /ran its script docs\/rules\/scripts\/r-lint-gate\.mjs, which blocked the call: "lint fails"\./)
+  const ran = await runGate({ root, start: WED_1900, check: { runner: [answer] }, append: 'records' })
+  assert.equal(ran.status, 4, ran.stderr)
+  assert.equal(ran.stderr, `${expected.text ?? ''}\n`, 'the refusal of the board and no line besides it')
+  assert.equal(ran.started, undefined)
+  assert.deepEqual(ran.runs, [{ entry: 'r-lint-gate', purpose: 'gate', timeoutMs: 10_000 }])
+  assert.deepEqual(ran.events.map(event => [event.event, event.exitCode]), [['rules.check', 4]], 'one judgement, one rules.check')
+  const [line, ...rest] = ran.appends
+  assert.equal(rest.length, 0)
+  const record = recordOf(line)
+  assert.deepEqual([record.rule, record.mode, record.effect, record.correction], ['rules:r-lint-gate', 'enforce', 'block', expected.text])
+})
+
+gateTest('item 24 with the real checkCall: exit 3 defers the run, exit code 5, and --wait asks again every 60 s without a glm-peak rule, each time running the script again', async (base) => {
+  const root = await makeProject(base, 'script-queue')
+  await approveGateScript(root, 'r-lint-gate')
+  const deferred = await runGate({ root, start: WED_1900, check: { runner: [exits(3, 'build running')] } })
+  assert.equal(deferred.status, 5, deferred.stderr)
+  assert.match(deferred.stderr, /ran its script docs\/rules\/scripts\/r-lint-gate\.mjs, which deferred the call: "build running"\./)
+  assert.equal(deferred.runs.length, 1)
+  const waited = await runGate({ root, start: WED_1900, args: ['--wait'], check: { runner: [exits(3, 'build running'), exits(3, 'build running'), exits(0)] } })
+  assert.equal(waited.status, 0, waited.stderr)
+  assert.deepEqual(waited.sleeps, [60_000, 60_000], 'a rule that does not read glm-peak is judged again every 60 s')
+  assert.equal(waited.runs.length, 3, 'one run of the script for each judgement')
+  assert.deepEqual(waited.events.map(event => [event.event, event.exitCode]), [['rules.check', 5], ['rules.check', 5], ['rules.check', 0]])
+  assert.deepEqual(waited.started, [], 'the script went on, and its own parser never saw the gate\'s flag')
+})
+
+gateTest('item 24 with the real checkCall: a script that does not answer in time goes by the rule\'s failure setting, and the gate sets no timeout of its own', async (base) => {
+  const lenient = await makeProject(base, 'script-timeout-allow')
+  await approveGateScript(lenient, 'r-lint-gate')
+  const allowed = await runGate({ root: lenient, start: WED_1900, check: { runner: [TIMED_OUT] } })
+  assert.equal(allowed.status, 0, allowed.stderr)
+  assert.deepEqual(allowed.started, [], 'the script went on')
+  assert.deepEqual(allowed.runs.map(run => run.timeoutMs), [10_000], 'the rule\'s timeout is what the executor is given')
+  const strict = await makeProject(base, 'script-timeout-block')
+  await approveGateScript(strict, 'r-lint-gate', { onError: 'block' })
+  const blocked = await runGate({ root: strict, start: WED_1900, check: { runner: [TIMED_OUT] } })
+  assert.equal(blocked.status, 4, blocked.stderr)
+  assert.match(blocked.stderr, /ran its script docs\/rules\/scripts\/r-lint-gate\.mjs, which did not finish within 10 s, and the rule says to block when its script fails\./)
+  assert.equal(blocked.started, undefined)
+})
 // ---------------------------------------------------------------- item 26
 
 gateTest('the journal line of a refusal (item 26): one per hit rule, with the rule id, the command, the level, the signals and the refusal', async (base) => {

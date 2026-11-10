@@ -183,14 +183,17 @@ test('outside git only a folder that already has a `.llm` is a project, and the 
 // what is the person's to decide; the host's own code for what only it knows; an agent and a detector for none of them
 // (an agent's way to a change is a proposal, and a detector's is the signal of its own, neither of which this board has yet).
 const PERSON: readonly WriteOp[] = ['peak-mode-set', 'rule-lift', 'rule-delete', 'signal-manual', 'signal-clear', 'signal-delete', 'ticket-let-once', 'ticket-cancel', 'recovery-accept', 'recovery-dismiss', 'repo-adopt', 'repo-restore']
-const HOST: readonly WriteOp[] = ['rule-expire', 'ticket-open', 'ticket-update', 'ticket-handover', 'ticket-adopt', 'repo-outside', 'repo-outside-cleared', 'notice-add', 'notice-delivered']
+const HOST: readonly WriteOp[] = ['rule-expire', 'ticket-open', 'ticket-update', 'ticket-handover', 'ticket-adopt', 'repo-outside', 'repo-outside-cleared', 'notice-add', 'notice-delivered', 'proposal-expire']
+/** The path of agreement: an agent proposes, the person's word (typed, or recorded from the chat and handed over by the host) makes it so. */
+const AGENT: readonly WriteOp[] = ['propose']
+const PERSON_OR_HOST: readonly WriteOp[] = ['proposal-accept', 'proposal-reject']
 const ACTORS = ['human', 'llm', 'harness', 'detector'] as const satisfies readonly RulesActor[]
 
 test('the identity table has a row for each operation the board has and no other, and every cell is as the design says', () => {
-  assert.deepEqual([...WRITE_OPS].sort(), [...PERSON, ...HOST].sort())
+  assert.deepEqual([...WRITE_OPS].sort(), [...PERSON, ...HOST, ...AGENT, ...PERSON_OR_HOST, 'proposal-show'].sort())
   for (const op of WRITE_OPS) {
     for (const actor of ACTORS) {
-      const allowed = PERSON.includes(op) ? actor === 'human' : actor === 'harness'
+      const allowed = AGENT.includes(op) ? actor === 'llm' : PERSON_OR_HOST.includes(op) ? actor === 'human' || actor === 'harness' : PERSON.includes(op) || op === 'proposal-show' ? actor === 'human' : actor === 'harness'
       const refusal = refusalFor(actor, op)
       assert.equal(refusal === undefined, allowed, `${actor} on ${op}`)
       if (refusal !== undefined) {
@@ -278,8 +281,8 @@ test('the two records the board makes about the rules file by itself are not req
   }
 })
 
-projectTest('nothing for a proposal is an operation of this board: each is an unknown op, whoever asks', async ({ root, board }) => {
-  const proposals = ['propose', 'proposal-show', 'proposal-accept', 'proposal-reject', 'proposal-expire', 'rule-set', 'signal-define', 'detector-set', 'detector-delete', 'repin', 'remove', 'signal-detected']
+projectTest('what the detectors would write, and the operations of an older design, are unknown ops, whoever asks', async ({ root, board }) => {
+  const proposals = ['rule-set', 'signal-define', 'detector-set', 'detector-delete', 'repin', 'remove', 'signal-detected']
   for (const op of proposals) {
     for (const actor of ACTORS) {
       const result = await board.apply(actor, { op, id: 'x', level: 'stop' })

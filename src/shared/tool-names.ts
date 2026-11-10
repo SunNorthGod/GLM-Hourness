@@ -20,7 +20,7 @@ export const GRAPH_TOOL_NAMES: readonly string[] = [
  * one-ticket-per-session entry queues). tests/contracts.spec.ts pins the
  * registration of src/rules/index.ts to this list.
  */
-export const RULES_TOOL_NAMES: readonly string[] = ['rules_show']
+export const RULES_TOOL_NAMES: readonly string[] = ['rules_show', 'rules_propose']
 
 /**
  * The DSH native tools that dispatch a subagent. A call to one of them is a
@@ -168,21 +168,21 @@ export const STRUCTURED_OUTPUT_TOOL = 'structured_output'
 
 /**
  * Orchestration tools GLM tool search keeps resident (project decisions,
- * docs/ORCHESTRATION.md §8 for memory, §2.8 and §2.10 for the graph, M7
- * §2.3.2 for the execute path). Named one by one: an orchestration tool added
- * later is deferred like any DSH tool without a ZCode counterpart until its
- * name is added here.
+ * M7 §2.3.2 for the execute path). The 15 graph tools and the 3 memory tools
+ * are not here any more: the ablation arm A3 carried (docs/DESIGN.md §5.2a,
+ * adopted 2026-11-10) — they are deferred behind GLM tool search like any DSH
+ * tool, announced on the first request, and a real-model reuse session found
+ * them through it and completed (tests/calibration/graph-memory-reuse). The
+ * habit question stays resident because the habit-ask-first rule names it as
+ * the right path (m5-habit-rule), and the lessons lookup because every agent
+ * reads the board; an orchestration tool added later is deferred like any DSH
+ * tool without a ZCode counterpart until its name is added here.
  */
 export const ORCHESTRATION_RESIDENT_TOOLS: ReadonlySet<string> = new Set([
-  // memory
-  'memory_store', 'memory_query', 'memory_forget',
   // the habit questions: the rule habit-ask-first names it as the right path (m5-habit-rule)
   MEMORY_HABIT,
   // lessons: the lookup every agent has; the merge tool is the main agent's and stays deferred
   LESSONS_QUERY_TOOL,
-  // project graph
-  'graph_show', 'graph_open', 'graph_focus', 'graph_propose', 'graph_status', 'graph_edit',
-  'graph_link', 'graph_unlink', 'graph_relink', 'graph_walk', 'graph_comment', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',
   // design row (main agent)
   ...DESIGN_TOOL_NAMES,
   // execute row (main agent and workers, M7); the operate row arrives with P3

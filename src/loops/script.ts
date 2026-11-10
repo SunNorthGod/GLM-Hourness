@@ -46,6 +46,12 @@ export { commandText, WORK_TIMEOUT_MS } from './command-text.ts'
 export const WORK_TIMEOUT_MAX_MS = 1_800_000
 /** How many of a project's person-added checks run at once (design §6.6, review F50). */
 export const CHECK_CONCURRENT = 2
+/** The timeout of a gating script that names none, and the most it may have (design §6.7). */
+export const GATE_TIMEOUT_MS = 10_000
+export const GATE_TIMEOUT_MAX_MS = 30_000
+/** How many gating scripts of a project run at once, and how many wait for a place; one more is answered with a timeout at once (design §6.6, review F49). */
+export const GATE_CONCURRENT = 4
+export const GATE_QUEUE_MAX = 16
 /** Output kept per stream when the request names none (design §6.6). */
 export const OUTPUT_DEFAULT_BYTES = 1_048_576
 /** The most output kept per stream (design §6.6). */
@@ -84,11 +90,17 @@ export interface ScriptRequest {
   readonly script: ScriptRef
   readonly envelope: HookEnvelope
   /**
-   * This version runs `work` only (design §6.6): one script of each board per
-   * project at a time, queued without the wait counting into its timeout. The
-   * `gate` queue comes with the rules board's adoption of this file.
+   * `work`: one script of each board per project at a time, queued without
+   * the wait counting into its timeout. `gate`: the rules board's scripts that
+   * stand in front of a call (design §6.6, §6.7): at most `GATE_CONCURRENT` of a
+   * project at once and `GATE_QUEUE_MAX` waiting, the wait counts into the
+   * timeout (the call is held while it waits), the timeout is at most
+   * `GATE_TIMEOUT_MAX_MS` and, absent, `GATE_TIMEOUT_MS`. The tree is ended at
+   * the timeout, as for `work`: a gating script is not kept running in the
+   * background after it, which the late verdict of design §6.7 would need and
+   * which comes with the host's gate using this file.
    */
-  readonly purpose: 'work'
+  readonly purpose: 'work' | 'gate'
   readonly timeoutMs?: number
   /** Given: the command line, the digest and the whole output are appended here. */
   readonly logFile?: string
@@ -235,6 +247,39 @@ class Lane {
     this.used -= 1
     this.waiting.shift()?.()
   }
+
+  /**
+   * A place for a call that is held while it waits (a gating script): at once when one is free, else after the ones
+   * ahead, for at most `waitMs`, and not at all when `maxWaiting` are waiting already (`full`), the wait runs out
+   * (`late`) or `signal` is aborted (`aborted`). A caller that is told no place was not waiting any more.
+   */
+  enterWithin(waitMs: number, maxWaiting: number, signal: AbortSignal | undefined): Promise<(() => void) | 'full' | 'late' | 'aborted'> {
+    if (signal?.aborted === true) return Promise.resolve('aborted')
+    if (this.used < this.size) {
+      this.used += 1
+      return Promise.resolve(() => this.leave())
+    }
+    if (this.waiting.length >= maxWaiting) return Promise.resolve('full')
+    return new Promise((resolveEntry) => {
+      const place = (): void => {
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', onAbort)
+        this.used += 1
+        resolveEntry(() => this.leave())
+      }
+      const stop = (answer: 'late' | 'aborted'): void => {
+        clearTimeout(timer)
+        const at = this.waiting.indexOf(place)
+        if (at >= 0) this.waiting.splice(at, 1)
+        signal?.removeEventListener('abort', onAbort)
+        resolveEntry(answer)
+      }
+      const onAbort = (): void => { stop('aborted') }
+      this.waiting.push(place)
+      const timer = setTimeout(() => { stop('late') }, Math.max(0, waitMs))
+      signal?.addEventListener('abort', onAbort, { once: true })
+    })
+  }
 }
 
 const lanes = new Map<string, Lane>()
@@ -294,6 +339,12 @@ const timeoutOf = (request: { readonly timeoutMs?: number }): number =>
   request.timeoutMs === undefined || !(Number.isFinite(request.timeoutMs) && request.timeoutMs > 0)
     ? WORK_TIMEOUT_MS
     : Math.min(request.timeoutMs, WORK_TIMEOUT_MAX_MS)
+
+/** The timeout of a gating script: what the request names, at most the ceiling, else the default (design §6.7). */
+const gateTimeoutOf = (request: { readonly timeoutMs?: number }): number =>
+  request.timeoutMs === undefined || !(Number.isFinite(request.timeoutMs) && request.timeoutMs > 0)
+    ? GATE_TIMEOUT_MS
+    : Math.min(request.timeoutMs, GATE_TIMEOUT_MAX_MS)
 
 const outputOf = (maxOutputBytes: number | undefined): number =>
   maxOutputBytes === undefined || !(Number.isFinite(maxOutputBytes) && maxOutputBytes > 0)
@@ -455,7 +506,7 @@ function envOf(envelope: HookEnvelope | undefined, project: string): Record<stri
 }
 
 /**
- * Run a person's script, purpose `work` (design §6.6): verify the bytes of
+ * Run a person's script, purpose `work` or `gate` (design §6.6): verify the bytes of
  * the file the entry names against the digest the person agreed to, write
  * the verified bytes to a private copy under `.llm/loops/run/`, hand the copy
  * to the interpreter of the script's language, and remove the copy at the
@@ -500,13 +551,13 @@ export function runScript(request: ScriptRequest): Promise<ScriptResult> {
       return Promise.resolve(crashedRun('io', `脚本副本写不下：${message(error)}`))
     }
     const firstLine = `$ ${commandText(request.script)} · sha256 ${hash} · program ${resolved.path}`
-    const start = (): Promise<ScriptResult> => runProcess({
+    const start = (timeoutMs: number): Promise<ScriptResult> => runProcess({
       program: resolved.path,
       args: [...spec.before, copy],
       cwd: project,
       env: envOf(request.envelope, project),
       stdin: JSON.stringify(request.envelope),
-      timeoutMs: timeoutOf(request),
+      timeoutMs,
       capBytes: OUTPUT_DEFAULT_BYTES,
       ...(request.logFile === undefined ? {} : { logFile: request.logFile, firstLine }),
       ...(request.signal === undefined ? {} : { signal: request.signal }),
@@ -527,7 +578,29 @@ export function runScript(request: ScriptRequest): Promise<ScriptResult> {
       }
       return result
     })
-    return laneFor(`work\n${fold(project)}\n${request.envelope.board}`, 1).enter().then(release => start().then(result => {
+    if (request.purpose === 'gate') {
+      const arrived = Date.now()
+      const limit = gateTimeoutOf(request)
+      return laneFor(`gate\n${fold(project)}`, GATE_CONCURRENT).enterWithin(limit, GATE_QUEUE_MAX, request.signal).then(async (entered) => {
+        if (typeof entered === 'string') {
+          // The place never came: the copy is not wanted, and the answer is the one of a script that ran out of time (or was called off).
+          try {
+            unlinkSync(copy)
+          }
+          catch {
+            // The sweep of stale copies takes it later.
+          }
+          return entered === 'aborted' ? refusedRun('aborted', '在脚本起来之前，这次运行已经被中止') : { kind: 'timeout' as const, stdout: '', stderr: '', durationMs: Date.now() - arrived }
+        }
+        try {
+          return await start(Math.max(1, limit - (Date.now() - arrived)))
+        }
+        finally {
+          entered()
+        }
+      })
+    }
+    return laneFor(`work\n${fold(project)}\n${request.envelope.board}`, 1).enter().then(release => start(timeoutOf(request)).then(result => {
       release()
       return result
     }))

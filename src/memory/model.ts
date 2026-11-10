@@ -88,6 +88,31 @@ export interface LearnNotice {
   readonly keys: readonly string[]
 }
 
+/**
+ * A consolidation candidate the harness proposed (dreaming design §3.2,
+ * `.agents/tasks/dream/design.md`): a request the person stated in at least
+ * two sessions, read out of the session transcripts (src/memory/dream.ts),
+ * waiting for the person to confirm it into a preference — a `store` of the
+ * same name takes it — or to drop it — a `forget` takes it back; a pattern
+ * that comes back is proposed again, so there is no restore. It is not an
+ * entry: recall, the index and `/memory show` never show it, and the
+ * harness-originated marking is the record itself (`actor: harness`,
+ * `op: propose`); the person's own words arrive only with the confirming
+ * `store`, whose `relay` keeps its every check.
+ */
+export interface MemoryProposal {
+  readonly name: string
+  readonly type: 'feedback'
+  readonly scope: 'project'
+  readonly description: string
+  readonly body: string
+  /** Where the pattern was seen: transcript paths under the project's `.llm`. */
+  readonly evidence: readonly string[]
+  /** First proposed, and last re-proposed. */
+  readonly at: string
+  readonly lastAt: string
+}
+
 /** An open habit question (§3.8): what the agent asked, and when and in which session. */
 export interface HabitAsk extends HabitFields {
   readonly at: string
@@ -109,13 +134,15 @@ export interface MemoryState {
   readonly asks: ReadonlyMap<string, HabitAsk>
   /** The latest `decline` of each name; a no keeps the same habit from being asked again until `until`. */
   readonly declined: ReadonlyMap<string, HabitNo>
+  /** The open consolidation proposals (dreaming design §3.2), by name; a store of the same name takes one, a forget drops it. */
+  readonly proposals: ReadonlyMap<string, MemoryProposal>
   /** The times of the `ask` records, the latest of each name last; the weekly cap of questions reads them. */
   readonly askTimes: readonly string[]
   /** The latest `learn-notified` record; only a project journal has one. */
   readonly learnNotice?: LearnNotice
 }
 
-export const emptyMemory = (scope: Scope): MemoryState => ({ scope, entries: new Map(), asks: new Map(), declined: new Map(), askTimes: [] })
+export const emptyMemory = (scope: Scope): MemoryState => ({ scope, entries: new Map(), asks: new Map(), declined: new Map(), proposals: new Map(), askTimes: [] })
 
 /** The id of a record about an entry: its name and its scope. */
 export const memoryId = (scope: Scope, name: string): string => `${scope}:${name}`
@@ -437,6 +464,55 @@ export const reviewRecord = (names: readonly string[]): NewRecord<'review'> => (
 /** The first record of a journal that replaces an old `memory.json`: the whole converted state. */
 export const baseRecord = (entries: readonly MemoryEntry[]): NewRecord<'base'> => ({ actor: 'harness', op: 'base', id: '*', data: { entries: entries.map(snapshot) } })
 
+/**
+ * A `propose` record of the nightly consolidation (dreaming design §3.2): the
+ * candidate's fields through the same field table a `store` goes through, the
+ * transcripts as `evidence`, and no relay — a proposal carries none of the
+ * person's words; they come with the confirming `store`. Invalid for the
+ * reasons the field table gives.
+ */
+export function proposeRecord(raw: Readonly<Record<string, unknown>>, evidence: readonly string[], by: NonNullable<NewRecord['by']>): NewRecord<'propose'> | { readonly invalid: string } {
+  const fields = validateFields(raw)
+  if (isRefusal(fields)) return { invalid: `${fields.field ?? 'record'}: ${fields.message}` }
+  if (fields.type !== 'feedback' || fields.scope !== 'project') return { invalid: 'a proposal is a project norm: type feedback, scope project' }
+  if (fields.relay !== undefined) return { invalid: 'a proposal carries none of the person\'s words; the relay comes with the confirming store' }
+  if (evidence.length < 1 || evidence.length > MAX_SOURCES || !evidence.every(item => typeof item === 'string' && item.length >= 1 && item.length <= 200 && !/[\r\n]/.test(item))) {
+    return { invalid: 'evidence is a list of 1 to 5 one-line texts of at most 200 characters' }
+  }
+  return {
+    actor: 'harness',
+    by,
+    op: 'propose',
+    id: memoryId('project', fields.name),
+    data: {
+      name: fields.name,
+      scope: fields.scope,
+      type: fields.type,
+      description: fields.description,
+      body: fields.body,
+      ...(fields.source.length > 0 ? { source: fields.source.map(ref => ref.text) } : {}),
+      evidence: [...evidence],
+    },
+  }
+}
+
+/**
+ * A `forget` that takes a proposal back (dreaming design §3.3): the data is
+ * the proposal as it was, so the trail keeps what was dropped. There is no
+ * restore for a proposal: a pattern the person asks for again is proposed
+ * again.
+ */
+export function forgetProposalRecord(proposal: MemoryProposal, reason: string, writer: Writer): NewRecord<'forget'> {
+  return {
+    actor: writer.actor,
+    ...(writer.by === undefined ? {} : { by: writer.by }),
+    op: 'forget',
+    id: memoryId(proposal.scope, proposal.name),
+    reason,
+    data: { proposal: true, name: proposal.name, type: proposal.type, scope: proposal.scope, description: proposal.description, body: proposal.body, evidence: [...proposal.evidence], at: proposal.at, lastAt: proposal.lastAt },
+  }
+}
+
 // --- Folding ---------------------------------------------------------------
 
 /** The operations a memory journal knows and who may write each; the same list as the harness's rights in design §7.5. */
@@ -447,6 +523,7 @@ const WRITERS: ReadonlyMap<string, readonly Actor[]> = new Map([
   ['forget', ['human', 'llm']],
   ['restore', ['human', 'llm']],
   ['learn-notified', ['harness']],
+  ['propose', ['harness']],
   ['ask', ['llm']],
   ['decline', ['llm']],
 ])
@@ -627,9 +704,12 @@ function applyStore(state: MemoryState, record: JournalRecord): FoldStep<MemoryS
     : { ...(existing?.status === 'active' ? revised(existing, fields, record, unchecked) : newEntry(fields, record, unchecked)), confirmed }
   const entries = new Map(state.entries)
   entries.set(fields.name, next)
+  // A store of a proposal's name is the person confirming it (dreaming design §3.3): the candidate is taken.
+  const proposals = new Map(state.proposals)
+  proposals.delete(fields.name)
   const asks = new Map(state.asks)
   if (confirmed !== undefined) asks.delete(fields.name)
-  return { state: { ...state, entries, asks } }
+  return { state: { ...state, entries, proposals, asks } }
 }
 
 function applyReview(state: MemoryState, record: JournalRecord): FoldStep<MemoryState> {
@@ -644,18 +724,90 @@ function applyReview(state: MemoryState, record: JournalRecord): FoldStep<Memory
   return withEntries(state, due)
 }
 
+/** Evidence carried over to a re-proposal: the newest five, in order. */
+const mergeEvidence = (old: readonly string[], fresh: readonly string[]): readonly string[] =>
+  [...new Set([...old, ...fresh])].slice(-MAX_SOURCES)
+
+const isTextList = (list: readonly unknown[]): list is readonly string[] => list.every(item => typeof item === 'string')
+
+/**
+ * A `propose` of the nightly consolidation (dreaming design §3.2), a project
+ * journal's record only: the fields through the store's field table, none of
+ * the person's words, the transcripts as evidence. A re-proposal of the same
+ * name merges the evidence and refreshes the text; a name an active entry
+ * already holds is settled — the proposal is not added, an open one is taken
+ * back.
+ */
+function applyPropose(state: MemoryState, record: JournalRecord): FoldStep<MemoryState> {
+  if (state.scope !== 'project') return { bad: 'a proposal is recorded in the project journal only' }
+  if (!isObject(record.data)) return { bad: 'data is not an object' }
+  const { name } = record.data
+  if (typeof name !== 'string') return { bad: 'data.name is not text' }
+  if (record.id !== memoryId('project', name)) return { bad: `id is not ${memoryId('project', name)}` }
+  const fields = validateFields(record.data)
+  if (isRefusal(fields)) return { bad: `${fields.field ?? 'record'}: ${fields.message}` }
+  if (fields.type !== 'feedback' || fields.scope !== 'project') return { bad: 'a proposal is a project norm: type feedback, scope project' }
+  if (fields.relay !== undefined) return { bad: 'a proposal carries none of the person\'s words; the relay comes with the confirming store' }
+  const evidence: readonly unknown[] | undefined = listOf(record.data.evidence)
+  if (evidence === undefined || !isTextList(evidence) || evidence.length < 1 || evidence.length > MAX_SOURCES) {
+    return { bad: 'data.evidence is not a list of 1 to 5 one-line texts of at most 200 characters' }
+  }
+  if (!evidence.every(item => item.length >= 1 && item.length <= 200 && !/[\r\n]/.test(item))) {
+    return { bad: 'data.evidence is not a list of 1 to 5 one-line texts of at most 200 characters' }
+  }
+  for (const field of ['description', 'body'] as const) {
+    const found = findSecret(fields[field])
+    if (found !== undefined) return { bad: `${field} looks like a credential: ${found.message}` }
+  }
+  const entries = state.entries.get(fields.name)
+  if (entries !== undefined) {
+    // The pattern is settled by the entry of the same name, forgotten ones included: the person decided about it once.
+    const proposals = new Map(state.proposals)
+    proposals.delete(fields.name)
+    return { state: { ...state, proposals } }
+  }
+  const existing = state.proposals.get(fields.name)
+  const proposal: MemoryProposal = {
+    name: fields.name,
+    type: fields.type,
+    scope: fields.scope,
+    description: fields.description,
+    body: fields.body,
+    evidence: mergeEvidence(existing?.evidence ?? [], evidence),
+    at: existing?.at ?? record.at,
+    lastAt: record.at,
+  }
+  return { state: { ...state, proposals: new Map(state.proposals).set(fields.name, proposal) } }
+}
+
+/**
+ * A `forget` or `restore` record; its data is the entry as it was, so a
+ * deletion can be undone. For a name that holds a consolidation proposal and
+ * no active entry, a `forget` drops the proposal (dreaming design §3.3); a
+ * `restore` knows no proposals — a pattern the person asks for again is
+ * proposed again.
+ */
 function applyRevoke(state: MemoryState, record: JournalRecord, op: 'forget' | 'restore'): FoldStep<MemoryState> {
   const prefix = `${state.scope}:`
   if (!record.id.startsWith(prefix)) return { bad: `id is not an entry of scope ${state.scope}` }
   const name = record.id.slice(prefix.length)
   const entry = state.entries.get(name)
-  if (op === 'forget' ? entry?.status !== 'active' : entry?.status !== 'forgotten') {
-    return { bad: op === 'forget' ? `no active entry named ${name}` : `entry ${name} is not forgotten` }
+  if (op === 'forget') {
+    if (entry?.status === 'active') {
+      const refusal = revokeRefusal(entry, whoOf(record), op)
+      if (refusal !== undefined) return { bad: refusal.hint ?? refusal.message }
+      return withEntries(state, [{ ...entry, status: 'forgotten', forgottenAt: record.at }])
+    }
+    if (state.proposals.has(name)) {
+      const proposals = new Map(state.proposals)
+      proposals.delete(name)
+      return { state: { ...state, proposals } }
+    }
+    return { bad: `no active entry named ${name}` }
   }
-  const refusal = entry === undefined ? undefined : revokeRefusal(entry, whoOf(record), op)
+  if (entry?.status !== 'forgotten') return { bad: `entry ${name} is not forgotten` }
+  const refusal = revokeRefusal(entry, whoOf(record), op)
   if (refusal !== undefined) return { bad: refusal.hint ?? refusal.message }
-  if (entry === undefined) return withEntries(state, [])
-  if (op === 'forget') return withEntries(state, [{ ...entry, status: 'forgotten', forgottenAt: record.at }])
   const { forgottenAt: _forgottenAt, ...kept } = entry
   return withEntries(state, [{ ...kept, status: 'active' }])
 }
@@ -767,9 +919,10 @@ export function applyRecord(state: MemoryState, record: JournalRecord): FoldStep
     case 'review': return applyReview(state, record)
     case 'forget': return applyRevoke(state, record, 'forget')
     case 'learn-notified': return applyLearnNotified(state, record)
+    case 'propose': return applyPropose(state, record)
     case 'ask': return applyAsk(state, record)
     case 'decline': return applyDecline(state, record)
-    // The table above admits only these eight operations.
+    // The table above admits only these nine operations.
     default: return applyRevoke(state, record, 'restore')
   }
 }

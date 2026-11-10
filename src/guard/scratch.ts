@@ -112,7 +112,6 @@ export function scratchOnly(roots: readonly string[], context: RuleContext, ref:
   })
   return {
     id: 'scratch-only',
-    declare: 'New one-off scripts go in .llm/scratch/.',
     detect(call) {
       const target = fileToolTargetOf(call)
       if (target === undefined || !createsFile(call)) return ALLOW

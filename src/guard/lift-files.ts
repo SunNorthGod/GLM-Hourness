@@ -41,7 +41,6 @@ const correctionOf = (path: string): Correction => ({
 export function liftFilesOnly(cwd: string | undefined): GuardRule {
   return {
     id: 'lift-files-only',
-    declare: 'The lift record docs/guard/lifts.jsonl is written by the harness only.',
     detect(call) {
       // File tools: the target, spelled relative or absolute, resolves as the
       // file tools resolve it; the cheap string check keeps every other write

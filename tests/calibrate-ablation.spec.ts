@@ -3,12 +3,15 @@
  * each arm changes exactly its one piece of the system prompt, by whole
  * paragraphs, in the leading system messages and in a one-shot `system`; a
  * request it changes nothing in gets no copy. A3 lists the graph and memory
- * tools it defers. Reads the build output (npm run build first).
+ * tools it defers. A2's text is the production sentence since the arm was
+ * adopted (DESIGN.md §5.2a), so on an adopted prompt the arm rewrites
+ * nothing. Reads the build output (npm run build first).
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
 // @ts-expect-error The script is plain JavaScript without a declaration file.
 import { ARMS, DEFERRED_BY_A3, paragraphRule, rewriteRequest, rewriteText, WORKSPACE_RULES_SHORT } from '../scripts/calibrate/ablation.mjs'
+import { WORKSPACE_RULES_TEXT } from '../src/guard/sections.ts'
 import { DYNAMIC_BEHAVIOR } from '../src/glm-prompt/verbatim.ts'
 import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../src/shared/tool-names.ts'
 
@@ -49,6 +52,10 @@ test('A2 replaces the workspace rules with the one sentence and nothing else', (
   assert.deepEqual([out.removed, out.replaced], [0, 1])
   assert.deepEqual(paragraphs(out.text), paragraphs(PROMPT).map(text => text === RULES ? WORKSPACE_RULES_SHORT : text))
   assert.equal(rewrite(out.text, rule('A2')!).replaced, 0)
+})
+
+test('A2 leaves the production sentence: on an adopted prompt the arm rewrites nothing', () => {
+  assert.equal(WORKSPACE_RULES_SHORT, WORKSPACE_RULES_TEXT)
 })
 
 test('A4 drops Dynamic Behavior and nothing else', () => {

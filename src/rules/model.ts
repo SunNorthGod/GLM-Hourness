@@ -23,7 +23,7 @@ import { ID_PATTERN, STAGES } from '../graph/schema.ts'
 import { validateScriptAction, validateWhen, type EventFilter, type ScriptAction, type ScriptLang, type ScriptRef, type Trigger, type TriggerIssue } from '../loops/trigger.ts'
 import type { HealthRow, HealthState } from '../shared/health.ts'
 import { PEAK_LEVEL_WORDS, type PeakLevel } from '../shared/peak-mode.ts'
-import { detectorProblem, isCount, isRecord, isTime, matchesType, noticeProblem, originProblem, scriptPinProblem, signalProblem, textField, ticketProblem, unknownKeys, type Problem } from './entries.ts'
+import { detectorProblem, isCount, isRecord, isTime, matchesType, noticeProblem, originProblem, proposalProblem, scriptPinProblem, signalProblem, textField, ticketProblem, unknownKeys, type Problem } from './entries.ts'
 import { GATE_EVENTS, RULES_EVENT_TABLE, type GateEvent } from './events.ts'
 import { GLM_PEAK } from './signals.ts'
 
@@ -98,6 +98,43 @@ export interface RepoDiffLine {
 interface ScriptPin extends ScriptRef {
   /** Absent on a pin that came with the rules file: nobody on this machine has read these bytes, and the script does not run. */
   readonly approvedAt?: string
+}
+
+/** The kinds of change an agent can propose (rules design §9.3); a `detector` comes with the detector runner. */
+export type ProposalKind = 'rule' | 'lift' | 'switch' | 'peak-mode' | 'remove' | 'repin'
+
+/**
+ * An agent's proposal (design §7.2, §9.3): the content only. It has no effect until the human agrees to it in the chat
+ * and the board writes it (`proposal-accept`); the engine marks it `accepted` in the same write. `body` is the rule,
+ * the switch, the level, the id of the rule to lift or repin, or the 1 to 3 entries to remove, in the form the board
+ * writes them; `script` is the text of a script the rule runs, which the human read and which is written to the
+ * repository when the proposal is accepted.
+ */
+export interface Proposal {
+  /** `p-<8 hex digits>`. */
+  readonly id: string
+  readonly kind: ProposalKind
+  readonly body: unknown
+  /** The script of a `rule` that runs one, or the script a `repin` asks to approve (the file's text as the board read it). */
+  readonly script?: { readonly text: string, readonly sha256: string, readonly file: string, readonly lang: ScriptLang, readonly timeoutSeconds?: number, readonly onError?: 'allow' | 'block' }
+  /** One line of what the proposal does once it is in force. */
+  readonly describe: string
+  /** What the human is to know besides it, one sentence each (they go after the question, with the script). */
+  readonly cautions: readonly string[]
+  /** Why the agent proposed it; for the rules page and the journal only. */
+  readonly reason: string
+  /** `graph`: the main agent puts it to the human in the chat; `board`: the human types `/rules accept` or `/rules reject`. */
+  readonly via: 'graph' | 'board'
+  /** `board` and a script: when the human first typed `/rules accept` and was shown the text; the second `accept` within 30 minutes takes effect. */
+  readonly shownAt?: string
+  /** The older proposal this one replaces. */
+  readonly replaces?: string
+  /** The question on the graph this was put to the human with; set when the proposal is accepted. */
+  readonly question?: string
+  readonly proposedBy: { readonly sessionId: string, readonly agentId: string }
+  readonly at: string
+  readonly status: 'open' | 'accepted' | 'rejected' | 'superseded' | 'expired'
+  readonly decidedBy?: { readonly actor: 'human' | 'llm' | 'harness', readonly relay?: string, readonly at: string }
 }
 
 /** A host process: its pid and the moment it started (the pid alone can be reused). */
@@ -177,6 +214,8 @@ export interface ProjectState {
   readonly detectors?: Readonly<Record<string, Detector>>
   /** The script pins by entry id: what the entry's script is and whether a person approved exactly that. */
   readonly scripts?: Readonly<Record<string, ScriptPin>>
+  /** Proposals by id: what agents proposed, open until the human decided. */
+  readonly proposals?: Readonly<Record<string, Proposal>>
   readonly tickets?: Readonly<Record<string, Ticket>>
   /** The number the next ticket gets; set by the record that opens the first ticket. */
   readonly nextTicket?: number
@@ -371,7 +410,8 @@ function collectionProblem(collection: unknown, path: string, check: (key: strin
 }
 
 /** The types of the signals a stored rule may name: the project's own, and the one the host computes. */
-function signalTypesOf(signals: unknown): ReadonlyMap<string, SignalType> {
+/** The types of the signals a condition may name: `glm-peak` and each signal of the state. */
+export function signalTypesOf(signals: unknown): ReadonlyMap<string, SignalType> {
   const types = new Map<string, SignalType>([[GLM_PEAK, { kind: 'boolean' }]])
   if (isRecord(signals)) {
     for (const [name, signal] of Object.entries(signals)) if (isRecord(signal) && isRecord(signal.type)) types.set(name, signal.type as unknown as SignalType)
@@ -408,7 +448,7 @@ function decidedProblem(value: Record<string, unknown>, root: 'state' | 'rules')
     ?? collectionProblem(value.scripts, `${root}.scripts`, (_key, entry, at) => scriptPinProblem(entry, at, !inFile))
 }
 
-const STATE_FIELDS: readonly string[] = ['version', 'seq', 'peakMode', 'repo', 'recovered', 'unresolved', 'rules', 'signals', 'detectors', 'scripts', 'tickets', 'nextTicket', 'notices']
+const STATE_FIELDS: readonly string[] = ['version', 'seq', 'peakMode', 'repo', 'recovered', 'unresolved', 'rules', 'signals', 'detectors', 'scripts', 'proposals', 'tickets', 'nextTicket', 'notices']
 
 /** Why a value is not a project state, or undefined when it is one. */
 export function stateProblem(value: unknown): Problem {
@@ -419,6 +459,7 @@ export function stateProblem(value: unknown): Problem {
     ?? repoProblem(value.repo)
     ?? (value.recovered === undefined ? undefined : recoveredProblem(value.recovered))
     ?? decidedProblem(value, 'state')
+    ?? collectionProblem(value.proposals, 'state.proposals', proposalProblem)
     ?? collectionProblem(value.tickets, 'state.tickets', ticketProblem)
     ?? collectionProblem(value.notices, 'state.notices', (_key, entry, at) => noticeProblem(entry, at))
     ?? (value.nextTicket === undefined || isCount(value.nextTicket) ? undefined : 'state.nextTicket must be a count')
@@ -515,6 +556,12 @@ export function unapprovedScripts(state: Pick<ProjectState, 'rules' | 'detectors
     })
     .filter(entry => entry !== undefined)
     .sort((a, b) => compareCodePoints(a.id, b.id))
+}
+
+/** The ids of the rules in force whose script a person approved on this machine for exactly the bytes the rule names: the scripts the board runs. */
+export function approvedScriptRules(state: Pick<ProjectState, 'rules' | 'detectors' | 'scripts'>): ReadonlySet<string> {
+  const unapproved = new Set(unapprovedScripts(state).map(entry => entry.id))
+  return new Set(Object.values(state.rules ?? {}).filter(rule => rule.status === 'active' && rule.action.kind === 'script' && !unapproved.has(rule.id)).map(rule => rule.id))
 }
 
 // ------------------------------------------------------------------ rules

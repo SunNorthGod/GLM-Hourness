@@ -20,7 +20,7 @@ import { loadGraph } from '../graph/store.ts'
 import type { AgentLike, CommandDefinitionLike, CommandResultLike, DesignInvocationLike, ProvideHost, ServiceLookup, SessionLike, UserNotice } from '../shared/dsh-min.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
-import { rulesService } from '../rules/service.ts'
+import { rulesBoardService } from '../rules/service.ts'
 import { anchorOf, gapsOf, lacksAnything, proposedSince } from './gaps.ts'
 import { pathNotice } from './notice.ts'
 import { hasProjectGraph } from './path.ts'
@@ -221,11 +221,8 @@ export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () =
       console.warn(`${name}: takeover reminder not installed for agent ${agent.id}: ${message(error)}`)
     }
   }
-  // The rules board can take a rule through the human's agreement once its service has the members of that path (src/rules/service.ts); today it has only `declaration`.
-  const rulesWhole = (): boolean => {
-    const service = rulesService(ctx) as unknown as Partial<Record<'attachable' | 'acceptProposal', unknown>> | undefined
-    return typeof service?.attachable === 'function' && typeof service.acceptProposal === 'function'
-  }
+  // The rules board takes a rule through the human's agreement when its service has the members of that path (src/rules/service.ts); rulesBoardService answers undefined while it does not.
+  const rulesWhole = (): boolean => rulesBoardService(ctx) !== undefined
   const trial = {
     sandbox: () => sandboxOf(ctx),
     emit: (event: EmittedEvent, dir: string) => { emitMetric(ctx, event, { dir }) },

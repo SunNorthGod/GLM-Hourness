@@ -39,6 +39,7 @@ import { appendFileSync } from 'node:fs'
 import { RESIDENT_TOOLS } from '../../packages/glm/dist/toolsearch/exposure.js'
 import { DYNAMIC_BEHAVIOR } from '../../packages/glm/dist/glm-prompt/verbatim.js'
 import { GRAPH_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../../packages/glm/dist/shared/tool-names.js'
+import { WORKSPACE_RULES_TEXT } from '../../packages/hourness/dist/guard/sections.js'
 
 export const name = 'glm-hourness-calibrate/ablation'
 export const inject = ['llm']
@@ -46,8 +47,8 @@ export const inject = ['llm']
 /** The arms; A0 is the unchanged prompt and needs no row. */
 export const ARMS = ['A0', 'A1', 'A2', 'A3', 'A4', 'A5']
 
-/** The general sentence A2 leaves of the workspace rules (prompt-audit report §7 item 5). */
-export const WORKSPACE_RULES_SHORT = '# Workspace rules\nThe harness checks every tool call before it runs. Writes outside the workspace, file changes through the shell, and direct edits of the project graph are denied with the reason and the right way to proceed.'
+/** The one sentence A2 leaves of the workspace rules (prompt-audit report §7 item 5): the production text since the arm was adopted (DESIGN.md §5.2a), so the arm rewrites nothing on an adopted prompt. */
+export const WORKSPACE_RULES_SHORT = WORKSPACE_RULES_TEXT
 
 /** The tools A3 defers. */
 export const DEFERRED_BY_A3 = [...GRAPH_TOOL_NAMES, ...MEMORY_TOOL_NAMES]
@@ -126,6 +127,9 @@ export function apply(ctx, config = {}) {
     return () => {}
   }
   if (arm === 'A3') {
+    // The production set holds none of the 18 since the arm carried (DESIGN.md
+    // §5.2a): on an adopted build the arm deletes nothing, records none, and
+    // the run measures the adopted prompt — like A2.
     const resident = RESIDENT_TOOLS
     const taken = DEFERRED_BY_A3.filter(tool => resident.delete(tool))
     note({ kind: 'deferred', names: taken })

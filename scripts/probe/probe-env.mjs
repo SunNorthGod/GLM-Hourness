@@ -18,9 +18,6 @@ import { appendFileSync, writeFileSync } from 'node:fs'
 export const name = 'glm-hourness-probe/env'
 export const inject = ['tools']
 
-/** The loop board's prompt line (src/loops/service.ts LOOPS_DECLARATION); the env row only checks it is a non-empty string. */
-const DECLARATION = 'Probe loop board.'
-
 export function apply(ctx, config = {}) {
   if (typeof config.out !== 'string' || config.out.length === 0) throw new Error('probe env: config.out must be a non-empty string')
   writeFileSync(config.out, '')
@@ -35,7 +32,6 @@ export function apply(ctx, config = {}) {
   /** The latest hand-over of each row, for probe_loop_page. */
   const handed = new Map()
   const board = {
-    declaration: DECLARATION,
     contribute: (source, contribution) => {
       if (typeof source?.row === 'string') handed.set(source.row, contribution)
       log({

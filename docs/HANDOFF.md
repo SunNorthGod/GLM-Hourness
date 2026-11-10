@@ -121,6 +121,8 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 
 反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，用户 2026-10-28 把清理交给 agent。批次 L4 于 2026-10-29 通过后，这条路由已于同日从 profile 删除（项目图 `m1-cleanup`），含这条路由的改前备份也按用户要求删除；重启后模型菜单只有「DeepSeek 账号」与「GLM (ZCode native)」两组（本包这一组随后改名为「GLM（ZCode 原生通道）」，`m8-ui-audit` V-02）。
 
+3. **`rules-peak-stop` 探针场景的唤醒窗计时抖动**〔2026-11-09 起多次复发，2026-11-10 查结：场景断言过紧，非产品缺陷，断言已按设计契约放宽〕：失败签名是两条一起红——「子会话首调被拒」与「`/rules peak 无影响` 恢复时子会话多走一个请求、唤醒晚一步」（`0,0,0,0,1 wake(s)`）。根因由同树两跑（2026-11-10 00:21 绿、00:48 红）的工件逐时刻对出：`tickets.ts` 的 `releaseStop` 恢复 goal 后「关单写 → 发唤醒」与宿主 goal 驱动器「checkpoint → 开第 2 轮」在同一条事件循环上赛跑，绿的窗口只有第 2 轮请求发出到其结果步声领之间约 30ms；关单写晚约 10ms 完成，steer 就错过声领（宿主 inbox 的 claim 每步整队取走 `next-step`），回合结束后开出多一个请求，唤醒落进去（脚本末步重复，运行干净，文本逐字正确、恰发一次）。落点本不受设计约束：`ORCHESTRATION.md` §16.12 的方式表按投递那一刻 agent 的状态选 steer/inject/followup，§16.13 的 L3 记录（V3）也记了「唤醒发出时已在 running，走 steer」。处理：钉请求位置的子句（`stopChild.length === 4`、唤醒必在第 3 个请求）改为按契约验收——恢复 ≤ 30 秒、第 2 轮照开、恢复前无唤醒、全会话恰一次且文本逐字、主 Agent 无唤醒；此场景再见红即真缺陷（无唤醒、重复唤醒、文本不对、唤醒早于恢复、主 Agent 收到唤醒之一），从 `src/rules/tickets.ts` 的 `releaseStop` 查起，不再复跑放行。
+
 ## 6. 环境事实
 
 - 凭证：`~/.dsh/glm-hourness/credentials.json`（AES-256-GCM；`GLM_HOURNESS_CREDENTIAL_SECRET` 可覆盖密钥）。记录为版本 2，只存登录令牌与项目 key 定位：2026-10-29 桌面版以 m1-parity 代码重启后，第一个 GLM 请求把旧的版本 1 记录迁移过来，去掉了 API Key 与 secret，并定位到已有的 `zcode-api-key`（`DESIGN.md` §4.1）。现在可以用新代码读这个目录；桌面版运行时另起进程写同一个文件没有测过。仓库 `.llm/` 里的原件已于 2026-10-29 删除（项目图 `m1-cleanup`）。`glm-llm`、`glm-login` 不配 `home` 时默认读用户级目录（`DESIGN.md` §2.4）。
@@ -151,7 +153,7 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 | M3 对话与主 Agent | 附录 0.6 放行 | 已合入 main：第 12 步（b）随 `2bf2b16`（2026-11-03），12（a）的重跑通过（`614ea28`）；桌面冒烟 2026-11-04（`/wish` 与 `/wish off`）；指标接线（项目图 `m3-metrics-wiring`，2026-11-06）十类事件交进指标流水（`ORCHESTRATION.md` §10.6） | 附录 §9.3 批次 L4 的 DeepSeek 一半没跑过（验收不要求，L3 `non-glm-design-*` 覆盖） |
 | 规则板与循环板 | 规则板 0.10、循环板 0.6 放行并冻结（`d-freeze-until-dogfood`） | 分支 `rules-loops-impl`：13 个 FEAT 全部完成（至 `d8263e4`；FEAT-013 于 2026-11-02 续跑完成）；已合入 main（合并提交 `c6e9bed`，2026-11-02，门禁全绿 test 1696/1696、probe 210/210；分支与工作树已删，运行记录入库 `122e322`；探针两边的场景并集，main 的停档措辞场景改名 `rules-stop-notice`）；两行已随启用提交（2026-11-04）去掉 `disabled: true`，启用前按 `DEVELOPMENT.md` §3 在探针生成的临时 profile 验证（probe 323/323） | 桌面版首轮验收（L4）未做 |
 | M5 记忆与经验 | 0.7 放行（含 `d-reporting-depth-keep`） | 已合入 main：S1–S11 随 `e654b0a`（2026-11-03），S12 随 `80d4612`（2026-11-04）；分支 `m5-rest` 补一批（`17c7b15`：人撤掉确认过的习惯后 28 天从撤掉那天算，没钉住的验收字句补测试，逐条证据在 `.agents/tasks/m5/impl/rest-acceptance.md`）；`m5-rule-expected-effect` 随 2026-11-06 合入：规则提议带预期效果（`propose_to_human` 的 `rule`，撤规则写替补或附单层消融），到期在 `/hourness` 晨报「规则提议的核对」一节列出没做到的（M5 设计 §3.6.1，`ORCHESTRATION.md` §8.5、§12）；分支 `m5-index-truncation-alarm`（2026-11-06 人批准「那就加」）：会话索引因 200 行或 25,000 字符上限截掉条目时交 `memory.index-truncated`，`memory_query` 一条没找到时交 `memory.query-empty`，只有计数（`ORCHESTRATION.md` §8.3、§10.6）；两个数在指标板「记录范围」组新加的一行「记忆索引截掉与查询落空」，桌面核对欠着；不上向量库，等这两个数攒够再定要不要上 BM25 或向量 | 等 M7 的派发简报与交回（E1b：简报带经验、交回调 `propose`）和周报（E8：经验一节）；2026-11-04 桌面批次留下的两件人 2026-11-05 已定（「都按你说的来」）：直述的习惯照旧直接记，猜出的习惯先问并做成规则，分支 `m5-habit-rule` 已实现 `habit-ask-first`（`memory_habit` 常驻、规则总表 10 → 11，`ORCHESTRATION.md` §8.5）；第一次两档模型真实运行里两档都换了说法再问被人拒过的习惯，于是加了「不用」的召回（会话索引与 `memory_query` 列还在期限里的「不用」）与软核对（`memory_habit ask` 的说明与一条「不用」的词重合 0.25 以上得 `maybe_declined`，模型确认是另一条习惯时带 `notSame: true` 重发，问话记录带被搁下的那条），重跑记录在 `.agents/tasks/m5/habit-rule-runs.md`，评审第 2 轮 APPROVED（`.agents/tasks/m5/habit-rule-review.md`），2026-11-06 合入 main；经验行 2026-11-06 起出厂启用（分支 `lessons-enable`），还要在人的真实 profile 上再做一次经验页 L4，不过就新提交改回禁用（2026-11-05 已在隔离实例上过了 `lessons-3` 第 1–3 条，记录在 `.agents/tasks/m5/l4-2026-11-05.md`） |
-| M6 用量与高峰 | 0.7 | 已合入 main（`11dce6b`..`3bc5d98`），桌面版核对通过；跟进 S1–S3 随 `e95df6e` 合入（2026-11-05）；GLM 包的四类指标事件（`m6-metrics-events`）已合入 | `m6-script-gate` 等规则板 R4d（项目图 `rules-r4d`） |
+| M6 用量与高峰 | 0.7 | 已合入 main（`11dce6b`..`3bc5d98`），桌面版核对通过；跟进 S1–S3 随 `e95df6e` 合入（2026-11-05）；GLM 包的四类指标事件（`m6-metrics-events`）已合入 | `m6-script-gate` 第 24 条的真 `checkCall` 用例已在（项目图 `rules-r4d`）；工具调用门里跑脚本一步（`ORCHESTRATION.md` §16.16）待做 |
 | M4 guard 补齐与环境 | 0.6 放行（`d-m4-released`，2026-11-01，一页稿 APPROVED） | 已合入 main：`m4-gate` G1–G4 随 `0553cd4`，`m4-rules`、`m4-env`、`m4-suppressions`、`m4-cleanup` 已关；`m4-checks` 随 `e88da27`（2026-11-05），env 行默认启用 | `m4-checks` 等批次 L4；`m4-request-card` 未开工；`m4-reanchor-violations` 在做 |
 | M7 执行、汇合与运维 | 0.6 放行并冻结 | E0–E9 已实现，2026-11-07 合入 main，执行行默认启用：E9 的 L3 骨架场景 `glm-exec-skeleton` 通过，真实模型第三次运行满足设计 §10.3 第 2 条（`ORCHESTRATION.md` §17.14）。分支 `m7` 的历史（E1b、E2 与 main 的合并在 `fb62ac0`；324b996 的合并在 E5 之前；E4 的行当时默认禁用；E6 的交回处理在 `src/execute/handback.ts`，`ORCHESTRATION.md` §17.11；E7 的合入门禁与主干前进的核对在 `src/execute/check.ts`、`gate-provider.ts`、`advance.ts`，`ORCHESTRATION.md` §17.12；E8 的自动推进、完成门禁、对账、派发状态提醒与循环板接缝在 `src/execute/drive.ts`、`drive-log.ts`、`notice.ts`、`loop-link.ts`，`ORCHESTRATION.md` §17.13） | 第一批桌面 L4（设计 §9.2）；之后 P 步与 M7 合入后解开的等待项（状态板块第 6 批、面板第 17 条与第 8 条 (d)、用户图延后项、接管 B7） |
 | 面板与新手引导（`m8-plain-language`、`onboarding`） | 1.3 放行；17 条做完条件 2026-11-01 由人定下，写进这两个节点的验收（`d-panel-released`） | 第一轮 P0–P8 已随合并提交 `51ca652` 进 main（awaiting 投影 `graphLive.awaiting`、plain-view 模板 `src/graph/plain-view.ts`、面板只读、首页五段加第二层页、主 Agent 位置 `hournessProject` + `useMainAgent`、上手页与两张卡、GLM 上手、hook 顺序修复 `f3324be`；批次地图 `.agents/tasks/panel/impl-plan.md`）。第二轮在分支 `panel-2`（工作树 `.worktrees/panel-2`，批次图 `.agents/tasks/panel/impl-plan-2.md`）：Q1 状态字统一，面板与流程条对人定的待决都写「等你回话」（流程条一处 2026-11-05 人定）；Q2 写法检查第一阶段：`src/graph/plain.ts`（规则表见 `ORCHESTRATION.md` §2.6「写法规则」）、节点的 `why` 字段、引擎对 `llm` 与 `harness` 的写入返回 `warnings`、读入时未关闭节点的提示、图工具说明的写法一段、节点页「为什么」与写法提示；Q3 现有未关闭节点的标题改写与一句话理由的对照表 `.agents/tasks/panel/title-rewrite.md`（126 行，37 个标题要改，全部过写法检查；不写图，等人回话后由编排方带原话写入）；Q5 可见信号换源：面板看不看得见改为窗口焦点加相交观察器的否决，不再读 `document.visibilityState`，挂载补发到达（`seen.ts` 的 `watchVisibility`），主 Agent 记录挂载时读一次、看得见时每 30 秒读（`main-chat.ts` 的 `recordReads`）；第 1、6、9、17 条按新问法改字（人 2026-11-05 同意，新字在 `.agents/tasks/plain-ui/onepage-done.md`，逐条对照在 `.agents/tasks/panel/conditions-rewrite.md`，写进图上的验收归编排方） | Q4 桌面 L4 做完（`.agents/tasks/panel/l4-2026-11-05.md`，隔离实例，只经 CDP）；走查中查出两处缺陷由 Q4a `87566d1` 修好并在桌面复核成立（「上次看之后」的本机记录键：宿主的 `stat` 不认目录；跳到主 Agent：`openSession` 丢了 `this`）。编排方 2026-11-05 定为本线必修的四处由 Q6 修好：首页第一件整件显示问话与按问法带的几行、其余几件写题目与问话（第 1、6 条）；列表行不写类型名（第 2 条）；浅色主题灰字与链接对比度 3.71、4.23 改到 5.80、5.79；空图首页只留效果是一节与 `/wish` 一句；桌面复核随合入时的 L4。按 `impl-plan-2.md` §3：Q3 对照表等人回话（编排方交人）；单装组合（第 11 条）与读到已登录一支（第 13 条）随合入后的批次 L4；仍要等的：第 9 条第二阶段（等现有节点改写写进图与接管线的契约测试）、第 8 条规则板页面与上手页第 4 块（没有哪条线在做）、循环板上 M4 检查器的超时一格与它自己的规矩已做（面板 8-1，分支 `status-hub-3`：env 行经交接的 `checks` 交面板 §8.2 的形状，页面写四种来源、下限与上限句、3 倍核对、调高一行、7 天超时、来历与最近 5 次超时，`ORCHESTRATION.md` §18.4、§18.7），循环板上人的脚本与检查条目的同意版本、检查命令与超时一行，以及两块板讲细点里展开才读的脚本原文已做（面板 8-2，同一分支，`ORCHESTRATION.md` §16.14、§18.7），这些条目里 agent 估的秒数、超时来历与超时记录仍等（循环板同意的那条路）、推进停住一行（M7 线与状态板块余批）、第 14 条接管行在的一支（接管线）、第 17 条真图核对（方向清单与 M7 的 `derivedStage`） |
@@ -174,28 +176,22 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 - **编排运行**：属于 Kiro 的会话，换 IDE 即断。它们的产出都已落盘（设计文稿与分支提交），换过去之后照项目图重新派活。
 - **起步读法**：`AGENTS.md` → `docs/CHARTER.md` → 本文件第 10 节，再看第 8、9 节 → `npm run -s graph -- open`。
 
-## 10. 接着做什么（2026-11-07 交回 ZCode）
+## 10. 接着做什么（2026-11-09 批次合入与 L4 之后）
 
-核对到 2026-11-07 20:00（UTC+8）。main 在 `23acb4d1` 之上加本节。三把锁都空：`.llm/probe-lock-2` 里是 bootstrap B8 03:18 的心跳，超过 30 分钟，按 `DEVELOPMENT.md` §1.1 删了。Cursor 的 shell 会注入 `GIT_CONFIG_COUNT`、`GIT_CONFIG_KEY_0`、`GIT_CONFIG_VALUE_0`，带着跑 `npm run probe` 会失败，跑之前清掉。桌面只走 `--remote-debugging-port`，不注入系统鼠标键盘，不杀桌面版进程；出现 `#32770` 确认框就停下来请人点。
+批次合入（`fb88f941`，origin/main 与 github/main 都在这里）：m7 快进（execute 行出厂启用、探针共存语义修正 `20da5074`）、ablation 结论（`6e2dbeb1`）、docs-at-hand（`fb88f941`）。批次 L4（2026-11-09，隔离实例）：A 启动健康（21 行）、B 执行行首趟（真派发→工作树→轻审→check_commit→快进→完成门禁；dispatch-chain-readonly 拒绝成立）、C 档位提示无 `[object Object]`、D 经验行两提醒（AGENTS.md 按路径送达 + `loops.unsynced-daily` 登记可见）——四项全过，main 未动。
 
-人已定，接着守：
-
-- `d-no-run-cap`（`e4680b5b`）取代 `d-five-runs`：不限同时运行的条数。硬限制仍是两把探针锁、一把桌面锁、GLM 高峰 14:00–18:00。
-- docs-at-hand 做进现有流程，不另加插件行。设计 0.3 在分支 `docs-at-hand`：按路径送达并进经验行；一个组件只一份 `AGENTS.md`（不要 `FLOW.md`、`CASES.md`）；每日 18:05 的 `loops.unsynced-daily`；同步核对等 M7 合入，并进交回，不加规则板规则。
-- 子目录 `AGENTS.md` 的修法会让 GLM 请求偏离 ZCode 3.17.1（ZCode 自己不送）。不合入 main，等人选 `.agents/tasks/glm-subdir-instructions/report.md` §7 的 A/B/C。报告推荐 C（合入但缺省关）。
-- 视频字幕 `source-transcript.md` 不入库。它在主检出 `.agents/tasks/docs-at-hand/`，未跟踪。
-- 自举仍按 `d-finish-then-bootstrap`：先做完再进自举。B8 的开工凭据是编排方对 `d-bootstrap-released` 与这条决定的解读，记在 `23acb4d1`，人可推翻。
+Cursor 的 shell 会注入 `GIT_CONFIG_COUNT`、`GIT_CONFIG_KEY_0`、`GIT_CONFIG_VALUE_0`，带着跑 `npm run probe` 会失败，跑之前清掉。桌面只走 `--remote-debugging-port`，不注入系统鼠标键盘，不杀桌面版进程；出现 `#32770` 确认框就停下来请人点。
 
 按卡住别人的程度：
 
-1. **M7。** 分支 `m7`，工作树 `.worktrees/m3`，`origin/m7` = `74e8a368`。工作树干净。这一提交把 `glm-hourness/execute` 改为出厂启用；推理档位提示的 `[object Object]` 修在 `6f9888e4`。还没合入 main，第一批 L4（设计 §9.2）没跑。下一步：追 `origin/main`，跑 `npm run build`、`npm run preflight`、`npm test`、`npm run probe`（先清上面三个变量）。过了再按 `DEVELOPMENT.md` §5 第 4 条关桌面版、主检出 `git merge --ff-only`、主检出 build、先推 `origin main` 再推 `github main`、重启、跑 L4。L4 不过就用新提交改回禁用。不要强推。
-2. **docs-at-hand。** `origin/docs-at-hand` = `6fff4c29`。0.3 与经验行、每日条目的实现已在分支上；`6fff4c29` 是收尾时提交的修正（两条提醒共用已送集合，18:05 那条用 `git --no-optional-locks`）。这一个提交没跑门禁。下一步：追 main、四道门禁、评审、合入。经验行已经启用，合入会改桌面版正在跑的代码，同样先关桌面版。不要新开 `glm-hourness/docs` 行。
-3. **bootstrap。** `origin/bootstrap` = `1e7136f6`（B8：`/wish` 调接管，阶段提醒问 `holds`）。工作树干净。不要现在合入 main，它和 m7 有冲突，等 M7 进 main 后再合，并接着做 B7、B9、B10。面板 `ui/src/guide/NoGraphCard.tsx` 的过渡文字要在 B8 合入后改指 `/wish`，另做一件小活。
-4. **rules-r4d。** `origin/rules-r4d` = `72647c1e`，工作树干净。设计 0.11、R3、R4d（`checkCall` 跑人同意过的拦路脚本）都在分支上，没合入 main。接 `trunkAdvanceFor` 的一段等 M7。合入前跑门禁并评审。
-5. **ablation。** `origin/ablation` = `5cd05adf`。A0–A5 两档的运行结果在此前的提交里，`5cd05adf` 补了有效次数与 `bugfix-shell-redirect` 的完成表。`DESIGN.md` 里逐段去留结论若还没有，就补上再合入。注入文字本身不要删，等人看过结论。`.agents/tasks/ablation/review/review.md` 是 2026-11-06 对「只有计划」那一版的评审，不是对跑完的数据。
-6. **glm-subdir-instructions。** `origin/glm-subdir-instructions` = `9399278a`。`0ca8b04f` 上 build、preflight、test 绿（3289 通过，棘轮 73/18/1），逐字门禁 502/0。`9399278a` 是收尾时提交的读失败与路径大小写修正，没跑门禁。不要合入 main，先等人定 §7。
-7. **transcript。** 已在 main 出厂启用（`ac6413cf`，图 `e381f062`）。桌面核对记录 `1707adbb`。`m5-index-truncation-alarm` 随同一次桌面核对关掉。
-8. **卫生。** 任务文稿 `4eb29f4d`，从工作树抢救的文稿 `08d1e9a7`，`m3` 关掉、`d-dogfood-scope` 被 `d-build-all-released` 取代、dogfood 开始条件改按 M7 设计 0.6，都在 `0ce50ab8`。指标「一天大小」那条当时没写，图上记了推迟。
-9. **别动。** `.worktrees/ablation-trial` 停在游离提交 `db2bbc69`，收尾没有改它，也没有删工作树和远端分支。
+1. **bootstrap。** `origin/bootstrap` = `1e7136f6`（B8），已解锁：M7 在 main 后冲突已消。下一步：追 main、门禁、合入（先关桌面），接着做 B7、B9、B10；`ui/src/guide/NoGraphCard.tsx` 过渡文字改指 `/wish` 随批做。
+2. **rules-r4d。** `origin/rules-r4d` = `72647c1e`，已解锁：接 `trunkAdvanceFor` 的一段（M7 在 main）。下一步：追 main、门禁、评审、合入。
+3. **L4 的五条非阻断发现（2026-11-10 起清账）**：① `metrics` 行「积分口径：未提供」——`src/metrics/index.ts:593` 的 `pricingService(ctx)` 取到 undefined 而计价服务实际在出数（跨包激活时序？待人查）；② locale 过期文案已修（d7a9f953）；③ `no_gate_norm` 提示已写明形状（`13f6a196`，sweep 线）；④ worker 用 `git read-tree` 动主检出 index 现有门不覆盖——是否纳入 worker-git 判定待人定；⑤ 档位核对次序的发现前提**被推翻**（sweep 线四组实跑 + 历史核对：`bad_task` 自 `c0bd42f` 起先于档位核对，症状在现行代码不存在），回归钉测试锁住设计次序（`37b8657e`）。
+4. **glm-subdir-instructions。** 人已定 2026-11-10：报告 §7 的 C，合入但缺省关。分支已合并 origin/main（`ab867f47`）并落地缺省关：`glm-prompt` 行配置键 `subdirInstructions` 缺省 `false`，缺省请求与现状逐项相同，要用的 profile 设 `true`（`DESIGN.md` §5.11）。全量门禁通过后待编排方快进合入；L4 在 GLM 真会话看一次再定缺省值去留。
+5. **ablation 去留拍板。** 结论在 `docs/DESIGN.md` §5.2a（A1 保留、A2 可缩、A3 采纳延迟、A4 保留、A5 保留），注入文字未动；人看过结论后才动生产提示词。A3 采纳前要补一次真实会话核对（重用图/记忆工具的会话不在样本里）。
+6. **transcript。** 已在 main 出厂启用（`ac6413cf`，图 `e381f062`）。视频字幕 `source-transcript.md` 不入库（主检出 `.agents/tasks/docs-at-hand/`，未跟踪）。
+7. **别动。** `.worktrees/ablation-trial` 停在游离提交 `db2bbc69`。
 
-待人定：宣传视频三件（人说过晚点看）；申请通道接到面板「需要你」时要不要把「三种事」改成「四种事」；改基之后才算合入的远端分支删不删；子目录 `AGENTS.md` 的 A/B/C。
+人已定、接着守：`d-no-run-cap` 取代 `d-five-runs`（不限同时运行条数；硬限制仍是两把探针锁、一把桌面锁、GLM 高峰 14:00–18:00）；自举按 `d-finish-then-bootstrap`（B8 开工凭据记在 `23acb4d1`，人可推翻）。
+
+待人定：宣传视频三件；申请通道接面板「需要你」时三种事改四种事；改基之后才算合入的远端分支删不删；ablation A2/A3 的采纳。

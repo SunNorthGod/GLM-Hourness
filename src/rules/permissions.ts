@@ -4,9 +4,11 @@
  * from the request: a slash command is the person's, a tool or the command
  * line is `llm`, a detector's runner is `detector`, the host's own code is
  * `harness`. One row for each operation the board has; the operations that
- * need the path of a person's agreement (proposals, defining a switch, the
- * detectors, pinning a script) and the detector's own signal are not in the
- * table because the board does not have them yet.
+ * need the path of a person's agreement (the detectors) and the detector's own
+ * signal are not in the table because the board does not have them yet.
+ * The path of agreement is: an agent proposes (`propose`), and the person's
+ * word makes it so (`proposal-accept`, typed by the person or handed over by the
+ * host from the chat, where the main agent recorded the person's words).
  *
  * Two rows, `repo-outside` and `repo-outside-cleared`, are records the board
  * makes by itself when it finds the rules file changed or put back
@@ -16,8 +18,10 @@
 import type { RulesActor } from './model.ts'
 
 interface Operation {
-  /** The identities that may do it: the person for what is the person's to decide, the host's code for what only it knows. */
-  readonly writer: 'human' | 'harness'
+  /** The identity that may do it: the person for what is the person's to decide, the host's code for what only it knows, an agent for what it may only propose. */
+  readonly writer: 'human' | 'harness' | 'llm'
+  /** Another identity that may do it too: the host's code settles what the person decided on the graph. */
+  readonly also?: 'harness'
   /** What it is, for "only the person can ...". */
   readonly does: string
   /** What the one who may not do it should do instead. */
@@ -49,6 +53,11 @@ const OPERATIONS = {
   'repo-restore': { writer: 'human', does: '把规则文件按规则板自己的存档写回', hint: '在输入框打 /rules recovery 文件 照改|忽略' },
   'repo-outside': { writer: 'harness', does: '记下仓库里的规则文件被规则板以外改过', hint: `${BY_ITSELF}；看到这条提示之后，在输入框打 /rules recovery 文件 照改|忽略` },
   'repo-outside-cleared': { writer: 'harness', does: '记下仓库里的规则文件改回来了', hint: BY_ITSELF },
+  'propose': { writer: 'llm', does: '提议加规则、解除规则、改档位或删规则', hint: '人说一句要什么，主 Agent 用 rules_propose 记提议，再问人' },
+  'proposal-show': { writer: 'human', does: '看提议的原文', hint: '在输入框打 /rules accept <提议 id>' },
+  'proposal-accept': { writer: 'human', also: 'harness', does: '同意提议', hint: '在对话里对主 Agent 说同意，由它记下你的话；或在输入框打 /rules accept <提议 id>' },
+  'proposal-reject': { writer: 'human', also: 'harness', does: '否掉提议', hint: '在对话里对主 Agent 说不要，由它记下你的话；或在输入框打 /rules reject <提议 id>' },
+  'proposal-expire': { writer: 'harness', does: '让没人看过的提议过期', hint: BY_ITSELF },
   'notice-add': { writer: 'harness', does: '记下要告诉主 Agent 的话', hint: NOTICES_BY_ITSELF },
   'notice-delivered': { writer: 'harness', does: '记下提醒已经发出', hint: NOTICES_BY_ITSELF },
 } as const satisfies Record<string, Operation>
@@ -67,9 +76,9 @@ export interface Refusal {
 /** Why the actor may not do the operation, or undefined when it may. */
 export function refusalFor(actor: RulesActor, op: WriteOp): Refusal | undefined {
   const operation: Operation = OPERATIONS[op]
-  if (operation.writer === actor) return undefined
+  if (operation.writer === actor || operation.also === actor) return undefined
   return {
-    message: `只有${operation.writer === 'human' ? '人' : '规则板自己'}能${operation.does}（身份 ${actor} 不行）`,
+    message: `只有${operation.writer === 'human' ? '人' : operation.writer === 'llm' ? '提议的 agent' : '规则板自己'}能${operation.does}（身份 ${actor} 不行）`,
     hint: operation.hint,
   }
 }

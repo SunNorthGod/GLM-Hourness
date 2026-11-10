@@ -53,11 +53,11 @@ test('keyword search scores name parts over descriptions and honors +required te
 /** The 28-tool GLM face the desktop runtime assembled in the L3 probe (2026-10-27), after the alias rewrite. */
 const PROBE_FACE = ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'TodoWrite', 'Write', 'create_goal', 'exit_plan_mode', 'get_goal', 'interrupt_agent', 'job_kill', 'job_list', 'job_output', 'list_agents', 'memory_forget', 'memory_query', 'memory_store', 'read_image', 'send_message', 'skill', 'subagent', 'subagent_fork', 'update_goal', 'web_fetch', 'web_search', 'workflow', 'working_directory']
 
-test('the probe face splits into ZCode-resident tools and deferred DSH extras', () => {
+test('the probe face splits into ZCode-resident tools and deferred DSH extras (the three memory tools are deferred too since the ablation arm A3 carried, DESIGN.md 5.2a)', () => {
   const exposure = buildToolExposure([...PROBE_FACE.map(name => tool(name)), ...CONTROLS])
   assert.equal(exposure.enabled, true)
-  assert.deepEqual([...exposure.deferred].sort(), ['TodoWrite', 'create_goal', 'exit_plan_mode', 'interrupt_agent', 'job_kill', 'job_list', 'job_output', 'list_agents', 'send_message', 'update_goal', 'web_fetch', 'web_search', 'working_directory'])
-  assert.deepEqual(exposure.tools.map(entry => entry.name), ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write', 'get_goal', 'memory_forget', 'memory_query', 'memory_store', 'read_image', 'skill', 'subagent', 'subagent_fork', 'workflow', 'LocalToolSearch', 'DeferredToolCall'])
+  assert.deepEqual([...exposure.deferred].sort(), ['TodoWrite', 'create_goal', 'exit_plan_mode', 'interrupt_agent', 'job_kill', 'job_list', 'job_output', 'list_agents', 'memory_forget', 'memory_query', 'memory_store', 'send_message', 'update_goal', 'web_fetch', 'web_search', 'working_directory'])
+  assert.deepEqual(exposure.tools.map(entry => entry.name), ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write', 'get_goal', 'read_image', 'skill', 'subagent', 'subagent_fork', 'workflow', 'LocalToolSearch', 'DeferredToolCall'])
   const search = exposure.catalog.find(entry => entry.name === 'ToolSearch')!
   assert.deepEqual(search.aliases, ['LocalToolSearch'])
 })

@@ -95,7 +95,7 @@ test('reduce holds back only a script that says it spends GLM credit and could w
 
 test('stop queues every call of a GLM subagent in a peak except looking at the rules, one ticket for the whole session', () => {
   for (const tool of ['pwsh', 'write', 'read', 'subagent', 'graph_show']) assert.deepEqual(summary('stop', { ...GLM_SUBAGENT, tool }), ['queue', ['builtin:glm-peak-stop']], tool)
-  assert.deepEqual(RULES_TOOL_NAMES, ['rules_show'])
+  assert.deepEqual(RULES_TOOL_NAMES, ['rules_show', 'rules_propose'])
   for (const tool of RULES_TOOL_NAMES) assert.deepEqual(summary('stop', { ...GLM_SUBAGENT, tool }), ['allow', []], `${tool} stays readable while the agent is held`)
   const hit = verdict('stop', GLM_SUBAGENT).hits[0]
   assert.equal(hit?.ticketPerSession, true)

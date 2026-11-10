@@ -451,6 +451,32 @@ test('reasoningEffort is checked against the ids of the model\u2019s effort reco
   }
 })
 
+test('the task lookup precedes the tier checks: an unknown task refuses bad_task whatever the tier argument carries (L4 finding \u2464, HANDOFF \u00a710 item 3)', async () => {
+  const project = await presetProject([WORK_TASK])
+  try {
+    const subagents = fakeSubagents()
+    const llm: LlmCatalog = {
+      listModels: () => Promise.resolve([{ id: 'glm-5.3-flash', name: 'GLM-5.3-Flash' }]),
+      resolveModelInfo: () => Promise.resolve({ reasoning: { efforts: GLM_REASONING_EFFORTS } }),
+    }
+    const { deps } = depsFor(project, subagents.service, { lookup: lookupWith(subagents.service, { llm }) })
+    // The node lookup refuses first (dispatch.ts, before briefGate's argument
+    // row \u2014 \u00a73.5.1's table order keeps the argument row first inside the
+    // gate \u2014 and before the catalog and effort check that follows the gate):
+    // the finding's recorded symptom (the tier error for an unknown task)
+    // does not occur; this pins the designed order against a regression.
+    const catalogTier = await refusedOf(() => dispatch(deps, project.root, { id: 'no-such-task', model: 'glm-5.3-flash', why: 'x', reasoningEffort: 'turbo' }))
+    assert.equal(catalogTier.code, 'bad_task')
+    assert.equal(catalogTier.message, 'no node "no-such-task" in the graph')
+    const shapeTier = await refusedOf(() => dispatch(deps, project.root, { id: 'no-such-task', model: 'glm-5.3-flash', why: 'x', reasoningEffort: 'x'.repeat(41) }))
+    assert.equal(shapeTier.code, 'bad_task')
+    assert.equal(shapeTier.message, 'no node "no-such-task" in the graph')
+  }
+  finally {
+    dispose(project)
+  }
+})
+
 // ---- the design row with the execute row on (F18) ----
 
 test('with the execute service on, the main agent\u2019s no-write denial points at dispatch_task; without it, at the subagent tool', async () => {

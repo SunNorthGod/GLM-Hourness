@@ -7,7 +7,8 @@
  * entry's, and a field that claims one is not read.
  */
 import { PEAK_LEVEL_WORDS } from '../shared/peak-mode.ts'
-import { parsePeakLevel, type PeakLevel, type SignalValue, type Ticket } from './model.ts'
+import { proposalProblem } from './entries.ts'
+import { parsePeakLevel, type PeakLevel, type Proposal, type SignalValue, type Ticket } from './model.ts'
 import { WRITE_OPS, type WriteOp } from './permissions.ts'
 
 /** The operations a caller asks for: all but the two records the board makes by itself when it finds the rules file changed. */
@@ -20,6 +21,9 @@ export interface HostRef {
 }
 
 type TicketState = Ticket['state']
+
+/** What `propose` writes: the proposal as the agent made it, without what the board adds (time, status, who decided, the question). */
+type ProposalDraft = Omit<Proposal, 'status' | 'at' | 'decidedBy' | 'question' | 'shownAt'>
 
 interface Common {
   /** The sequence number the caller read; a newer state refuses the write. */
@@ -71,6 +75,14 @@ export type Request = Common & (
   | { readonly op: 'recovery-dismiss', readonly labels: readonly string[] }
   | { readonly op: 'repo-adopt' }
   | { readonly op: 'repo-restore' }
+  | { readonly op: 'propose', readonly proposal: ProposalDraft }
+  /** The person was shown the text of a proposal that runs something (`/rules accept` the first time): the second within 30 minutes takes effect. */
+  | { readonly op: 'proposal-show', readonly id: string }
+  /** `by`: who decided (`human` typed it, `llm` is the main agent recording the human's words, which are `relay`); `question`: the question on the graph; `board`: the person typed `/rules accept`, not the graph. */
+  | { readonly op: 'proposal-accept', readonly id: string, readonly by: 'human' | 'llm', readonly relay?: string, readonly question?: string, readonly board?: true }
+  | { readonly op: 'proposal-reject', readonly id: string, readonly by?: 'human' | 'llm', readonly relay?: string }
+  /** The proposal was put to nobody for 7 days (`via: 'graph'`, no question on the graph names it). */
+  | { readonly op: 'proposal-expire', readonly id: string }
   | { readonly op: 'notice-add', readonly kind: 'late-block' | 'script-capped', readonly rule: string, readonly text: string }
   | { readonly op: 'notice-delivered', readonly id: string }
 )
@@ -234,6 +246,33 @@ function parseBody(op: RequestOp, fields: Fields): Request | string {
     case 'repo-adopt':
     case 'repo-restore':
       return { op }
+    case 'propose': {
+      const draft = fields.proposal
+      if (typeof draft !== 'object' || draft === null || Array.isArray(draft)) return 'proposal 要写成一个提议'
+      const record = draft as Fields
+      const problem = proposalProblem(String(record.id), { ...record, status: 'open', at: new Date(0).toISOString() }, 'proposal')
+      return problem ?? { op, proposal: record as unknown as ProposalDraft }
+    }
+    case 'proposal-show':
+    case 'proposal-expire': {
+      const id = text(fields, 'id', '提议 id')
+      return all(id) ?? { op, id: got(id) }
+    }
+    case 'proposal-accept': {
+      const id = text(fields, 'id', '提议 id')
+      const relay = optionalText(fields, 'relay', '人的原话', MAX_TEXT)
+      const question = optionalText(fields, 'question', '待决的 id')
+      const board = onlyTrue(fields, 'board')
+      if (fields.by !== 'human' && fields.by !== 'llm') return 'by 要是 human 或 llm'
+      if (fields.by === 'llm' && fields.relay === undefined) return 'by 为 llm 时要带人的原话 relay'
+      return all(id, relay, question, board) ?? defined({ op, id: got(id), by: fields.by, relay: got(relay), question: got(question), board: got(board) })
+    }
+    case 'proposal-reject': {
+      const id = text(fields, 'id', '提议 id')
+      const relay = optionalText(fields, 'relay', '人的原话', MAX_TEXT)
+      if (fields.by !== undefined && fields.by !== 'human' && fields.by !== 'llm') return 'by 要是 human 或 llm'
+      return all(id, relay) ?? defined({ op, id: got(id), by: fields.by, relay: got(relay) })
+    }
     case 'notice-add': {
       const kind = fields.kind
       if (!(typeof kind === 'string' && NOTICE_KINDS.includes(kind))) return `kind 要是 ${NOTICE_KINDS.join('、')} 之一`

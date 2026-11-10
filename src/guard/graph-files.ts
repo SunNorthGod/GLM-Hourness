@@ -14,7 +14,6 @@
  * call's origin (src/guard/origin.ts).
  */
 import { resolve } from 'node:path'
-import { GRAPH_FILES_DECLARATION } from '../graph/service.ts'
 import { dialectNames, dialectService, dialectWarner } from '../shared/dialect.ts'
 import { sessionRoute } from '../shared/route.ts'
 import type { JournalOutcome } from '../memory/audit.ts'
@@ -43,7 +42,6 @@ export function graphFilesOnly(graphDir: string, cwd: string | undefined): Guard
   const deny = (fact: string): RuleVerdict => ({ kind: 'deny', rule: GRAPH_FILES_RULE, correction: correction(fact, resolve(graphDir)) })
   return {
     id: GRAPH_FILES_RULE,
-    declare: GRAPH_FILES_DECLARATION,
     detect(call) {
       const write = writes(call)
       if (write === undefined) return ALLOW

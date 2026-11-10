@@ -32,7 +32,7 @@ import { GRAPH_SERVICE } from '../src/graph/service.ts'
 import { createBoards, realDelay } from '../src/loops/boards.ts'
 import { createRegistry } from '../src/loops/registry.ts'
 import type { CommandRequest, ScriptResult } from '../src/loops/script.ts'
-import { LOOPS_DECLARATION, LOOPS_SERVICE, type ListedRun, type LoopsService } from '../src/loops/service.ts'
+import { LOOPS_SERVICE, type ListedRun, type LoopsService } from '../src/loops/service.ts'
 import type { DerivedMessage, ServiceLookup, SessionLike, UserNotice } from '../src/shared/dsh-min.ts'
 import { buildLoopsPage } from '../ui/src/loops/model.ts'
 import { fakeRuntime } from './fake-rc3.ts'
@@ -53,8 +53,7 @@ function fakeBoard(): Board {
   return {
     runs,
     service: {
-      declaration: LOOPS_DECLARATION,
-      contribute: () => ({ ok: true, dispose: () => {}, accepted: [], dropped: [] }),
+            contribute: () => ({ ok: true, dispose: () => {}, accepted: [], dropped: [] }),
       emit: () => Promise.resolve({ ok: true as const, id: 'ev-x', duplicate: false }),
       listens: () => false,
       recordRun: (run) => { runs.push(run) },

@@ -20,7 +20,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { openRulesBoard, type RulesBoard } from '../src/rules/engine.ts'
 import { emptyState, type JournalRecord, type ProjectState, type RepoRules, type RulesActor } from '../src/rules/model.ts'
-import { WRITE_OPS } from '../src/rules/permissions.ts'
+import { refusalFor, WRITE_OPS, type WriteOp } from '../src/rules/permissions.ts'
 import { settleProject } from '../src/rules/repo.ts'
 import { applyRecord, loadState, replayJournals, stateDigest } from '../src/rules/store.ts'
 import { ruleOf } from './rules-fixtures.ts'
@@ -223,6 +223,43 @@ async function runSeed(seed: number): Promise<void> {
         const ids = Object.keys(s.notices ?? {})
         return ids.length === 0 ? undefined : ['harness', { op: 'notice-delivered', id: pick(ids) }]
       }],
+      // The path of agreement: proposals are made, shown, agreed to, turned down and lapse.
+      [4, (s) => {
+        if (Object.values(s.proposals ?? {}).filter(proposal => proposal.status === 'open').length >= 12) return undefined
+        const n = ++counter
+        const id = `p-${n.toString(16).padStart(8, '0')}`
+        const replaces = Object.values(s.proposals ?? {}).filter(proposal => proposal.status === 'open')
+        return ['llm', {
+          op: 'propose',
+          proposal: {
+            id,
+            kind: 'rule',
+            body: { id: `r-prop-${n}`, title: `proposed ${n}`, scope: 'project', when: { kind: 'event', events: ['gate.tool-call'] }, action: { kind: 'block' }, lifetime: { kind: 'until-lifted' }, reason: 'because' },
+            describe: `a proposal ${n}`,
+            cautions: [],
+            reason: 'the human asked',
+            via: chance(0.5) ? 'graph' : 'board',
+            proposedBy: { sessionId: `s-${int(1, 6)}`, agentId: `agent-${int(1, 3)}` },
+            ...(replaces.length > 0 && chance(0.2) ? { replaces: pick(replaces).id } : {}),
+          },
+        }]
+      }],
+      [3, (s) => {
+        const open = Object.values(s.proposals ?? {}).filter(proposal => proposal.status === 'open')
+        return open.length === 0 ? undefined : ['human', { op: 'proposal-show', id: pick(open).id }]
+      }],
+      [3, (s) => {
+        const open = Object.values(s.proposals ?? {}).filter(proposal => proposal.status === 'open' && Object.values(s.rules ?? {}).filter(rule => rule.status === 'active').length < 40)
+        return open.length === 0 ? undefined : [chance(0.3) ? 'harness' : 'human', { op: 'proposal-accept', id: pick(open).id, by: chance(0.5) ? 'human' : 'llm', relay: '可以', ...(chance(0.5) ? { question: `question-${int(1, 9)}` } : {}) }]
+      }],
+      [2, (s) => {
+        const open = Object.values(s.proposals ?? {}).filter(proposal => proposal.status === 'open')
+        return open.length === 0 ? undefined : [chance(0.3) ? 'harness' : 'human', { op: 'proposal-reject', id: pick(open).id }]
+      }],
+      [2, (s) => {
+        const open = Object.values(s.proposals ?? {}).filter(proposal => proposal.status === 'open')
+        return open.length === 0 ? undefined : ['harness', { op: 'proposal-expire', id: pick(open).id }]
+      }],
     ]
     const weighted = MICRO.flatMap(([weight, build]) => Array.from({ length: weight }, () => build))
     async function micro(): Promise<void> {
@@ -233,7 +270,7 @@ async function runSeed(seed: number): Promise<void> {
         const roll = rng()
         if (roll < 0.06) {
           // The wrong identity: refused, with nothing written.
-          await askRefused(pick(['llm', 'detector', actor === 'human' ? 'harness' : 'human'] as const), request, 'forbidden')
+          await askRefused(pick((['llm', 'detector', 'human', 'harness'] as const).filter(candidate => refusalFor(candidate, request.op as WriteOp) !== undefined)), request, 'forbidden')
         }
         else if (roll < 0.09) {
           await askRefused(actor, { ...request, rev: Math.max(0, state().seq - 1 - int(0, 2)) }, 'stale_revision')

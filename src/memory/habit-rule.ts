@@ -30,6 +30,7 @@
  * a delegated child has neither memory_store nor memory_habit.
  */
 import { wordsOf } from '../data/words.ts'
+import { hasHabitWord } from './habit-words.ts'
 import { cwdOf, installRuleGate, type GateHost, type GateRules } from '../guard/gate.ts'
 import { originOf } from '../guard/origin.ts'
 import type { GuardRecord } from '../guard/records.ts'
@@ -45,9 +46,6 @@ import type { JournalOutcome } from './audit.ts'
 /** The rule's id: the denial's `rule`, the id guard_lift takes; the rules board lists it as `memory:habit-ask-first`. */
 export const HABIT_ASK_FIRST = 'habit-ask-first'
 
-/** The rule's line in the guard section of the system prompt (src/guard/index.ts adds it while the memory row is in effect). */
-export const HABIT_RULE_DECLARATION = `Habits you only guessed from how the user works are asked with ${MEMORY_HABIT} (ask, then confirm or decline on their words), never on a question card; a preference whose relay only agrees to a question you asked is refused.`
-
 /** The question tool of DSH (dsh-tool-ask-user), by its native name. */
 const QUESTION_TOOL = 'ask_user_question'
 
@@ -57,26 +55,7 @@ const REPORTING_DEPTH = 'reporting-depth'
 /** Share of the relay's words (src/data/words.ts) found in the agent's question at which the relay counts as agreeing to it. */
 const ECHO_SHARE = 0.5
 
-/**
- * Words that make a card question one about a habit to keep. A permission
- * list: han words match by substring, English ones by whole word, case
- * insensitive. A card that asks something else with one of them is refused
- * too; the correction says to ask it in plain chat, and the human can lift
- * the rule.
- */
-const HABIT_CARD_WORDS: readonly string[] = ['习惯', '偏好', '记住', '记下', '以后都', '以后每次', '每次都', '今后都', 'habit', 'preference', 'remember', 'from now on']
-
 const ALLOW: RuleVerdict = { kind: 'allow' }
-
-const isHan = (word: string): boolean => /[\u4e00-\u9fff]/u.test(word)
-
-/** Whether a text carries one of the habit words. */
-export function hasHabitWord(text: string): boolean {
-  const lowered = text.toLowerCase()
-  return HABIT_CARD_WORDS.some(word => isHan(word)
-    ? text.includes(word)
-    : new RegExp(`(?:^|[^a-z])${word}(?![a-z])`, 'u').test(lowered))
-}
 
 /** What the rule reads of the session's talk: the person's latest message and the question the agent asked right before it. */
 export interface HabitTalk {
@@ -146,7 +125,6 @@ const deny = (correction: Correction): RuleVerdict => ({ kind: 'deny', rule: HAB
 export function habitAskFirst(talk: HabitTalk): GuardRule {
   return {
     id: HABIT_ASK_FIRST,
-    declare: HABIT_RULE_DECLARATION,
     detect(call) {
       const args = recordOf(call.arguments)
       if (call.name === QUESTION_TOOL) {

@@ -11,6 +11,14 @@ import type { AssembledSection } from '../shared/dsh-min.ts'
 export const DECLARATION_SECTION = 'glm:guard'
 
 /**
+ * The whole section text (ablation arm A2, adopted 2026-11-10 per DESIGN.md
+ * §5.2a): one general declaration, the enforcement it summarizes unchanged.
+ * It lives here so the calibration ablation switch imports the same constant
+ * from the built package.
+ */
+export const WORKSPACE_RULES_TEXT = '# Workspace rules\nThe harness checks every tool call before it runs. Writes outside the workspace, file changes through the shell, and direct edits of the project graph are denied with the reason and the right way to proceed.'
+
+/**
  * Add an orchestration section to an assembly's sections: before the guard's
  * declaration section when there is one, else last. A section of the same
  * name already present is replaced where it stands, so installing a listener

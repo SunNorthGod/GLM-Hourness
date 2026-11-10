@@ -115,7 +115,7 @@ async function present(path: string): Promise<boolean> {
   }
 }
 
-const stateOf = (entries: readonly MemoryEntry[]): MemoryState => ({ scope: 'project', entries: new Map(entries.map(entry => [entry.name, entry])), asks: new Map(), declined: new Map(), askTimes: [] })
+const stateOf = (entries: readonly MemoryEntry[]): MemoryState => ({ scope: 'project', entries: new Map(entries.map(entry => [entry.name, entry])), asks: new Map(), declined: new Map(), proposals: new Map(), askTimes: [] })
 
 /** The folded journal of one scope; for the project, the old `memory.json` stands in until the journal exists. */
 export async function readScope(scope: Scope, dir: string): Promise<ReadOutcome> {

@@ -12,7 +12,7 @@
  * here take `tk-<8>:cost` and `tk-<8>:touch`. The list rounds
  * (`list-<n>`) join with bootstrap_review.
  */
-import type { AttachService } from '../design/attach.ts'
+import type { AttachService } from '../shared/attach.ts'
 import type { DesignInvocationLike, ServiceLookup, UserNotice } from '../shared/dsh-min.ts'
 
 export const BOOTSTRAP_SERVICE = 'glmHournessBootstrap'

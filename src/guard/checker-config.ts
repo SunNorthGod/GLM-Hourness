@@ -46,7 +46,6 @@ const correctionOf = (file: string, ref: string): Correction => ({
 export function checkerConfigOnly(context: RuleContext, ref: string): GuardRule {
   return {
     id: 'checker-config',
-    declare: 'Checker configuration and baselines change only through the request channel.',
     detect(call) {
       const target = fileToolTargetOf(call)
       if (target === undefined) return ALLOW

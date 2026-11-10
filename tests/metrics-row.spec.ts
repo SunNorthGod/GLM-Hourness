@@ -20,7 +20,6 @@ import { openEngine } from '../src/graph/engine.ts'
 import { readLog } from '../src/metrics/read.ts'
 import { METRICS_SERVICE, type MetricsService } from '../src/shared/metrics.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
-import { LOOPS_DECLARATION } from '../src/loops/service.ts'
 import type { Contribution, LoopEventRecord } from '../src/loops/service.ts'
 import type { SessionEventLike, SessionLike, UserQuestionsRequest } from '../src/shared/dsh-min.ts'
 import type { StreamChunk } from '../src/shared/lm-min.ts'
@@ -415,7 +414,6 @@ function fakeLoops(): { readonly service: unknown, readonly contributions: Contr
   const contributions: Contribution[] = []
   let runner: NonNullable<Contribution['run']> | undefined
   const service = {
-    declaration: LOOPS_DECLARATION,
     contribute: (_source: unknown, contribution: Contribution) => {
       contributions.push(contribution)
       runner = contribution.run?.bind(contribution)

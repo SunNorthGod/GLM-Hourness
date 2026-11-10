@@ -276,7 +276,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 1. `check` 不写规则板的任何文件（仓库里的规则目录，`.llm/rules/` 下的状态、流水、心跳），也不取锁；每次判定向指标出口交一条 `rules.check`，出口现在什么都不做（`ORCHESTRATION.md` §16.10）。
 2. `glm-peak` 命令行读不到计价服务：用 `--signal glm-peak=true|false` 给，否则读这个项目 45 秒内更新过的宿主心跳（宿主写心跳随规则行加入），都没有就是读不出，规则按各自的失败做法判。只有 `glm-peak` 能这样给；项目状态里的开关与检测器的信号不能给，要改用规则页或 `/rules on|off`。
 3. 角色、模型、会话、阶段只取命令行给的；没给的那一项读不出，要求它的规则不命中，结果的 `subjects` 写出。
-4. 带脚本的规则当作脚本未批准，不起进程。
+4. 带脚本的规则：人同意过的（哈希对得上、有批准时刻）由 `check` 经共用执行器起进程跑，退出 2 拦下（退出码 4）、3 排队（5），其余按条目的 `onError`；没批准的当作脚本未批准，不起进程。`check` 自己不写规则板的任何文件，脚本在项目目录里按自己的写法写什么是它的事。
 5. 试写用 `--project` 指向临时的 git 仓库（`git init`，或只建一个 `.git` 目录），不要对本仓库的 `docs/rules` 做实验。读 JSON 输出用 `npm run -s`。
 6. 命令行与库不碰 DSH，改它们只需过 `npm run build`、`npm run preflight`、`npm test`，不需要 `npm run probe`；L2 是 `tests/rules-check.spec.ts`（含以独立进程跑 `show`、`check`）与 `tests/rules-metrics.spec.ts`。
 

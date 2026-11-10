@@ -7,12 +7,12 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { apply, guardHealth, type GuardRecord, type ViolationRecord } from '../src/guard/index.ts'
 import { keyOf } from '../src/guard/records.ts'
-import { DECLARATION_SECTION } from '../src/guard/sections.ts'
+import { DECLARATION_SECTION, WORKSPACE_RULES_TEXT } from '../src/guard/sections.ts'
 import { apply as glmPromptApply, dialectServiceFor } from '../src/glm-prompt/index.ts'
 import type { ShadowRecord } from '../src/guard/fallback.ts'
 import type { AgentLike, PreExecuteDecision, SessionEventLike, SessionLike, ToolExecutionPayload, WorkspaceChangesSummary } from '../src/shared/dsh-min.ts'
 import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
-import { GRAPH_FILES_DECLARATION, GRAPH_SERVICE } from '../src/graph/service.ts'
+import { GRAPH_SERVICE } from '../src/graph/service.ts'
 import { DIALECT_SERVICE } from '../src/shared/dialect.ts'
 import { fakeRuntime } from './fake-rc3.ts'
 
@@ -469,8 +469,7 @@ test('shadow: a call another listener denied is not counted; a summary after the
 // name maps through the dialect service, else the static alias table, and
 // corrections name tools as the model sees them.
 
-/** The file-tools-only declaration line and right path as GLM read them before split step 2, word for word. */
-const FILE_TOOLS_LINE_ZCODE = 'Modify files and code only with the dedicated Write/Edit tools. The shell is for execution (tests, builds, git), not for writing files: a redirection into a file (`>`, `>>`) or a file-changing command (Set-Content, Add-Content, Clear-Content, Out-File, Tee-Object, New-Item, Copy-Item, Move-Item, Remove-Item, rm, rmdir, mv, cp, dd, touch, truncate, tee, sed -i) is denied.'
+/** The file-tools-only right path as GLM reads it, word for word. */
 const RIGHT_PATH_ZCODE = 'Right path: Read the target with Read, then apply the change with Write or Edit.'
 const RIGHT_PATH_NATIVE = 'Right path: Read the target with read, then apply the change with write or edit.'
 
@@ -519,9 +518,9 @@ test('a malformed dialect service counts as absent: still denied, warned once, a
   assert.deepEqual(guardHealth(['C:\\ws'], 'C:/ws/.llm', false, true), ['degraded', '门禁生效（file-tools-only，圈禁根 C:\\ws）；方言服务不可用：工具名按静态别名表换算，纠偏用原生名；事后纠正未启用（组合里没有 workspace-changes）'])
 })
 
-// Declaration (docs/ORCHESTRATION.md §6.1): every route's system prompt carries the active rules.
+// Declaration (docs/ORCHESTRATION.md §6.1): every route's system prompt carries the workspace-rules sentence (ablation arm A2, DESIGN.md §5.2a).
 
-test('every request carries the rule declarations as the last system prompt section: the dialect\'s names on GLM, native names elsewhere', async () => {
+test('every request carries the workspace-rules sentence as the last system prompt section, the same text on every route and with no rule lines', async () => {
   const rt = fakeRuntime()
   glmPromptApply(rt.ctx)
   apply(rt.ctx as never, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
@@ -532,34 +531,28 @@ test('every request carries the rule declarations as the last system prompt sect
   const section = glm.sections.at(-1)!
   assert.equal(section.name, DECLARATION_SECTION)
   assert.equal(section.interpolate, false)
-  assert.ok(section.text.startsWith('# Workspace rules\n'))
-  assert.ok(section.text.includes('\n- You may only create and modify files inside the user\'s workspace.'))
-  assert.ok(section.text.split('\n').includes(`- ${FILE_TOOLS_LINE_ZCODE}`), 'the dialect claims the agent: the line is word for word as before')
+  assert.equal(section.text, WORKSPACE_RULES_TEXT)
   assert.equal(glm.sections.filter(entry => entry.name === DECLARATION_SECTION).length, 1)
   assert.equal(glm.sections[0].name, 'glm:cli-prefix') // the dialect rewrite still leads
   const plain = await rt.assemble({ provider: 'deepseek', model: 'deepseek-flash' })
   const plainSection = plain.sections.at(-1)!
   assert.equal(plainSection.name, DECLARATION_SECTION)
   assert.equal(plainSection.interpolate, false)
+  assert.equal(plainSection.text, WORKSPACE_RULES_TEXT, 'the sentence names no tool, so the dialect face cannot change it')
   assert.equal(plain.sections.filter(entry => entry.name === DECLARATION_SECTION).length, 1)
-  // The same rules; only the file tools are named as the DeepSeek face has them.
-  assert.equal(plainSection.text, section.text.replace('the dedicated Write/Edit tools', 'the dedicated write/edit tools'))
-  assert.notEqual(plainSection.text, section.text)
 })
 
-test('without a session directory the declaration skips containment and lists the rules that need no root, as the gate enforces', async () => {
+test('without a session directory the section is the same sentence; the gate, not the declaration, carries the per-rule facts', async () => {
   const rt = fakeRuntime() // the fake agent's session has no cwd
   apply(rt.ctx as never, { home: 'C:/ws/.llm', fs: memoryFs().fs })
   await rt.create()
   const section = (await rt.assemble({ model: 'glm-5.3' })).sections.at(-1)!
   assert.equal(section.name, DECLARATION_SECTION)
-  // file-tools-only plus the four rules the G3 batch added; containment alone needs a root.\n  assert.equal(section.text.split('\n').filter(line => line.startsWith('- ')).length, 5)
-  assert.ok(!section.text.includes('inside the user\'s workspace'))
-  // No dialect row: the GLM request sees the native tools, and the declaration names them.
-  assert.ok(section.text.includes('\n- Modify files and code only with the dedicated write/edit tools.'))
+  assert.equal(section.text, WORKSPACE_RULES_TEXT)
+  assert.ok(!section.text.includes('\n- '), 'no rule is declared per line')
 })
 
-test('the main agent\'s declaration has no file-tools-only line: its identity section holds the boundary, and the line would name the Write/Edit tools it does not have (S4-4)', async () => {
+test('the main agent gets the same sentence: it names no tool, so the S4-4 clash (a line naming the Write/Edit tools it does not have) cannot recur', async () => {
   const main = (): ReturnType<typeof fakeRuntime> => {
     const rt = fakeRuntime({ cwd: 'C:\\ws' })
     rt.services.set('sessionProjections', { stateOf: (session: SessionLike, key: string) => key === MAIN_AGENT_KEY ? { active: true } : undefined })
@@ -570,26 +563,23 @@ test('the main agent\'s declaration has no file-tools-only line: its identity se
   await rt.create()
   const section = (await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!
   assert.equal(section.name, DECLARATION_SECTION)
-  assert.ok(section.text.includes('\n- You may only create and modify files inside the user\'s workspace.'), 'containment is still declared')
-  assert.ok(!section.text.includes('Modify files and code only with the dedicated'), 'no file-tools-only line for the main agent')
-  // An ordinary session keeps the line.
+  assert.equal(section.text, WORKSPACE_RULES_TEXT)
+  // An ordinary session gets the same text.
   const plain = fakeRuntime({ cwd: 'C:\\ws' })
   apply(plain.ctx as never, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
   await plain.create()
   const plainSection = (await plain.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!
-  assert.ok(plainSection.text.includes('\n- Modify files and code only with the dedicated write/edit tools.'))
+  assert.equal(plainSection.text, WORKSPACE_RULES_TEXT)
 })
 
-test('with the graph row active the GLM declaration also lists graph-files-only, last; it leaves with the row', async () => {
+test('the section does not vary with the graph row: the rule enforces through its own gate, not through a declaration line', async () => {
   const rt = fakeRuntime()
   apply(rt.ctx as never, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
   await rt.create()
   const before = (await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!
-  assert.ok(!before.text.includes(GRAPH_FILES_DECLARATION))
+  assert.equal(before.text, WORKSPACE_RULES_TEXT)
   const withdraw = rt.ctx.provide(GRAPH_SERVICE, { dirFor: () => undefined, isGraphTool: () => false })
-  const rules = (await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!.text.split('\n').filter(line => line.startsWith('- '))
-  assert.deepEqual(rules.at(-1), `- ${GRAPH_FILES_DECLARATION}`)
-  // file-tools-only, the four G3 rules, then graph-files-only last (design §3.1).\n  assert.equal(rules.length, 7)
+  assert.equal((await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!.text, WORKSPACE_RULES_TEXT)
   withdraw()
-  assert.ok(!(await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!.text.includes(GRAPH_FILES_DECLARATION))
+  assert.equal((await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!.text, WORKSPACE_RULES_TEXT)
 })

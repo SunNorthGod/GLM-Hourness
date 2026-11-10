@@ -37,9 +37,6 @@ export type { HarnessResult, LoopEventRecord } from '../shared/loop-records.ts'
 /** The cordis service name the loop row provides. */
 export const LOOPS_SERVICE = 'glmHournessLoops'
 
-/** The line the guard's `glm:guard` section ends with while the loop board is on. It does not change with the entries, so it does not change the prompt cache. */
-export const LOOPS_DECLARATION = 'The loop board keeps the loops the human agreed to in docs/loops/ and .llm/loops/; only the board writes there, and a write to those files with a file tool or the shell is denied.'
-
 export interface ContributionSource {
   /** The package: dsh-hourness. */
   readonly plugin: string
@@ -109,8 +106,6 @@ export type ContributeResult =
   | { readonly ok: false, readonly reason: string }
 
 export interface LoopsService {
-  /** The line for the guard's prompt section. */
-  readonly declaration: string
   /**
    * Hand over entries, events and actions at activation. The same source handing over again replaces its earlier
    * hand-over whole. Does not throw. `accepted` are the ids of the entries that stand (an entry that waits for an
@@ -187,8 +182,7 @@ export function loopsService(ctx: ServiceLookup, problem?: (message: string) => 
   const value: unknown = typeof ctx.get === 'function' ? ctx.get(LOOPS_SERVICE) : undefined
   if (value === undefined || value === null) return undefined
   const members = value as Partial<Record<keyof LoopsService, unknown>>
-  if (typeof members.contribute === 'function' && typeof members.emit === 'function' && typeof members.listens === 'function' && typeof members.recordRun === 'function'
-    && typeof members.declaration === 'string' && members.declaration.length > 0) return value as LoopsService
+  if (typeof members.contribute === 'function' && typeof members.emit === 'function' && typeof members.listens === 'function' && typeof members.recordRun === 'function') return value as LoopsService
   problem?.(`${LOOPS_SERVICE} has the wrong shape; the row cannot hand its entries over`)
   return undefined
 }

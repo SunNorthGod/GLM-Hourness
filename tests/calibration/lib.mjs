@@ -3,7 +3,7 @@
  * §10.5). The runner (scripts/calibrate/run-calibrate.mjs) starts a task's
  * checker as its own process after the model has finished:
  *
- *   node check.mjs --workspace <run copy> --fixture <pristine fixture> --scratch <empty dir>
+ *   node check.mjs --workspace <run copy> --fixture <pristine fixture> --scratch <empty dir> --home <the run's row-data home>
  *
  * The checker imports and runs workspace code in its own process (the runner
  * bounds the process time), prints one JSON object { pass, checks } (an
@@ -16,11 +16,11 @@ import { basename, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { inspect, isDeepStrictEqual, parseArgs } from 'node:util'
 
-/** The three directories every checker receives. */
+/** The three directories every checker receives, plus the run's row-data home when the runner passed one (`--home`, where the rows keep the journals the batch's data redirect moved out of the workspace). */
 export function checkerArgs() {
-  const { values } = parseArgs({ options: { workspace: { type: 'string' }, fixture: { type: 'string' }, scratch: { type: 'string' } } })
+  const { values } = parseArgs({ options: { workspace: { type: 'string' }, fixture: { type: 'string' }, scratch: { type: 'string' }, home: { type: 'string' } } })
   if (values.workspace === undefined || values.fixture === undefined || values.scratch === undefined) {
-    throw new Error('usage: check.mjs --workspace <dir> --fixture <dir> --scratch <dir>')
+    throw new Error('usage: check.mjs --workspace <dir> --fixture <dir> --scratch <dir> [--home <dir>]')
   }
   return values
 }

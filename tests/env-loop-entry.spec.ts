@@ -16,7 +16,7 @@ import { CHECK_FAILURE_LIMIT, CHECK_SLOTS, MISSING_CHECK_NOTICES } from '../src/
 import { CHECK_QUEUE_WAIT_MS, CHECK_STEP_DEADLINE_MS, CHECK_TIMEOUT_CAP_MS, CHECK_TIMEOUT_FACTOR, CHECK_TIMEOUT_FLOOR_MS } from '../src/env/timeout.ts'
 import { codePointCount } from '../src/graph/proposal.ts'
 import { validateContribution } from '../src/loops/registry.ts'
-import { installContribution, LOOPS_DECLARATION, LOOPS_SERVICE, type ContributeResult, type ContributionSource, type LoopsService } from '../src/loops/service.ts'
+import { installContribution, LOOPS_SERVICE, type ContributeResult, type ContributionSource, type LoopsService } from '../src/loops/service.ts'
 import type { ServiceLookup } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { fakeRuntime } from './fake-rc3.ts'
@@ -30,8 +30,7 @@ interface Handed {
 function fakeBoard(refused?: string): { readonly service: LoopsService, readonly handed: Handed } {
   const handed: Handed = { sources: [], contributions: [] }
   const service: LoopsService = {
-    declaration: LOOPS_DECLARATION,
-    contribute: (source, contribution) => {
+        contribute: (source, contribution) => {
       handed.sources.push(source)
       handed.contributions.push(contribution)
       const result: ContributeResult = refused === undefined ? { ok: true, dispose: () => {}, accepted: [], dropped: [] } : { ok: false, reason: refused }
