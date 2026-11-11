@@ -238,14 +238,18 @@
       # with the takeover-start notice; every step of the main agent then
       # carries the takeover reminder, and once the first goal is on the
       # graph the harness proposes the three norm templates under it. Until
-      # the design row's /wish calls the takeover, the path is an empty graph
-      # directory, /wish without words, then /hourness-init in the same
-      # session. Installs no guard rule. Ships disabled until the L3 probe
-      # (scenarios bootstrap-new, bootstrap-gaps, bootstrap-reopen) and the
-      # first batch L4 (docs/DEVELOPMENT.md §3, AGENTS.md rule 4).
+      # the design row's /wish calls the takeover (not merged yet, plan B8),
+      # the path is an empty graph directory, /wish without words, then
+      # /hourness-init in the same session. Installs no guard rule. Ships
+      # enabled since the takeover enablement (2026-11-11): the L3 probe
+      # scenarios (bootstrap-new, bootstrap-existing, bootstrap-trial,
+      # bootstrap-gaps, bootstrap-reopen, bootstrap-resume) passed at
+      # 0cc628a5 (579/579); the desktop L4 flows — /wish to the first
+      # dispatch in two scratch workspaces against mockup-takeover.svg, and
+      # /hourness-init status — run as batch B10 on this build, recorded
+      # under .agents/tasks/bootstrap/ (docs/DEVELOPMENT.md §3, AGENTS.md).
       name: dsh-hourness/bootstrap
       inject: [commands]
-      disabled: true
       config: {}
     - id: glm-hourness/ui
       # The package's client face (dsh.client in package.json, host half
