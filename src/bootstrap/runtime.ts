@@ -164,10 +164,10 @@ const RESULT = {
 
 export interface BootstrapRuntime {
   readonly service: BootstrapService
-  /** The bootstrap_review tool, registered globally; `face` keeps it out of the faces it does not belong in (§7.2). */
+  /** The bootstrap_review tool, registered globally; the wire-face source keeps it out of the faces it does not belong in (§7.2, face-migration design 0.1 §6 D). */
   readonly tool: ToolDefinitionLike
-  /** Whether the agent's face keeps bootstrap_review: the main agent of a project with an open takeover. */
-  face(agent: AgentLike): Promise<boolean>
+  /** Whether the session's wire face keeps bootstrap_review, as the last step of this session judged it (the main agent of a project with an open takeover); undefined when no step judged it yet. The wire layer reads this synchronously, per request, so the step flow records it here. */
+  faceKeeps(sessionId: string): boolean | undefined
   /** The step builder of one agent's reminder (src/shared/step-notice.ts). */
   step(agent: AgentLike, history: readonly DerivedMessage[], admitted: readonly unknown[], session: SessionLike): Promise<UserNotice | undefined>
   /** Forget a project's takeover (it was closed by /hourness-init off). */
@@ -620,31 +620,36 @@ export function bootstrapRuntime(deps: BootstrapDeps): BootstrapRuntime {
     return createUserNotice(BOOTSTRAP_SOURCE, `takeover ${closed.id} asks for the graph commit`, wrapSystemReminder(text), { bootstrap: { takeover: closed.id } })
   }
 
+  // Whether the session's wire face keeps bootstrap_review, as this session's last reminder step judged it (§7.2). The step flow records it, the wire-face source reads it synchronously (face-migration design 0.1 §6 D).
+  const faceBySession = new Map<string, boolean>()
+
   return {
     service,
     tool: bootstrapReviewTool(reviewDeps),
-    face: async (agent) => {
-      if (agent.session?.header.origin === 'subagent') return false
-      if (!deps.isMain(agent)) return false
-      return await openOf(agent) !== undefined
-    },
+    faceKeeps: sessionId => faceBySession.get(sessionId),
     forget: (root) => { live.delete(root) },
     async step(agent, history, admitted, session) {
       const cwd = session.header.cwd
       const root = typeof cwd === 'string' ? projectOf(cwd, deps.home())?.root : undefined
-      if (root === undefined) return undefined
+      if (root === undefined) {
+        faceBySession.set(session.id, false)
+        return undefined
+      }
       let takeover: OpenTakeover | undefined
       try {
         takeover = await openTakeoverOf(root)
       }
       catch (error) {
         deps.report(agent, 'degraded', `接管流水读不出：${message(error)}`)
+        faceBySession.set(session.id, false)
         return undefined
       }
       if (takeover === undefined) {
         live.delete(root)
+        faceBySession.set(session.id, false)
         return await graphCheck(root, agent).catch(() => undefined)
       }
+      faceBySession.set(session.id, true)
       // §9.2: a decided list question the write never saw, or an apply a host left half-done, finishes before the reminder.
       if (takeover.list !== undefined && (takeover.stage === 'apply' || takeover.stage === 'review')) {
         const questionId = takeover.listQuestion ?? await listQuestionOf(takeover, takeover.list).catch(() => undefined)

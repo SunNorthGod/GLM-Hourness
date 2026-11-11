@@ -19,6 +19,7 @@ import { holderHome, mainAgentOf } from '../graph/main-agent-holder.ts'
 import { graphService } from '../graph/service.ts'
 import { loadGraph } from '../graph/store.ts'
 import type { AgentLike, CommandDefinitionLike, CommandResultLike, DesignInvocationLike, InjectHost, ProvideHost, ServiceLookup, SessionLike, UserNotice } from '../shared/dsh-min.ts'
+import { FACES_NOTE, liveSessionOf, registerFaceSource } from '../shared/face-policy.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { rulesBoardService } from '../rules/service.ts'
@@ -28,6 +29,10 @@ import { hasProjectGraph } from './path.ts'
 import { PATH_LABELS, STAGE_NOTE, bootstrapRuntime, type BootstrapRuntime } from './runtime.ts'
 import { REVIEW_TOOL, questionStatus, type RulesLookup } from './review.ts'
 import { BOOTSTRAP_SERVICE } from './service.ts'
+
+/** The wire face of a session that is not the main agent of a project with an open takeover (face-migration design 0.1 §6 D): the review tool goes. */
+const REVIEW_REMOVALS: ReadonlySet<string> = new Set([REVIEW_TOOL])
+const NO_REMOVALS: ReadonlySet<string> = new Set()
 import { settleWorkspace, trackedFiles, untrackedNodeFiles } from './setup.ts'
 import { appendTakeover, openTakeoverOf, type OpenTakeover } from './takeover.ts'
 import { thingLines, thingStates } from './things.ts'
@@ -198,7 +203,10 @@ export function trialMinutesOf(config: BootstrapConfig): number {
 
 /** cordis plugin entry. */
 export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () => void {
-  const health = provideRowHealth(ctx, 'bootstrap', 'active', '已加载；/hourness-init 开接管，接管开着时每步提醒主 Agent')
+  // Why the row's wire-face source is not on the wire layer (face-migration design 0.1 §4.6): information only, it does not degrade — an install without the GLM channel row has no wire layer at all.
+  let facesNote: string | undefined = FACES_NOTE
+  const activation = (): [HealthState, string] => ['active', `已加载；/hourness-init 开接管，接管开着时每步提醒主 Agent${facesNote === undefined ? '' : `；${facesNote}`}`]
+  const health = provideRowHealth(ctx, 'bootstrap', ...activation())
   const disposers: Array<() => void> = [() => { health.dispose() }]
   const report = (agent: AgentLike, state: HealthState, reason: string): void => {
     const id = sessionIdOf(agent)
@@ -220,20 +228,6 @@ export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () =
         }
       }, 'bootstrap')
       if (uninstall !== undefined) disposers.push(uninstall)
-      // The tool face: bootstrap_review stays only for the main agent of a project with an open takeover (§7.2).
-      try {
-        disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
-          const assembled = await next()
-          if (await runtime.face(agent)) return assembled
-          // A payload without a tool face (the installed 0.2.2-rc.1 runtime composes one without, docs/DESIGN.md §2.4a) leaves the face to the runtime's collected tools.
-          if (assembled.tools === undefined) return assembled
-          const tools = assembled.tools.filter(tool => tool.name !== REVIEW_TOOL)
-          return tools.length === assembled.tools.length ? assembled : { ...assembled, tools }
-        }))
-      }
-      catch (error) {
-        console.warn(`${name}: the tool face filter is not installed for agent ${agent.id}: ${message(error)}`)
-      }
     }
     catch (error) {
       console.warn(`${name}: takeover reminder not installed for agent ${agent.id}: ${message(error)}`)
@@ -272,7 +266,7 @@ export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () =
     trialMinutes: trialMinutesOf(config),
   }
   const runtime = bootstrapRuntime({ graphDir: cwd => graphService(ctx)?.dirFor(cwd), home: homedir, install, report, isMain: agent => isMainAgent(ctx, agent), rulesWhole, rules: rulesLookup(), ancestor, trial })
-  // bootstrap_review registers globally; the face filter keeps it for the main agent of a project with an open takeover (§7.2), and the tool body checks its caller again.
+  // bootstrap_review registers globally; the wire-face source keeps it for the main agent of a project with an open takeover (§7.2), and the tool body checks its caller again.
   try {
     if (typeof ctx.inject === 'function') {
       ctx.inject(['tools'], toolsCtx => {
@@ -284,6 +278,19 @@ export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () =
   catch (error) {
     console.warn(`${name}: registering bootstrap_review failed: ${message(error)}`)
   }
+  // The wire face (face-migration design 0.1 §6 D): bootstrap_review stays only on the face of the main agent of a project with an open takeover. The judgment rides the reminder step (runtime.step records it per session, runtime.faceKeeps reads it back synchronously per request); the source rides the glmHournessFaces registry.
+  registerFaceSource(ctx, {
+    warn: text => console.warn(`${name}: ${text}`),
+    reactivate: () => health.reactivate(...activation()),
+    setNote: note => { facesNote = note },
+  }, {
+    removals: (sessionId) => {
+      const live = liveSessionOf<AgentLike>(ctx, sessionId)
+      if (live?.session === undefined || live.session.header.origin === 'subagent') return NO_REMOVALS
+      if (!isMainAgent(ctx, live)) return REVIEW_REMOVALS
+      return runtime.faceKeeps(sessionId) === true ? NO_REMOVALS : REVIEW_REMOVALS
+    },
+  })
   // The residue of a host that died mid-round (§6.3): best effort, never in the way of activation.
   void sweepTrialDirs().then((swept) => {
     if (swept.left.length > 0) health.reactivate('degraded', `试跑目录删不掉：${swept.left.join('、').slice(0, 200)}`)

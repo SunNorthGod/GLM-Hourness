@@ -401,15 +401,12 @@ export interface AssembledSection {
  * wrote back (dsh-system-prompt lib/index.js, the `assemble` method, "tool
  * declarations remain provider-owned"; docs/DESIGN.md §2.4a). The wire face
  * is rewritten at the channel adapter's stream (src/glm-llm/face-wire.ts),
- * not in the waterfall. `tools` is the 0.2.1-rc.3-era field the face
- * listeners still reading it take their degrade path on (a payload without
- * one returns unchanged); the face-migration batches B–D remove those
- * listeners and the field with the last of them.
+ * not in the waterfall; the 0.2.1-rc.3-era `tools` field is gone with the
+ * face listeners that read it (face-migration design 0.1 §5).
  */
 export interface AssemblePayload {
   readonly sections: readonly AssembledSection[]
   readonly contexts: readonly unknown[]
-  readonly tools?: readonly AssembledTool[]
   readonly variables: Record<string, unknown>
   readonly [key: string]: unknown
 }

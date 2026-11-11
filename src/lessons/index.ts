@@ -31,6 +31,7 @@ import { randomInt } from 'node:crypto'
 import { dialectService, toNativeTool } from '../shared/dialect.ts'
 import type { AgentLike, InjectHost, PostExecuteHost, ProvideHost, ServiceLookup, SessionLike, SessionProjectionsService, ToolsLike } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
+import { FACES_NOTE, registerSubagentRemovals } from '../shared/face-policy.ts'
 import { sessionNotebook, warnOnceFor, whenPresent } from '../shared/row-support.ts'
 import { LESSONS_MERGE_TOOL } from '../shared/tool-names.ts'
 import type { AppendOptions } from '../data/journal.ts'
@@ -72,6 +73,9 @@ export const LESSONS_PROJECTION = 'hournessLessons'
 
 const WAITING_COMMANDS = '命令 /lessons 等 commands 服务'
 const WAITING_PROJECTION = '会话投影 hournessLessons 等 sessionProjections 服务'
+
+/** The wire face of a delegated child (face-migration design 0.1 §6 D): the merge tool that only the main agent has. */
+const SUBAGENT_REMOVALS: ReadonlySet<string> = new Set([LESSONS_MERGE_TOOL])
 const MAX_JOURNAL_BYTES = 8 * 1024 * 1024
 
 const messageOf = (error: unknown): string => error instanceof Error ? error.message : String(error)
@@ -119,10 +123,13 @@ export function apply(ctx: LessonsContext, config: LessonsConfig = {}): () => vo
   const notebook = sessionNotebook<NoteKey>()
   const waiting = { commands: WAITING_COMMANDS as string | undefined, projection: WAITING_PROJECTION as string | undefined }
   const failures: { registration?: string, service?: string, matching?: string, path?: string } = {}
+  // Why the row's wire-face source is not on the wire layer (face-migration design 0.1 §4.6): information only, it does not degrade — an install without the GLM channel row has no wire layer at all. The reader turns live when the source registers below.
+  let facesNote: () => string | undefined = () => FACES_NOTE
   const activation = (): [HealthState, string] => {
     const problems = [failures.registration, failures.service, failures.matching, failures.path, waiting.commands, waiting.projection].filter((text): text is string => text !== undefined)
-    if (failures.registration !== undefined) return ['inactive', failures.registration]
-    return [problems.length === 0 ? 'active' : 'degraded', `经验工具已注册，项目目录跟会话的工作区${problems.length === 0 ? '' : `；${problems.join('；')}`}`]
+    const faces = facesNote() === undefined ? '' : `；${facesNote()}`
+    if (failures.registration !== undefined) return ['inactive', `${failures.registration}${faces}`]
+    return [problems.length === 0 ? 'active' : 'degraded', `经验工具已注册，项目目录跟会话的工作区${problems.length === 0 ? '' : `；${problems.join('；')}`}${faces}`]
   }
   const health: RowHealth = provideRowHealth(ctx, 'lessons', ...activation())
   disposers.push(() => { health.dispose() })
@@ -214,18 +221,11 @@ export function apply(ctx: LessonsContext, config: LessonsConfig = {}): () => vo
     failures.path = `文件处的提醒没装上：${messageOf(error)}`
   }
 
-  /** A delegated child's request loses the tool that only the main agent has. */
-  const hideMerge = (agent: AgentLike): (() => void) => agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
-    const assembled = await next()
-    // A payload without a tool face (the installed 0.2.2-rc.1 runtime composes one without, docs/DESIGN.md §2.4a) leaves the face to the runtime's collected tools.
-    if (assembled.tools === undefined) return assembled
-    return { ...assembled, tools: assembled.tools.filter(tool => tool.name !== LESSONS_MERGE_TOOL) }
-  })
-
-  /** What a new agent gets: the notices when it is a root agent, a request without the merge tool when it is a child. */
+  /** What a new agent gets: the notices when it is a root agent; a delegated child's request loses the merge tool at the wire layer (face-migration design 0.1 §6 D, the source below). */
   const installOn = (agent: AgentLike): void => {
     try {
-      disposers.push(...(agent.session?.header.origin === 'subagent' ? [hideMerge(agent)] : installLessonNotices(notices, agent)))
+      if (agent.session?.header.origin === 'subagent') return
+      disposers.push(...installLessonNotices(notices, agent))
     }
     catch (error) {
       console.warn(`${name}: the lessons are not installed for agent ${agent.id}: ${messageOf(error)}`)
@@ -237,6 +237,12 @@ export function apply(ctx: LessonsContext, config: LessonsConfig = {}): () => vo
   const optional = { name, ctx, waiting, health, activation }
   whenPresent(optional, 'commands', 'commands', WAITING_COMMANDS, '命令 /lessons', ({ commands }) => commands.register(lessonsCommand(env)))
   whenPresent(optional, 'sessionProjections', 'projection', WAITING_PROJECTION, '会话投影 hournessLessons', ({ sessionProjections }) => sessionProjections.register(projectionFor(dirOfCwd)))
+
+  // The wire face (face-migration design 0.1 §6 D): the row's face-policy source registered on the glmHournessFaces registry once it arrives — a delegated child's request loses lessons_merge at the wire layer.
+  facesNote = registerSubagentRemovals(ctx, {
+    warn: warnOnce,
+    reactivate: () => health.reactivate(...activation()),
+  }, SUBAGENT_REMOVALS)
 
   health.reactivate(...activation())
   return () => { for (const dispose of disposers.splice(0).reverse()) dispose() }

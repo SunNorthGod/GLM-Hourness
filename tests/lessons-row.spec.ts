@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import test from 'node:test'
 import { apply, inject, LESSONS_PROJECTION, name, type LessonsContext } from '../src/lessons/index.ts'
+import { wireFace } from '../src/glm-llm/face-wire.ts'
 import { PENDING_SOURCE, RECUR_SOURCE } from '../src/lessons/notices.ts'
 import { LESSONS_SERVICE } from '../src/lessons/service.ts'
 import { journalFile } from '../src/lessons/storage.ts'
@@ -162,8 +163,10 @@ test('a delegated child loses lessons_merge from its request and gets no notice,
     const { child, stepListenersAdded } = await createChild(row.runtime)
     assert.equal(stepListenersAdded, 0, 'no notice listener for a child')
 
-    const assembled = await row.runtime.assemble({ provider: 'glm-probe', model: 'glm-5.3' })
-    assert.deepEqual(assembled.tools.map(tool => tool.name).sort(), ['lessons_query', 'pwsh'], 'lessons_merge is not in the child\'s face')
+    // The request face is the wire face (face-migration design 0.1 §6 D): the
+    // collected face through the wire layer, the row's source registered.
+    const face = wireFace(row.runtime.schemas(), { glm: true, sessionId: child.id, policy: row.faces })
+    assert.deepEqual(face.map(tool => tool.name).sort(), ['lessons_query', 'pwsh'], 'lessons_merge is not in the child\'s wire face')
     const merge = (await row.runtime.ctx.tools.execute({ calls: [{ id: 'c1', name: 'lessons_merge', arguments: LESSON }], agent: child, signal: new AbortController().signal })).results[0].result
     assert.equal(merge.isError, true)
     const refusal = JSON.parse(merge.content[0]?.text?.replace(/^Error: /, '') ?? '{}') as { code: string, hint: string }
@@ -176,9 +179,9 @@ test('a delegated child loses lessons_merge from its request and gets no notice,
 })
 
 test('a root agent keeps both tools in its request', async () => {
-  await withRow(async (row) => {
-    const assembled = await row.runtime.assemble({ provider: 'glm-probe', model: 'glm-5.3' })
-    assert.deepEqual(assembled.tools.map(tool => tool.name).sort(), ['lessons_merge', 'lessons_query', 'pwsh'])
+  await withRow(row => {
+    const face = wireFace(row.runtime.schemas(), { glm: true, sessionId: row.runtime.agent.id, policy: row.faces })
+    assert.deepEqual(face.map(tool => tool.name).sort(), ['lessons_merge', 'lessons_query', 'pwsh'])
   })
 })
 

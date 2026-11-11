@@ -8,12 +8,11 @@
  * values against the output schema, ending in `tools/post-execute`), the
  * agent-scoped waterfalls, the session's derived history, and cordis `get` /
  * `provide`. The `agent/pre-step` payload carries the step's model
- * selection. Transitional (face-migration design 0.1 §5, batches B–D): the
- * assemble waterfall still composes the 0.2.1-rc.3-era tool face for the
- * face listeners and specs that have not migrated yet; the installed runtime
- * carries none and the request face is the wire face. The route reaches
- * plugins through the assembly variables and the pre-step payload, exactly
- * as installModelSelection injects them.
+ * selection. The assemble payload carries no tool face, the way the
+ * installed 0.2.2-rc.1 runtime composes it; the request face is the wire
+ * face over the collected face (`schemas`). The route reaches plugins
+ * through the assembly variables and the pre-step payload, exactly as
+ * installModelSelection injects them.
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -946,19 +945,16 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
     executed,
     schemas: () => visible().map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters })),
     async assemble(route, sections = [{ name: 'harness:identity', text: 'You are an AI agent powered by DeepSeek Harness.' }]) {
-      const tools: AssembledTool[] = visible().map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters }))
       headerRoute = route
       // The model-selection listener (innermost) injects the route after its
-      // own next(). The payload still carries the collected face the rows'
-      // face listeners read: the 0.2.1-rc.3-era contract those listeners and
-      // their specs are written against. The face-migration batches B–D
-      // remove the listeners one by one, and the last of them switches this
-      // fake to the rc.1 payload (no tools; the request face is the wire
-      // face, src/glm-llm/face-wire.ts) with the `AssemblePayload.tools`
-      // field.
-      const base = (): Promise<AssemblePayload> => Promise.resolve({ sections, contexts: [], tools, variables: { ...route } })
+      // own next(). The payload carries no tool face: the installed
+      // 0.2.2-rc.1 runtime composes it so ("tool declarations remain
+      // provider-owned", docs/DESIGN.md §2.4a) and the request face is the
+      // wire face (src/glm-llm/face-wire.ts), applied at the adapter's
+      // stream over the collected face (the `schemas` view here).
+      const base = (): Promise<AssemblePayload> => Promise.resolve({ sections, contexts: [], variables: { ...route } })
       const chain = of('system-prompt/assemble').reduceRight<() => Promise<AssemblePayload>>(
-        (next, listener) => async () => (listener as unknown as (a: AssemblePayload, c: unknown, n: () => Promise<AssemblePayload>) => Promise<AssemblePayload>)({ sections, contexts: [], tools, variables: {} }, undefined, next),
+        (next, listener) => async () => (listener as unknown as (a: AssemblePayload, c: unknown, n: () => Promise<AssemblePayload>) => Promise<AssemblePayload>)({ sections, contexts: [], variables: {} }, undefined, next),
         base,
       )
       return chain()

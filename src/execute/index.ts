@@ -75,7 +75,7 @@ import { dataHomes } from '../shared/data-home.ts'
 import type { AgentsService, AgentLike, GoalChangedPayload, InjectHost, PostExecuteListener, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
 import { LOOPS_SERVICE, loopsService } from '../loops/service.ts'
 import { EXECUTE_SERVICE, type ExecuteService } from '../shared/execute-service.ts'
-import { FACES_SERVICE } from '../shared/face-policy.ts'
+import { FACES_NOTE, registerFaceSource } from '../shared/face-policy.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { disposerList } from '../shared/row-support.ts'
 import Schema from '../shared/schemastery.ts'
@@ -122,9 +122,6 @@ export interface ExecuteContext extends ServiceLookup, Partial<InjectHost>, Part
 
 /** What a main agent session's row health says while dispatch works. */
 export const EXECUTE_ACTIVE = '主 Agent：dispatch_task 可用，派发链的写入边界规则已装上'
-
-/** The row's health note while the face-policy registry has not arrived (face-migration design 0.1 §4.6); information only, it does not degrade. */
-const FACES_NOTE = '角色面改写要面注册表服务（glmHournessFaces）'
 
 /** cordis plugin entry. Activation never throws. */
 export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => void {
@@ -546,32 +543,12 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
       console.warn(`${name}: the dispatch status notice is not installed for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  // The wire face (face-migration design 0.1 §6 C): the row's face-policy source registered on the glmHournessFaces registry through inject, like the tools — the registry arrives with the glm-llm row, which can activate after this one. The source reads the session's role live per request (src/execute/faces.ts).
-  if (typeof ctx.inject === 'function') {
-    try {
-      ctx.inject([FACES_SERVICE], facesCtx => {
-        try {
-          const withdraw = facesCtx.glmHournessFaces.registerSource(executeFaceSource(faceDeps))
-          facesNote = undefined
-          reactivate()
-          return () => {
-            withdraw()
-            facesNote = FACES_NOTE
-            reactivate()
-          }
-        }
-        catch (error) {
-          warnOnce(`the face policy could not be registered, the wire face keeps every tool: ${error instanceof Error ? error.message : String(error)}`)
-          reactivate()
-          return undefined
-        }
-      })
-    }
-    catch (error) {
-      warnOnce(`the face policy is not registered: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
-  else facesNote = FACES_NOTE
+  // The wire face (face-migration design 0.1 §6 C): the row's face-policy source registered on the glmHournessFaces registry once it arrives; the source reads the session's role live per request (src/execute/faces.ts).
+  registerFaceSource(ctx, {
+    warn: warnOnce,
+    reactivate,
+    setNote: note => { facesNote = note },
+  }, executeFaceSource(faceDeps))
   try {
     disposers.push(ctx.on('agent/created', ({ agent }) => {
       installOn(agent)

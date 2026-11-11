@@ -13,6 +13,7 @@ import test from 'node:test'
 import { openEngine } from '../src/graph/engine.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import { isGateListener } from '../src/guard/gate.ts'
+import { wireFace } from '../src/glm-llm/face-wire.ts'
 import { apply, INDEX_SOURCE, inject, MEMORY_PROJECTION, name, type MemoryContext } from '../src/memory/index.ts'
 import { journalFile } from '../src/memory/storage.ts'
 import { MEMORY_STORE_EXAMPLE } from '../src/memory/tools.ts'
@@ -136,8 +137,10 @@ test('a delegated child loses the memory tools and the learning tool from its re
     const { child, stepListenersAdded } = await createChild(row.runtime)
     assert.equal(stepListenersAdded, 0, 'no index listener and no learning reminder for a child')
 
-    const assembled = await row.runtime.assemble({ provider: 'glm-probe', model: 'glm-5.3' })
-    assert.deepEqual(assembled.tools.map(tool => tool.name), ['pwsh'], 'the memory tools and the learning tool are not in the child\'s face')
+    // The request face is the wire face (face-migration design 0.1 §6 D): the
+    // collected face through the wire layer, the row's source registered.
+    const face = wireFace(row.runtime.schemas(), { glm: true, sessionId: child.id, policy: row.faces })
+    assert.deepEqual(face.map(tool => tool.name), ['pwsh'], 'the memory tools and the learning tool are not in the child\'s wire face')
     for (const [callId, name, args] of [['c1', 'memory_store', PREFERENCE], ['c2', 'learning_signals', {}]] as const) {
       const result = (await row.runtime.ctx.tools.execute({ calls: [{ id: callId, name, arguments: args }], agent: child, signal: new AbortController().signal, log: { turn: row.runtime.progress.turn, step: row.runtime.progress.step } })).results[0].result
       assert.equal(result.isError, true, name)
@@ -148,9 +151,9 @@ test('a delegated child loses the memory tools and the learning tool from its re
 })
 
 test('a root agent keeps the memory tools, the learning tool and the habit question tool in its request', { skip }, async () => {
-  await withRow(async (row) => {
-    const assembled = await row.runtime.assemble({ provider: 'glm-probe', model: 'glm-5.3' })
-    assert.deepEqual(assembled.tools.map(tool => tool.name).sort(), ['learning_signals', 'memory_forget', 'memory_habit', 'memory_query', 'memory_store', 'pwsh'])
+  await withRow(row => {
+    const face = wireFace(row.runtime.schemas(), { glm: true, sessionId: row.runtime.agent.id, policy: row.faces })
+    assert.deepEqual(face.map(tool => tool.name).sort(), ['learning_signals', 'memory_forget', 'memory_habit', 'memory_query', 'memory_store', 'pwsh'])
   })
 })
 

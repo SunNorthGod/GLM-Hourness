@@ -44,7 +44,7 @@ import { installMainAgentRules, type BypassAlert } from '../guard/main-agent.ts'
 import { insertHournessSection } from '../guard/sections.ts'
 import { projectJournal } from '../memory/audit.ts'
 import { projectHomeFor } from '../data/project-home.ts'
-import { FACES_SERVICE } from '../shared/face-policy.ts'
+import { FACES_NOTE, registerFaceSource } from '../shared/face-policy.ts'
 import { createUserNotice, type AgentLike, type CommandDefinitionLike, type CommandsExecutor, type DesignAgentLike, type DesignAgentsService, type DesignInvocationLike, type InjectHost, type PreExecuteListener, type ProvideHost, type ServiceLookup, type SessionLike, type SessionPersistenceLike, type SessionProjectionsService } from '../shared/dsh-min.ts'
 import { executeService } from '../shared/execute-service.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
@@ -138,7 +138,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
   let talkNote: string | undefined
   let toolsNote: string | undefined = '设计工具要工具服务（tools）'
   // Why the row's face policy is not on the wire layer (face-migration design 0.1 §4.6): the service is absent, or the registration failed. Information only — an install without the GLM channel row has no wire layer at all, the face staying whole is that install's designed state, and the row's health semantics do not change (design 0.1 §4.6).
-  let facesNote: string | undefined = '角色面改写要面注册表服务（glmHournessFaces）'
+  let facesNote: string | undefined = FACES_NOTE
 
   // Graph writes by sessions that have no right to the human's words that were refused, newest last: the last 50, told for 24 hours after the latest.
   const bypasses: Array<{ readonly at: number, readonly text: string }> = []
@@ -542,40 +542,18 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
   }
   else toolsNote = '宿主没有 inject，设计工具拿不到工具服务'
 
-  // The row's face policy (role-face.ts): registered on the glmHournessFaces registry the glm-llm row provides, read per request at the GLM channel's wire layer (face-migration design 0.1 §4.1, §6 B). Through inject, like the tools: the registry arrives with the glm-llm row, which can activate after this one.
-  if (typeof ctx.inject === 'function') {
-    try {
-      ctx.inject([FACES_SERVICE], facesCtx => {
-        try {
-          const withdraw = facesCtx.glmHournessFaces.registerSource(designFaceSource({
-            isMain: (sessionId) => {
-              const live = agents()?.get(sessionId)
-              return live === undefined ? undefined : roleForStep(live).main
-            },
-            report: (sessionId, text) => { health.report(sessionId, 'degraded', text) },
-          }))
-          facesNote = undefined
-          health.reactivate(...status())
-          return () => {
-            withdraw()
-            facesNote = '角色面改写要面注册表服务（glmHournessFaces）'
-            health.reactivate(...status())
-          }
-        }
-        catch (error) {
-          console.warn(`${name}: the face policy could not be registered, the wire face keeps every tool: ${message(error)}`)
-          facesNote = `角色面 source 没注册上：${message(error)}`
-          health.reactivate(...status())
-          return undefined
-        }
-      })
-    }
-    catch (error) {
-      console.warn(`${name}: the face policy is not registered: ${message(error)}`)
-      facesNote = `角色面没注册上：${message(error)}`
-    }
-  }
-  else facesNote = '宿主没有 inject，角色面拿不到面注册表服务'
+  // The row's face policy (role-face.ts): registered on the glmHournessFaces registry the glm-llm row provides, read per request at the GLM channel's wire layer (face-migration design 0.1 §4.1, §6 B).
+  registerFaceSource(ctx, {
+    warn: text => console.warn(`${name}: ${text}`),
+    reactivate: () => health.reactivate(...status()),
+    setNote: note => { facesNote = note },
+  }, designFaceSource({
+    isMain: (sessionId) => {
+      const live = agents()?.get(sessionId)
+      return live === undefined ? undefined : roleForStep(live).main
+    },
+    report: (sessionId, text) => { health.report(sessionId, 'degraded', text) },
+  }))
   health.reactivate(...status())
 
   // The main agent has no tool that writes files, but the runtime executes by name: the rules deny a write, a question card and a git command that cannot be saved first (src/guard/main-agent.ts).

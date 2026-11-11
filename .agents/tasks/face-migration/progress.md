@@ -34,3 +34,11 @@
 - 门禁:build exit 0;preflight exit 0;test exit 0;probe 558/579 exit 1;eslint 73 / knip 18 / jscpd 1(持平)。
 - 红名单增量(对批 B 的 26):转绿 5——design main(GLM+非 GLM,普通面无 execute/operate 工具这一半随本批闭合)、exec dispatch/plan 的 worker 面(GLM+非 GLM 共 3)。仍红 21 全部归因:memory worker(批 D)、rc.1 exit-1 簇 13、规则票 3、上游漂移 4。新红 0。
 - 提交:本行随批 C 提交(单一提交,代码+测试+本文)。
+
+## Batch D — bootstrap + memory + lessons
+
+- 状态:完成并提交。
+- 内容:三行的面监听器删净,face-policy 契约文件收拢公共接线。memory(委派子会话去记忆+学习五工具)与 lessons(委派子会话去 lessons_merge)各上 origin 判定的 source,经新助手 `registerSubagentRemovals`(face-policy.ts:inject 等注册表、返回行健康注读者);bootstrap 的 REVIEW_TOOL 判定(主 Agent 且接管开着)异步读流水,改为 `runtime.step` 每步把判定记进会话镜像、`runtime.faceKeeps(sessionId)` 同步读(source 在 wire 层逐请求读;无项目的步、流水读不出的步都记 false),异步 `runtime.face` 删除;bootstrap 行健康从静态串改为 activation()(注记信息不降级)。`src/shared/dsh-min.ts` 的 `AssemblePayload.tools` 随最后一个监听器删除(design §5),fake-rc3 的 assemble 瀑布不再带工具面(rc.1 载荷);假宿主补 live-agent 注册表(row-host 的 `agents` 服务,createChild 的子会话有独立 id 入册)——rules-host 自己按需注入 `agents` 的既有路径不受影响(face-source 不再默认存在,「没有 agents 服务」的降级语义照旧)。memory-row/lessons-row 的面断言迁 wireFace(收集中面+row.faces 注册表)+row-host 的 faces 注册表。
+- 门禁:build exit 0;preflight exit 0;test exit 0;probe 559/579 exit 1;eslint 73 / knip 18 / jscpd 1(持平)。
+- 红名单增量(对批 C 的 21):转绿 1——memory worker(最后一批 B/C/D 目标面)。仍红 20 全部归因:rc.1 exit-1 簇 13、规则票 3、上游漂移 4。新红 0。至此面类场景全绿,迁移的面改写全部落在 wire 层。
+- 提交:本行随批 D 提交(单一提交,代码+测试+本文)。
