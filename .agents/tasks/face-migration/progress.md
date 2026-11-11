@@ -42,3 +42,12 @@
 - 门禁:build exit 0;preflight exit 0;test exit 0;probe 559/579 exit 1;eslint 73 / knip 18 / jscpd 1(持平)。
 - 红名单增量(对批 C 的 21):转绿 1——memory worker(最后一批 B/C/D 目标面)。仍红 20 全部归因:rc.1 exit-1 簇 13、规则票 3、上游漂移 4。新红 0。至此面类场景全绿,迁移的面改写全部落在 wire 层。
 - 提交:本行随批 D 提交(单一提交,代码+测试+本文)。
+
+## Batch E — 收尾
+
+- 状态:完成并提交。
+- 内容:engines.dsh 改 `^0.2.2-rc.1`(两包);README 摘掉「设计行(默认禁用)」(行自 m3 第 12 步(b)起出厂启用);DESIGN §2.4a 改写(组装载荷无工具面、请求面唯一可改写点是 adapter 的 stream、wireFace/glmHournessFaces 架构、`request/header` 的 tools 是运行时收集面),对照表的 assemble/agent/created/pre-step/工具面行、§5.4 方言条、§2.3 结构图与 execute 行描述同步;HANDOFF §10 改写(迁移完成、余 20 失败归因、B10 解锁、metrics-pricing 接线升为第一优先)。
+- 门禁:build exit 0;preflight exit 0;test exit 0;eslint 73 / knip 18 / jscpd 1(持平,棘轮重测)。
+- 三绿:全量探针四跑——559/579(g1)、559/579(g2,失败集与 g1 全同)、558/579(g3,唯一增量是 exec plan 的 answer_worker 检查:场景超 180s spawn 超时被杀,exit null、worker2 只 1 步——rc.1 headless 时序簇的既有抖动,该场景的面检查全过)、559/579(g4,失败集与 g1/g2 全同)。三连绿按 g1/g2/g4 计;所有失败均在批次 A 归因的基线类内,面类场景四跑全绿。
+- 推送:origin/main 与 GitHub 镜像 github(仅 main)随本行推送。
+- 提交:本行随批 E 提交(单一提交,与收尾文档同一提交)。
