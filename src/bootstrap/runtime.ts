@@ -616,7 +616,8 @@ export function bootstrapRuntime(deps: BootstrapDeps): BootstrapRuntime {
       return undefined
     }
     await appendClosed(root, closed.id, [{ op: 'graph-reminder', data: { turn: closed.graphReminders + 1 } }]).catch(() => false)
-    const text = `The project graph (${rel}) is not in git yet: git add -- ${rel} && git commit -m "Add the project graph (hourness bootstrap ${closed.id})" -- ${rel}`
+    // §7.6, the empty-graph-commit finding: the reminder names the closing's unverified claim and gives the two calls the trunk guard lets through, plus the way through when the commit is refused.
+    const text = `The project graph (${rel}) is still not tracked by git${closed.graphReminders === 0 ? ' — if the takeover closing said it was committed, that claim did not hold' : ''}. Call 1 (one call): git add -- ${rel}. Call 2 (another call): git commit -m "Add the project graph (hourness bootstrap ${closed.id})" -- ${rel}. If call 2 is refused by the trunk gate, the staging from call 1 stands: build the commit off the trunk (a worktree, or git write-tree and git commit-tree), run check_commit <commit>, then git merge --ff-only <commit>. Verify with git ls-files -- ${rel}/nodes before telling the human the graph is in git.`
     return createUserNotice(BOOTSTRAP_SOURCE, `takeover ${closed.id} asks for the graph commit`, wrapSystemReminder(text), { bootstrap: { takeover: closed.id } })
   }
 

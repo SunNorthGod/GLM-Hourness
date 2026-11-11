@@ -19,6 +19,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { ATTACH_BOARDS } from '../src/design/attach.ts'
+import { classifyTrunkCall } from '../src/execute/advance.ts'
+import { parseGateNorm } from '../src/execute/gate-norm.ts'
+import { node } from './execute-helpers.ts'
 import { openEngine } from '../src/graph/engine.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import { askOf, askTextRefusal, proposalRecordRefusal, proposalTitleRefusal, textCoversRecord, TALK_LIMITS } from '../src/graph/proposal.ts'
@@ -238,6 +241,20 @@ test('the checks refuse in order until the graph is whole (§7.2)', async () => 
   const whole = await checkRound(noRules, takeover, graph3, '读过')
   assert.equal(whole.ok, true, whole.ok ? '' : whole.message)
   assert.equal(whole.ok ? whole.view.anchor : '', 'goal-1')
+  // an only line the gate cannot read goes back before the round opens (§7.6, the empty-graph-commit finding)
+  const engine1 = openEngine(join(ws, 'docs', 'graph'))
+  assert.ok((await engine1.apply('harness', { op: 'edit', id: 'norm-merge-gate', rev: graph3.revisions.get('norm-merge-gate'), set: { acceptance: ['`$ npm test`', 'only docs\\graph/'] }, reason: '补 only' })).ok)
+  const broken = await checkRound(noRules, takeover, await loadGraph(join(ws, 'docs', 'graph')), '读过')
+  assert.equal(broken.ok, false)
+  if (!broken.ok) {
+    assert.match(broken.message, /only line\(s\) the gate cannot read: only docs\\graph\//)
+    assert.match(broken.message, /`only docs\/graph\/`/)
+    assert.match(broken.message, /the trunk guard refuses the graph-directory commit/)
+  }
+  const fixed = await loadGraph(join(ws, 'docs', 'graph'))
+  assert.ok((await engine1.apply('harness', { op: 'edit', id: 'norm-merge-gate', rev: fixed.revisions.get('norm-merge-gate'), set: { acceptance: ['`$ npm test`', '`only docs/graph/`'] }, reason: '改成能读的写法' })).ok)
+  const readable = await checkRound(noRules, takeover, await loadGraph(join(ws, 'docs', 'graph')), '读过')
+  assert.equal(readable.ok, true, readable.ok ? '' : readable.message)
 })
 
 test('the later checks: the evidence shas, the rules board over 不许碰 paths, the estimates against the trial, and the one-reply cap (§7.2 items 6–10)', async () => {
@@ -520,13 +537,25 @@ test('the six steps run on the real engine: approve, reject the duplicate, close
   const duplicate = [...final.nodes.values()].find(node => node.title === '同一件事' && node.status === 'dropped')
   assert.ok(duplicate !== undefined, 'the later duplicate was rejected')
   assert.ok((duplicate?.history ?? []).some(entry => entry.op === 'reject' && (entry.reason ?? '').includes('重复')))
-  // the message M3 hands back
+  // the message M3 hands back: the graph commit is two calls the trunk guard lets through, with the way through on a refusal and the verification before the claim (§7.6, the empty-graph-commit finding)
   const statuses = await questionStatus(final, { ...takeover, round: 1 }, undefined, ws)
   const message = appliedMessage({ id: takeover.id, round: 1 }, result.ok ? result.totals : { approved: 0, skipped: 0, rejected: 0, done: 0 }, statuses, dir, undefined)
   assert.match(message, /approved 9/)
   assert.match(message, /rejected 1 duplicates/)
   assert.match(message, /closed 1 done tasks/)
-  assert.match(message, /git add -- /)
+  assert.match(message, /Call 1 \(one call\): git add -- /)
+  assert.match(message, /Call 2 \(another call\): git commit -m "Add the project graph \(hourness bootstrap /)
+  assert.match(message, /check_commit <commit>, then git merge --ff-only <commit>/)
+  assert.match(message, /git ls-files -- .*\/nodes/)
+  assert.match(message, /do not claim the commit before the verification shows it/)
+  assert.ok(!message.includes('&&'), 'no one-shot compound command: a whole-call refusal would have left nothing run')
+  // the rendered commit passes the trunk guard's commit row when the gate's only line is readable
+  const gate = parseGateNorm(node({ id: 'norm-merge-gate', type: 'norm', acceptance: ['`$ npm test`', '`only docs/graph/`'] }, 0, 'human'))
+  assert.deepEqual(gate.only, ['docs/graph/'])
+  const rendered = /git commit -m "([^"]+)" -- (\S+)\. If call 2 is refused/.exec(message)
+  assert.ok(rendered !== null && /docs[\\/]graph$/.test(rendered[2] ?? ''), message)
+  const onTrunk = { trunk: 'main', current: 'main', onTrunk: true, remote: undefined, remoteUrl: undefined, selfPath: undefined }
+  assert.deepEqual(classifyTrunkCall({ sub: 'commit', args: ['-m', rendered[1] ?? '', '--', rendered[2] ?? ''] }, onTrunk, { staged: ['docs/graph'], only: gate.only }), { verdict: 'allow' })
 })
 
 test('the graph-in-git lookup, the baseline comment and the format pairing (§7.6, §5.6 item 3)', async () => {

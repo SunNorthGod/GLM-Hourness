@@ -500,3 +500,43 @@ test('the reminder texts carry the interview sentence on the existing and gaps p
     }
   }
 })
+
+test('the graph-in-git check after a close: the first reminder names the closing claim, the two calls go through the trunk guard, the spent budget ends in the row health, and a tracked graph is recorded once (§7.6, the empty-graph-commit finding)', async () => {
+  const made = host()
+  const ws = made.workspace('wgraphcheck')
+  existingProject(ws)
+  const agent = await rootAgent(made, 's-w-graphcheck', 'wgraphcheck', false)
+  assert.equal((await made.execute(agent, '/wish'))?.result.kind, 'success')
+  assert.ok((await openEngine(join(ws, 'docs', 'graph')).apply('llm', { op: 'propose', reason: '接管：读项目', node: { type: 'goal', title: '这个项目要做成什么' } })).ok)
+  assert.equal((await init(made, agent, 'off')).kind, 'success')
+  const graphNotices = async (): Promise<string[]> => {
+    const decision = await agent.step()
+    return (decision.kind === 'enter' ? decision.messages : [])
+      .filter(message => (message as UserNotice).source?.kind === BOOTSTRAP_SOURCE)
+      .map(message => String((message as UserNotice).content?.[0]?.text ?? ''))
+  }
+  const first = await graphNotices()
+  assert.equal(first.length, 1, first.join('\n---\n'))
+  assert.match(first[0] ?? '', /The project graph \(docs\/graph\) is still not tracked by git/)
+  assert.match(first[0] ?? '', /if the takeover closing said it was committed, that claim did not hold/)
+  assert.match(first[0] ?? '', /Call 1 \(one call\): git add -- docs\/graph/)
+  assert.match(first[0] ?? '', /Call 2 \(another call\): git commit -m "Add the project graph \(hourness bootstrap /)
+  assert.match(first[0] ?? '', /check_commit <commit>, then git merge --ff-only <commit>/)
+  assert.match(first[0] ?? '', /git ls-files -- docs\/graph\/nodes/)
+  assert.ok(!(first[0] ?? '').includes('&&'), 'no one-shot compound command')
+  assert.deepEqual(journal(ws).filter(record => record.op === 'graph-reminder').map(record => record.data?.turn), [1])
+  const second = await graphNotices()
+  assert.equal(second.length, 1)
+  assert.ok(!(second[0] ?? '').includes('that claim did not hold'), 'only the first reminder names the claim')
+  assert.deepEqual(journal(ws).filter(record => record.op === 'graph-reminder').map(record => record.data?.turn), [1, 2])
+  assert.deepEqual(await graphNotices(), [], 'the budget is spent: no more reminder')
+  const rowHealth = (made.services.get(healthServiceName('bootstrap')) as RowHealthView).session(agent.id)
+  assert.equal(rowHealth?.state, 'degraded')
+  assert.match(rowHealth?.reason ?? '', /项目图还没进 git：docs\/graph/)
+  // the graph lands in git: the next step records it once and stays quiet
+  git(ws, 'add', 'docs/graph')
+  git(ws, 'commit', '-q', '-m', 'graph')
+  assert.deepEqual(await graphNotices(), [])
+  assert.equal(journal(ws).filter(record => record.op === 'graph-tracked').length, 1)
+  assert.deepEqual(await graphNotices(), [], 'tracked: no more reminders')
+})

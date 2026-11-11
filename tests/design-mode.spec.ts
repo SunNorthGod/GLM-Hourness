@@ -138,6 +138,7 @@ test('the first part has the five items: role, the harness boundaries, git with 
     'words you relay as the human\'s must be in a message they sent.',
     'The shell and git are yours; before a git command that can lose uncommitted work or rewrite history, the harness saves a snapshot and tells you how to restore it.',
     'The design loop runs wish, interview, design, release.',
+    'A denial refuses the whole call: nothing in it ran. Re-read the state before going on, and handle your failed checks.',
     'If the human has /plan on, exit_plan_mode only leaves plan mode; it releases nothing on the graph.',
   ]) assert.ok(MAIN_AGENT_ROLE(false).includes(part), part)
   assert.ok(MAIN_AGENT_ROLE(true).includes('writing work goes to workers you dispatch with dispatch_task; subagents started with the subagent tool only read'), 'the F18 sentence is in the execute row variant')

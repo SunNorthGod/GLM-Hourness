@@ -38,6 +38,8 @@
  */
 import { stat } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
+import { trackedGraphFiles } from '../bootstrap/review.ts'
+import { closedTakeoverOf } from '../bootstrap/takeover.ts'
 import { projectOf } from '../data/project-root.ts'
 import { errorText } from '../design/tool-support.ts'
 import { openEngine } from '../graph/engine.ts'
@@ -924,6 +926,24 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
     return changed.ok ? changed.value.map(file => file.path) : []
   }
 
+  /**
+   * §7.6's reconciliation (the empty-graph-commit finding, b10 followup
+   * §1.3): a forward advance that changed no file while the last closed
+   * takeover's graph is still untracked is the empty graph commit — the
+   * takeover closing claimed the graph went into git, and it did not. Said
+   * on the spot in the row health and to the holder, not left to the
+   * graph-in-git check's next step.
+   */
+  async function emptyAdvanceAgainstGraph(project: string, sessionId: string | undefined, to: string): Promise<void> {
+    const closed = await closedTakeoverOf(project).catch(() => undefined)
+    if (closed === undefined || closed.graphTracked) return
+    const tracked = await trackedGraphFiles(project, closed.graphDir)
+    if (tracked === undefined || tracked.length > 0) return
+    const rel = relative(project, closed.graphDir).replaceAll('\\', '/')
+    deps.report(sessionId, 'degraded', `主干前进到没有改任何文件的提交 ${short(to)}：接管的图还没进 git（${rel}），收尾说的「图已提交进 git」不对`)
+    tell(project, sessionId, 'the trunk moved to an empty commit while the project graph is untracked', `The trunk moved to ${short(to)} without changing any file, and the project graph (${rel}) is not in git yet: the takeover closing's claim that the graph was committed does not hold. Commit the graph files as the closing message says (git add, then git commit with the graph directory), and verify with git ls-files -- ${rel}/nodes before telling the human.`, { event: 'advance', ref: 'local', from: '', to, ok: true })
+  }
+
   // ---- the facts of one advance ----
 
   /** The review facts of the floor clause, read from git for the paths the change asks about. */
@@ -1145,6 +1165,7 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
       if (outcome === 'pending') reviewPending.push(task)
     }
     emitMetric({ event: 'execute.advance', ref: 'local', way: 'advance', from, to, tasks, byCheck: record !== undefined, byPaths: record === undefined, reviewPending, incomingFloor: incomingFloor.length })
+    if (change.paths.length === 0) await emptyAdvanceAgainstGraph(project, by.sessionId, to)
     deps.onTrunkEvent(project, setup.trunk, trunkEventOf('trunk-advanced', line, change.paths), by.sessionId)
   }
 

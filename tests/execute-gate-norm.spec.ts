@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createHash } from 'node:crypto'
-import { DEFAULT_WATCHED, GATE_LINE_FORMS, normDigest, parseGateNorm } from '../src/execute/gate-norm.ts'
+import { DEFAULT_WATCHED, GATE_LINE_FORMS, normDigest, parseGateNorm, unreadableOnlyLines } from '../src/execute/gate-norm.ts'
 import { node } from './execute-helpers.ts'
 
 const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
@@ -37,6 +37,20 @@ test('parseGateNorm: an empty gate is empty, and a malformed line is prose', () 
   const prose = parseGateNorm(gateNode(['`$ `', '`when src/`', '`only `']))
   assert.deepEqual(prose.commands, [])
   assert.deepEqual(prose.prose.map(line => line.index), [0, 1, 2])
+})
+
+test('unreadableOnlyLines: an only line the gate cannot read is named for a rewrite; prose and parsed lines are not (§7.6, the empty-graph-commit finding)', () => {
+  // The L4 shapes: the whole-line backticks missing, a Windows backslash path with and without the backticks.
+  assert.deepEqual(unreadableOnlyLines(gateNode(['only docs\\graph/'])), ['only docs\\graph/'])
+  assert.deepEqual(unreadableOnlyLines(gateNode(['`only docs\\graph/`'])), ['only docs\\graph/'])
+  assert.deepEqual(unreadableOnlyLines(gateNode(['only `docs\\graph/`'])), ['only `docs\\graph/`'])
+  assert.deepEqual(unreadableOnlyLines(gateNode(['only docs/graph'])), ['only docs/graph'], 'the right paths without the backticks are named too')
+  // Not named: a parsed only line, prose that merely starts with "only", a bare only with no paths, other prose.
+  assert.deepEqual(unreadableOnlyLines(gateNode(['`only docs/graph/`'])), [])
+  assert.deepEqual(unreadableOnlyLines(gateNode(['only the fast checks run at night'])), [])
+  assert.deepEqual(unreadableOnlyLines(gateNode(['`only `'])), [])
+  assert.deepEqual(unreadableOnlyLines(gateNode(['`$ npm test`', '说明文字'])), [])
+  assert.deepEqual(unreadableOnlyLines(undefined), [])
 })
 
 test('GATE_LINE_FORMS: the eight forms the takeover proposes (the `changed` form arrives with the takeover row)', () => {

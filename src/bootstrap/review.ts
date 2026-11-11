@@ -18,7 +18,7 @@ import { openEngine } from '../graph/engine.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import { askOf, normalizeText } from '../graph/proposal.ts'
-import { parseGateNorm } from '../execute/gate-norm.ts'
+import { parseGateNorm, unreadableOnlyLines } from '../execute/gate-norm.ts'
 import { isEnvTool, nodeChecks } from '../env/branch.ts'
 import type { CheckEntry } from '../env/check-entry.ts'
 import { refuse, toolShell } from '../design/tool-support.ts'
@@ -322,6 +322,15 @@ export async function checkRound(deps: Pick<ReviewDeps, 'ancestor' | 'rulesWhole
   if (!graph.nodes.has(FLOOR_ID)) missing.push(FLOOR_ID)
   if (gate.commands.length === 0) missing.push(`${MERGE_GATE_ID} with at least one \`$ <command>\` line`)
   if (missing.length > 0) return { ok: false, code: 'gate_unmet', message: `not on the graph yet: ${missing.join(', ')}` }
+  // §7.6's empty-graph-commit finding: an only line the gate cannot read leaves gate.only empty, and the trunk guard then refuses the graph-directory commit the closing hands over. Send the line back before the round opens.
+  const unreadable = unreadableOnlyLines(graph.nodes.get(MERGE_GATE_ID))
+  if (unreadable.length > 0) {
+    return {
+      ok: false,
+      code: 'gate_unmet',
+      message: `${MERGE_GATE_ID} has only line(s) the gate cannot read: ${unreadable.join(' | ')} — write each as one whole-line backticked acceptance with forward-slash paths, like \`only docs/graph/\`; without it the trunk guard refuses the graph-directory commit`,
+    }
+  }
   const goals = set.filter(node => node.type === 'goal')
   const withoutAcceptance = goals.filter(goal => (goal.acceptance ?? []).length === 0)
   if (goals.length === 0 || withoutAcceptance.length > 0) {

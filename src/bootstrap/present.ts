@@ -554,7 +554,7 @@ export function resultMessage(outcome: string, takeoverId: string, round: number
         ` Rules: ${rules === undefined || rules.length === 0 ? 'none were proposed.' : rules.join(' ')}`,
         rulesLive === true ? ' Commit docs/rules/ with git when you next commit; that commit goes through the normal merge checks.' : '',
         wish === undefined ? '' : ` The human's wish from the start of the takeover: ${wish}. After you report, propose its goal as in interview step 1; if a goal for it already exists, skip.`,
-        graphDir === undefined ? '' : ` Next: commit the project graph once: git add -- ${graphDir} && git commit -m "Add the project graph (hourness bootstrap ${takeoverId})" -- ${graphDir}; then tell the human the result in a few lines.`,
+        graphDir === undefined ? '' : ` Next: commit the project graph once, then tell the human the result in a few lines. Call 1 (one call): git add -- ${graphDir}. Call 2 (another call): git commit -m "Add the project graph (hourness bootstrap ${takeoverId})" -- ${graphDir}. If call 2 is refused by the trunk gate, the staging from call 1 stands: build the commit off the trunk (a worktree, or git write-tree and git commit-tree), run check_commit <commit>, then git merge --ff-only <commit>. Before you tell the human the graph is in git, verify it: git ls-files -- ${graphDir}/nodes must list the node files (or git show --stat <commit> shows them). A denial refuses the whole call, so nothing in it ran. Until the files are tracked the harness keeps checking the graph and reports it in /glm-status; do not claim the commit before the verification shows it.`,
       ].join('')
     }
     case 'noted-list': return `Takeover ${takeoverId} was already written for round ${round}; nothing more to do.`

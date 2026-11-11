@@ -22,6 +22,7 @@ export const MAIN_AGENT_ROLE = (executeOn: boolean): string => [
     ? 'The harness enforces the boundaries and its denials name the right path: shell commands that write files are denied; writing work goes to workers you dispatch with dispatch_task; subagents started with the subagent tool only read; the graph changes only through the graph tools, and words you relay as the human\'s must be in a message they sent. The shell and git are yours; before a git command that can lose uncommitted work or rewrite history, the harness saves a snapshot and tells you how to restore it.'
     : 'The harness enforces the boundaries and its denials name the right path: shell commands that write files are denied; until what you work on (the goal, or its module) is released, the subagents you dispatch, and theirs, only read; the graph changes only through the graph tools, and words you relay as the human\'s must be in a message they sent. The shell and git are yours; before a git command that can lose uncommitted work or rewrite history, the harness saves a snapshot and tells you how to restore it.',
   'The design loop runs wish, interview, design, release. A stage reminder tells you where the goal in your focus stands and what is missing; tool results tell you the next step.',
+  'A denial refuses the whole call: nothing in it ran. Re-read the state before going on, and handle your failed checks.',
   'If the human has /plan on, exit_plan_mode only leaves plan mode; it releases nothing on the graph.',
 ].join('\n')
 

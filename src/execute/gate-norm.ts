@@ -129,6 +129,24 @@ export function parseGateNorm(node: GraphNode | undefined): ParsedGate {
 }
 
 /**
+ * An `only` line the gate could not read, for the takeover's review to send
+ * back for a rewrite (takeover design 0.6 §7.6, the empty-graph-commit L4
+ * finding): the line means the `only <paths>` form — with or without the
+ * wrapping backticks — but the paths did not parse, so the trunk guard never
+ * exempts a graph-directory commit and the handback's one command cannot go
+ * through. Prose that merely starts with "only" (a sentence, spaces) is not
+ * one. Pure.
+ */
+export function unreadableOnlyLines(node: GraphNode | undefined): readonly string[] {
+  return parseGateNorm(node).prose.flatMap((entry) => {
+    const bare = /^\s*`([^`]*)`\s*$/.exec(entry.text)?.[1] ?? entry.text.trim()
+    if (!bare.startsWith('only ')) return []
+    const rest = bare.slice('only '.length).trim()
+    return rest !== '' && (rest.includes('\\') || !/\s/.test(rest)) ? [bare] : []
+  })
+}
+
+/**
  * The digest of a gate (§3.8.1): the parsed entries — commands, push, only —
  * in order, as canonical JSON, through the SHA-256. Records and advances
  * carry it; a changed list makes the old records count for nothing.
