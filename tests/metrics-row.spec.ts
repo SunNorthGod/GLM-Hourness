@@ -516,6 +516,26 @@ test('the pricing note follows the glmHournessPricing service: the arrival clear
   }
 })
 
+test('the agents note follows the agents service: the arrival clears it, the departure says it again (§9.1)', () => {
+  const injector = fakeInjector({})
+  const registry = injector as unknown as { provide(name: string, value: unknown): void, remove(name: string): void }
+  const fx = fixture({ checkDelay: 60_000 }, { agents: false, inject: injector.inject })
+  try {
+    const reason = () => fx.health()?.activation().reason ?? ''
+    assert.match(reason(), /没有 agents 服务，模型调用与问人的事件只计数/, 'the one-shot probe names the service while it is away')
+    registry.provide('agents', { get: (id: string) => id === fx.rt.agent.id ? { id: fx.rt.agent.id, session: fx.rt.agent.session } : undefined })
+    assert.ok(!reason().includes('没有 agents 服务'), `the arrival clears the note: ${reason()}`)
+    registry.remove('agents')
+    assert.match(reason(), /没有 agents 服务/, 'the departure says the note again')
+    registry.provide('agents', { get: (id: string) => id === fx.rt.agent.id ? { id: fx.rt.agent.id, session: fx.rt.agent.session } : undefined })
+    registry.remove('agents')
+    assert.equal(reason().split('没有 agents 服务').length - 1, 1, 'the note stays single across the whole cycle')
+  }
+  finally {
+    rm(fx)
+  }
+})
+
 test('the background self-check reports what it found into the health and the session report (§6.4, §9.6)', async () => {
   const fx = fixture({ checkDelay: 0, selfcheck: () => Promise.resolve({ ...emptyFindings(), noStop: [{ w: 'ffffffff', lastAt: DAY_AT }] }) })
   try {

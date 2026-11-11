@@ -590,6 +590,27 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
       ({ sessionProjections }) => sessionProjections.register(metricsProjection(cwd => cwd === undefined ? undefined : projectOf(cwd)?.root)))
   }
   if (agents() === undefined) say('没有 agents 服务，模型调用与问人的事件只计数', true)
+  // The agents note is a fault and sticks (problems are append-only), and the
+  // host's own agents service may still be activating when this row applies:
+  // the loader starts every entry in parallel and a strict service read
+  // returns undefined until the providing fiber is active. The inject clears
+  // the note when the service arrives and says it again when it leaves; the
+  // one-shot check above stays for hosts without inject and for the service
+  // that never comes (the pricing note below is wired the same way).
+  const agentsNote = '没有 agents 服务，模型调用与问人的事件只计数'
+  if (typeof ctx.inject === 'function') {
+    try {
+      ctx.inject(['agents'], () => {
+        const at = problems.indexOf(agentsNote)
+        if (at >= 0) problems.splice(at, 1)
+        health.reactivate(...activation())
+        return (): void => say(agentsNote, true)
+      })
+    }
+    catch (error) {
+      say(`agents 服务的接不上：${message(error)}`, false)
+    }
+  }
   // The pricing note sticks (notes are append-only), and the glm-login row of
   // the other bundle may still be activating when this row applies: the loader
   // starts every entry in parallel and a strict service read returns undefined

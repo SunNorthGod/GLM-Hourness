@@ -20,6 +20,12 @@ lane, HEAD cbc46d36 at start, working tree carries the lane's uncommitted work
 - NEXT: work item 2 (/wish off mentions the open takeover), work item 3
   (:592 agents reactive), then one full probe (b10r- log prefix), then
   desktop flow 1 rerun with the workspace OUTSIDE the checkout.
+- Work item 2 DONE, committed `2f5cb83c`: WishSeam gains openOf(cwd)
+  (read-only id of the open takeover); /wish off's three success replies
+  append 「。接管 <id> 还开着，要放弃发 /hourness-init off」 while one
+  is open; semantics untouched. Gates: build 0, preflight 0, npm test 0
+  (`.llm/logs/b10r-test3.log`, eslint 73 / knip 18 / jscpd 1 flat).
+  Not pushed yet. NEXT: work item 3.
 
 ## Item 1 — takeover-row enablement commit
 
