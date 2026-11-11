@@ -62,7 +62,7 @@ import { spawnSync } from 'node:child_process'
 import { GLM_MODELS, glmInputModalities } from '../../packages/glm/dist/glm-llm/models.js'
 import { asAttachments, glmImageRequestTarget, prepareRequestImages } from '../../packages/glm/dist/glm-llm/images.js'
 import { encodeRequest, splitSystemPrompt } from '../../packages/glm/dist/glm-llm/anthropic.js'
-import { wireFace } from '../../packages/glm/dist/glm-llm/face-wire.js'
+import { wireFace, facePolicyRegistry } from '../../packages/glm/dist/glm-llm/face-wire.js'
 import { isGlmModel } from '../../packages/glm/dist/shared/route.js'
 import { FACES_SERVICE } from '../../packages/glm/dist/shared/face-policy.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
@@ -729,5 +729,20 @@ class ProbeAdapter {
 }
 
 export function apply(ctx, config = {}) {
+  // The registry the orchestration rows register their wire-face sources in
+  // (face-migration design 0.1 §4.1). The channel row provides it on the
+  // profiles that carry the glm package; this row provides a fallback on the
+  // single-package hourness profile, so the probe's non-GLM scenarios still
+  // assert the role face through this adapter's wireFace (design 0.1 §0).
+  // Provide and read go through the same service name, so the two sources of
+  // the registry never meet.
+  if (typeof ctx.provide === 'function' && facePolicyOf(ctx) === undefined) {
+    try {
+      ctx.provide(FACES_SERVICE, facePolicyRegistry())
+    }
+    catch {
+      // Lost a race with the channel row's provide: its registry is the one.
+    }
+  }
   return ctx.llm.registerAdapter(['glm-probe'], new ProbeAdapter(ctx, config))
 }

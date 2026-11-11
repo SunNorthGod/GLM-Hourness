@@ -15,6 +15,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { projectRootOf } from '../src/data/project-home.ts'
+import { facePolicyRegistry } from '../src/glm-llm/face-wire.ts'
+import type { FacePolicyRegistry, FacePolicySource } from '../src/shared/face-policy.ts'
 import type { DesignContext } from '../src/design/index.ts'
 import type { AgentLike, AssemblePayload, AssembledSection, AssembledTool, CommandDefinitionLike, CommandExecutionLike, CommandResultLike, DesignAgentLike, DesignAgentsService, DesignInvocationLike, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, SessionEventLike, SessionLike, SessionProjectionsService, ToolDefinitionLike, ToolExecutionContext, ToolExecutionPayload, ToolsLike, UserNotice } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
@@ -55,8 +57,7 @@ export interface FakeAgent extends DesignAgentLike {
   readonly listeners: AssembleListener[]
   /**
    * The registry view `ctx.tools.schemas(agent)` returns: a spec stages the
-   * face a wire-face projection reads here (the base payload's `tools` is
-   * the 0.2.1-rc.3-era field the design row's face listener still reads).
+   * face a wire-face projection reads here.
    */
   stagedFace: AssembledTool[]
   /** Assemble one step the way the agent loop does: the base assembly through the agent's own listeners. */
@@ -71,6 +72,14 @@ export interface FakeAgent extends DesignAgentLike {
 export function healthOf(host: DesignHost, agent: FakeAgent): { readonly state: string, readonly reason: string } | undefined {
   const report = (host.services.get(healthServiceName('design')) as RowHealthView).session(agent.id)
   return report === undefined ? undefined : { state: report.state, reason: report.reason }
+}
+
+/** The face-policy source the design row registered on the host's registry; fails the test when it registered none. */
+export function faceSourceOf(host: DesignHost): FacePolicySource {
+  const registry = host.services.get('glmHournessFaces') as FacePolicyRegistry | undefined
+  const source = registry?.sources()[0]
+  assert.ok(source !== undefined, 'the design row registered its face policy')
+  return source
 }
 
 export const BASE_TOOLS: readonly AssembledTool[] = ['read', 'write', 'edit', 'pwsh', 'ask_user_question', 'graph_show'].map(toolName => ({ name: toolName, description: toolName, parameters: { type: 'object', properties: {} } }))
@@ -122,8 +131,8 @@ interface Cell {
   observed: number
 }
 
-/** A host with a workspace directory tree in a temporary directory; `options.graph` false leaves the graph row's service out. */
-export function designHost(options: { readonly graph?: boolean, readonly projections?: boolean, readonly persistence?: boolean, readonly dialect?: unknown, readonly tools?: boolean } = {}): DesignHost {
+/** A host with a workspace directory tree in a temporary directory; `options.graph` false leaves the graph row's service out, `options.faces` false leaves the face-policy registry out. */
+export function designHost(options: { readonly graph?: boolean, readonly projections?: boolean, readonly persistence?: boolean, readonly dialect?: unknown, readonly tools?: boolean, readonly faces?: boolean } = {}): DesignHost {
   const root = mkdtempSync(join(tmpdir(), 'design-host-'))
   const userHome = join(root, 'user')
   const store = serviceStore()
@@ -210,9 +219,12 @@ export function designHost(options: { readonly graph?: boolean, readonly project
     }
   }
 
-  const injector = fakeInjector({ ...options.projections === false ? {} : { sessionProjections: projections }, ...options.tools === false ? {} : { tools: toolsService } })
+  // The face-policy registry the glm-llm row provides; `faces: false` models a host without it (the design row's face policy stays out). The row takes it through `inject`, so the registry goes to the injector, and to the store for the tests that read it back.
+  const faces = options.faces === false ? undefined : facePolicyRegistry()
+  const injector = fakeInjector({ ...options.projections === false ? {} : { sessionProjections: projections }, ...options.tools === false ? {} : { tools: toolsService }, ...(faces === undefined ? {} : { glmHournessFaces: faces }) })
 
   if (options.graph !== false) store.provide('glmHournessGraph', { dirFor: (cwd: string | undefined) => cwd === undefined ? undefined : resolve(cwd, 'docs/graph'), isGraphTool: () => false, focusOf: (session: SessionLike) => focuses.get(session.id) })
+  if (faces !== undefined) store.provide('glmHournessFaces', faces)
   const projectHome = join(root, 'project')
   store.provide('glmHournessData', { userHome, projectHome })
   const registry: DesignAgentsService = { get: id => agents.get(id), roots: () => [...agents.values()].filter(agent => agent.session.header.origin !== 'subagent') }

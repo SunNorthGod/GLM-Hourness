@@ -17,3 +17,12 @@
   4. 上游运行时漂移(4):glm execution×2(rc.1 的 fs-observation-policy 行 `disabled: true`,rc.3 启用 → 从未读即覆写的拒绝路径不可达,Glob 顺序连带);metrics×2(metrics 行报「没有 agents 服务」,L4 既有 finding)。
 - 红名单增量:guard-lift lifts journal 崩溃消失;glm 工具面/非 GLM 工具面/A3 deferral 公告/子目录工具面/GLM 公告两半转绿;design/execute/memory 面仍红(批 B/C/D)。新红 0。
 - 提交:本行随批 A 提交(单一提交,代码+测试+本文)。
+
+## Batch B — 角色层 + design
+
+- 状态:完成并提交。工作树带着上一车道中断的批 B 半成品(5 文件),按蓝图审齐后续做:修三处中断遗留(knip 新导出 MAIN_AGENT_REMOVALS/ORDINARY_REMOVALS 改模块内;jscpd 新克隆 faceSourceOf 助手提去 design-host;人设节并入 prepend 身份监听器破坏 design-persona 钉死的两种安装次序与节序——恢复双监听器结构,身份 prepend、人设行内非 prepend,面改写删净)。
+- 内容:design 行面改写迁 wireFace 角色层。`src/design/role-face.ts` 重写为 `designFaceSource`(FacePolicySource:主 Agent removals={write,edit,ask_user_question} + str_replace_editor→view narrowing;其余会话 removals={propose_to_human,record_human_answer};isMain 经 agents 服务按会话 id 活读,解不出=不去,roleForStep 的降级语义照旧);`src/design/index.ts` 删其 assemble 面监听器(连 85970b6b 的 tools===undefined 降级分支),source 经 `ctx.inject([glmHournessFaces])` 在注册表到达时上——glm-llm 行激活在后也等得到(本地 lab:两只假行+真 runtime bin,延迟 inject 实触发,排除宿主隔离假设);facesNote 改纯信息不降级(无 GLM 通道的安装没有 wire 层,面保持全集是设计态,design §4.6「健康语义不变」,探针 hourness-only 的「已加载,本会话未触发」钉住);注册失败仍 warn 出声。design-host 的假注入器补 glmHournessFaces(与 store 同一实例);design-mode/propose-to-human 的面断言迁 source.removals/narrowing + wireFace(wireFace 输入补 propose/record 两工具)。
+- 探针修正:runScenario 在带 glm 包的 profile 上启用 `glm-hourness/glm-llm`(行随 bundle disabled,桌面 profile 开它,探针照做;探针 adapter 走 glm-probe/deepseek-probe,注册的 glm-zcode 路由无人用)——此前无人提供 glmHournessFaces,角色层在探针里结构性缺席(探针 1 的 30 处 stderr 警告即它);probe-llm 在渠道行缺席时补提供注册表(probe-hourness 单包 profile 的非 GLM 场景照常断言角色面,design §0)。
+- 门禁:build exit 0;preflight exit 0;test exit 0;probe 553/579 exit 1;eslint 73 suppressed / knip 18 / jscpd 1(全部持平,无新增压制)。
+- 红名单增量(对批 A 基线 30):转绿 5——design idle(GLM+非 GLM)、design persona(GLM+非 GLM)、design one-main(此刻连 fork 检查也过,rc.1 headless 尾形是竞态,批 A 记录的 exit-1 簇时红时绿)。仍红 26 全部归因:memory worker(批 D)、design main GLM+非 GLM 与 exec dispatch/plan 的 worker 面 5(批 C 的 execute source 负责普通面无 execute 工具这一半)、rc.1 exit-1 簇 13、规则票生命周期 3、上游运行时漂移 4(glm execution×2、metrics×2)。新红 0。
+- 提交:本行随批 B 提交(单一提交,代码+测试+探针+本文)。

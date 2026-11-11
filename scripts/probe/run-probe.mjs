@@ -374,7 +374,13 @@ function runScenario(name, model, script, task, overlay = [], cwd = repo, others
     ...(lists('hourness') ? dataRows(dir) : []),
     // /glm-status reads the credential store under the glm-login home; the
     // scenario home has none, so the probe never reads the real store.
-    ...(lists('glm') ? ['- id: glm-hourness/glm-login', `  config: { home: ${JSON.stringify(slash(home))} }`] : []),
+    // The channel row ships disabled (the desktop profile turns it on); the
+    // probe turns it on the same way, so the glmHournessFaces registry
+    // exists and the orchestration rows register their wire-face sources in
+    // it (face-migration design 0.1 §4.1). No request ever routes through
+    // the registered glm-zcode adapter: agent-default-model pins every
+    // scenario to the probe adapter's providers.
+    ...(lists('glm') ? ['- id: glm-hourness/glm-llm', '  disabled: false', '- id: glm-hourness/glm-login', `  config: { home: ${JSON.stringify(slash(home))} }`] : []),
     '- insert:',
     '    - id: glm-hourness-probe/llm',
     `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-llm.mjs')))}`,
