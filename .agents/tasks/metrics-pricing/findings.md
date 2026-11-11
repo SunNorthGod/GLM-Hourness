@@ -129,3 +129,12 @@ metrics 行是唯一在 apply 期做一次性服务探测并把它写成永久�
 ## 8. 实施安全性
 
 改动只触 `src/metrics/index.ts` 一个文件、一处探测逻辑；不碰面迁移的任何面（无 assemble、无工具面、无 wire 层）；`ctx.inject` 是同文件已在用的宿主接缝，无新契约面；不属逐字门禁范围。迁移车道放行检出后即可按仓库流程（build → preflight → test → probe）实施；与 face-migration 批次无文件交叠（该车道动的是方言 wire/design/execute/bootstrap/memory/lessons 与相关测试，本修只动 metrics 行），唯一共同点是门禁与锁归它所有——等它清场再跑门禁即可。
+
+## 9. 实施记录（2026-11-11，已施加）
+
+按 §7 施加，一处偏差：
+
+- **到达回调读服务的来路**：§7 的 diff 用根 `ctx` 严格重读（`pricingService(ctx, …)`）。实施改为 §6 同文件循环板 inject 的既有形态——先读回调参数上的服务属性，属性不在再走参数上的 `get`（`services.glmHournessPricing ?? (services as ServiceLookup).get?.(PRICING_SERVICE)`），拿到值后经 `pricingService({ get: () => value }, …)` 做同一套形状复检。原因：fake-rc3 的注入器表与 base ctx 的 service store 是两张表（`tests/fake-rc3.ts:41-49`），根 ctx 重读在 L2 假宿主下永远 undefined，钉不住到达路径；真实 cordis 里根 ctx 与注入子 fiber 的上下文同读一棵根 store，两形态等价，而回调参数读法是 `InjectableServices` 之外服务名的既证先例（:579-580，桌面在跑）。形状语义不变：形状不对备注保留、fault 走 :491 的同一 problem 通路。
+- 备注清除按 §7 原样：`notes.indexOf` + `splice` 真删，随后 `health.reactivate(...activation())` 重定格快照；离开经 `say`（自带去重）复记。
+- 附带改动（同一提交）：`tests/metrics-row.spec.ts` 加一例（到达清备注、离开复记、形状不对备注保留且 wrong shape 入 fault、整轮备注不叠句）；`scripts/probe/run-probe.mjs` 两处验证点——`metricsChecks` 共用健康检查加 `!reason.includes('积分口径：未提供')` 子句（`metrics` 与 `non-glm-metrics` 都带 glm-login，都应无备注），`hourness-only` 加新检查断言 metrics 行说明仍带该备注；`docs/DESIGN.md` 行健康表 metrics 行补一句备注随服务走的语义。`:592` 的 agents 探测未动。
+- 基线对齐说明：批 A 归因的上游漂移 metrics×2 红是「没有 agents 服务」（agents 探测降级 fault），不是计价备注；本修不动它，该两条预期仍红。`metricsChecks` 健康检查的失败详情里带完整 reason，可据此核对备注确已消失。

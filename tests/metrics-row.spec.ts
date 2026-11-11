@@ -21,7 +21,7 @@ import { readLog } from '../src/metrics/read.ts'
 import { METRICS_SERVICE, type MetricsService } from '../src/shared/metrics.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import type { Contribution, LoopEventRecord } from '../src/loops/service.ts'
-import type { SessionEventLike, SessionLike, UserQuestionsRequest } from '../src/shared/dsh-min.ts'
+import type { InjectHost, SessionEventLike, SessionLike, UserQuestionsRequest } from '../src/shared/dsh-min.ts'
 import type { StreamChunk } from '../src/shared/lm-min.ts'
 import { textUnits } from '../src/shared/text-units.ts'
 import { fakeInjector, fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
@@ -45,7 +45,7 @@ interface Fixture {
 let counter = 0
 
 /** A scratch git project and a user-level directory, with the row applied to a fake runtime whose agent works in the project. */
-function fixture(config: MetricsConfig = {}, options: { readonly agents?: boolean } = {}): Fixture {
+function fixture(config: MetricsConfig = {}, options: { readonly agents?: boolean, readonly inject?: InjectHost['inject'] } = {}): Fixture {
   const base = mkdtempSync(join(tmpdir(), `metrics-row-${++counter}-`))
   const root = join(base, 'ws')
   const userHome = join(base, 'dsh-home')
@@ -56,7 +56,7 @@ function fixture(config: MetricsConfig = {}, options: { readonly agents?: boolea
     rt.services.set('agents', { get: (id: string) => id === rt.agent.id ? { id: rt.agent.id, session: rt.agent.session } : undefined })
   }
   const now = config.now ?? ((): number => AT)
-  const stop = apply({ ...rt.ctx } as never, {
+  const stop = apply({ ...rt.ctx, ...(options.inject === undefined ? {} : { inject: options.inject }) } as never, {
     randomId: () => '0123abcd',
     now,
     ...config,
@@ -488,6 +488,28 @@ test('without the loop board the row stays healthy, notes it, and still checks i
     const report = fx.health()?.session(fx.rt.agent.id)
     assert.match(report?.reason ?? '', /上次自查干净/)
     assert.equal(report?.state, 'active')
+  }
+  finally {
+    rm(fx)
+  }
+})
+
+test('the pricing note follows the glmHournessPricing service: the arrival clears it, the departure says it again, a wrong shape keeps it (§9.1)', () => {
+  const injector = fakeInjector({})
+  const pricing = injector as unknown as { provide(name: string, value: unknown): void, remove(name: string): void }
+  const fx = fixture({ checkDelay: 60_000 }, { inject: injector.inject })
+  try {
+    const reason = () => fx.health()?.activation().reason ?? ''
+    assert.match(reason(), /积分口径：未提供/, 'the one-shot probe names the service while it is away')
+    pricing.provide('glmHournessPricing', { basis: '探针的计价口径', plan: 'probe-plan', charged: () => 0, peak: () => false })
+    assert.ok(!reason().includes('积分口径：未提供'), `the arrival clears the note: ${reason()}`)
+    pricing.remove('glmHournessPricing')
+    assert.match(reason(), /积分口径：未提供/, 'the departure says the note again')
+    pricing.provide('glmHournessPricing', { basis: 0, plan: 0 })
+    assert.match(reason(), /积分口径：未提供/, 'a wrong shape keeps the note')
+    assert.match(reason(), /wrong shape/, 'the wrong shape is a fault of its own')
+    pricing.remove('glmHournessPricing')
+    assert.equal(reason().split('积分口径：未提供').length - 1, 1, 'the note stays single across the whole cycle')
   }
   finally {
     rm(fx)

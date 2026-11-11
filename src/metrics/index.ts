@@ -28,7 +28,7 @@ import { realStoreIo, renameWithRetry, type StoreIo } from '../rules/store.ts'
 import type { AgentsService, AgentLike, InjectHost, LlmStreamListener, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, SessionEventOn, SessionProjectionsService, UserQuestionsListener } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
-import { pricingService, type UsagePricing } from '../shared/pricing.ts'
+import { PRICING_SERVICE, pricingService, type UsagePricing } from '../shared/pricing.ts'
 import { METRICS_SERVICE, type MetricsService, type QueuedEvent } from '../shared/metrics.ts'
 import type { MetricsBoardView } from '../shared/metrics-board.ts'
 import { setEngineObserver } from '../graph/engine.ts'
@@ -590,7 +590,34 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
       ({ sessionProjections }) => sessionProjections.register(metricsProjection(cwd => cwd === undefined ? undefined : projectOf(cwd)?.root)))
   }
   if (agents() === undefined) say('没有 agents 服务，模型调用与问人的事件只计数', true)
-  if (pricingService(ctx) === undefined) say('积分口径：未提供', false)
+  // The pricing note sticks (notes are append-only), and the glm-login row of
+  // the other bundle may still be activating when this row applies: the loader
+  // starts every entry in parallel and a strict service read returns undefined
+  // until the providing fiber is active. The inject clears the note when the
+  // service arrives and says it again when it leaves; the one-shot check stays
+  // for hosts without inject and for the service that never comes.
+  const pricingNote = '积分口径：未提供'
+  const injectPricing = ctx.inject as unknown as
+    | ((names: readonly string[], callback: (services: { readonly glmHournessPricing?: unknown }) => (() => void) | void) => unknown)
+    | undefined
+  if (typeof injectPricing === 'function') {
+    try {
+      injectPricing([PRICING_SERVICE], (services) => {
+        // The service is read the way the board's inject above reads its own (the callback's services, then its `get`), and the strict re-check keeps the note on a wrong shape: that fault goes out through the reader's problem channel, the same one the observer's per-event pricing reads use.
+        const value = services.glmHournessPricing ?? (typeof (services as ServiceLookup).get === 'function' ? (services as ServiceLookup).get?.(PRICING_SERVICE) : undefined)
+        if (value !== undefined && pricingService({ get: () => value }, text => say(text, true)) !== undefined) {
+          const at = notes.indexOf(pricingNote)
+          if (at >= 0) notes.splice(at, 1)
+          health.reactivate(...activation())
+        }
+        return (): void => say(pricingNote, false)
+      })
+    }
+    catch (error) {
+      say(`积分口径的接不上：${message(error)}`, false)
+    }
+  }
+  if (pricingService(ctx) === undefined) say(pricingNote, false)
   health.reactivate(...activation())
 
   /** The self-check the row runs itself (§6.4): yesterday and today, read-only, judged by the row's own clock. */
