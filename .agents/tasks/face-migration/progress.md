@@ -26,3 +26,11 @@
 - 门禁:build exit 0;preflight exit 0;test exit 0;probe 553/579 exit 1;eslint 73 suppressed / knip 18 / jscpd 1(全部持平,无新增压制)。
 - 红名单增量(对批 A 基线 30):转绿 5——design idle(GLM+非 GLM)、design persona(GLM+非 GLM)、design one-main(此刻连 fork 检查也过,rc.1 headless 尾形是竞态,批 A 记录的 exit-1 簇时红时绿)。仍红 26 全部归因:memory worker(批 D)、design main GLM+非 GLM 与 exec dispatch/plan 的 worker 面 5(批 C 的 execute source 负责普通面无 execute 工具这一半)、rc.1 exit-1 簇 13、规则票生命周期 3、上游运行时漂移 4(glm execution×2、metrics×2)。新红 0。
 - 提交:本行随批 B 提交(单一提交,代码+测试+探针+本文)。
+
+## Batch C — execute
+
+- 状态:完成并提交。
+- 内容:`src/execute/faces.ts` 的 `faceOfRole(tools, role)` 重写为 `removalsOfRole(role): ReadonlySet<string>`(纯函数,角色→要去掉的注册名集合:非主 Agent 去 execute+operate 工具、非 worker/非 reviewer 去 worker 工具、reviewer 去 submit_plan、派发链去九个图写),新增 `executeFaceSource(deps)`(removals 按 agents 服务解会话,解不出=不去;roleOfAgent 照旧活读主 Agent/登记/派发链,不再导出);`src/execute/index.ts` 删其 per-agent assemble 面监听器与 installed WeakSet(source 一次注册覆盖全部会话,不再需要 agent/pre-step 兜底装面),经 `ctx.inject([glmHournessFaces])` 注册 source,facesNote 与 design 同款信息注(不降级);dispatch 通知照旧(安装点改名注释)。execute-row 的面断言迁 removalsOfRole。
+- 门禁:build exit 0;preflight exit 0;test exit 0;probe 558/579 exit 1;eslint 73 / knip 18 / jscpd 1(持平)。
+- 红名单增量(对批 B 的 26):转绿 5——design main(GLM+非 GLM,普通面无 execute/operate 工具这一半随本批闭合)、exec dispatch/plan 的 worker 面(GLM+非 GLM 共 3)。仍红 21 全部归因:memory worker(批 D)、rc.1 exit-1 簇 13、规则票 3、上游漂移 4。新红 0。
+- 提交:本行随批 C 提交(单一提交,代码+测试+本文)。
