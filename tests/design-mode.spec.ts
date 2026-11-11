@@ -365,6 +365,19 @@ test('/wish off ends the role from the very next step, deletes the record and te
   assert.deepEqual(agent.sent, [])
 })
 
+test('takeover seam: /wish off names the takeover the project still holds, on both the leaving and the not-main answers, and closes nothing', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.open = 'tk-stub0001'
+  const agent = host.addAgent('s1')
+  await type(host, agent, '/wish')
+  assert.deepEqual(await type(host, agent, '/wish off'), { kind: 'success', text: '已退出主 Agent 模式：这个会话的 agent 又可以直接写文件了。接管 tk-stub0001 还开着，要放弃发 /hourness-init off' })
+  assert.deepEqual(await type(host, agent, '/wish off'), { kind: 'success', text: '这个会话本来就不是主 Agent。接管 tk-stub0001 还开着，要放弃发 /hourness-init off' })
+  assert.deepEqual(stub.asked.openOf, [host.workspace('ws'), host.workspace('ws')], 'asked once per off reply')
+  stub.open = undefined
+  assert.deepEqual(await type(host, agent, '/wish off'), { kind: 'success', text: '这个会话本来就不是主 Agent' }, 'no open takeover: the reply is what it was')
+})
+
 /** A command whose request is cancelled after its handler returned: the log ends with `command/done` in error. */
 async function cancelled(host: DesignHost, agent: FakeAgent, line = '/wish'): Promise<void> {
   const aborted = new Promise<void>((_resolve, reject) => { setImmediate(() => { reject(new Error('cancelled')) }) })

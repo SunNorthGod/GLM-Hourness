@@ -348,9 +348,28 @@ async function takeoverTurn(deps: WishDeps, invocation: DesignInvocationLike, di
   }
 }
 
+/**
+ * The off reply's line about a takeover the project still holds (design 0.6
+ * §2.3: `/wish off` leaves it running; the line only makes that visible, it
+ * closes nothing). Empty without the seam, outside a project, or with none
+ * open.
+ */
+async function openTakeoverLine(deps: WishDeps, session: SessionLike): Promise<string> {
+  const seam = deps.takeover()
+  const cwd = session.header.cwd
+  if (seam === undefined || typeof cwd !== 'string') return ''
+  try {
+    const id = await seam.openOf(cwd)
+    return id === undefined ? '' : `。接管 ${id} 还开着，要放弃发 /hourness-init off`
+  }
+  catch {
+    return ''
+  }
+}
+
 /** The handler of /wish. */
 export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) => Promise<CommandResultLike> {
-  const leave = (invocation: DesignInvocationLike): CommandResultLike => {
+  const leave = async (invocation: DesignInvocationLike): Promise<CommandResultLike> => {
     const { agent, commandId } = invocation
     const session = agent.session
     const graph = deps.graph()
@@ -358,10 +377,11 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
     const file = dir === undefined ? undefined : holderFileOf(deps.userHome(), dir)
     const reading: HolderReading = file === undefined ? { kind: 'none' } : readHolder(file)
     const wasMain = isMainAgent(deps.role, agent)
+    const openLine = await openTakeoverLine(deps, session)
     if (reading.kind === 'held' && reading.record.sessionId !== session.id && modeOf(deps.role.projections(), session).active) {
       setPending(session, commandId, false)
       deps.tell(agent, createUserNotice(NOTICE_KIND, 'main agent moved away', MOVED_NOTICE))
-      return done('主 Agent 在另一个会话里，这个会话已经变回普通会话')
+      return done(`主 Agent 在另一个会话里，这个会话已经变回普通会话${openLine}`)
     }
     if (file !== undefined && reading.kind === 'held' && reading.record.sessionId === session.id) {
       try {
@@ -371,10 +391,10 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
         return fail(`主 Agent 的持有者记录删不掉：${message(error)}`)
       }
     }
-    if (!wasMain) return done('这个会话本来就不是主 Agent')
+    if (!wasMain) return done(`这个会话本来就不是主 Agent${openLine}`)
     setPending(session, commandId, false)
     deps.tell(agent, createUserNotice(NOTICE_KIND, 'main agent mode off', OFF_NOTICE))
-    return done('已退出主 Agent 模式：这个会话的 agent 又可以直接写文件了')
+    return done(`已退出主 Agent 模式：这个会话的 agent 又可以直接写文件了${openLine}`)
   }
 
   const enter = async (invocation: DesignInvocationLike, input: Extract<Input, { kind: 'on' }>): Promise<CommandResultLike> => {
@@ -489,6 +509,6 @@ export function wishHandler(deps: WishDeps): (invocation: DesignInvocationLike) 
 
   return (invocation) => {
     const input = parseInput(invocation.rawInput)
-    return input.kind === 'off' ? Promise.resolve(leave(invocation)) : enter(invocation, input)
+    return input.kind === 'off' ? leave(invocation) : enter(invocation, input)
   }
 }

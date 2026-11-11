@@ -63,7 +63,10 @@ export type PrepareResult =
 /**
  * The members M3 calls (§3.1): `/wish` asks `wants`, then `prepare` once the
  * session is going to be the project's main agent; the stage reminder asks
- * `holds` about the goal in focus. `holds` reads memory only and never throws.
+ * `holds` about the goal in focus; `/wish off` asks `openOf` so its reply can
+ * name the takeover the project still holds (design §2.3: off never closes
+ * it, the line only makes it discoverable). `holds` reads memory only and
+ * never throws.
  */
 export interface WishSeam {
   /** The takeover row and the graph row are on, and the project has no project graph or an open takeover. */
@@ -72,6 +75,8 @@ export interface WishSeam {
   prepare(invocation: DesignInvocationLike, request: PrepareRequest): Promise<PrepareResult>
   /** The goal belongs to the open takeover of an existing project or of the gaps, so M3's stage reminder leaves the interview to the takeover. */
   holds(cwd: string, goalId: string): boolean
+  /** The id of the project's open takeover, or undefined; never rejects. */
+  openOf(cwd: string): Promise<string | undefined>
 }
 
 /** The service object in the store, whatever it has; undefined while the takeover row is off. */
@@ -89,5 +94,5 @@ export function bootstrapService(ctx: ServiceLookup): AttachService | undefined 
 /** The takeover service as M3's `/wish` and stage reminder call it; undefined while the takeover row is off, or when a member is missing. */
 export function bootstrapWishSeam(ctx: ServiceLookup): WishSeam | undefined {
   const members = serviceObject(ctx) as Partial<Record<keyof WishSeam, unknown>> | undefined
-  return typeof members?.wants === 'function' && typeof members.prepare === 'function' && typeof members.holds === 'function' ? members as WishSeam : undefined
+  return typeof members?.wants === 'function' && typeof members.prepare === 'function' && typeof members.holds === 'function' && typeof members.openOf === 'function' ? members as WishSeam : undefined
 }

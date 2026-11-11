@@ -4,6 +4,23 @@ Lane: B10 desktop L4 (dispatch item 2 of HANDOFF §10). Checkout owned by this
 lane, HEAD cbc46d36 at start, working tree carries the lane's uncommitted work
 (see below). Nothing committed, nothing pushed.
 
+## Rework lane state (2026-11-12, B10 rework-then-close, appended after each item)
+
+- HEAD at lane start 6931fccc, clean tree. Work item 1 (harness closing
+  honesty) DONE and committed as `50e5e451`: checkRound refuses an
+  unreadable `only` line (gate-norm `unreadableOnlyLines`); applied
+  message and graph reminder are two calls + the way through + the
+  ls-files verification requirement; first reminder names the closing
+  claim; empty-advance reconciliation in installTrunkGate (degraded +
+  holder notice, silent once tracked); identity section carries the
+  denial rule. ORCHESTRATION §3.1/§19.4-§19.5 passages updated in the
+  same commit. Gates on the committed tree: build 0, preflight 0,
+  `npm test` 0 (`.llm/logs/b10r-test2.log`: 3705 pass / 0 fail,
+  eslint 73 / knip 18 / jscpd 1 flat). Not pushed yet.
+- NEXT: work item 2 (/wish off mentions the open takeover), work item 3
+  (:592 agents reactive), then one full probe (b10r- log prefix), then
+  desktop flow 1 rerun with the workspace OUTSIDE the checkout.
+
 ## Item 1 — takeover-row enablement commit
 
 - Flip DONE in working tree, uncommitted: `packages/hourness/cordis.patch.yml`,

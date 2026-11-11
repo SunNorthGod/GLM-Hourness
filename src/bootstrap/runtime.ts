@@ -537,6 +537,17 @@ export function bootstrapRuntime(deps: BootstrapDeps): BootstrapRuntime {
       known.asked = true
       return known.takeover.path !== 'new' && known.goals.has(goalId)
     },
+    async openOf(cwd) {
+      const root = projectOf(cwd, deps.home())?.root
+      if (root === undefined) return undefined
+      try {
+        return (await openTakeoverOf(root))?.id
+      }
+      catch (error) {
+        console.warn(`dsh-glm-hourness/bootstrap: the takeover journal of ${root} cannot be read, /wish off's reply goes on without the line: ${message(error)}`)
+        return undefined
+      }
+    },
     async attachable({ cwd, proposal }) {
       const named = parseAttach(proposal)
       if (named === undefined) return { ok: false, message: 'not a takeover attach' }

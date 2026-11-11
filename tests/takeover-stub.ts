@@ -19,7 +19,9 @@ interface TakeoverStub extends WishSeam {
   /** The goals `holds` says yes to; `holdsError` makes it throw instead. */
   readonly holding: Set<string>
   holdsError: Error | undefined
-  readonly asked: { readonly wants: string[], readonly prepare: PrepareRequest[], readonly holds: Array<{ readonly cwd: string, readonly goalId: string }> }
+  /** What `openOf` answers with: the id of the open takeover. */
+  open: string | undefined
+  readonly asked: { readonly wants: string[], readonly prepare: PrepareRequest[], readonly holds: Array<{ readonly cwd: string, readonly goalId: string }>, readonly openOf: string[] }
 }
 
 function takeoverStub(): TakeoverStub {
@@ -29,7 +31,8 @@ function takeoverStub(): TakeoverStub {
     onPrepare: () => undefined,
     holding: new Set(),
     holdsError: undefined,
-    asked: { wants: [], prepare: [], holds: [] },
+    open: undefined,
+    asked: { wants: [], prepare: [], holds: [], openOf: [] },
     wants(cwd) {
       stub.asked.wants.push(cwd)
       if (stub.wanted instanceof Error) return Promise.reject(stub.wanted)
@@ -45,6 +48,10 @@ function takeoverStub(): TakeoverStub {
       stub.asked.holds.push({ cwd, goalId })
       if (stub.holdsError !== undefined) throw stub.holdsError
       return stub.holding.has(goalId)
+    },
+    openOf(cwd) {
+      stub.asked.openOf.push(cwd)
+      return Promise.resolve(stub.open)
     },
   }
   return stub

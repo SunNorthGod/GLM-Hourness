@@ -501,6 +501,22 @@ test('the reminder texts carry the interview sentence on the existing and gaps p
   }
 })
 
+test('/wish off names the open takeover it leaves running and closes nothing (design 0.6 §2.3 semantics, flow-2 discoverability finding)', async () => {
+  const made = host()
+  const ws = made.workspace('woff')
+  existingProject(ws)
+  const first = await rootAgent(made, 's-w-off1', 'woff', false)
+  assert.equal((await made.execute(first, '/wish'))?.result.kind, 'success')
+  const id = String(journal(ws)[0]?.id ?? '')
+  assert.match(id, /^tk-[0-9a-z]{8}$/)
+  assert.match((await made.execute(first, '/wish off'))?.result.text ?? '', /^已退出主 Agent 模式：这个会话的 agent 又可以直接写文件了。接管 tk-[0-9a-z]{8} 还开着，要放弃发 \/hourness-init off$/)
+  assert.equal(journal(ws).filter(record => record.op === 'takeover-closed').length, 0, 'the line closes nothing')
+  const second = await rootAgent(made, 's-w-off2', 'woff', false)
+  assert.match((await made.execute(second, '/wish off'))?.result.text ?? '', /^这个会话本来就不是主 Agent。接管 tk-[0-9a-z]{8} 还开着，要放弃发 \/hourness-init off$/)
+  assert.equal((await init(made, first, 'off')).kind, 'success')
+  assert.equal((await made.execute(first, '/wish off'))?.result.text, '这个会话本来就不是主 Agent', 'closed: no line, and the role went with the takeover')
+})
+
 test('the graph-in-git check after a close: the first reminder names the closing claim, the two calls go through the trunk guard, the spent budget ends in the row health, and a tracked graph is recorded once (§7.6, the empty-graph-commit finding)', async () => {
   const made = host()
   const ws = made.workspace('wgraphcheck')
