@@ -13,8 +13,9 @@
  * through the row itself).
  */
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
@@ -126,6 +127,27 @@ async function seeded(ws: string, takeover: OpenTakeover, options: { readonly es
 }
 
 const noRules = { rulesWhole: () => false, trial: () => undefined as TrialFacts | undefined, ancestor: () => Promise.resolve(true) }
+
+/** The tool's deps over one workspace; openRound is the caller's (it counts the calls or keeps the stored round). */
+function reviewDepsOf(ws: string, takeover: OpenTakeover, openRound: ReviewDeps['openRound']): ReviewDeps {
+  return {
+    isMain: () => true,
+    open: () => Promise.resolve(takeover),
+    graph: () => loadGraph(join(ws, 'docs', 'graph')),
+    ancestor: () => Promise.resolve(true),
+    testsMissing: () => Promise.resolve(false),
+    pathBasis: () => Promise.resolve('已有的图，接着用'),
+    trial: () => undefined,
+    rulesWhole: () => false,
+    rules: () => Promise.resolve(true),
+    startTrial: () => {},
+    openRound,
+    round: () => takeover.round,
+    busy: () => false,
+    setBusy: () => {},
+    cwd: () => ws,
+  }
+}
 
 test('the round ids: listConclusion is the exact recordedAs, listAttachOf takes 1–9999 without leading zeros, askDigest is 12 hex and stable', () => {
   assert.equal(listConclusion(1), '照第 1 版清单接管')
@@ -370,21 +392,7 @@ test('the tool refuses a non-main agent, a missing or new takeover, an apply in 
   await seeded(ws, takeover)
   const opened: number[] = []
   const deps = (overrides: Partial<ReviewDeps> = {}): ReviewDeps => ({
-    isMain: () => true,
-    open: () => Promise.resolve(takeover),
-    graph: () => loadGraph(join(ws, 'docs', 'graph')),
-    ancestor: () => Promise.resolve(true),
-    testsMissing: () => Promise.resolve(false),
-    pathBasis: () => Promise.resolve('已有的图，接着用'),
-    trial: () => undefined,
-    rulesWhole: () => false,
-    rules: () => Promise.resolve(true),
-    startTrial: () => {},
-    openRound: () => { opened.push(1); return Promise.resolve() },
-    round: () => takeover.round,
-    busy: () => false,
-    setBusy: () => {},
-    cwd: () => ws,
+    ...reviewDepsOf(ws, takeover, () => { opened.push(1); return Promise.resolve() }),
     ...overrides,
   })
   const exec = { agent: { id: 'a1' }, callId: 'call-1' } as unknown as ToolExecutionContext
@@ -484,6 +492,77 @@ test('the write verifies the decision against the stored round and refuses stale
     assert.equal(absent.ok, false)
     if (!absent.ok) assert.equal(absent.code, 'missing')
   }
+})
+
+test('the consent seam: args is the canonical quote — a verbatim copy records on the first try, a reworded call is refused changed and closes nothing (§7.2, §7.4)', async () => {
+  const exec = { agent: { id: 'a1' }, callId: 'call-1' } as unknown as ToolExecutionContext
+  /** openRound as the runtime writes it: the stored round with its digests. */
+  const keepRound = (kept: { round?: RoundRecord }): ReviewDeps['openRound'] => (t, round, view, detail, digest, snapshot) => {
+    kept.round = {
+      attach: `bootstrap:${t.id}:list-${round}`,
+      askDigest: digest,
+      detail: detail.markdown,
+      detailDigest: createHash('sha256').update(`${detail.markdown}\n${detail.mustShow.join('\n')}`).digest('hex').slice(0, 12),
+      snapshot,
+    }
+    return Promise.resolve()
+  }
+  // the verbatim copy: args repeats the returned fields, the round stored their exact digest, the node written from them records on the first try
+  const ws = workspace('seam-quote')
+  const takeover = await takeoverOf(ws)
+  await seeded(ws, takeover)
+  const kept: { round?: RoundRecord } = {}
+  const result = await bootstrapReviewTool(reviewDepsOf(ws, takeover, keepRound(kept))).execute({ summary: '读过' }, exec) as Record<string, unknown>
+  const args = JSON.parse(String(result.args)) as { kind: string, form: string, parent: string, title: string, text: string, proposal: string, reason: string, cost: string, notTaken: string, attach: string }
+  assert.equal(args.kind, 'question')
+  assert.equal(args.form, 'recommend')
+  assert.equal(args.parent, result.parent)
+  assert.equal(args.attach, result.attach)
+  assert.equal(args.title, result.title)
+  assert.equal(args.text, result.text)
+  assert.equal(args.proposal, result.proposal)
+  assert.equal(args.reason, result.reason)
+  assert.equal(args.cost, result.cost)
+  assert.equal(args.notTaken, result.notTaken)
+  assert.match(String(result.message), /args exactly as given/)
+  assert.match(String(result.message), /the harness refuses the record when any field differs/)
+  const round = kept.round
+  assert.ok(round !== undefined, 'the round was stored')
+  assert.equal(round.attach, result.attach)
+  assert.equal(round.askDigest, askDigestOf({ title: args.title, text: args.text, proposal: args.proposal, reason: args.reason, cost: args.cost, notTaken: args.notTaken }), 'the stored digest is over the args words')
+  const qid = await propose(ws, 'llm', { type: 'question', parent: args.parent, title: args.title, body: `问题\n\n${takeoverAttachLine(args.attach)}`, ask: askOf(args.text), form: 'recommend', proposal: args.proposal, reason: args.reason, cost: args.cost, notTaken: args.notTaken })
+  await decided(ws, qid, listConclusion(1), round.detailDigest)
+  const applied = await applyAgreement({ ancestor: () => Promise.resolve(true), journal: () => Promise.resolve(true) }, { ...takeover, round: 1, stage: 'apply' }, round, qid, () => Promise.resolve(true))
+  assert.equal(applied.ok, true, applied.ok ? '' : applied.why)
+  // the reworded call (the field the flash model rewrote at propose time): the digest differs, the refusal is the changed signal
+  const ws2 = workspace('seam-drift')
+  const takeover2 = await takeoverOf(ws2)
+  await seeded(ws2, takeover2)
+  const kept2: { round?: RoundRecord } = {}
+  const result2 = await bootstrapReviewTool(reviewDepsOf(ws2, takeover2, keepRound(kept2))).execute({ summary: '读过' }, exec) as Record<string, unknown>
+  const args2 = JSON.parse(String(result2.args)) as { title: string, text: string, proposal: string, reason: string, cost: string, notTaken: string, attach: string }
+  const round2 = kept2.round
+  assert.ok(round2 !== undefined)
+  const driftedText = args2.text.replace('可以吗？', '没问题吧？')
+  assert.notEqual(driftedText, args2.text)
+  const qid2 = await propose(ws2, 'llm', { type: 'question', parent: 'goal-1', title: args2.title, body: `问题\n\n${takeoverAttachLine(args2.attach)}`, ask: askOf(driftedText), form: 'recommend', proposal: args2.proposal, reason: args2.reason, cost: args2.cost, notTaken: args2.notTaken })
+  await decided(ws2, qid2, listConclusion(1), round2.detailDigest)
+  await appendTakeover(ws2, takeover2.id, [{ op: 'review-open', data: { ...round2, detailShow: [] } }, { op: 'apply-start', data: { questionId: qid2, round: 1 } }])
+  const state2 = await openTakeoverOf(ws2)
+  assert.ok(state2 !== undefined && state2.stage === 'apply')
+  const refused = await applyAgreement({ ancestor: () => Promise.resolve(true), journal: () => Promise.resolve(true) }, state2, round2, qid2, () => Promise.resolve(true))
+  assert.equal(refused.ok, false)
+  if (!refused.ok) {
+    assert.equal(refused.code, 'changed')
+    assert.equal(refused.why, 'the question on the graph differs from the round the harness wrote')
+  }
+  // a refused consent is no consent: the trail holds the refusal, the takeover went back to review, nothing closed (§9.1: the journal never stands for the consent)
+  await appendTakeover(ws2, takeover2.id, [{ op: 'accept-refused', data: { questionId: qid2, code: 'changed', why: 'the question on the graph differs from the round the harness wrote' } }])
+  const still = await openTakeoverOf(ws2)
+  assert.ok(still !== undefined && still.id === takeover2.id && still.stage === 'review', 'the takeover is still open, back in review')
+  const journal = readFileSync(join(ws2, '.llm', 'bootstrap', 'journal.jsonl'), 'utf8')
+  assert.ok(journal.includes('"op":"accept-refused"'), 'the refusal is on the trail')
+  assert.ok(!journal.includes('takeover-closed'), 'the refused consent closed nothing')
 })
 
 test('the six steps run on the real engine: approve, reject the duplicate, close the evidenced task, comment once, hand the wish back, close; a resume writes nothing twice (§7.4, §9.2)', async () => {
@@ -607,6 +686,7 @@ test('the description example goes through the same checks as a real call (desig
   assert.deepEqual(plainWordsIn(`${args.title}\n${args.text}`), [])
   assert.match(BOOTSTRAP_REVIEW_EXAMPLE, /record_human_answer/)
   assert.match(BOOTSTRAP_REVIEW_EXAMPLE, /照第 1 版清单接管/)
+  assert.match(BOOTSTRAP_REVIEW_EXAMPLE, /args, the exact propose_to_human arguments/)
   assert.match(args.notTaken, /86 条旧告警/)
   const toolCall = /bootstrap_review \{(.*)\}/.exec(BOOTSTRAP_REVIEW_EXAMPLE)?.[1]
   assert.ok(toolCall !== undefined)

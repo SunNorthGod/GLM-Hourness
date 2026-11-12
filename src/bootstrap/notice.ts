@@ -212,7 +212,7 @@ function existingText(facts: ReminderFacts): string[] {
     ...review ? [] : [normsLine(facts)],
     ...thingsLines(facts),
     ...review
-      ? [`List round ${facts.round ?? 1} is out. Put it to the human with propose_to_human exactly as bootstrap_review returned it (form, title, text, proposal, reason, cost, notTaken, attach), together with any open rule question. When they agree, call record_human_answer with recordedAs exactly 照第 ${facts.round ?? 1} 版清单接管 and their words; the harness then writes the takeover. If they correct something, change the nodes and call bootstrap_review again; 讲细点 means show more from ${dir}/review-${facts.round ?? 1}.md.`]
+      ? [`List round ${facts.round ?? 1} is out. Put it to the human with propose_to_human with the arguments bootstrap_review returned (args, one JSON object, verbatim), together with any open rule question. When they agree, call record_human_answer with recordedAs exactly 照第 ${facts.round ?? 1} 版清单接管 and their words; the harness then writes the takeover. If they correct something, change the nodes and call bootstrap_review again; 讲细点 means show more from ${dir}/review-${facts.round ?? 1}.md.`]
       : ['When everything is proposed and the two things are decided, call bootstrap_review.',
         proposedLine(facts)],
   ]

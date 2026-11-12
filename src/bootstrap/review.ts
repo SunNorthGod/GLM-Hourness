@@ -419,6 +419,7 @@ const OUTPUT = {
     cost: { type: 'string' },
     notTaken: { type: 'string' },
     attach: { type: 'string', description: 'The takeover attach of this round.' },
+    args: { type: 'string', description: 'The exact arguments of the propose_to_human call, as one JSON object; pass them verbatim.' },
     recordedAs: { type: 'string', description: 'The exact conclusion to record.' },
     listFile: { type: 'string', description: 'The full list on disk, for 讲细点.' },
     trial: { type: 'object', description: 'How much of the trial round has results.' },
@@ -477,23 +478,21 @@ export function bootstrapReviewTool(deps: ReviewDeps): ToolDefinitionLike {
         deps.setBusy(agent, false)
       }
       const trial = deps.trial(takeover)
+      // The consent seam (§7.4): the round's digests are over exactly these words, so the mechanical quote records and any rewording is refused.
+      const fields = { title: ask.title, text: ask.text, proposal: ask.proposal, reason: ask.reason, ...(ask.cost === undefined ? {} : { cost: ask.cost }), ...(ask.notTaken === undefined ? {} : { notTaken: ask.notTaken }) }
       return {
         ok: true,
         round,
         parent: view.anchor,
         ...(decided === undefined ? {} : { question: decided.id }),
         form: 'recommend',
-        title: ask.title,
-        text: ask.text,
-        proposal: ask.proposal,
-        reason: ask.reason,
-        ...(ask.cost === undefined ? {} : { cost: ask.cost }),
-        ...(ask.notTaken === undefined ? {} : { notTaken: ask.notTaken }),
+        ...fields,
         attach,
+        args: JSON.stringify({ kind: 'question', form: 'recommend', parent: view.anchor, ...fields, attach }),
         recordedAs: listConclusion(round),
         listFile: `.llm/bootstrap/${takeover.id}/review-${round}.md`,
         trial: { done: trial?.done === true, total: trial?.results.length ?? 0 },
-        message: `Put this to the human with propose_to_human: kind question, form recommend, parent ${view.anchor}${decided === undefined ? '' : ` (or question ${decided.id} to change the open list question)`}, title, text, proposal, reason, cost and notTaken exactly as given, attach ${attach}. When they agree, call record_human_answer with answer agree, their words, and recordedAs exactly as given; the harness then writes the takeover. If they correct something, change the nodes and call bootstrap_review again.`,
+        message: `Call propose_to_human with args exactly as given: pass the JSON object verbatim, every field word for word — the harness refuses the record when any field differs${decided === undefined ? '' : ` (or replace parent with question ${decided.id} to revise the open list question instead of proposing a new one)`}. When they agree, call record_human_answer with answer agree, their words, and recordedAs exactly as given; the harness then writes the takeover. If they correct something, change the nodes and call bootstrap_review again.`,
       }
     },
   }
