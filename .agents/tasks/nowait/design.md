@@ -1,7 +1,7 @@
 # 主会话不长等（超代理借用，机制 2）设计
 
-版本：0.2（2026-11-13）。
-状态：四岔已拍板（question-41，2026-11-13，全按推荐，§4）；引用对照 main `8a647ef4` 逐条复核完毕（漂移清单 §0），实施计划见 §5。实现归后继批次，本稿不开工。
+版本：0.3（2026-11-13）。
+状态：已实现并合入 main `8e18f932`；实现与设计的偏差、门禁数字见 §13。0.2：四岔已拍板（question-41，2026-11-13，全按推荐，§4）；引用对照 main `8a647ef4` 逐条复核完毕（漂移清单 §0），实施计划见 §5。
 来源：人 2026-11-10 批准的借用清单机制 2。原型 `dsh-superagent-prototype`（commit `8c32a9d`，本机克隆在 `C:\Users\29596\.agents-proto\dsh-superagent-prototype\`，0.2 复核时 HEAD 未动）；自家代码与宿主参考源码的引用以 nowait worktree（已并入 origin/main `8a647ef4`，merge `014e20fe`）为准；宿主参考源码经主检出 `reference/deepseek-harness` 读（worktree 无 `reference/`，`DEVELOPMENT.md` §9）。
 
 ## 0. 对照 8a647ef4 的复核（0.2 新增）
@@ -60,7 +60,7 @@ rc.1 的批量执行器不影响缺口判定：`ctx.tools.execute` 的批量形�
    - bash/pwsh 命令含命令位上的 `sleep`（原型的 `SLEEP` 正则形状，`sessions.ts:70`）——**已拍板（Q1）**：阈值取原型 router 守卫的值，shell 点名 `timeoutMs > 30_000`（:81）才拦，job 等待线取 5 秒（:84）；
    - bash/pwsh 点名 `timeoutMs > 30_000`——**已拍板（Q2）**：拦。`promoteOnTimeout` 已把超时前台转后台，但那 60 秒以上的延迟与占住的回合本身是要拦的东西（原型判词「a waiting step holds back the next」）；不带超时的前台命令不拦（宿主兜底，原型的 DEFAULT_WAIT 提示不搬）；
    - `job_output` 的 `wait: true` 且 `timeout_ms > 5_000`（原型 :84）。
-   拒绝语文案取原型 `NO_WAIT` 的意思：「结果会自己作为消息到来；结束回合，别用等待占住它」。拒绝进违规流水，带规则 id；规则随 `design:<id>` 进规则板目录（`src/rules/builtin.ts:139` 的映射），`/rules lift design:<id>` 是现成的单规则撤下路径。
+   拒绝语文案取原型 `NO_WAIT` 的意思：「结果会自己作为消息到来；结束回合，别用等待占住它」。拒绝进违规流水，带规则 id；规则随 `design:<id>` 进规则板目录（`src/rules/builtin.ts:139` 的映射）。撤下路径（0.3 勘误：`/rules lift design:<id>` 并非现成——实读发现 `/rules lift` 只作用于规则板自己的条目，guard_lift 与 lift-service 只解析 guard 行规则，listener 也不读 lifts.jsonl）：把 m4 的 lift 机制扩到本条，`DESIGN_LIFTS`（`src/guard/main-agent-rules.ts`）——guard_lift 与 lift-service 解析 `main-agent-no-wait`（裸 id 与 `design:` 拼写都收），listener 按项目根读 `docs/guard/lifts.jsonl` 跳过已撤下的规则，规则板给这一条显示 liftHow；其余九条维持只读（d-defaults-readonly）。
    **范围（Q3 已拍板）**：只管主 Agent（subjects `main-agent`）；worker 与普通子会话的 shell/job 调用不判。
 2. **提示词一句（伴随）**：`DRIVE_BODY`（`src/execute/drive.ts:104`，逐字仍在位）加一句：长命令用 `run_in_background` 放后台，job 的结果会作为通知到来，不 sleep、不轮询、不用长 `wait` 占住回合；回合里没有别的事就收尾。原型同款句在 `prompts/orchestrator.md:16`。
 3. **不动**：请求工具的 30/20 分钟等待（E5）、高峰等待单、派发与 goal 轮驱动、问人路径、预设层（不自建 agent preset——桌面主 Agent 的会话用宿主预设，改组合影响整会话，收益与代价不成比例）。
@@ -101,7 +101,7 @@ rc.1 的批量执行器不影响缺口判定：`ctx.tools.execute` 的批量形�
 2. **long-timeout denied**：主 Agent 会话发 `timeoutMs: 120000` 的前台命令 → 拒，同上。
 3. **job wait denied**：主 Agent 会话发 `job_output {wait: true, timeout_ms: 10000}` → 拒，同上。
 4. **short allowed**：主 Agent 会话发 `git status`（无 `timeoutMs`）→ 照常执行；worker 子会话发同类长调用 → 照常执行（Q3 的范围钉住）。
-5. **prompt sentence**：`glm-design-main` 记录的某个请求里，goal 轮的系统提示词含新句（N2 合入后钉）；lift 路径：覆盖层 `/rules lift design:main-agent-no-wait` 后同类调用放行。
+5. **prompt sentence**：goal 轮的系统提示词含新句（N2 合入后钉）——`glm-design-main` 没有 goal 轮，0.3 勘误：钉在 `glm-exec-drive` 的 objective 检查上（goal-round-driver `prompt.ts:16` 把 objective 放进 goal 轮系统提示词）；lift 路径：覆盖层经 lift service 撤下 `design:main-agent-no-wait`（`/rules lift` 接上后的写法）后同类调用放行。
 
 ### 风险
 
@@ -110,3 +110,17 @@ rc.1 的批量执行器不影响缺口判定：`ctx.tools.execute` 的批量形�
 3. **与执行边界的交互**：主 Agent 的执行边界规则（no-write 等）与 no-wait 可能同调用双中——拒绝优先级按现有 waterfall 顺序，先到的先拒；无机制冲突，L2 钉一条组合调用。
 4. **提示词预算**：DRIVE_BODY 加一句，objective 上限 2000 字符不变；长目标的截断次序已有测试习惯（切 `Not in scope` 先），新句放正文末尾不改变优先序。
 5. **原型的 DEFAULT_WAIT 不搬**：`standard` 预设下不带超时的前台命令不拦（Q2 拍板）——这意味着「忘了写超时」的 60 秒延迟仍在回合里，是接受的残余风险；宿主 `promoteOnTimeout` 兜底把长命令转后台，回合损失有上界。
+
+## 13. 实施记录（0.3 新增，2026-11-13）
+
+N1 + N2 按 §5 落地：`933f0c0f`（N1 守卫规则与 lift 扩展）、`d99102c3`（N2 提示词一句）、`42eb69b9`（L3 探针钉）；并 origin/main `8be6f8ec`（merge `0ab573b9`）与 `a1ea9b4f`（merge `8e18f932`，含 execute-rules 的 worker-git read-tree 名单）后全量门禁，main 快进到 `8e18f932`、双远端已推。逐批进度在同目录 progress.md。
+
+实现与设计的偏差（均已核到源码）：
+
+1. **撤下路径（§3 的「现成」被推翻）**：`/rules lift` 只作用于规则板自己的条目（`src/rules/plan.ts` planLift 查 `state.rules`，代码规则不在其中，`builtin:` 前缀直接拒）；lift-service 自注明「provided but has no caller」；guard_lift 与 lift-service 只解析 guard 行规则；`installMainAgentRules` 不读 lifts.jsonl；规则板页把 design:<id> 显示为不可撤下（`rules-view.spec.ts` 钉住）。实现把 m4 的 lift 机制扩到本条：`DESIGN_LIFTS`（`main-agent-rules.ts`）——guard_lift（`src/guard/lift.ts` 的 `liftEntryOf`）与 lift-service（`resolveLiftRule`）解析裸 id 与 `design:` 拼写，撤下记录写裸 id；listener 按项目根（`projectRootOf(cwd)`）读 lifts.jsonl 过滤已撤下的规则；规则板经 `view-build.ts` 的 `GUARD_BY_CATALOG` 给这一条显示 liftHow。其余九条维持只读（d-defaults-readonly 语义不变）。先例：guard 行规则在 m4-gate G3 同样由「插件默认条目」变为可撤下。
+2. **listener 的早退过滤要扩**：`installMainAgentRules` 对「非文件写、非隐藏、非 shell、非图调用」早退放行，`job_output` 本会被早退——过滤加了 `job_output` 豁免。DSH 管线对未注册工具名也跑 pre-execute（`dsh-tools` pipeline.ts 的「unknown tools retain dispatch-stage handling」），探针因此可按名调 `job_output`。
+3. **step 联合体扩 `9`**：M3 前九步之外的本批次字面量；contracts 的 MERGED_STEP 钉改为 M3 ≤ 8、nowait = 9，TRIGGERS 加 no-wait。
+4. **探针脚本跟上新世界（§5 探针的场景勘误）**：prompt 句子钉不在 `glm-design-main`（无 goal 轮），改钉 `glm-exec-drive` 的 objective。主脚本 pacing 的 `Start-Sleep` 全部被新规则拒（命令位 sleep），换成 `ping -n N+1 127.0.0.1 | Out-Null`（约同秒等待）；无 /wish 的普通场景（limits-time、glm-dispatch、rules-*、loops-*）不判、保留原样。worker 放行钉在 exec-dispatch 的 worker 脚本（`sleep 30` 照常执行）。
+5. **lift 记录进违规流水**：lift 服务把 `kind:'lift'` 记录写进同一 violations.jsonl，design-main 的 join 断言按仓内惯例加 `record.kind === undefined` 过滤，ask 钉改钉流水前三条。
+
+门禁：build、preflight、npm test（exit 0）全绿；棘轮 73/18/1 持平；探针四跑收敛 **569/587 = 580 − 18 基线红 + 7 新钉全绿**（FAIL 标签与基线 18 条逐字同；归因与逐跑记录见 progress.md 阶段 3a/3b）。桌面 L4 未跑，随下一批次桌面点验。
