@@ -22,6 +22,7 @@ import { mkdir, appendFile, readFile } from 'node:fs/promises'
 import { readFileSync, statSync, type Stats } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { GUARD_RULES } from './catalog.ts'
+import { DESIGN_LIFTS } from './main-agent-rules.ts'
 import type { LiftRecord } from './records.ts'
 import type { AgentLike, DerivedMessage } from '../shared/dsh-min.ts'
 
@@ -305,6 +306,26 @@ const LIFT_MESSAGE = (title: string, blocks: string, rule: string): string =>
   `Tell the human in your reply that ${title} is now lifted for this project and no longer blocks ${blocks}. To put it back, the human says so and you call guard_lift again with action "restore" and their words; once the rules board offers it for code rules, /rules restore ${rule} there does the same. Steps from now on do not list the rule in the system prompt, so this session's prompt cache is rebuilt once.`
 
 /**
+ * The code rule one id names, or undefined for an unknown one: a guard
+ * catalog id (bare, `scratch-only`), else a design row rule the lift paths
+ * take off (src/guard/main-agent-rules.ts DESIGN_LIFTS) by bare id or by the
+ * `design:` spelling the rules page lists. The answer carries the bare id the
+ * lift record stores and every consumer matches (the gate, the listener).
+ */
+export function liftEntryOf(name: string): (typeof GUARD_RULES)[number] | undefined {
+  const guard = GUARD_RULES.find(candidate => candidate.id === name)
+  if (guard !== undefined) return guard
+  const id = name.startsWith('design:') ? name.slice('design:'.length) : name
+  const lift = DESIGN_LIFTS.get(id)
+  return lift === undefined ? undefined : { id, row: 'design', title: lift.title, blocks: lift.blocks, liftVia: 'any' }
+}
+
+/** The ids the lift paths accept, for the refusal's hint: the guard rules any path lifts, and the design row's liftable ones in the page's spelling. */
+function liftableHint(): string {
+  return [...GUARD_RULES.filter(candidate => candidate.liftVia === 'any').map(candidate => candidate.id), ...[...DESIGN_LIFTS.keys()].map(id => `design:${id}`)].join(', ')
+}
+
+/**
  * The `guard_lift` body (design §3.5 steps 1–7): the caller is the root
  * agent, the arguments and the rule id are valid, the words are a segment of
  * the human's own latest client message and carry an intent word, and one
@@ -329,10 +350,10 @@ export async function guardLift(args: GuardLiftArgs, deps: GuardLiftDeps): Promi
     refuse({ code: 'invalid', message: 'the arguments do not fit', hint: 'action is "lift" or "restore"' })
   }
   const wanted = action ?? 'lift'
-  // Step 3: the rule is one of the catalog's.
-  const entry = GUARD_RULES.find(candidate => candidate.id === rule)
+  // Step 3: the rule is one of the catalog's, or one the design row lets the lift paths take off.
+  const entry = liftEntryOf(rule)
   if (entry === undefined) {
-    refuse({ code: 'invalid', message: 'unknown rule', hint: `liftable ids: ${GUARD_RULES.filter(candidate => candidate.liftVia === 'any').map(candidate => candidate.id).join(', ')}` })
+    refuse({ code: 'invalid', message: 'unknown rule', hint: `liftable ids: ${liftableHint()}` })
   }
   if (entry.liftVia === 'board') {
     refuse({ code: 'forbidden', message: 'the rule protects the lift record itself', hint: 'this rule protects the lift record itself, so only the human can lift it, with /rules lift lift-files-only once the rules board offers that for code rules; until then it cannot be lifted' })
@@ -362,14 +383,14 @@ export async function guardLift(args: GuardLiftArgs, deps: GuardLiftDeps): Promi
   if (!state.readable) {
     refuse({ code: 'unavailable', message: 'the lift record could not be read', hint: 'tell the human the rule could not be lifted (the record is unreadable); they can ask again (once the rules board offers it for code rules, /rules lift there is another way)' })
   }
-  const isLifted = state.lifted.has(rule)
+  const isLifted = state.lifted.has(entry.id)
   if (wanted === 'lift' ? isLifted : !isLifted) {
-    return { outcome: 'noop', rule, title: entry.title, blocks: entry.blocks, message: `${entry.title} is already ${wanted === 'lift' ? 'lifted' : 'in force'}; nothing was written. Tell the human.` }
+    return { outcome: 'noop', rule: entry.id, title: entry.title, blocks: entry.blocks, message: `${entry.title} is already ${wanted === 'lift' ? 'lifted' : 'in force'}; nothing was written. Tell the human.` }
   }
-  // Step 6: the record line goes into the project's file.
+  // Step 6: the record line goes into the project's file, under the bare id every consumer matches.
   const at = deps.now().toISOString()
   try {
-    await appendLift(deps.root, { at, rule, action: wanted, via: 'chat', words: words.slice(0, 500) })
+    await appendLift(deps.root, { at, rule: entry.id, action: wanted, via: 'chat', words: words.slice(0, 500) })
   }
   catch (error) {
     const code = (error as NodeJS.ErrnoException).code ?? 'error'
@@ -377,6 +398,6 @@ export async function guardLift(args: GuardLiftArgs, deps: GuardLiftDeps): Promi
   }
   // Step 7: the violation journal keeps the lift, like every harness write.
   noteSpent(rpcId)
-  void deps.record({ kind: 'lift', at, rule, action: wanted, via: 'chat', sessionId: deps.agent?.session?.id, words: words.slice(0, 500) })
-  return { outcome: wanted === 'lift' ? 'lifted' as const : 'restored' as const, rule, title: entry.title, blocks: entry.blocks, message: LIFT_MESSAGE(entry.title, entry.blocks, rule) }
+  void deps.record({ kind: 'lift', at, rule: entry.id, action: wanted, via: 'chat', sessionId: deps.agent?.session?.id, words: words.slice(0, 500) })
+  return { outcome: wanted === 'lift' ? 'lifted' as const : 'restored' as const, rule: entry.id, title: entry.title, blocks: entry.blocks, message: LIFT_MESSAGE(entry.title, entry.blocks, entry.id) }
 }

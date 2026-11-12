@@ -9,6 +9,13 @@
  *   command that writes a file are denied here. Git is not a file write.
  * - main-agent-ask: ask_user_question is hidden from its tool face; called by
  *   name it is denied, the human is asked in plain chat.
+ * - main-agent-no-wait: the main agent does not hold its turn open — a sleep
+ *   at a command position, a shell call that names a timeout over 30 seconds,
+ *   and a job wait over five seconds are denied; the right path is the
+ *   background (run_in_background, a short job wait) or ending the turn. The
+ *   one rule here the human can lift (src/guard/main-agent-rules.ts
+ *   DESIGN_LIFTS): the listener drops the rules the project's lift record
+ *   names (src/guard/lift.ts), the same way the guard row's gate does.
  * - git-snapshot: it may run any git command. One that can lose uncommitted
  *   work or rewrite history runs after the harness has saved a copy it can
  *   restore (src/guard/git-snapshot.ts); one that cannot be saved before is
@@ -52,12 +59,17 @@ import { baseFor, type ViolationRecord } from './index.ts'
 import { guardGit, SNAPSHOT_NOTICE_KIND, snapshotCorrection, type SavedSnapshot, type SnapshotEnvironment } from './git-snapshot.ts'
 import { DISPATCH_CHAIN_RULE, dispatchChainCorrection, judgeDispatchedWrite, releaseCorrection, type ReleaseDeps } from './design-release.ts'
 import { attemptOf, DELEGATIONS_CORRECTION, GRAPH_CLI_CORRECTION, graphCliWrite, judgeGraphStage, judgeMainAgentGraph, relayOf, stageCandidate, SUBAGENT_RELAY_CORRECTION, writesDelegations, type GraphRuleDeps, type SessionKind, type StageAttempt } from './main-agent-graph.ts'
-import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, GRAPH_CLI_RULE, GRAPH_DELEGATIONS_RULE, GRAPH_RELAY_RULE, GRAPH_STAGE_RULE, NO_WRITE_RULE } from './main-agent-rules.ts'
+import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, GRAPH_CLI_RULE, GRAPH_DELEGATIONS_RULE, GRAPH_RELAY_RULE, GRAPH_STAGE_RULE, NO_WAIT_RULE, NO_WRITE_RULE } from './main-agent-rules.ts'
+import { liftedRules } from './lift.ts'
 import { originOf } from './origin.ts'
+import { projectRootOf } from '../data/project-home.ts'
 import { fileToolTargetOf, isFileWrite, judge, NATIVE_FACE, renderCorrection, shellCommandOf, shellWriteOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
 import { describeWrite } from './shell.ts'
 
 const ALLOW: RuleVerdict = { kind: 'allow' }
+
+/** What a session outside any project reads as its lift record: nothing lifted. */
+const NOTHING_LIFTED: ReadonlySet<string> = new Set()
 
 /** The graph tools by name. */
 const GRAPH_NAMES: ReadonlySet<string> = new Set(GRAPH_TOOL_NAMES)
@@ -106,6 +118,51 @@ function mainAgentAsk(hidden: readonly string[]): GuardRule {
           exception: 'none',
         },
       }
+    },
+  }
+}
+
+/**
+ * `sleep` at a command position: the start, after `;` `&` `|` `(` `{` `!` a
+ * backtick or a newline, or after a keyword or a command that runs it (the
+ * dsh-superagent prototype's SLEEP, src/app/sessions.ts). A `sleep` in an
+ * argument or a string (`grep sleep src/`) is not at one.
+ */
+const SLEEP_POSIX = /(?:^|[;&|({!`\n]|\b(?:do|then|else|elif|if|while|until|time|exec|nohup|command|env)\s)\s*(?:\S*\/)?sleep\b/
+/**
+ * The pwsh command positions: the start, after `;` `&` `|` `{` `}` a newline,
+ * `&&` or `||`, or after a statement keyword (the blocks put the command
+ * after `{`). Case-insensitive; `start-sleep` is the cmdlet `sleep` aliases.
+ */
+const SLEEP_PWSH = /(?:^|[;&|{}\n]|&&|\|\||\b(?:do|else|elseif|if|while|until|foreach|for|switch|try|catch|finally|time)\s)\s*(?:\S*\/)?(?:start-)?sleep\b/i
+
+const NO_WAIT_VIOLATION = 'A waiting step holds back the turn: as the main agent you do not occupy your turn with sleeps, long shell timeouts or long job waits.'
+const NO_WAIT_RIGHT_PATH = 'Run long commands in the background (run_in_background: true): the job\'s end, with its output, arrives by itself as a notice, like worker reports and answers do. Wait for a job at most a few seconds (timeout_ms of 5000 or less); when nothing is left to do in the turn, end it.'
+const NO_WAIT_EXCEPTION = 'If this wait is really needed, the human says so in chat and you lift the rule with guard_lift, quoting their words.'
+
+/** main-agent-no-wait: a sleep at a command position, a bash/pwsh call that names a timeout over 30 seconds, a job wait over five seconds. A call without a named `timeoutMs` passes (the host promotes it to a background job at the timeout), and so does a job wait without `timeout_ms`. */
+function mainAgentNoWait(): GuardRule {
+  const correction = (fact: string): RuleVerdict => ({ kind: 'deny', rule: NO_WAIT_RULE, correction: { fact, violation: NO_WAIT_VIOLATION, rightPath: NO_WAIT_RIGHT_PATH, exception: NO_WAIT_EXCEPTION } })
+  return {
+    id: NO_WAIT_RULE,
+    detect(call) {
+      if (call.name === 'job_output') {
+        const args = call.arguments
+        const wait = typeof args === 'object' && args !== null && !Array.isArray(args) && (args as Record<string, JsonValue>).wait === true
+        const timeout = typeof args === 'object' && args !== null && !Array.isArray(args) ? (args as Record<string, JsonValue>).timeout_ms : undefined
+        if (!wait || typeof timeout !== 'number' || timeout <= 5_000) return ALLOW
+        return correction(`You asked to wait for a background job for ${timeout} ms.`)
+      }
+      // The two shell tools that hold the turn: a sleep on them, or a named timeout over the line. terminal_send writes to a terminal without waiting, so it is not judged.
+      if (call.name !== 'bash' && call.name !== 'pwsh') return ALLOW
+      const shell = shellCommandOf(call)
+      if (shell === undefined) return ALLOW
+      const args = call.arguments
+      const timeout = typeof args === 'object' && args !== null && !Array.isArray(args) ? (args as Record<string, JsonValue>).timeoutMs : undefined
+      const named = typeof timeout === 'number' && timeout > 30_000
+      const sleeps = shell.dialects.some(dialect => (dialect === 'pwsh' ? SLEEP_PWSH : SLEEP_POSIX).test(shell.command))
+      if (!sleeps && !named) return ALLOW
+      return correction(named ? `You asked the shell to hold this call for ${timeout} ms: "${shell.command}".` : `You tried to run sleep on the shell: "${shell.command}".`)
     },
   }
 }
@@ -200,6 +257,7 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
   const warn = dialectWarner('design')
   const ask = mainAgentAsk(deps.hiddenTools)
   const noWrite = mainAgentNoWrite(() => deps.executeOn?.() ?? false)
+  const noWait = mainAgentNoWait()
   return ctx.on('tools/pre-execute', async (payload, next) => {
     const agent = payload.agent
     // A nested transport call is judged like a direct one of the same agent: the PTC preset reaches these rules through it, so it may not pass (S4-1, S5-1, S6-2, S8-3).
@@ -211,8 +269,8 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
     // A graph write is looked at only when it carries the human's words, proposes or edits (the options rule), approves, or points at norm-delegations.
     const toDelegations = writesDelegations(call)
     const graphCall = GRAPH_NAMES.has(call.name) && (relayOf(call) !== undefined || call.name === 'graph_propose' || call.name === 'graph_edit' || stageCandidate(call) || toDelegations)
-    // Most calls are neither: read, search, graph tools. They pass before anything is asked about the session. A shell call is always looked at: whether its text runs git is for the shell reader to say, not for a search of the raw text (`"g"it` runs git). A delegated session is judged for its writes only.
-    if (!isFileWrite(call) && !(!delegated && deps.hiddenTools.includes(call.name)) && shell === undefined && !graphCall) return next()
+    // Most calls are neither: read, search, graph tools. They pass before anything is asked about the session. A shell call is always looked at: whether its text runs git is for the shell reader to say, not for a search of the raw text (`"g"it` runs git). A job_output call is too: whether it waits long is for the no-wait rule to say. A delegated session is judged for its writes only.
+    if (!isFileWrite(call) && !(!delegated && deps.hiddenTools.includes(call.name)) && shell === undefined && !graphCall && call.name !== 'job_output') return next()
     const session = agent.session
     // Who the session is, for the metric of a denial and the words of an alert; settled below once the role is read.
     let who: SessionKind = delegated ? 'subagent' : 'main-agent'
@@ -288,7 +346,10 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
     }
     const route = sessionRoute(session)
     const face = dialectNames(dialect, agent, route, warn) ?? NATIVE_FACE
-    const denied = judge([ask, noWrite], call, face).denies[0]
+    // The rules the human lifted (the no-wait rule is the one a lift path names; a hand-written line lifts any of the three) do not judge, the way the guard row's gate reads its record (src/guard/lift.ts).
+    const root = projectRootOf(typeof session.header.cwd === 'string' && session.header.cwd.length > 0 ? session.header.cwd : undefined)
+    const lifted = root === undefined ? NOTHING_LIFTED : liftedRules(root)
+    const denied = judge([ask, noWrite, noWait].filter(rule => !lifted.has(rule.id)), call, face).denies[0]
     if (denied !== undefined) return denial(denied.rule, denied.correction)
     if (shell === undefined) return next()
     const cli = cliRefusal()
