@@ -55,6 +55,8 @@ import { communicationOf, forgetAttempt, parseDispatchComment, parseHandbackComm
 import type { CommandRunner, GraphCache } from './dispatch.ts'
 import { sha256Hex } from './digest.ts'
 import { floorHits, parseFloor, type FloorCall, type FloorChange } from './floor.ts'
+import type { RulesRead } from './policy-digest.ts'
+import { rulesPaths } from '../rules/store.ts'
 import { emitMetric } from './metrics.ts'
 import { acceptanceRounds, isDesignReview } from '../graph/execute-stage.ts'
 import { converge, normalizeVerdict, renderAcceptanceComment, renderRoundComment, roundsOf, roundsSinceHuman, latestHumanAt, type Round } from './review.ts'
@@ -492,6 +494,19 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
 
 function stringList(value: unknown): readonly string[] | undefined {
   return Array.isArray(value) && value.every(entry => typeof entry === 'string') ? value : undefined
+}
+
+/**
+ * What the exported rules file read as (reval design §3.2): a file that is
+ * not there is the legal no-rules state, a failed read is unreadable. Both
+ * the dispatch and the handback comparison read it this way.
+ */
+export async function rulesReadOf(projectRoot: string): Promise<RulesRead> {
+  const text = await readFile(rulesPaths(projectRoot).rulesFile, 'utf8').then(
+    text => text,
+    (error: unknown): string | null | undefined => error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT' ? undefined : null,
+  )
+  return text === undefined ? { kind: 'absent' } : text === null ? { kind: 'unreadable' } : { kind: 'text', text }
 }
 
 /** The change a done handback made, as the floor reads it (§3.7.1). */

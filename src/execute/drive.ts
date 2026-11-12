@@ -937,6 +937,7 @@ export function createDrive(deps: DriveDeps): Drive {
       why: dispatched.why ?? '',
       plan: 'none' as const,
       pins: dispatched.pins,
+      ...(dispatched.policy === undefined ? {} : { policy: dispatched.policy }),
       ...(session === undefined ? {} : { parentSession: session }),
     }
     const base = dispatched.base === undefined ? {} : { baseSha: dispatched.base.sha }

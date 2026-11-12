@@ -348,7 +348,8 @@ test('a dispatch without model or why is invalid with the catalog hint; a goal i
     const goalNode = (await openEngine(project.graphDir).load()).nodes.get('goal-1')
     const dispatchComment = goalNode?.history.filter(entry => entry.op === 'comment' && entry.actor === 'harness').at(-1)?.text ?? ''
     assert.match(dispatchComment, new RegExp(`^第 1 次派发 · ${review.childId} · 基线 main@${trunk.slice(0, 12)} · `))
-    assert.match(dispatchComment, /\npins: goal-1@[0-9a-f]{12}$/)
+    // The pins line is followed by the policy line (reval design §3.1); this project has no norm nodes and no rules file, so the two classes that compute are rules and checker.
+    assert.match(dispatchComment, /\npins: goal-1@[0-9a-f]{12}\npolicy: rules@[0-9a-f]{12} checker@[0-9a-f]{12}$/)
     assert.equal(goalNode?.status, 'doing', 'an approved goal goes to doing with its acceptance review, as a task does')
     const running = await refusedOf(() => dispatch(deps, project.root, { id: 'goal-1', model: 'probe-model', why: 'again' }))
     assert.equal(running.code, 'busy')

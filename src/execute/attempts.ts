@@ -51,6 +51,8 @@ export interface Attempt {
   readonly planPaths?: readonly string[]
   /** The `pins:` line written on the dispatch comment. */
   readonly pins: string
+  /** The `policy:` line written on the dispatch comment (reval design §3.1); absent when the dispatch predates the digest or no class digested. */
+  readonly policy?: string
 }
 
 // ---- the communication counters (§3.4.4) ----
@@ -158,11 +160,14 @@ export interface DispatchComment {
   readonly note?: string
   /** The `pins:` line. */
   readonly pins: string
+  /** The `policy:` line, after the pins line; absent when no class digested. */
+  readonly policy?: string
 }
 
 /**
  * The comment the harness writes on the task when it dispatches it
- * (§3.1.2 step 10): one line of facts, then the pins line.
+ * (§3.1.2 step 10): one line of facts, then the pins line, then the policy
+ * line (reval design §3.1).
  */
 export function renderDispatchComment(entry: DispatchComment): string {
   const parts = [
@@ -174,7 +179,7 @@ export function renderDispatchComment(entry: DispatchComment): string {
     `简报 ${entry.brief}`,
     ...(entry.note === undefined ? [] : [entry.note]),
   ]
-  return `${parts.join(' · ')}\n${entry.pins}`
+  return `${parts.join(' · ')}\n${entry.pins}${entry.policy === undefined ? '' : `\n${entry.policy}`}`
 }
 
 const DISPATCH_START = /^第 (\d+) 次派发 · (\S+) · /
@@ -193,6 +198,8 @@ export interface DispatchRecord {
   readonly attempt: number
   readonly childId: string
   readonly pins: string
+  /** The `policy:` line the comment carries; absent for a dispatch that predates the digest (reval design §12 R2). */
+  readonly policy?: string
   /** Branch and short commit the work was cut from (a worker), or the trunk commit an acceptance review reviews. */
   readonly base?: { readonly branch: string, readonly sha: string }
   readonly provider?: string
@@ -202,12 +209,18 @@ export interface DispatchRecord {
   readonly review?: keyof typeof DEPTH_WORDS
 }
 
-/** Reads a dispatch comment; undefined when the text is not one. */
+/**
+ * Reads a dispatch comment. The pins and the policy lines are found by their
+ * prefix, from the end — not by position: an old-format comment without the
+ * policy line parses all the same, with `policy` left out (reval design
+ * §3.1, §12 R2).
+ */
 export function parseDispatchComment(commentText: string): DispatchRecord | undefined {
   const lines = commentText.split(/\r?\n/)
   const start = DISPATCH_START.exec(lines[0] ?? '')
-  const pins = lines.at(-1)
-  if (start === null || lines.length < 2 || pins === undefined || !pins.startsWith('pins: ')) return undefined
+  const pins = [...lines].reverse().find(line => line.startsWith('pins: '))
+  if (start === null || lines.length < 2 || pins === undefined) return undefined
+  const policy = [...lines].reverse().find(line => line.startsWith('policy: '))
   const parts = (lines[0] ?? '').split(' · ').slice(2)
   const base = parts.map(part => DISPATCH_BASE.exec(part)).find(match => match !== null)
   const model = parts.map(part => DISPATCH_MODEL.exec(part)).find(match => match !== null)
@@ -216,6 +229,7 @@ export function parseDispatchComment(commentText: string): DispatchRecord | unde
     attempt: Number(start[1]),
     childId: start[2],
     pins,
+    ...(policy === undefined ? {} : { policy }),
     ...(base === undefined ? {} : { base: { branch: base[1], sha: base[2] } }),
     ...(model === undefined ? {} : { provider: model[1], model: model[2], ...(model[3] === undefined ? {} : { reasoningEffort: model[3] }), why: model[4] }),
     ...(review === undefined ? {} : { review: DEPTH_OF_WORD[review[1]] }),

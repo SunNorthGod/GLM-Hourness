@@ -104,6 +104,30 @@ test('a lost dispatch whose session holds a structured_output is replayed from t
   }
 })
 
+test('a lost dispatch whose comment carries a policy line is rebuilt with it; an old-format comment rebuilds none (reval §12 R2)', async () => {
+  let deps: HandbackDeps | undefined
+  const rig = await driveRig({ handback: (attempt, settlement) => settleHandback(deps!, attempt, settlement) })
+  try {
+    deps = handbackDepsOf(rig)
+    const graph = await rig.graph()
+    const task = graph.nodes.get('task-1')
+    assert.ok(task !== undefined)
+    const base = rig.repo.git('rev-parse', 'main')
+    const text = renderDispatchComment({ attempt: 1, childId: CHILD, base: { branch: 'main', sha: base.slice(0, 12) }, provider: 'probe', model: 'probe-model', why: 'one directory', review: { depth: 'full' }, brief: '000000000000', pins: renderPins(pinsOf(graph, task, sha256Hex)), policy: 'policy: gate@aaaaaaaaaaaa floor@bbbbbbbbbbbb rules@cccccccccccc checker@dddddddddddd' })
+    await graphWrite(rig, 'harness', { op: 'comment', id: 'task-1', text })
+    await graphWrite(rig, 'harness', { op: 'status', id: 'task-1', to: 'doing', reason: `dispatch ${CHILD}` })
+    rig.repo.git('worktree', 'add', '--quiet', join(rig.repo.root, '.worktrees', 'hz-task-1'), '-b', 'hz/task-1')
+    rig.projections.set(CHILD, { status: 'blocked', summary: 'the feed library is missing', commits: [], files: [], checks: [], questions: [], assumptions: [], lessons: [] })
+    const result = await rig.drive.reconcile(hostStarted(rig, 'host-started:main-1:1'))
+    assert.equal(result.outcome, 'done')
+    assert.equal(rig.handbacks.length, 1)
+    assert.equal(rig.handbacks[0]?.attempt?.policy, 'policy: gate@aaaaaaaaaaaa floor@bbbbbbbbbbbb rules@cccccccccccc checker@dddddddddddd')
+  }
+  finally {
+    rig.dispose()
+  }
+})
+
 test('a lost dispatch with nothing to read back is commented lost and listed in the drive status, the holder\'s first step runs the reconcile, and the next dispatch\'s brief carries the commits its branch has', async () => {
   const rig = await driveRig({ reconcile: true })
   const started: { childId: string, prompt: string }[] = []

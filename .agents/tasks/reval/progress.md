@@ -19,3 +19,12 @@ Plan: .agents/tasks/reval/design.md 0.2, §12 batches R1-R4, probe, merge.
 - package.json: execute-policy.spec.ts added to test:2.
 - Gates: build OK, preflight OK, npm test green after copying the local (gitignored) fixture .agents/tasks/m5/lessons-seed.json from the main checkout into the worktree; eslint 73 / knip 18 / jscpd 1 unchanged.
 - Worktree note: node_modules was absent in the worktree; npm install was run once (untracked, gitignored).
+
+## R2 landed
+
+- attempts.ts: Attempt/DispatchComment/DispatchRecord gain policy?: string; renderDispatchComment writes the policy line after pins; parseDispatchComment finds pins AND policy by prefix from the end (position independence), old-format comments parse with policy absent.
+- dispatch.ts: policyDigests computed at dispatch time (rulesReadOf reads <root>/docs/rules/rules.json: ENOENT=absent, other error=unreadable), rendered into the register entry and the dispatch comment for every role.
+- handback.ts: rulesReadOf helper (RulesRead from the rules file) lives here, imported by dispatch.
+- drive.ts rebuiltAttempt: carries policy from the DispatchRecord (reconcile rebuild).
+- tests: execute-attempts.spec.ts +2 (round trip with policy, prefix-not-position, old format + trailing junk), execute-reconcile.spec.ts +1 (rebuilt attempt carries policy), execute-row.spec.ts assertion updated (comment now ends with the policy line; fixture has no norms, so rules+checker only).
+- Gates: build OK, preflight OK, npm test green (one pre-existing assertion in execute-row.spec.ts updated for the new comment shape). L2 counts: attempts 12, reconcile 12, row 11, policy 8.

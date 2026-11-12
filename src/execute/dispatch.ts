@@ -43,7 +43,8 @@ import { sha256Hex } from './digest.ts'
 import { dispatchDescription } from './examples.ts'
 import { agentOptionsOf, checkModelChoice, CATALOG_UNCHECKED_NOTE, type CatalogEntry, type ModelChoice } from './models.ts'
 import { carriedPlan, planPathsOfSection, planStatusOf, readPlanSection } from './plan.ts'
-import { changeOf, readCalls, type Settlement } from './handback.ts'
+import { changeOf, readCalls, rulesReadOf, type Settlement } from './handback.ts'
+import { policyDigests, renderPolicyLine } from './policy-digest.ts'
 import { floorHits, parseFloor } from './floor.ts'
 import { writeWithRetry } from './retry.ts'
 import { HANDBACK_SCHEMA, REVIEW_SCHEMA, mergeHandbackSchema } from './schemas.ts'
@@ -585,6 +586,8 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         refuse('invalid', `the subagent could not be started: ${message}`, 'fix what the message names and send the call again')
       }
       const pins = renderPins(pinsOf(targetGraph, target, sha256Hex))
+      // The policy the work is judged by, at dispatch time (reval design §4.1): the dispatch comment and the register carry it.
+      const policy = renderPolicyLine(policyDigests(targetGraph, await rulesReadOf(project), sha256Hex))
       const record: Attempt = {
         childId,
         role,
@@ -610,6 +613,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         // union — the worker can write nothing, the strict side.
         ...(plan === 'approved' ? { planPaths: section === undefined ? [] : planPathsOfSection(section.steps) } : {}),
         pins,
+        ...(policy === undefined ? {} : { policy }),
       }
       registerAttempt(record)
       // The handback processing runs when the activation settles (§3.6.2); a settlement that rejects is an error handback, never an unhandled rejection.
@@ -642,6 +646,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         brief: brief.digest,
         ...(notes.length > 0 ? { note: notes.join('；') } : {}),
         pins,
+        ...(policy === undefined ? {} : { policy }),
       })
       const engine = openEngine(dir, { now })
       const written = await writeWithRetry(() => engine.apply('harness', { op: 'comment', id: target.id, text: comment })).catch(() => undefined)

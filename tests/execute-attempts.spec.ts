@@ -113,6 +113,54 @@ test('parseDispatchComment refuses what is not a dispatch comment', () => {
   assert.equal(parseDispatchComment(''), undefined)
 })
 
+test('the dispatch comment: the policy line rides after the pins line, and both are found by prefix, not position (reval R2)', () => {
+  const text = renderDispatchComment({
+    attempt: 3,
+    childId: 'hz-task-12-a3-k3x9ab',
+    provider: 'example',
+    model: 'example-model-large',
+    why: 'one directory with a check',
+    brief: '3fa91c0b2d44',
+    pins: 'pins: task-12@111111111111',
+    policy: 'policy: gate@aaaaaaaaaaaa floor@bbbbbbbbbbbb rules@cccccccccccc checker@dddddddddddd',
+  })
+  assert.equal(text, [
+    '第 3 次派发 · hz-task-12-a3-k3x9ab · 模型 example/example-model-large，理由：one directory with a check · 简报 3fa91c0b2d44',
+    'pins: task-12@111111111111',
+    'policy: gate@aaaaaaaaaaaa floor@bbbbbbbbbbbb rules@cccccccccccc checker@dddddddddddd',
+  ].join('\n'))
+  assert.deepEqual(parseDispatchComment(text), {
+    attempt: 3,
+    childId: 'hz-task-12-a3-k3x9ab',
+    pins: 'pins: task-12@111111111111',
+    policy: 'policy: gate@aaaaaaaaaaaa floor@bbbbbbbbbbbb rules@cccccccccccc checker@dddddddddddd',
+    provider: 'example',
+    model: 'example-model-large',
+    why: 'one directory with a check',
+  })
+  // The pins line is no longer the last line: found by its prefix all the same.
+  const order = parseDispatchComment('第 1 次派发 · hz-t-a1-000000 · 简报 abc\npins: t@000000000000\npolicy: gate@aaaaaaaaaaaa\n尾部多出的一行')
+  assert.equal(order?.pins, 'pins: t@000000000000')
+  assert.equal(order?.policy, 'policy: gate@aaaaaaaaaaaa')
+})
+
+test('an old-format dispatch comment without a policy line parses, policy left out (reval §12 R2 exemption)', () => {
+  const old = parseDispatchComment('第 2 次派发 · hz-t-a2-000001 · 基线 main@abc1234 · 模型 p/m，理由：w · 简报 abcabcabcabc\npins: t@000000000000')
+  assert.deepEqual(old, {
+    attempt: 2,
+    childId: 'hz-t-a2-000001',
+    pins: 'pins: t@000000000000',
+    base: { branch: 'main', sha: 'abc1234' },
+    provider: 'p',
+    model: 'm',
+    why: 'w',
+  })
+  // Trailing blank lines and a multi-line tail that an old comment could carry.
+  const padded = parseDispatchComment('第 2 次派发 · hz-t-a2-000001 · 简报 abcabcabcabc\npins: t@000000000000\n\n另起的一行不是 pins\n')
+  assert.equal(padded?.pins, 'pins: t@000000000000')
+  assert.equal(padded?.policy, undefined)
+})
+
 test('nextAttempt and latestDispatch count only the harness\'s own dispatch comments', () => {
   const first = renderDispatchComment({ attempt: 1, childId: 'hz-t-a1-000000', provider: 'p', model: 'm', why: 'w', brief: 'a'.repeat(12), pins: renderPins([{ id: 't', digest: '0'.repeat(12) }]) })
   const second = renderDispatchComment({ attempt: 2, childId: 'hz-t-a2-000001', provider: 'p', model: 'm', why: 'w', brief: 'b'.repeat(12), pins: renderPins([{ id: 't', digest: '1'.repeat(12) }]) })
