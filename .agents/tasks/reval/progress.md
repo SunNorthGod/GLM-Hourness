@@ -56,3 +56,8 @@ Plan: .agents/tasks/reval/design.md 0.2, §12 batches R1-R4, probe, merge.
 ## metrics kind-list fix
 
 - The R3/R4 full chains were cut short at the jscpd gate inside test:1, so the spec files after it (metrics-schema among them) never ran; the final chain caught it: tests/metrics-schema.spec.ts pins every namespace's kinds against the metrics design's sections, and execute.policy-drift was missing from both. Fixed .agents/tasks/metrics/design.md (count 23 -> 24, name list gains policy-drift, field table gains the row, cited to reval design 0.2 §4.5) and the pinned list in tests/metrics-schema.spec.ts. Lesson recorded: a full chain's exit code must be checked even when the known ratchets print ok.
+
+## Probe verified
+
+- Probe 1: 566/585 - the policy-notice check failed on a checker-side read: the recorded request messages carry only source.kind (probe-llm.mjs summarizeMessage), so source.hournessExecute is not there to read; the notice itself WAS delivered (found in the kept run dir's requests.jsonl). The shipped code is correct; the payload shape stays pinned by the L2 test on the UserNotice object. Fixed the two reval checks to match the notice text instead.
+- Probe 2: 567/585 - all five reval checks pass, the 18 baseline labels unchanged, none of the failures is a reval check. Lock .llm/probe-lock taken with owner.txt, refreshed during the run, removed after. No rebuild during the probes. Logs: reval-probe-1.log, reval-probe-2.log (in this directory).
