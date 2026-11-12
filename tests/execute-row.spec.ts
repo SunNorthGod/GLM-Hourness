@@ -16,7 +16,8 @@ import { GLM_REASONING_EFFORTS } from '../src/glm-llm/models.ts'
 import { removalsOfRole } from '../src/execute/faces.ts'
 import { dispatchTool, createGraphCache, type DispatchDeps } from '../src/execute/dispatch.ts'
 import { dispatchDescription } from '../src/execute/examples.ts'
-import { forgetAttempt, registeredAttempt, type Attempt } from '../src/execute/attempts.ts'
+import { forgetAttempt, registeredAttempt, renderHandbackComment, REVIEW_TASK_ACCEPTANCE, type Attempt } from '../src/execute/attempts.ts'
+import type { PolicyClass } from '../src/execute/policy-digest.ts'
 import { REVIEW_SCHEMA } from '../src/execute/schemas.ts'
 import { apply as executeApply } from '../src/execute/index.ts'
 import { designHost, denied } from './design-host.ts'
@@ -519,4 +520,40 @@ test('removalsOfRole: the main agent keeps everything but the worker tools; a no
   const child = removalsOfRole({ main: false, dispatched: true })
   for (const name of WORKER_TOOL_NAMES) assert.ok(child.has(name), `a read-only child keeps ${name}`)
   assert.ok(child.has('graph_edit') && !child.has('graph_show'), `a read-only child's graph removals are wrong: ${[...child].join(', ')}`)
+})
+
+test('the review dispatch carries the reviewed task\'s 政策差 classes into the reviewer brief, and the gate does not refuse for them (reval §4.3, §8)', async () => {
+  const project = await presetProject([
+    WORK_TASK,
+    { type: 'task', id: 'review-1', title: '审查：Add the feed', parent: 'task-1', kind: 'review' as const, writeScope: [], acceptance: [REVIEW_TASK_ACCEPTANCE], edges: [{ type: 'source', to: 'task-1' }] },
+  ])
+  try {
+    mkdirSync(join(project.root, '.worktrees', 'hz-task-1'), { recursive: true })
+    const engine = openEngine(project.graphDir)
+    const handback = (attempt: number, childId: string, drift?: readonly PolicyClass[]): string => renderHandbackComment({
+      attempt, status: 'done', childId, commits: 1, head: 'abc123def456', files: 1, base: 'aaa111bbb222',
+      questions: 0, assumptions: 0, asked: 0, answered: 0, timeouts: 0, plans: 0, incoming: 0, lessons: 0,
+      ...(drift === undefined ? {} : { policyDrift: drift }), problems: [],
+    })
+    const write = async (text: string): Promise<void> => {
+      const written = await engine.apply('harness', { op: 'comment', id: 'task-1', text })
+      assert.ok(written.ok, JSON.stringify(written.ok ? {} : written.error))
+    }
+    await write(handback(1, 'hz-task-1-a1-aaaaaa', ['floor']))
+    const subagents = fakeSubagents()
+    const { deps, cleanup } = depsFor(project, subagents.service, { reviewTarget: () => ({ handedBack: true, stale: false }) })
+    const briefOf = (): string => (subagents.started.at(-1) as { request: { prompt: readonly { text?: string }[] } }).request.prompt[0]?.text ?? ''
+    const review = await dispatch(deps, project.root, { id: 'review-1', model: 'probe-model', why: 'review it', depth: 'full', depthWhy: 'probe: full' }) as { role: string, childId: string }
+    assert.equal(review.role, 'review', 'the gate does not refuse a review dispatch for a policy drift (§8)')
+    assert.ok(briefOf().includes('- Policy changed since the dispatch: floor. The forms now in force: gate/norm-merge-gate and floor/norm-review-floor — read with graph_show; rules — the rules board page. Judge the change against the forms as they stand now.'), briefOf().slice(briefOf().indexOf('## Context'), briefOf().indexOf('## Constraints')))
+    cleanup(review.childId)
+    // A later done handback without a drift: the next review brief carries no delta section.
+    await write(handback(2, 'hz-task-1-a2-bbbbbb'))
+    const second = await dispatch(deps, project.root, { id: 'review-1', model: 'probe-model', why: 'review again', depth: 'full', depthWhy: 'probe: full' }) as { childId: string }
+    assert.ok(!briefOf().includes('Policy changed since the dispatch'), 'the latest handback without a drift brings no delta')
+    cleanup(second.childId)
+  }
+  finally {
+    dispose(project)
+  }
 })

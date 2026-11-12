@@ -38,3 +38,11 @@ Plan: .agents/tasks/reval/design.md 0.2, §12 batches R1-R4, probe, merge.
 - Deviation from design §12 R3: the 'policy' payload-shape assertions live in tests/execute-handback.spec.ts (deepEqual on source.hournessExecute), not tests/execute-notice.spec.ts - that spec is the dispatch-status notice, a different subject; the handback rig owns the sent-notice capture.
 - jscpd: the first draft of the drift tests cloned a 6-line setup; extracted dispatchedWithPolicy helper - ratchet holds at 1.
 - Gates: build OK, preflight OK, full npm test green; eslint 73 / knip 18 / jscpd 1. L2 counts: handback 23.
+
+## R4 landed
+
+- brief.ts: ReviewBriefInput.policyDelta?: readonly string[]; renderReviewBrief writes the design 4.3 bullet verbatim in the context section (after the previous-round findings, before the project checks) when the delta is non-empty.
+- dispatch.ts: the taskReview branch passes reviewHandback.policyDrift (the latest done handback's parsed 政策差 classes) as policyDelta; reviewTargetOf untouched (policy drift is not stale, design §8).
+- tests: execute-brief.spec.ts +1 (delta section verbatim, in-context placement, absent when missing or empty; the review-input builder extracted and shared with the docs test after jscpd flagged the clone), execute-row.spec.ts +1 (staged done handback with 政策差: floor -> review dispatch passes the gate and the reviewer brief carries the delta; a later handback without a drift brings no delta).
+- Deviation from design §12 R4: the review-dispatch wiring test lives in tests/execute-row.spec.ts, not tests/execute-review.spec.ts - that spec is the review.ts pure functions (normalizeVerdict, converge) and has no dispatch rig; the row spec owns dispatchTool with fakeSubagents.
+- Gates: build OK, preflight OK, full npm test green; eslint 73 / knip 18 / jscpd 1. L2 counts: brief 31, row 12.

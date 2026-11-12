@@ -547,6 +547,8 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
               childId,
               depth,
               ...(reviewHandback === undefined ? {} : { handback: { ...(reviewHandback.head === undefined ? {} : { head: reviewHandback.head }), ...(reviewHandback.base === undefined ? {} : { base: reviewHandback.base }), status: reviewHandback.status, ...(reviewHandback.docs === undefined || reviewHandback.docs.length === 0 ? {} : { docs: reviewHandback.docs }) } }),
+              // The policy classes the latest done handback reports (reval design §4.3); the gate's staleness check is untouched (§8).
+              ...(reviewHandback?.policyDrift !== undefined && reviewHandback.policyDrift.length > 0 ? { policyDelta: reviewHandback.policyDrift } : {}),
               gateCommands,
             })
           : reviewedTrunk !== undefined

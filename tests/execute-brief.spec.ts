@@ -481,22 +481,35 @@ test('renderBrief: a task with no source decisions, no non-goals and no write sc
   assert.ok(text.includes('Why it exists: "goal-1" > this task.'))
 })
 
+/** The review brief input over the plain graph, with the handback's docs and policy delta as given. */
+const reviewBriefInput = (graph: LoadedGraph, over: { readonly docs?: readonly string[], readonly policyDelta?: readonly string[] } = {}) => ({
+  graph,
+  task: get(graph, 'review-1'),
+  reviewed: get(graph, 'task-1'),
+  childId: 'hz-review-1-a1-k3x9ab',
+  depth: 'full' as const,
+  handback: { head: 'abc123def456', base: 'aaa111bbb222', status: 'done', ...(over.docs === undefined ? {} : { docs: over.docs }) },
+  ...(over.policyDelta === undefined ? {} : { policyDelta: over.policyDelta }),
+  gateCommands: [] as readonly string[],
+})
+
 test('renderReviewBrief: the handback\'s docs lines ride in the context, and the checklist carries the component-docs rule verbatim (docs-at-hand design 0.3 §6.2)', () => {
   const graph = plain()
-  const input = (docs?: readonly string[]) => ({
-    graph,
-    task: get(graph, 'review-1'),
-    reviewed: get(graph, 'task-1'),
-    childId: 'hz-review-1-a1-k3x9ab',
-    depth: 'full' as const,
-    handback: { head: 'abc123def456', base: 'aaa111bbb222', status: 'done', ...(docs === undefined ? {} : { docs }) },
-    gateCommands: [] as readonly string[],
-  })
   const CHECKLIST = '- Component docs: if the handback names a component whose AGENTS.md was not updated, check that "still true" holds; a doc that carries a to-do list, progress or decision conclusions is misplaced. A stale doc is a non-blocking finding unless an acceptance item covers docs.'
-  const brief = renderReviewBrief(input(['src changed code but its AGENTS.md was not touched and the handback says nothing about it.', 'still true: site']))
+  const brief = renderReviewBrief(reviewBriefInput(graph, { docs: ['src changed code but its AGENTS.md was not touched and the handback says nothing about it.', 'still true: site'] }))
   assert.ok(brief.text.includes('- The handback says of the component docs:\n  - src changed code but its AGENTS.md was not touched and the handback says nothing about it.\n  - still true: site'))
   assert.ok(brief.text.includes(CHECKLIST))
-  const bare = renderReviewBrief(input())
+  const bare = renderReviewBrief(reviewBriefInput(graph))
   assert.ok(!bare.text.includes('The handback says of the component docs'), 'no docs line in the handback, nothing to carry')
   assert.ok(bare.text.includes(CHECKLIST), 'the checklist item is a standing rule')
+})
+
+test('renderReviewBrief: the latest handback\'s 政策差 classes ride as the policy delta section (reval §4.3)', () => {
+  const graph = plain()
+  const DELTA = '- Policy changed since the dispatch: floor, checker. The forms now in force: gate/norm-merge-gate and floor/norm-review-floor — read with graph_show; rules — the rules board page. Judge the change against the forms as they stand now.'
+  const brief = renderReviewBrief(reviewBriefInput(graph, { policyDelta: ['floor', 'checker'] }))
+  assert.ok(brief.text.includes(DELTA), brief.text.slice(brief.text.indexOf('## Context'), brief.text.indexOf('## Constraints')))
+  assert.ok(brief.text.indexOf('Policy changed since the dispatch') < brief.text.indexOf('## Constraints'), 'the delta rides in the context section')
+  assert.ok(!renderReviewBrief(reviewBriefInput(graph)).text.includes('Policy changed since the dispatch'), 'no delta, no section')
+  assert.ok(!renderReviewBrief(reviewBriefInput(graph, { policyDelta: [] })).text.includes('Policy changed since the dispatch'), 'an empty delta is no section')
 })

@@ -588,6 +588,8 @@ export interface ReviewBriefInput {
   readonly handback?: { readonly head?: string, readonly base?: string, readonly status: string, readonly docs?: readonly string[] }
   /** The previous round's blocking findings, one line each (§3.7.3). */
   readonly findings?: readonly string[]
+  /** The policy classes the latest handback reports as changed since the dispatch (reval design §4.3); the reviewer judges against the forms as they stand now. */
+  readonly policyDelta?: readonly string[]
   /** The commands of `norm-merge-gate`, for context. */
   readonly gateCommands: readonly string[]
 }
@@ -617,6 +619,7 @@ export function renderReviewBrief(input: ReviewBriefInput): Brief {
     `- The handback status was ${input.handback?.status ?? 'unknown'}; the task body carries its summary comment and the plan section.`,
     ...(input.handback?.docs !== undefined && input.handback.docs.length > 0 ? ['- The handback says of the component docs:', ...input.handback.docs.map(line => `  - ${line}`)] : []),
     ...(input.findings === undefined || input.findings.length === 0 ? [] : ['- Findings of the previous round (these come first):', ...input.findings.map(finding => `  - ${finding}`)]),
+    ...(input.policyDelta !== undefined && input.policyDelta.length > 0 ? [`- Policy changed since the dispatch: ${input.policyDelta.join(', ')}. The forms now in force: gate/norm-merge-gate and floor/norm-review-floor — read with graph_show; rules — the rules board page. Judge the change against the forms as they stand now.`] : []),
     `- Project checks for context: ${input.gateCommands.length === 0 ? 'none recorded' : input.gateCommands.join(' ; ')}.`,
     '',
     '## Constraints',
