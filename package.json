@@ -34,9 +34,9 @@
     "@standard-schema/spec": "*"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "4.0.5",
-    "@deepseek-ai/dsh-attachment": "0.2.1-rc.3",
-    "@deepseek-ai/dsh-llm": "0.2.1-rc.3",
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-attachment": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
     "@eslint/js": "10.0.1",
     "@types/react": "18.3.31",
     "esbuild": "0.28.2",
