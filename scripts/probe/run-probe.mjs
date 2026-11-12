@@ -36,8 +36,11 @@
  * person's recorded answer lifting it, and the passing round's evidence. The
  * docs scenario (glm-exec-docs, docs-at-hand design 0.3 §4.4, §6) runs the
  * component-doc sentence in two workers' briefs over two components, the gap
- * sentence and the verbatim docs line in the two handback comments, and the
- * reviewer's brief carrying the gap line and the checklist rule.
+ * sentence and the verbatim docs line in the two handback comments, the
+ * reviewer's brief carrying the gap line and the checklist rule, and the
+ * reval negative control: no policy change, so neither handback comment
+ * carries a 政策差 line, no policy notice goes out and the reviewer's brief
+ * has no policy delta section.
  * The merge scenarios (glm-exec-merge, glm-exec-merge-upstream) run the
  * merge gate: check_commit on the external check provider, the refused and
  * the checked trunk advances with their advances.jsonl lines, the task's
@@ -2964,6 +2967,7 @@ const EXEC_REVIEW = 'glm-exec-review'
 const execReviewSeeds = [
   ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
   ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/feed.json'], acceptance: ['the feed builds', 'every item has a title'], worktree: true }],
+  ['human', { type: 'norm', id: 'norm-merge-gate', title: '合入前检查', parent: 'goal-1', acceptance: ['`$ npm test`'] }],
   ['human', { type: 'norm', id: 'norm-review-floor', title: '必须全审的改动', parent: 'goal-1', acceptance: ['碰到必须全审：`files site/feed/`'] }],
 ]
 await stageGraph(EXEC_REVIEW, execReviewSeeds)
@@ -2987,6 +2991,8 @@ const execReviewDispatch = { id: '{review:task-1}', model: 'glm-5.3-flash', why:
 const execReview = designScenario(EXEC_REVIEW, 'glm-5.3-flash', () => [
   { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
   { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: REVIEW_WHY, quick: true, review: { depth: 'light', why: 'probe: one file' } } } },
+  // The person widens the floor while the worker runs (reval design §4.1): the dispatch digested the one-line floor, the handback compares against the two-line one.
+  { tool: { name: 'probe_human_write', arguments: { mutation: { op: 'edit', id: 'norm-review-floor', set: { acceptance: ['碰到必须全审：`files site/feed/`', '动了删除：`deletes`'] }, reason: 'probe: the floor gains a class while the worker runs' } } } },
   { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the worker hand back' } } },
   { tool: { name: 'dispatch_task', arguments: { ...execReviewDispatch, depth: 'light', depthWhy: 'probe: one file' } } },
   { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
@@ -3001,7 +3007,7 @@ const execReview = designScenario(EXEC_REVIEW, 'glm-5.3-flash', () => [
   { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
   { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the passing round finish' } } },
   { text: 'done', status: true },
-], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false'], others: [
+], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...dispatchRow(join(runDir, EXEC_REVIEW, 'dispatch.jsonl'))], others: [
   execReviewWorker,
   execReviewVerdict('APPROVED', ['acceptance:0'], []),
   execReviewVerdict('APPROVED', ['acceptance:0'], []),
@@ -4229,12 +4235,17 @@ function planChecks() {
 /**
  * E6 (M7 design §3.6, §3.7; scenario glm-exec-review): what the handback
  * processing and the review loop did on the real runtime. The main agent's
- * scripted steps, in order: focus, the worker dispatch, a sleep, the review
+ * scripted steps, in order: focus, the worker dispatch, the person's floor
+ * edit while the worker runs (reval design §4.1), a sleep, the review
  * dispatched light (refused), the review dispatched full (the voiding
  * verdict), a sleep (the void's re-dispatch and its second void), the
  * review again (the blocking round), a sleep, the review while stopped
  * (refused), the question to the person, the person's words, their recorded
- * answer, the review once more (the passing round), a sleep, done.
+ * answer, the review once more (the passing round), a sleep, done. The reval
+ * pins (design 0.2 §12): the person widens the floor while the worker runs,
+ * the dispatch comment carries the policy row, the handback names the 政策差
+ * with a policy notice to the holder, and the reviewer's brief carries the
+ * policy delta section.
  */
 function reviewChecks() {
   const name = EXEC_REVIEW
@@ -4257,14 +4268,25 @@ function reviewChecks() {
   const lightRefusal = main.find(step => result(step).includes('the change hits the must-review floor'))
   const stoppedRefusal = main.find(step => result(step).includes('waiting_human'))
   const recorded = main.find(step => result(step).includes('decided'))
+  // The reval pins (design 0.2 §12): the dispatch comment's policy row, the handback's 政策差, the reviewer brief's delta.
+  const workerDispatchComment = history.find(entry => entry.op === 'comment' && entry.actor === 'harness' && String(entry.text ?? '').startsWith('第 1 次派发'))
+  const dispatchTail = String(workerDispatchComment?.text ?? '').split('\n')
+  const POLICY_ROW = /^policy: (?:gate|floor|rules|checker)@[0-9a-f]{12}(?: (?:gate|floor|rules|checker)@[0-9a-f]{12}){3}$/
+  const reviewerChildId = (() => { try { return JSON.parse(result(main[6])).childId } catch { return undefined } })()
+  const firstReviewer = reviewerChildId === undefined ? [] : bySession(execReview, reviewerChildId)
+  const reviewerBrief = firstReviewer[0]?.messages.find(message => message.source === 'user')?.text ?? ''
+  const DELTA = '- Policy changed since the dispatch: floor. The forms now in force: gate/norm-merge-gate and floor/norm-review-floor — read with graph_show; rules — the rules board page. Judge the change against the forms as they stand now.'
   return [
     [`exec review: the worker's done handback lands as one summary comment with the counts, and the floor hit upgrades the light dispatch to 全审 with the annotation`, handbackComment !== undefined && /有效深浅 全审/.test(String(handbackComment.text)) && /审查改为全审：碰到必须全审清单第 0 类/.test(String(handbackComment.text)) && /问题 0 · 假设 0/.test(String(handbackComment.text)), String(handbackComment?.text ?? 'no handback comment').split('\n').slice(0, 4).join(' | ')],
     [`exec review: the review task exists under the task with the source edge, and the handback notice names its dispatch`, reviewNode !== undefined && reviewNode.parent === 'task-1' && (reviewNode.edges ?? []).some(edge => edge.type === 'source' && edge.to === 'task-1') && executeNotices.some(message => message.text.includes(`review dispatch of ${reviewId}`)), `review task ${reviewId ?? 'none'}: ${reviewNode?.status ?? 'none'}; notices ${executeNotices.length}`],
-    [`exec review: the review dispatched light is refused because the change hits the must-review floor`, lightRefusal !== undefined && result(lightRefusal).includes('depth full'), result(lightRefusal ?? main[3]).slice(0, 160)],
+    [`exec review: the review dispatched light is refused because the change hits the must-review floor`, lightRefusal !== undefined && result(lightRefusal).includes('depth full'), result(lightRefusal ?? main[5]).slice(0, 160)],
+    [`exec review (reval): the dispatch comment ends with the pins line and the policy line, four classes each 12 hex digits`, dispatchTail.at(-2)?.startsWith('pins: ') === true && POLICY_ROW.test(dispatchTail.at(-1) ?? ''), dispatchTail.slice(-2).join(' | ') || 'no dispatch comment'],
+    [`exec review (reval): the handback names the 政策差 and the holder is told by a policy notice (the done flow itself is the other checks' subject)`, String(handbackComment?.text ?? '').includes('政策差：floor') && executeNotices.some(message => message.source.hournessExecute?.event === 'policy' && message.text.includes('floor')), String(handbackComment?.text ?? 'no handback comment').split('\n').filter(line => line.startsWith('政策差')).join(' | ') || 'no 政策差 line'],
+    [`exec review (reval): the reviewer's brief carries the policy delta with the class the handback named`, reviewerBrief.includes(DELTA), `brief ${reviewerBrief.length} chars, delta ${reviewerBrief.includes('Policy changed since the dispatch')}`],
     [`exec review: the first verdict covers one item, the round is voided and re-dispatched with the same model and why, and the second void goes back without another dispatch`, voidComments.length === 1 && dispatchComments.length >= 2 && String(dispatchComments[1]?.text ?? '').includes(String((/模型 (glm-probe\/[^，]+)/.exec(String(dispatchComments[0]?.text ?? '')) ?? [])[1] ?? '¶')) && String(dispatchComments[1]?.text ?? '').includes(REVIEW_WHY) && executeNotices.some(message => message.text.includes('voided')), `${voidComments.length} void(s); ${dispatchComments.map(entry => String(entry.text).split('\n')[0]).join(' | ') || 'no dispatches'}`],
     [`exec review: the blocking verdict is normalized: the finding naming no accepted criterion is demoted, the real one blocks`, String(reviewHistory.find(entry => entry.op === 'comment' && String(entry.text ?? '').startsWith('审查交回'))?.text ?? '').includes('挡路 1 · 不挡路 1 · 改为不挡路 1 条'), String(reviewHistory.find(entry => entry.op === 'comment' && String(entry.text ?? '').startsWith('审查交回'))?.text ?? 'no verdict comment').split('\n')[0]],
     [`exec review: the blocking round stops at once (the seed is the person's word): the round comment carries · 停下 and the stop draft reaches the main agent`, roundComments[0] !== undefined && String(roundComments[0].text).endsWith('· 停下') && /^第 1 轮：挡路 1，不挡路 1 · 全审 · /.test(String(roundComments[0].text)) && stopDrafts.length >= 1 && stopDrafts.some(message => message.text.includes('review rounds, 1 blocking findings left') && message.text.includes('propose_to_human')), `${roundComments.map(entry => String(entry.text)).join(' | ') || 'no rounds'}; drafts ${stopDrafts.length}`],
-    [`exec review: a dispatch while stopped is refused waiting_human, and the recorded answer of the person decides the question with their words as the relay`, stoppedRefusal !== undefined && recorded !== undefined && questionNode?.status === 'done' && String(questionNode.history.at(-1)?.relay ?? '').includes('先修挡路的那一处'), `${result(stoppedRefusal ?? main[8]).slice(0, 80)} | ${String(questionNode?.history.at(-1)?.relay ?? 'no relay')} | ${result(recorded ?? main[11]).slice(0, 60)}`],
+    [`exec review: a dispatch while stopped is refused waiting_human, and the recorded answer of the person decides the question with their words as the relay`, stoppedRefusal !== undefined && recorded !== undefined && questionNode?.status === 'done' && String(questionNode.history.at(-1)?.relay ?? '').includes('先修挡路的那一处'), `${result(stoppedRefusal ?? main[10]).slice(0, 80)} | ${String(questionNode?.history.at(-1)?.relay ?? 'no relay')} | ${result(recorded ?? main[13]).slice(0, 60)}`],
     [`exec review: after the answer the pass round runs: the review task is marked done with the patch-id evidence when the round settles (the pass path itself is pinned by tests/execute-handback.spec against the real engine and git)`, reviewNode !== undefined && (reviewNode.status === 'done' || (roundComments.length >= 1 && /^第 1 轮：挡路 1/.test(String(roundComments[0].text)))), `status ${reviewNode?.status ?? 'none'}; rounds ${roundComments.map(entry => String(entry.text).slice(0, 30)).join(' | ') || 'none'}`],
     [`exec review: the run exits clean with nothing from the execute row on stderr`, execReview.status === 0 && !stderrOf(name).includes('dsh-glm-hourness/execute'), `exit ${execReview.status}; main ${main.length} step(s)`],
   ]
@@ -4311,6 +4333,8 @@ function docsChecks() {
     [`exec docs: worker one handed back without the docs field and the summary comment says the gap`, first !== undefined && String(first.text).includes(`Docs: ${GAP}`), String(first?.text ?? 'no handback comment').split('\n').filter(line => line.startsWith('Docs:')).join(' | ') || 'no Docs line'],
     [`exec docs: worker two's docs line is recorded verbatim and raises no gap for the component it names`, second !== undefined && String(second.text).includes('Docs: still true: site/rss/AGENTS.md') && !String(second.text).includes('changed code but its AGENTS.md was not touched'), String(second?.text ?? 'no handback comment').split('\n').filter(line => line.startsWith('Docs:')).join(' | ') || 'no Docs line'],
     [`exec docs: the reviewer starts from the gap line in its context and the component-docs rule on its checklist verbatim`, reviewBrief.includes(`- The handback says of the component docs:\n  - ${GAP}`) && reviewBrief.includes(CHECKLIST), `review brief ${reviewBrief.length} chars, context line ${reviewBrief.includes(GAP)}, checklist ${reviewBrief.includes('Component docs: if the handback names')}`],
+    [`exec docs (reval negative): no policy change between the dispatches and the handbacks, so neither handback comment carries a 政策差 line and no policy notice goes out`, first !== undefined && second !== undefined && !String(first.text).includes('政策差') && !String(second.text).includes('政策差') && !notices.some(message => message.source.hournessExecute?.event === 'policy'), `first 政策差 ${String(first?.text ?? '').includes('政策差')}, second 政策差 ${String(second?.text ?? '').includes('政策差')}`],
+    [`exec docs (reval negative): the reviewer brief has no policy delta section`, reviewBrief !== '' && !reviewBrief.includes('Policy changed since the dispatch'), `review brief ${reviewBrief.length} chars, delta ${reviewBrief.includes('Policy changed since the dispatch')}`],
     [`exec docs: the review of task-1 is dispatched and alive when the run ends (the pass path itself is pinned by tests/execute-handback.spec against the real engine and git; the headless runner's shutdown timing decides nothing here, E6), and the run exits clean with nothing from the execute row on stderr`, reviewNode !== undefined && ['approved', 'doing', 'done'].includes(reviewNode.status) && execDocs.status === 0 && !stderrOf(name).includes('dsh-glm-hourness/execute'), `review ${reviewId ?? 'none'}: ${reviewNode?.status ?? 'none'}; exit ${execDocs.status}; stderr ${stderrOf(name).split('\n').find(line => line.includes('execute')) ?? 'none'}`],
   ]
 }
