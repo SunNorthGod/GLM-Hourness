@@ -66,3 +66,11 @@ Plan: .agents/tasks/reval/design.md 0.2, §12 batches R1-R4, probe, merge.
 
 - origin/main merged into reval again (f0c0cd77): worker-git index-plumbing denial (5a3c5d53, another lane) + docs. One test-import conflict in tests/execute-row.spec.ts resolved (union of both sides' imports). Full chain green after the merge (227 specs, ratchets 73/18/1). Probe 3 on the merged tree: 567/585, 18 baseline FAILs, 0 reval FAILs - the merged world validates through the exec scenarios, which exercise worker-git heavily.
 - Docs: design.md §13 implementation record; docs/HANDOFF.md §10 item 5 rewritten (reval implemented and merged; nowait/comms-split stay pending) and the tail's question-40 marked decided.
+
+## Merged and pushed (lane complete)
+
+- Merged main twice more while it moved under the lane: f0c0cd77 (worker-git index-plumbing denial from the sweep line + docs) and 744ff83e (the nowait lane's merge: main-agent-no-wait, its 7 probe pins, their HANDOFF item 5 rewrite and Start-Sleep-to-ping main-script pacing). HANDOFF item 5 conflict resolved by combining both lanes' records; the exec-review pacing step took the ping form of main and kept the floor-edit step.
+- Gates after each merge: build/preflight/test green (227 spec files), ratchets 73/18/1. Probe 3 (post worker-git merge): 567/585. Probe 4 (combined nowait+reval tree): 574/592 - 567 reval-side passes + 7 nowait pins, 18 baseline FAIL labels identical, 0 reval or nowait failures. Lock taken/refreshed/removed cleanly each run; no rebuild inside any probe run.
+- Main fast-forwarded to reval (744ff83e) in the main checkout; gates rerun there (build/preflight/test green, tracked tree clean around the build, build-info commit = 744ff83). Pushed: origin (gitee) main d7caf6d4..744ff83e and github main d7caf6d4..744ff83e.
+- Lane commits on reval: R1 037f127a, R2 e3c7b5d2, R3 1ae02a9e, R4 bb7ae3e7, probe pins 05776941, metrics kind-list fix 39b89749, probe check fix 2684dd5e, docs eddde836, merges 18a4c2ce/f0c0cd77/744ff83e.
+- L2 counts: execute-policy 8, execute-attempts 12, execute-reconcile 12, execute-row 12, execute-handback 23, execute-brief 31, metrics-schema 10.
