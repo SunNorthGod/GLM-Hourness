@@ -1,7 +1,7 @@
 {
   "id": "glm-house",
   "type": "goal",
-  "title": "GLM 住进 DSH：以 ZCode 3.16.3 的训练分布工作，质量与官方 ZCode 一致",
+  "title": "GLM 住进 DSH：以 ZCode 3.17.1 的训练分布工作，质量与官方 ZCode 一致",
   "status": "done",
   "stage": "execute",
   "body": "GLM-Hourness 里「House」的一半，由 GLM 通道包 `dsh-glm-zcode` 实现。模型权重不可改，能改的是模型所处的环境：通道让服务端把请求当作 ZCode 3.16.3 的请求接受与计费，方言让模型看到 ZCode 的提示词、工具面与提醒（CHARTER.md §1、§3.1）。",
@@ -95,6 +95,19 @@
       "actor": "llm",
       "op": "comment",
       "text": "对账（2026-11-13）：标题仍写 3.16.3，基线 2026-10-30 起已是 3.17.1（zcode-3171-follow）。标题修正属目标的编辑需人的原话转述，待主人下次带话一并改。其余账实已对齐（终审审计备注 6）。"
+    },
+    {
+      "at": "2026-11-12T17:40:39.350Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "人同意改标题：基线 2026-10-30 起为 3.17.1（zcode-3171-follow）",
+      "relay": "发版不急，视频再说，其余按你说的来",
+      "changes": {
+        "title": {
+          "from": "GLM 住进 DSH：以 ZCode 3.16.3 的训练分布工作，质量与官方 ZCode 一致",
+          "to": "GLM 住进 DSH：以 ZCode 3.17.1 的训练分布工作，质量与官方 ZCode 一致"
+        }
+      }
     }
   ]
 }
