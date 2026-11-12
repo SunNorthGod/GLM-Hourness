@@ -23,6 +23,7 @@ export type MetricEvent =
   | { readonly event: 'execute.ask', readonly task: string, readonly waitedMs: number, readonly outcome: 'answered' | 'timeout' }
   | { readonly event: 'execute.handback', readonly task: string, readonly attempt: number, readonly status: string, readonly stopReason?: string, readonly commits: number, readonly files: number, readonly ms: number, readonly outside: number }
   | { readonly event: 'execute.review-depth', readonly task: string, readonly declared: 'full' | 'light' | 'skip', readonly effective: 'full' | 'light' | 'skip', readonly hit?: string, readonly unparsed?: boolean }
+  | { readonly event: 'execute.policy-drift', readonly task: string, readonly attempt: number, readonly classes: readonly string[] }
   | { readonly event: 'execute.review', readonly task: string, readonly round: number, readonly depth: 'full' | 'light', readonly model: string, readonly blocking: number, readonly nonBlocking: number, readonly demoted: number }
   | { readonly event: 'execute.stop', readonly node: string, readonly kind: 'review' | 'check' | 'acceptance', readonly rounds: number }
   | { readonly event: 'execute.check', readonly commit: string, readonly tasks: readonly string[], readonly passed: boolean, readonly kind: 'commands' | 'only' | 'trunk', readonly commands: readonly { readonly line: string, readonly exit: number, readonly ms: number }[], readonly setup: boolean, readonly lockWaitMs: number }

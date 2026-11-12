@@ -55,7 +55,7 @@ import { communicationOf, forgetAttempt, parseDispatchComment, parseHandbackComm
 import type { CommandRunner, GraphCache } from './dispatch.ts'
 import { sha256Hex } from './digest.ts'
 import { floorHits, parseFloor, type FloorCall, type FloorChange } from './floor.ts'
-import type { RulesRead } from './policy-digest.ts'
+import { policyDigests, policyStaleness, type RulesRead } from './policy-digest.ts'
 import { rulesPaths } from '../rules/store.ts'
 import { emitMetric } from './metrics.ts'
 import { acceptanceRounds, isDesignReview } from '../graph/execute-stage.ts'
@@ -280,7 +280,7 @@ async function comment(deps: HandbackDeps, dir: string, nodeId: string, text: st
 }
 
 /** The notice of the execute row to the current holder (§3.4.3); best effort, a failed delivery is said in the health. */
-function notify(deps: HandbackDeps, dir: string, event: 'handback' | 'review' | 'stale', attempt: Attempt, summary: string, text: string): void {
+function notify(deps: HandbackDeps, dir: string, event: 'handback' | 'review' | 'stale' | 'policy', attempt: Attempt, summary: string, text: string): void {
   const notice: UserNotice = createUserNotice('glm-hourness-execute', summary, text, { hournessExecute: { event, task: attempt.node, attempt: attempt.attempt, childId: attempt.childId } })
   const holder = mainAgentOf(holderHome(deps.lookup), dir)
   const way = holder === undefined ? undefined : deliver(deps.lookup, holder.sessionId, notice)
@@ -357,6 +357,8 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
   const status = typeof structured.status === 'string' && ['done', 'blocked', 'partial', 'plan-pending'].includes(structured.status) ? structured.status : 'partial'
   // The stale check (§3.6.2 step 6): after the summary and the lessons, before the done flow.
   const stale = staleness(graph, attempt.pins, sha256Hex)
+  // The policy comparison (reval design §4.1): the dispatch's policy line against the forms as they stand now. A dispatch that predates the digest carries no line and is exempt (§4.2).
+  const drift = attempt.policy === undefined ? [] : policyStaleness(attempt.policy, policyDigests(graph, await rulesReadOf(projectRoot), sha256Hex))
   // The effective depth (§3.7.1) of a done handback: the change and the command record against the floor.
   let depth: '全审' | '轻审' | undefined
   let floorHit: string | undefined
@@ -434,6 +436,7 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
     ...(lessonsResult.rejected === undefined ? {} : { lessonsRejected: lessonsResult.rejected }),
     ...(depth === undefined ? {} : { depth }),
     ...(floorHit === undefined ? {} : { floorHit }),
+    ...(drift.length > 0 ? { policyDrift: drift.map(change => change.id) } : {}),
     ...(docs.length > 0 ? { docs } : {}),
     problems,
   }
@@ -442,6 +445,12 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
   if (lessonsResult.fallback !== undefined) {
     const written = await comment(deps, attempt.graphDir, node.id, lessonsResult.fallback)
     if (!written) deps.report(attempt.parentSession, 'degraded', `候选经验的退路批注写不进图（任务 ${node.id}）；候选经验没有记到任何地方`)
+  }
+  // The policy drift (reval design §4.5): informational, the done flow is not touched. The handback comment above already names the classes.
+  if (drift.length > 0) {
+    const classes = drift.map(change => change.id)
+    notify(deps, attempt.graphDir, 'policy', attempt, `Task ${node.id} handed back under a changed policy: ${classes.join(', ')}.`, `The policy the task was dispatched under changed while it ran: ${classes.join(', ')}. The handback comment names the classes; the next review brief carries the same note. Judge the work against the forms as they stand now — a review dispatch is not refused for this, and the task does not restart.`)
+    emitMetric({ event: 'execute.policy-drift', task: node.id, attempt: attempt.attempt, classes })
   }
   if (stale.length > 0) {
     // Step 6: the pins went stale — the work cannot reach the trunk, stop here.

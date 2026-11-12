@@ -15,6 +15,7 @@ import { isGlmModel } from '../shared/route.ts'
 import { staleness } from '../graph/pins.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import type { GraphNode } from '../graph/schema.ts'
+import { parsePolicyDrift, renderPolicyDrift, type PolicyClass } from './policy-digest.ts'
 import { repoRelative, within } from './scope.ts'
 
 type AttemptRole = 'worker' | 'review' | 'acceptance-review' | 'check'
@@ -376,6 +377,8 @@ export interface HandbackComment {
   readonly depth?: '全审' | '轻审'
   /** The floor hit that made the depth full, one line. */
   readonly floorHit?: string
+  /** The policy classes that changed since the dispatch (reval design §4.1), as the 政策差 line carries them. */
+  readonly policyDrift?: readonly PolicyClass[]
   /** The component-doc lines (docs-at-hand design 0.3 §6.2): the worker's own `docs` line verbatim, then one sentence per gap. Rendered each with the `Docs: ` prefix. */
   readonly docs?: readonly string[]
   /** The semantic-validation problems, one line each. */
@@ -388,6 +391,7 @@ export function renderHandbackComment(entry: HandbackComment): string {
     `提交 ${entry.commits} 个${entry.head === undefined ? '' : `（最新 ${entry.head}）`} · 文件 ${entry.files} 个 · 报告 ${entry.report ?? '无'}${entry.base === undefined ? '' : ` · 基线 ${entry.base}`}`,
     `问题 ${entry.questions} · 假设 ${entry.assumptions} · 问了 ${entry.asked} 次（答 ${entry.answered}、超时 ${entry.timeouts}）· 计划 ${entry.plans} 版 · 主 Agent 发来 ${entry.incoming} 条 · 候选经验 ${entry.lessons} 条${entry.lessonsRejected === undefined ? '' : `（拒 ${entry.lessonsRejected}）`}`,
     ...(entry.depth === undefined ? [] : [`有效深浅 ${entry.depth}${entry.floorHit === undefined ? '' : `（${entry.floorHit}）`}`]),
+    ...(entry.policyDrift === undefined || entry.policyDrift.length === 0 ? [] : [renderPolicyDrift(entry.policyDrift)]),
     ...(entry.docs ?? []).map(line => `Docs: ${line}`),
     ...entry.problems.map(problem => `校验不过：${problem}`),
   ]
@@ -410,6 +414,7 @@ export function parseHandbackComment(text: string): HandbackComment | undefined 
   const depth = lines.length > 3 ? HANDBACK_DEPTH.exec(lines[3]) : null
   const tail = lines.slice(depth === null ? 3 : 4)
   const docs = tail.filter(line => line.startsWith('Docs: ')).map(line => line.slice('Docs: '.length))
+  const drift = parsePolicyDrift(text)
   return {
     attempt: Number(head[1]),
     status: head[2],
@@ -429,6 +434,7 @@ export function parseHandbackComment(text: string): HandbackComment | undefined 
     lessons: Number(counts[8]),
     ...(counts[9] === undefined ? {} : { lessonsRejected: Number(counts[9]) }),
     ...(depth === null || depth === undefined ? {} : { depth: depth[1] as '全审' | '轻审', ...(depth[2] === undefined ? {} : { floorHit: depth[2] }) }),
+    ...(drift === undefined ? {} : { policyDrift: drift }),
     ...(docs.length > 0 ? { docs } : {}),
     problems: tail.filter(line => line.startsWith('校验不过：')).map(line => line.slice('校验不过：'.length)),
   }

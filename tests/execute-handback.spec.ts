@@ -28,7 +28,8 @@ import type { GraphNode } from '../src/graph/schema.ts'
 import type { AgentLike, UserNotice } from '../src/shared/dsh-min.ts'
 import { createGraphCache, dispatchTool, realCommandRunner, type DispatchDeps, type GraphCache } from '../src/execute/dispatch.ts'
 import { setMetricSink, type MetricEvent } from '../src/execute/metrics.ts'
-import { startHandback, type HandbackDeps } from '../src/execute/handback.ts'
+import { rulesReadOf, startHandback, type HandbackDeps } from '../src/execute/handback.ts'
+import { policyDigests, renderPolicyLine } from '../src/execute/policy-digest.ts'
 import { createGit } from '../src/execute/git.ts'
 import { sha256Hex } from '../src/execute/digest.ts'
 import { forgetAttempt, parseHandbackComment, recordCommunication, registerAttempt, registeredAttempt, renderDispatchComment, REVIEW_TASK_ACCEPTANCE, type Attempt } from '../src/execute/attempts.ts'
@@ -239,6 +240,145 @@ test('a floor hit upgrades a light dispatch; the comment names the hit and the r
   }
   finally {
     forgetAttempt(attempt.childId)
+    rmSync(project.root, { recursive: true, force: true })
+  }
+})
+
+// ---- the policy drift of a handback (reval design §4.1, §4.5) ----
+
+/** Seed the must-review floor the way the execution specs do (a proposal the harness approves directly). */
+async function seedFloor(project: Project, acceptance: readonly string[]): Promise<void> {
+  const engine = openEngine(project.graphDir)
+  const seeded = await engine.apply('human', { op: 'propose', reason: 'test seed', node: { type: 'norm', id: 'norm-review-floor', title: '必须全审的改动', parent: 'goal-1', acceptance } })
+  assert.ok(seeded.ok, `the floor seed failed: ${JSON.stringify(seeded.ok ? {} : seeded.error)}`)
+}
+
+/** The worker attempt of a dispatch whose policy line is the one the project's graph and rules file produce as they stand (reval tests). */
+async function dispatchedWithPolicy(project: Project, childId: string, over: Partial<Attempt> = {}): Promise<Attempt> {
+  const graph = await openEngine(project.graphDir).load()
+  const line = renderPolicyLine(policyDigests(graph, await rulesReadOf(project.root), sha256Hex))
+  assert.ok(line !== undefined && line.includes('checker@'))
+  return workerAttempt(project, childId, { policy: line, ...over })
+}
+
+test('a policy change between the dispatch and the handback: the comment names the class, the notice is policy with its payload, the done flow continues (reval §4.1)', async () => {
+  const project = await presetProject()
+  try {
+    const attempt = await dispatchedWithPolicy(project, 'hz-task-1-a1-eeeeee')
+    const rig1 = await rig(project, attempt)
+    try {
+      await seedFloor(project, ['碰到必须全审：`files src/guarded/`'])
+      const metrics: MetricEvent[] = []
+      const previous = setMetricSink(event => { metrics.push(event) })
+      try {
+        recordCounts(attempt.childId)
+        const { graph: after } = await runDoneHandback(rig1, project, attempt.childId)
+        const comment = handbacksOf(after.nodes.get('task-1')!).at(-1)
+        assert.ok(comment !== undefined)
+        assert.deepEqual(comment.policyDrift, ['floor'], 'the parsed comment names the class that changed')
+        const reviewTask = [...after.nodes.values()].find(entry => entry.parent === 'task-1' && entry.kind === 'review')
+        assert.ok(reviewTask !== undefined, 'the done flow was not interrupted: the review task exists')
+        const policyNotice = rig1.sent.find(notice => (notice.source.hournessExecute as { event?: string }).event === 'policy')
+        assert.ok(policyNotice !== undefined, 'the holder was told')
+        assert.deepEqual(policyNotice.source.hournessExecute, { event: 'policy', task: 'task-1', attempt: 1, childId: attempt.childId })
+        assert.ok(policyNotice.content[0].text.includes('floor'), String(policyNotice.content[0].text))
+        assert.ok(rig1.sent.at(-1)?.content[0].text.includes('handed back done'), 'the done notice still went out')
+        assert.ok(rig1.emitted.some(entry => entry.event === 'hourness.handback'), 'the loop board still got the handback')
+        const drift = metrics.find(event => event.event === 'execute.policy-drift')
+        assert.ok(drift !== undefined && drift.event === 'execute.policy-drift' && drift.task === 'task-1' && drift.attempt === 1)
+        assert.deepEqual(drift.classes, ['floor'])
+      }
+      finally {
+        setMetricSink(previous)
+      }
+    }
+    finally {
+      forgetAttempt(attempt.childId)
+    }
+  }
+  finally {
+    rmSync(project.root, { recursive: true, force: true })
+  }
+})
+
+test('no policy change: the comment carries no 政策差 line and no policy notice goes out; a dispatch without a policy line is exempt (reval §4.2)', async () => {
+  const project = await presetProject()
+  try {
+    const attempt = await dispatchedWithPolicy(project, 'hz-task-1-a1-ffffff')
+    const rig1 = await rig(project, attempt)
+    try {
+      recordCounts(attempt.childId)
+      const { graph: after, comment } = await runDoneHandback(rig1, project, attempt.childId)
+      assert.equal(comment.policyDrift, undefined)
+      assert.ok(!after.nodes.get('task-1')!.history.some(entry => entry.op === 'comment' && typeof entry.text === 'string' && entry.text.includes('政策差')))
+      assert.equal(rig1.sent.find(notice => (notice.source.hournessExecute as { event?: string }).event === 'policy'), undefined)
+    }
+    finally {
+      forgetAttempt(attempt.childId)
+    }
+    // The same change against a dispatch that predates the digest: exempt, nothing reported.
+    const withFloor = await presetProject()
+    try {
+      await seedFloor(withFloor, ['碰到必须全审：`files src/guarded/`'])
+      const bare = workerAttempt(withFloor, 'hz-task-1-a1-ffffff', { attempt: 2 })
+      const rig2 = await rig(withFloor, bare)
+      try {
+        recordCounts(bare.childId)
+        const { graph: after, comment } = await runDoneHandback(rig2, withFloor, bare.childId)
+        assert.equal(comment.policyDrift, undefined)
+        assert.equal(rig2.sent.find(notice => (notice.source.hournessExecute as { event?: string }).event === 'policy'), undefined)
+        assert.ok([...after.nodes.values()].some(entry => entry.parent === 'task-1' && entry.kind === 'review'))
+      }
+      finally {
+        forgetAttempt(bare.childId)
+      }
+    }
+    finally {
+      rmSync(withFloor.root, { recursive: true, force: true })
+    }
+  }
+  finally {
+    rmSync(project.root, { recursive: true, force: true })
+  }
+})
+
+test('the rules file unreadable at the handback: a recorded digest reports rules, a dispatch that could not read it reports nothing (reval §7)', async () => {
+  const project = await presetProject()
+  try {
+    mkdirSync(join(project.root, 'docs', 'rules'), { recursive: true })
+    writeFileSync(join(project.root, 'docs', 'rules', 'rules.json'), '{"version":2,"rules":{}}\n')
+    const graph = await openEngine(project.graphDir).load()
+    const line = renderPolicyLine(policyDigests(graph, await rulesReadOf(project.root), sha256Hex))
+    assert.ok(line !== undefined && line.includes('rules@'))
+    // The file becomes unreadable before the handback: the recorded digest reports the class.
+    rmSync(join(project.root, 'docs', 'rules', 'rules.json'))
+    mkdirSync(join(project.root, 'docs', 'rules', 'rules.json'))
+    const attempt = workerAttempt(project, 'hz-task-1-a1-ababab', { policy: line })
+    const rig1 = await rig(project, attempt)
+    try {
+      recordCounts(attempt.childId)
+      const { comment } = await runDoneHandback(rig1, project, attempt.childId)
+      assert.deepEqual(comment.policyDrift, ['rules'])
+    }
+    finally {
+      forgetAttempt(attempt.childId)
+    }
+    // A dispatch that could not read the file either carries no rules segment: nothing to compare, nothing reported.
+    const unreadableLine = renderPolicyLine(policyDigests(graph, { kind: 'unreadable' }, sha256Hex))
+    assert.ok(unreadableLine !== undefined && !unreadableLine.includes('rules@'))
+    const attempt2 = workerAttempt(project, 'hz-task-1-a2-ababab', { attempt: 2, policy: unreadableLine })
+    const rig2 = await rig(project, attempt2)
+    try {
+      recordCounts(attempt2.childId)
+      const { comment } = await runDoneHandback(rig2, project, attempt2.childId)
+      assert.equal(comment.policyDrift, undefined)
+      assert.equal(rig2.sent.find(notice => (notice.source.hournessExecute as { event?: string }).event === 'policy'), undefined)
+    }
+    finally {
+      forgetAttempt(attempt2.childId)
+    }
+  }
+  finally {
     rmSync(project.root, { recursive: true, force: true })
   }
 })

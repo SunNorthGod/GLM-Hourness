@@ -553,6 +553,9 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
             ? renderAcceptanceBrief({ graph: targetGraph, goal: target, childId, trunk: reviewedTrunk, gateCommands })
             : renderDesignReviewBrief({ graph: targetGraph, childId, parent: agent.id, task: target })
 
+      // The policy the work is judged by, at dispatch time (reval design §4.1): the dispatch comment and the register carry it. Computed before the activation starts, so the register entry follows the start in the same synchronous stretch (§3.1.4).
+      const policy = renderPolicyLine(policyDigests(targetGraph, await rulesReadOf(project), sha256Hex))
+
       // The activation (§3.1.2 step 8); a full activation budget is slots_full like any other full slot.
       const outputSchema = isWorkerRole ? await schemaFor(target, project) : REVIEW_SCHEMA
       const cwdOf = taskReview && reviewedWorktree !== undefined ? resolve(project, reviewedWorktree) : worktree === undefined ? project : resolve(project, worktree.path)
@@ -586,8 +589,6 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         refuse('invalid', `the subagent could not be started: ${message}`, 'fix what the message names and send the call again')
       }
       const pins = renderPins(pinsOf(targetGraph, target, sha256Hex))
-      // The policy the work is judged by, at dispatch time (reval design §4.1): the dispatch comment and the register carry it.
-      const policy = renderPolicyLine(policyDigests(targetGraph, await rulesReadOf(project), sha256Hex))
       const record: Attempt = {
         childId,
         role,

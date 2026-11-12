@@ -1,5 +1,6 @@
 /**
- * The execution row's twenty-one kinds (M7 0.6 §3.16, §4.5): field names
+ * The execution row's twenty-two kinds (M7 0.6 §3.16, §4.5; the
+ * `execute.policy-drift` kind from the reval design §4.5): field names
  * from that section; the value lists of roles, operations, codes and stop
  * reasons stay in the M7 design, so those fields are ids.
  */
@@ -54,6 +55,11 @@ const TABLES = [
     { name: 'effective', type: 'id' },
     { name: 'floors', type: 'id[]' },
     { name: 'unparsed', type: 'bool' },
+  ] },
+  { name: 'execute.policy-drift', fields: [
+    { name: 'task', type: 'id' },
+    { name: 'attempt', type: 'int' },
+    { name: 'classes', type: 'id[]' },
   ] },
   { name: 'execute.review', fields: [
     { name: 'task', type: 'id' },

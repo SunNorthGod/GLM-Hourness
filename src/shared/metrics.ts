@@ -232,6 +232,7 @@ export interface ExecuteBodies {
   'execute.ask': { readonly task: string, readonly waitedMs: number, readonly result: string }
   'execute.handback': { readonly task: string, readonly n: number, readonly status: string, readonly stopReason: string, readonly commits: number, readonly files: number, readonly ms: number, readonly outside: number }
   'execute.review-depth': { readonly task: string, readonly declared: string, readonly effective: string, readonly floors: readonly string[], readonly unparsed: boolean }
+  'execute.policy-drift': { readonly task: string, readonly attempt: number, readonly classes: readonly string[] }
   'execute.review': { readonly task: string, readonly round: number, readonly depth: string, readonly model: string, readonly blocking: number, readonly nonBlocking: number, readonly downgraded: number }
   'execute.stop': { readonly node: string, readonly kind: string, readonly rounds: number }
   'execute.check': { readonly commit: string, readonly task?: string, readonly ok: boolean, readonly kind: string, readonly cmds: readonly number[], readonly exits: readonly number[], readonly ms: readonly number[], readonly setup: boolean, readonly lockMs: number }
