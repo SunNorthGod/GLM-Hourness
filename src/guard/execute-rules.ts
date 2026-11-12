@@ -166,6 +166,30 @@ const CONFIG_READS = new Set(['--get', '--get-all', '--get-regexp', '--list', '-
 /** The flags of `git checkout` and `git switch` that create or move a branch (§3.2.4 step 3). */
 const BRANCH_CREATE = new Set(['-b', '-B', '-c', '-C', '--branch', '--force-create', '--copy', '--force-copy'])
 
+/**
+ * The plumbing subcommands that write the index directly (§3.2.4): the only
+ * index a worker may write is its own worktree's, and a dispatch without a
+ * worktree has none of its own — its calls resolve to the main checkout's
+ * index, the state the main agent and the merge checks read.
+ */
+const INDEX_WRITE_SUBS: ReadonlySet<string> = new Set(['read-tree', 'update-index'])
+
+/** `git apply` writes the index only with `--cached` or `--index`; without them it patches the working tree. */
+const APPLY_INDEX_FLAGS: ReadonlySet<string> = new Set(['--cached', '--index'])
+
+/** A word with no variable, environment reference or command substitution in it (the recognition's own `isLiteral`). */
+const isLiteralWord = (text: string): boolean => !/[$%`]/.test(text)
+
+/** The path a `--index-output` option names, as written; `undefined` when the command names none. Both word forms are read. */
+function indexOutputPath(args: readonly string[]): string | undefined {
+  for (let at = 0; at < args.length; at++) {
+    const arg = args[at] ?? ''
+    if (arg === '--index-output') return args[at + 1]
+    if (arg.startsWith('--index-output=')) return arg.slice('--index-output='.length) || undefined
+  }
+  return undefined
+}
+
 const HOME_MARKERS = /^[~]|^\$HOME|^%USERPROFILE%|^\$env:USERPROFILE/i
 
 const FOLD_CASE = process.platform === 'win32' || process.platform === 'darwin'
@@ -188,6 +212,8 @@ interface GitFacts {
   readonly branch: string | undefined
   /** The checkout the caller's git calls must stay in (the worktree, or the reviewer's working checkout). */
   readonly root: string
+  /** The worker's registered worktree; `undefined` when the dispatch carried none, so the calls run in the main checkout (§3.2.4). */
+  readonly worktree: string | undefined
   readonly invocations: readonly GitInvocation[]
 }
 
@@ -216,6 +242,21 @@ function judgeGitCall(facts: GitFacts, invocation: GitInvocation): Correction | 
     const listsOnly = sub === 'branch' || sub === 'tag'
     if (GIT_READ_ONLY.has(sub) && !(listsOnly && (args.some(arg => !arg.startsWith('-')) || args.some(arg => REWRITE_FLAGS.has(arg))))) return undefined
     return deny('it is not a read')
+  }
+  // The only index a worker may write is its own worktree's (§3.2.4): read-tree,
+  // update-index and the --cached/--index forms of apply write one directly, and
+  // a dispatch without a worktree has none of its own, so its calls resolve to
+  // the main checkout's index. With a worktree the directory is already
+  // confined above; `--index-output` is the one argument that can still point
+  // the write outside it. In the worktree without the option the command only
+  // writes the worker's own index and falls through to the rules below.
+  if (INDEX_WRITE_SUBS.has(sub) || (sub === 'apply' && args.some(arg => APPLY_INDEX_FLAGS.has(arg)))) {
+    if (facts.worktree === undefined) return deny('it writes the index of the main checkout (the dispatch has no worktree of its own)')
+    const output = indexOutputPath(args)
+    if (output !== undefined) {
+      if (!isLiteralWord(output)) return deny('--index-output names a path the harness cannot read')
+      if (!insideDir(facts.root, resolve(invocation.dir, output))) return deny('--index-output points outside your worktree')
+    }
   }
   // The worker's refusals (§3.2.4 step 3); the allowed work on its own branch is what remains (step 2).
   const positional = args.filter(arg => !arg.startsWith('-'))
@@ -493,6 +534,7 @@ export function installExecuteRules(ctx: PreExecuteHost, deps: ExecuteRulesDeps)
         task: owner.node,
         branch: role === 'worker' ? `hz/${owner.node}` : undefined,
         root: attempt?.worktree ?? cwd ?? '.',
+        worktree: attempt?.worktree,
         invocations: shell.dialects.flatMap(d => gitInvocations(shell.command, d, cwd)),
       })
       if (verdict !== undefined && !('snapshot' in verdict)) { await record('refused'); return refuse('worker-git', verdict, payload, agent.id, session.id, deps) }
