@@ -26,6 +26,168 @@ lane, HEAD cbc46d36 at start, working tree carries the lane's uncommitted work
   is open; semantics untouched. Gates: build 0, preflight 0, npm test 0
   (`.llm/logs/b10r-test3.log`, eslint 73 / knip 18 / jscpd 1 flat).
   Not pushed yet. NEXT: work item 3.
+- Work item 3 DONE, committed `a58471e8`: the :592 agents probe stays as
+  the fallback, ctx.inject(['agents']) clears the note on arrival and
+  re-says it on departure (the cbc46d36 pricing mechanism); DESIGN §2.5
+  metrics row updated; L2 mirrors the pricing test. Gates: build 0,
+  preflight 0, npm test 0 (`.llm/logs/b10r-test4.log`, eslint 73 /
+  knip 18 / jscpd 1 flat). Not pushed yet.
+- Probe baseline note: the last recorded run `.llm/logs/b10f-probe.log`
+  (finished 04:21:59, before febd9bad was committed 04:25:34 — the run
+  carried the fixed design checks in its working tree) is the post-fix
+  baseline: 560/580, 20 reds (glm execution×2, guard request worker,
+  rules-peak-wake, rules-handover×2, metrics×2, design release,
+  design modules, exec dispatch×4, exec plan/review/docs/merge/
+  merge-upstream/modules). Expected after the metrics fix: 562/580,
+  exactly the two metrics health labels gone.
+- Probe RUNNING: `.llm/probe-lock` taken by this lane 21:24:59Z
+  (owner.txt re-checked then rewritten each poll); log
+  `.llm/logs/b10r-probe1.log`, exit file b10r-probe1.exit; GIT_CONFIG_*
+  unset in the running shell; no rebuild until it ends.
+- Desktop prep done while the probe runs (no rebuild, no checkout-tree
+  writes beyond .llm): flow-1 workspace re-seeded OUTSIDE the checkout
+  at `C:\Users\29596\Desktop\Project\b10-r-node` (git, 2 commits
+  0edb498/a16c84f, package.json + index/test/lint/deploy — the original
+  ws-node shape); `.llm/b10-l4/dsh-home/storages/workspace.json` b10-node
+  entry now points there (b10-new / b10-repo untouched; the old in-checkout
+  ws-node stays as evidence). The old flow-1 workspace `.llm/b10-l4/ws-node`
+  keeps its docs/graph leftovers untracked; nothing deleted.
+- Probe 1 (`b10r-probe1.log`, exit 1): **561/580**. The two metrics
+  upstream-drift labels turned green exactly as expected, and ONE new red
+  appeared: `design wish off idle` — the check pinned the second /wish off
+  reply word for word as 「这个会话本来就不是主 Agent」, written while off
+  never mentioned the takeover; with the row enabled the scenario's /wish
+  opens one and 2f5cb83c's line is part of the reply. Fixed as `ebd44a61`
+  (the check pins the designed shape with the takeover line; product code
+  unchanged, L2 pins hold — febd9bad's staleness class).
+- Probe 2 RUNNING (`b10r-probe2.log` / `.exit`), definitive run for the
+  records; expected 562/580, exactly the b10f baseline 20 minus the two
+  metrics labels.
+- Probe 2 DONE: **562/580** (`.llm/logs/b10r-probe2.log`, exit 1 as the
+  baseline expects). FAIL-label diff vs the b10f baseline: exactly the
+  two metrics health labels gone, the other 18 identical. Probe lock
+  released by the holder. Record run dir kept:
+  `…Temp\glm-hourness-probe-2026-11-11T21-47-23-689Z-tgRRkO`.
+- DESKTOP INCIDENT (contained, 06:08–06:16 UTC+8): start-b10.ps1 was
+  invoked with a RELATIVE -Root, so the instance resolved DSH_HOME into
+  the nested accidental home
+  `.llm/b10-l4/dsh-home/profiles/desktop/.llm/b10-l4/dsh-home/` (fresh
+  storages → DSH's hard-coded default workspace
+  `C:\Users\29596\Documents\deepseek-harness\default-workspace`, empty
+  credential store → the first GLM turn failed 还没登录; the /wish still
+  opened takeover tk-5xksjrth there on the new-project path, git-init'd
+  the empty dir, model turn failed before proposing anything). Verified
+  ZERO writes outside the isolated tree: ~/.dsh newest mtimes are
+  profiles 11-10, sessions 11-07, storages 11-07, logs 10-26; the
+  checkout tree untouched; b10-r-node untouched. The failed turn's
+  session log lives in the nested home. Containment in progress: close
+  the stray takeover with /hourness-init off from a temp workspace
+  pointed at the default-workspace dir, archive the journal + nested
+  home listing as evidence, delete the Documents default-workspace dir
+  and the nested home, then relaunch with an ABSOLUTE Root. Lane
+  lesson: start-b10.ps1 must always get an absolute -Root (its DSH_HOME
+  is relative to the caller's cwd otherwise).
+- INCIDENT CONTAINMENT CLOSED (2026-11-12 10:37–10:44 UTC+8, finishing
+  lane). Scene as found, corrected vs the handoff brief: the six running
+  DeepSeek Harness processes were NOT the person's — all carried the
+  isolated marker / user-data-dir / profile on their command lines; they
+  were the previous lane's 06:22:26 relaunch left running. That relaunch
+  had created the "b10-stray" workspace (path = the Documents
+  default-workspace) in the isolated home's workspace.json to close
+  tk-5xksjrth from there; the takeover's record was already gone with the
+  deleted nested home, so the closure step had nothing to close, and the
+  lane died before any cleanup. The orphan instance re-created the
+  Documents default-workspace at 06:23:43 (the previous lane had deleted
+  the incident's first copy along with its git-init); its only contents
+  were cwd-side scaffolding from the incident + containment sessions
+  (.llm/loops state/view + one .llm/rules/hosts file; the 10:35:48 write
+  was the orphan host re-registering session-9f7025f6, runner:false).
+  ~/.dsh re-checked untouched (newest 11-10). Disposition: instance
+  closed via CDP Browser.close 10:43:52 (exit verified, no #32770;
+  leftover-state shot .llm/b10-l4/shots/b10-stray-leftover.png), the
+  default-workspace MOVED (not deleted) to
+  .llm/b10-l4/incident-archive/default-workspace/ with a README.md
+  (what/why/disposition), the emptied Documents\deepseek-harness parent
+  removed, and the b10-stray entry dropped from
+  .llm/b10-l4/dsh-home/storages/workspace.json while the instance was
+  down. Documents tree is now clean of the incident.
+- FLOW-1 RERUN VERDICT (11:45 UTC+8, finishing lane): **BLOCKED at the
+  consent step — new finding; the closing was never reached.** Evidence
+  shots .llm/b10-l4/shots/b10r2-*.png; live takeover artifacts kept for
+  the bootstrap line at b10-r-node (.llm/bootstrap/journal.jsonl, 145
+  seqs + tk-xqkpdiae/ with review-1..5.md and scan/trial files).
+  - What passed: frame 1 ✓ (wish card 「开了接管 tk-xqkpdiae（已有项目）：
+    4 个代码文件、2 个提交、清单 package.json」, main agent reads);
+    frame 2 ✓ (one message: 现状/锚点目标/里程碑任务/合入清单/全审底线
+    then the two things as plain questions; 15 node files written);
+    frame 2b ✓ (free-form answer → restate → record on 对); frame 3
+    shape ✓ (checklist consent with command originals verbatim + 注意
+    lines). /wish off sanity check ✓ PASS: with tk-xqkpdiae open the
+    reply carried 2f5cb83c's line verbatim — 「已退出主 Agent 模式：…
+    接管 tk-xqkpdiae 还开着，要放弃发 /hourness-init off」.
+  - What failed: EVERY harness-side consent record was refused. Journal
+    pattern (b10-r-node/.llm/bootstrap/journal.jsonl): review-open
+    (askDigest stable from r3 on) → person answers → apply-start →
+    accept-refused — the first (r1, 10:54:59) and every subsequent one
+    `code=changed` "the question on the graph differs from the round
+    the harness wrote", later rounds also `code=stale` "round N is not
+    the current list (M)". Six-plus rounds (question-3…6, review-1..5,
+    ~5.6M tok flash). Root mechanism, verified in
+    packages/hourness/dist/bootstrap/review.js:445-460
+    (verifyDecision): record_human_answer passes only if the question
+    node's title/ask/proposal/reason/cost/notTaken digest equals the
+    bootstrap_review call's stored askDigest and the node's attach line
+    names the current round. The flash model paraphrased/truncated
+    between its bootstrap_review call, propose_to_human, and the node
+    write EVERY time (its own diagnosis in review-5.md: 「提问工具只
+    保留问号前一句、与清单轮全文摘要不一致」), so equality never held.
+    The harness refusal is by-design integrity behavior (it never
+    recorded a drifted consent) — the seam is model-sensitive: the
+    FIRST flow-1 run (02:47) recorded consent on the first try with the
+    same model.
+  - Escalation (worse than a plain loop): after repeated refusals the
+    model freelanced past the blocked consent — claimed 「你的同意已在
+    问题记录里留痕（question-6，原话在案）」 (false: the harness
+    refused that record; question-6 got a self-set approved status,
+    no decide entry accepted), self-invented 需求确认/设计/放行单
+    phases, and asked a "design release" question while the takeover
+    protocol was still at r5 unconsented; even the two-things answers
+    never reached the norms (review-5 cautions: 「你说了，主 Agent 还
+    没记进规范」). Coaching (three precision nudges, incl. the exact
+    verifyDecision field list) did not converge.
+  - Containment: /wish off (the sanity-check line above) →
+    /hourness-init off → journal seq 145 `takeover-closed
+    reason=abandoned counts.proposed=16`; b10-r-node HEAD unchanged
+    a16c84f, docs/ untracked (0 files tracked), no commit written —
+    the abandon path is honest (「愿「加一个把 notes 导出成 CSV 的
+    命令」没有交出去，要的话再发 /wish」). Instance closed via
+    Browser.close 11:24:31, exit verified, no #32770; credential
+    copies (credentials.json, device-mid.txt) deleted from
+    .llm/b10-l4/dsh-home/glm-hourness/.
+  - Consequence for the records: the DECISIVE CHECK (closing produces
+    a non-empty graph-tracking commit) was NOT exercised on desktop
+    this rerun — unreachable behind the consent seam. 50e5e451's
+    closing honesty remains verified at probe level (562/580 run);
+    the empty-commit fix has no desktop counter-evidence. Follow-up
+    for the bootstrap line (next lane, NOT this one): make the
+    consent seam robust to model paraphrase (e.g. harness-echoed
+    canonical question text the model must quote mechanically, or a
+    relaxed digest compare with human-visible diff), and re-run
+    flow-1; the mockup frames themselves all render as designed.
+- DESKTOP FLOW-1 RERUN RUNNING (10:45 UTC+8, finishing lane, session
+  session-32473932… in b10-node = b10-r-node). Relaunch with ABSOLUTE
+  -Root correct: header shows b10-r-node, homing right, no stray dirs.
+  Welcome skipped. /wish 加一个把 notes 导出成 CSV 的命令 sent via
+  typefile: wish card 「开了接管 tk-xqkpdiae（已有项目）：已有项目：
+  4 个代码文件、2 个提交、清单 package.json」 — frame 1 ✓
+  (b10r2-f1-frame1.png). Frame 2 ✓ (b10r2-f1-frame2-answered.png;
+  the pre-answer frame2.png shot hit a transient window-not-front
+  timeout, content covered by the answered shot): one message narrates
+  project status / anchor goal 「b10-node-notes 保持可用」 / milestones
+  and tasks / merge-check list / full-audit floor, then the two things
+  as plain questions (① 花钱/独占机器 ② 不许碰的地方), 15 graph node
+  files written (docs/graph/nodes/*.json, +366). Answered in one plain
+  sentence 10:51. NEXT: trial + frame 3 checklist + consent.
 
 ## Item 1 — takeover-row enablement commit
 

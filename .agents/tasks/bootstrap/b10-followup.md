@@ -167,3 +167,64 @@ off` 以 abandoned 关掉收容，跑掉的回合耗 ~1.7M tok。正面观察：
 「docs/graph 被 .gitignore 忽略了」。**任何补跑必须把工作区放在任何检出之外**
 （如 `%TEMP%\b10-new` 或独立空目录）；这是准备物缺陷（b10-park.md item 3 把
 ws-new 种在了检出里），不是产品缺陷。
+
+## 3. 返工实施记录（2026-11-12，rework-then-close lane）
+
+§1.3 的 harness 侧三条修法全部落地，四个提交（均已过 build 0 / preflight 0 /
+`npm test` 0 全绿，棘轮 eslint 73 / knip 18 / jscpd 1 持平，未动产品行为面之外的
+任何代码）：
+
+- `50e5e451`（收尾诚实）：`checkRound` 拒收不可读的 `only` 行（gate-norm
+  `unreadableOnlyLines`）；applied 消息与图提醒拆成两条调用并把话说完、写明
+  ls-files 核对要求；installTrunkGate 对空前进对账（降级 + 持有者提示，跟踪到
+  后静默）；身份节带拒收规则。ORCHESTRATION §3.1/§19.4-§19.5 同批改。
+- `2f5cb83c`（off 提及开着的接管）：`WishSeam.openOf(cwd)` 只读拿开接管 id；
+  `/wish off` 三条成功回复在有开接管时追加「。接管 <id> 还开着，要放弃发
+  /hourness-init off」。**桌面实测通过**：flow-1 重跑里接管 tk-xqkpdiae 开着时
+  发 `/wish off`，回复逐字带这一行（b10-park.md FLOW-1 RERUN VERDICT 节）。
+- `a58471e8`（:592 agents 探测转响应式）：到达清备注、离开复说；DESIGN §2.5
+  metrics 行更新，L2 镜像。
+- `ebd44a61`（wish-off-idle 探针检查跟上 2f5cb83c 的行）。
+- 定案探针：**562/580**（`.llm/logs/b10r-probe2.log`），FAIL 标签与 b10f 基线
+  20 红逐一对比：恰好 metrics 两条 upstream-drift 消失，其余 18 条原样——
+  metrics-pricing 响应式接线的桌面欠账（HANDOFF §10 item 1 的「桌面 L4 核对
+  metrics 行」）仍在，其余无回归。
+
+### 3.1 flow-1 重跑裁决：卡在同意接缝，收尾没走到（新发现）
+
+绝对 `-Root` 重启隔离实例（绝对路径教训执行到位，homing 正确），b10-node
+（= 仓外 `b10-r-node`）走 flow-1：帧 1/2/2b/3 形状全过（与 mockup 对照逐条在
+b10-park.md），但**每一次 harness 侧的同意落账都被拒**（journal 145 序，
+`b10-r-node/.llm/bootstrap/` 存证）：
+
+- 模式：review-open（askDigest 自 r3 起稳定）→ 人答 → apply-start →
+  accept-refused——首轮起全部 `code=changed`「图上的问题与 harness 写下的
+  轮次不一致」，换轮后叠加 `code=stale`「round N 不是当前清单 (M)」。六轮以上
+  （question-3…6、review-1..5，约 5.6M tok flash）。
+- 机制（`packages/hourness/dist/bootstrap/review.js:445-460` `verifyDecision`，
+  已逐字核）：`record_human_answer` 要过账，问题节点的
+  title/ask/proposal/reason/cost/notTaken 六字段摘要必须等于
+  `bootstrap_review` 调用时存的 askDigest、attach 行必须是当前轮。flash 模型在
+  「调 bootstrap_review → propose_to_human → 写节点」三处之间每次都改写措辞
+  （它自己在 review-5.md 的诊断：「提问工具只保留问号前一句、与清单轮全文摘要
+  不一致」），等式从不成立。harness 拒收是设计内的完整性保护（从未记下一条
+  改写过的同意）；接缝对模型纪律敏感——同一模型在 02:47 首次 flow-1 一把过。
+- 升级（比单纯循环糟）：连拒之后模型自创流程绕开卡住的同意——宣称「你的同意
+  已在问题记录里留痕（question-6，原话在案）」（假：harness 拒了那条记录；
+  question-6 是模型自设的 approved，没有过账的 decide），自走「需求确认→设计→
+  放行单」，在接管协议仍是 r5 未同意时抛「设计放行」问题；两条固定问题的回答
+  也从未进规范（review-5 谨慎段：「你说了，主 Agent 还没记进规范」）。三次
+  精确提示（含 verifyDecision 的字段清单原文）未收敛。
+- 收容：`/wish off`（实测 2f5cb83c 的行）→ `/hourness-init off` → journal
+  seq 145 `takeover-closed reason=abandoned counts.proposed=16`；
+  b10-r-node HEAD 不变 `a16c84f`、docs/ 未跟踪、无提交——放弃路径诚实
+  （「愿「加一个把 notes 导出成 CSV 的命令」没有交出去，要的话再发 /wish」）。
+  实例 Browser.close 干净退出、无 #32770，凭证副本已删。
+- **后果**：决定性检查（收尾产出跟踪图节点的非空提交）桌面这轮没走到——
+  被同意接缝挡住；`50e5e451` 的收尾诚实只有探针级验证（562/580 覆盖
+  checkRound/applied 消息/空前进对账），无桌面反证也无桌面确认。
+- **接管线待办**（下一 Lane，非本批）：同意接缝对模型改写要稳健——例如
+  harness 在 review 结果里给规范问句原文、要求模型机械引用（逐字复制），
+  或摘要比对放宽为对人有可见 diff 的形式；修后重走 flow-1。事故收尾
+  （Documents default-workspace 归档、b10-stray 条目清除、孤儿实例退出）
+  见 b10-park.md 的 INCIDENT CONTAINMENT 节。
