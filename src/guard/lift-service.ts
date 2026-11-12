@@ -10,7 +10,8 @@
  * no caller.
  */
 import { GUARD_RULES } from './catalog.ts'
-import { appendLift, liftedRulesOf, liftFileStates } from './lift.ts'
+import { DESIGN_LIFTS } from './main-agent-rules.ts'
+import { appendLift, liftedRulesOf, liftEntryOf, liftFileStates } from './lift.ts'
 import type { LiftRecord } from './records.ts'
 import type { ServiceLookup } from '../shared/dsh-min.ts'
 
@@ -54,18 +55,20 @@ const ROWS: ReadonlySet<string> = new Set(GUARD_RULES.map(entry => entry.row))
 
 /**
  * Resolve the rule id the way design §3.5 names it: the exact id first, else
- * the string with one leading `<row>:` off, which must itself be an id. Every
- * catalog rule is the board's to lift — `liftVia: `board`` means ONLY the
- * board can lift it (the guard_lift tool refuses it, src/guard/lift.ts), not
- * that the service refuses it. The service's `not_liftable` code stays in
- * the contract for a rule that forbids the board; today none does.
+ * the string with one leading `<row>:` off, which must itself be an id — or a
+ * design row rule the lift paths take off (src/guard/main-agent-rules.ts
+ * DESIGN_LIFTS), by the page's `design:<id>` spelling or bare. Every catalog
+ * rule is the board's to lift — `liftVia: `board`` means ONLY the board can
+ * lift it (the guard_lift tool refuses it, src/guard/lift.ts), not that the
+ * service refuses it. The service's `not_liftable` code stays in the contract
+ * for a rule that forbids the board; today none does.
  */
 export function resolveLiftRule(name: string): { readonly id: string } | { readonly code: 'unknown_rule' | 'not_liftable' } {
-  const exact = GUARD_RULES.find(entry => entry.id === name)
-  if (exact !== undefined) return { id: exact.id }
+  const resolved = liftEntryOf(name)
+  if (resolved !== undefined) return { id: resolved.id }
   const stripped = /^[a-z]+:(.+)$/.exec(name)?.[1]
   if (stripped !== undefined && ROWS.has(name.slice(0, name.indexOf(':')))) {
-    const inner = GUARD_RULES.find(entry => entry.id === stripped)
+    const inner = liftEntryOf(stripped)
     if (inner !== undefined) return { id: inner.id }
   }
   return { code: 'unknown_rule' }
@@ -77,9 +80,9 @@ export function liftServiceOver(deps: LiftServiceDeps): LiftService {
     async setLifted(call): Promise<LiftCallResult> {
       const resolved = resolveLiftRule(call.rule)
       if ('code' in resolved) {
-        return { ok: false, code: resolved.code, message: `unknown rule: liftable ids are ${GUARD_RULES.map(entry => `${entry.row}:${entry.id}`).join(', ')}` }
+        return { ok: false, code: resolved.code, message: `unknown rule: liftable ids are ${[...GUARD_RULES.map(entry => `${entry.row}:${entry.id}`), ...[...DESIGN_LIFTS.keys()].map(id => `design:${id}`)].join(', ')}` }
       }
-      const entry = GUARD_RULES.find(candidate => candidate.id === resolved.id) as (typeof GUARD_RULES)[number]
+      const entry = liftEntryOf(resolved.id) as (typeof GUARD_RULES)[number]
       const root = deps.rootOf(call.cwd)
       if (root === undefined) return { ok: false, code: 'unavailable', message: 'the project root could not be found' }
       const state = liftedRulesOf(root)

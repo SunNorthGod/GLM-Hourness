@@ -13,6 +13,7 @@
  * Node's crypto); the client imports view.ts only.
  */
 import { GUARD_RULES } from '../guard/catalog.ts'
+import { DESIGN_LIFTS } from '../guard/main-agent-rules.ts'
 import type { LiftService } from '../guard/lift-service.ts'
 import { ruleStats, sinceCutoff, SUBJECT_LIMIT } from '../guard/measure.ts'
 import { classifyRecord, type GuardRecord, type LateRecord, type ViolationRecord } from '../guard/records.ts'
@@ -34,13 +35,17 @@ export const VIEW_ROWS: readonly HealthRow[] = [...new Set(CATALOG.flatMap(entry
 
 /** Said of the rule that guards the lift record: only the rules board's command lifts it, and the board does not offer code rules yet. */
 export const LIFT_BOARD_ONLY = '它护着撤下记录本身，只能在规则板上撤，规则板还没接上'
-/** Said of a rule the lift service does not know (the main agent's, the rules board's own gate). */
+/** Said of a rule the lift paths do not know (the main agent's but the one DESIGN_LIFTS names, the rules board's own gate). */
 export const LIFT_NOT_OFFERED = '这一条不在撤下的办法里，现在撤不了'
 
 const BUILTIN_IDS: ReadonlySet<string> = new Set(BUILTIN_RULES.map(rule => rule.id))
 /** The entries only the stop level enables: what the page counts as the stop level's waiting work. */
 const STOP_IDS: ReadonlySet<string> = new Set(BUILTIN_RULES.filter(rule => rule.enabledBy?.includes('stop') === true && !rule.enabledBy.includes('reduce')).map(rule => rule.id))
-const GUARD_BY_CATALOG = new Map(GUARD_RULES.map(rule => [`${rule.row}:${rule.id}`, rule]))
+/** The catalog ids the lift paths resolve, guard rules and the design row's liftable one: the page shows their lift and their lifted moment. */
+const GUARD_BY_CATALOG = new Map<string, (typeof GUARD_RULES)[number]>([
+  ...GUARD_RULES.map(rule => [`${rule.row}:${rule.id}`, rule] as const),
+  ...[...DESIGN_LIFTS].map(([id, lift]) => [`design:${id}`, { id, row: 'design' as const, title: lift.title, blocks: lift.blocks, liftVia: 'any' as const }] as const),
+])
 
 export interface RulesViewInput {
   /** The project's root, the `project` of the judgement the conditions are read with. */

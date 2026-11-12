@@ -14,6 +14,9 @@
  *   the guard row provides (`glmHournessLifts`, `setLifted`), and queues a
  *   board note as the next client message, so the next request shows the
  *   restored declaration.
+ * - `probe_lift {rule}` (mounted with `config.lift`) takes the rule off the
+ *   same way, with no follow-up: the same write `/rules lift <id>` makes
+ *   through the service once that side of the wire is connected.
  *
  * A turn-end wake does not work here: after the model's final text the host
  * tears the agent loop down within the same tick and `followup` finds the
@@ -55,24 +58,25 @@ export function apply(ctx, config = {}) {
       return { queued: true }
     },
   }))
-  if (config.restore === true) {
-    disposers.push(ctx.tools.register({
-      name: 'probe_restore',
-      description: 'Probe only: restore one rule through the lift service, the way /rules lift does, and queue the board\'s note as the next client message.',
-      parameters: { type: 'object', properties: { rule: { type: 'string', description: 'The rule id with its row prefix, e.g. guard:scratch-only' } }, required: ['rule'] },
-      output: { schema: { type: 'object' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
-      execute: async (args, exec) => {
-        const agent = exec?.agent
-        if (agent === undefined) throw new Error('probe restore: no agent')
-        const cwd = typeof agent.session?.header?.cwd === 'string' ? agent.session.header.cwd : undefined
-        const rule = String(args.rule)
-        const result = await ctx.get('glmHournessLifts')?.setLifted({ cwd, rule, action: 'restore', command: `/rules lift ${rule}`, sessionId: agent.session?.id })
-        log({ kind: 'restore', result: result ?? null })
-        agent.followup(message('（规则板已把那条规则恢复）', `${config.rule}-board`))
-        return result ?? { ok: false, code: 'unavailable' }
-      },
-    }))
-  }
+  /** One lift-path tool: `action` through the guard row's lift service, the write the board's `/rules lift` makes there, logged; a `note` rides as the next client message (a restore announces itself). */
+  const liftTool = (name, description, action, note) => ctx.tools.register({
+    name,
+    description,
+    parameters: { type: 'object', properties: { rule: { type: 'string', description: 'The rule id with its row prefix, e.g. guard:scratch-only' } }, required: ['rule'] },
+    output: { schema: { type: 'object' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    execute: async (args, exec) => {
+      const agent = exec?.agent
+      if (agent === undefined) throw new Error(`probe ${action}: no agent`)
+      const cwd = typeof agent.session?.header?.cwd === 'string' ? agent.session.header.cwd : undefined
+      const rule = String(args.rule)
+      const result = await ctx.get('glmHournessLifts')?.setLifted({ cwd, rule, action, command: `/rules lift ${rule}`, sessionId: agent.session?.id })
+      log({ kind: action, result: result ?? null })
+      if (typeof note === 'string') agent.followup(message(note, `${config.rule}-board`))
+      return result ?? { ok: false, code: 'unavailable' }
+    },
+  })
+  if (config.restore === true) disposers.push(liftTool('probe_restore', 'Probe only: restore one rule through the lift service, the way /rules lift does, and queue the board\'s note as the next client message.', 'restore', '（规则板已把那条规则恢复）'))
+  if (config.lift === true) disposers.push(liftTool('probe_lift', 'Probe only: lift one rule through the lift service, the write /rules lift makes through it once the board side is connected.', 'lift'))
   return () => {
     for (const dispose of disposers.splice(0)) dispose()
   }

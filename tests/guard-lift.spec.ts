@@ -23,6 +23,7 @@ import { guardLift, hasIntentWord, LIFT_WORDS, NEGATIONS, RESTORE_WORDS, saidSeg
 import { LIFT_SERVICE, liftService, liftServiceOver, resolveLiftRule } from '../src/guard/lift-service.ts'
 import { liftFilesOnly } from '../src/guard/lift-files.ts'
 import { liftStatesOf } from '../src/guard/lift.ts'
+import { NO_WAIT_RULE } from '../src/guard/main-agent-rules.ts'
 import { NATIVE_FACE, type GuardRule, type ToolCall } from '../src/guard/rules.ts'
 import { morningReport } from '../src/workflow/morning-report.ts'
 import type { LiftsInput } from '../src/guard/status.ts'
@@ -267,6 +268,9 @@ test('setLifted lifts by the board without a words check, restores lift-files-on
   assert.deepEqual(resolveLiftRule('loops:files-only'), { id: 'files-only' }, 'rule 2: one leading row prefix off the board spelling')
   assert.deepEqual(resolveLiftRule('loops:loops:files-only'), { code: 'unknown_rule' }, 'one strip lands on the id space, never a second strip')
   assert.deepEqual(resolveLiftRule('guard:nonexistent'), { code: 'unknown_rule' })
+  assert.deepEqual(resolveLiftRule('design:main-agent-no-wait'), { id: NO_WAIT_RULE }, 'the design row\'s one liftable rule, by the page\'s spelling')
+  assert.deepEqual(resolveLiftRule('main-agent-no-wait'), { id: NO_WAIT_RULE }, 'and bare')
+  assert.deepEqual(resolveLiftRule('design:main-agent-no-write'), { code: 'unknown_rule' }, 'the other nine stay read-only (d-defaults-readonly)')
   const boardLift = await service.setLifted({ cwd: root, rule: 'lift-files-only', action: 'lift', command: '/rules lift guard:lift-files-only', sessionId: 's1' })
   assert.deepEqual([boardLift.ok, boardLift.ok === true ? boardLift.outcome : ''], [true, 'lifted'], 'a liftVia board rule lifts by the board')
   const chat = await service.setLifted({ cwd: root, rule: 'guard:scratch-only', action: 'lift', command: '/rules lift guard:scratch-only' })
@@ -278,6 +282,24 @@ test('setLifted lifts by the board without a words check, restores lift-files-on
   assert.deepEqual([noop.ok, noop.ok === true ? noop.outcome : ''], [true, 'noop'])
   const restore = await service.setLifted({ cwd: root, rule: 'scratch-only', action: 'restore', command: '/rules restore guard:scratch-only' })
   assert.equal(restore.ok === true ? restore.outcome : '', 'restored')
+  const design = await service.setLifted({ cwd: root, rule: 'design:main-agent-no-wait', action: 'lift', command: '/rules lift design:main-agent-no-wait' })
+  assert.deepEqual([design.ok, design.ok === true ? [design.outcome, design.rule] : ''], [true, ['lifted', NO_WAIT_RULE]], 'the nowait rule lifts through the service and the record carries the bare id')
+  assert.ok(readFileSync(liftsPath(root), 'utf8').includes(`"rule":"${NO_WAIT_RULE}"`), 'the file line is the bare id the listener matches')
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('guard_lift lifts the design row\'s no-wait rule on the human\'s words, by bare id or the page\'s spelling, and refuses an unknown design id', async () => {
+  const { root } = tempRepo()
+  const records: LiftRecord[] = []
+  const agent = agentOf([person('主 Agent 不长等那条先别拦了', 't-design')])
+  const lifted = await guardLift({ rule: 'design:main-agent-no-wait', words: '主 Agent 不长等那条先别拦了' }, depsOf(agent, root, records))
+  assert.equal(lifted.outcome, 'lifted')
+  assert.equal(lifted.rule, NO_WAIT_RULE)
+  const restored = await guardLift({ rule: NO_WAIT_RULE, action: 'restore', words: '把不长等那条恢复吧' }, depsOf(agentOf([person('把不长等那条恢复吧', 't-design-2')]), root, records))
+  assert.equal(restored.outcome, 'restored')
+  const unknown = await refusalOf(guardLift({ rule: 'design:main-agent-no-write', words: '主 Agent 别写文件那条先别拦了' }, depsOf(agentOf([person('主 Agent 别写文件那条先别拦了', 't-design-3')]), root, records)))
+  assert.equal(unknown.code, 'invalid')
+  assert.ok(unknown.hint.includes('design:main-agent-no-wait'), 'the hint names the one liftable design rule')
   rmSync(root, { recursive: true, force: true })
 })
 

@@ -16,8 +16,8 @@ export interface MainAgentRule {
   readonly title: string
   readonly enforcement: 'deny' | 'deny-when-no-snapshot'
   readonly subjects: 'main-agent' | 'main-agent-subagents' | 'every-session'
-  /** The step of the M3 plan that adds the rule (for the addendum and the tests). */
-  readonly step: 3 | 4 | 5 | 6 | 8
+  /** The step of the plan that adds the rule: M3's steps for the first nine, 9 for the nowait batch (.agents/tasks/nowait/design.md). For the addendum and the tests. */
+  readonly step: 3 | 4 | 5 | 6 | 8 | 9
 }
 
 export const NO_WRITE_RULE = 'main-agent-no-write'
@@ -29,6 +29,7 @@ export const GRAPH_OPTIONS_RULE = 'main-agent-graph-options'
 export const GRAPH_DELEGATIONS_RULE = 'main-agent-graph-delegations'
 export const GRAPH_STAGE_RULE = 'main-agent-graph-stage'
 export const GRAPH_CLI_RULE = 'main-agent-graph-cli'
+export const NO_WAIT_RULE = 'main-agent-no-wait'
 
 export const MAIN_AGENT_RULES: readonly MainAgentRule[] = [
   { id: NO_WRITE_RULE, title: '主 Agent 不写文件', enforcement: 'deny', subjects: 'main-agent', step: 4 },
@@ -40,4 +41,17 @@ export const MAIN_AGENT_RULES: readonly MainAgentRule[] = [
   { id: GRAPH_DELEGATIONS_RULE, title: '「这类你定」只经记录人的话的工具写', enforcement: 'deny', subjects: 'every-session', step: 6 },
   { id: GRAPH_STAGE_RULE, title: '目标只经确认需求与放行方案向前', enforcement: 'deny', subjects: 'every-session', step: 8 },
   { id: GRAPH_CLI_RULE, title: '会话里不用命令行写项目图', enforcement: 'deny', subjects: 'every-session', step: 8 },
+  { id: NO_WAIT_RULE, title: '主 Agent 不长等：sleep、点名超 30 秒与 job 长等待都拦', enforcement: 'deny', subjects: 'main-agent', step: 9 },
 ]
+
+/**
+ * The one main agent rule the lift paths take off (the nowait design §3; the
+ * other nine stay read-only, d-defaults-readonly): the guard_lift tool and
+ * the rules board's lift service resolve `main-agent-no-wait` and
+ * `design:main-agent-no-wait` to it, the listener stops judging a lifted
+ * rule (src/guard/main-agent.ts), and the rules page shows the lift. The
+ * shape mirrors a guard catalog entry's liftable fields.
+ */
+export const DESIGN_LIFTS: ReadonlyMap<string, { readonly title: string, readonly blocks: string }> = new Map([
+  [NO_WAIT_RULE, { title: '主 Agent 不长等：sleep、点名超 30 秒与 job 长等待都拦', blocks: 'main agent shell and job waits' }],
+])

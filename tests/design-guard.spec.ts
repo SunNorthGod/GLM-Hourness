@@ -13,11 +13,12 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { apply } from '../src/design/index.ts'
 import { SNAPSHOT_NOTICE_KIND } from '../src/guard/git-snapshot.ts'
+import { appendLift } from '../src/guard/lift.ts'
 import { openEngine } from '../src/graph/engine.ts'
 import type { Actor } from '../src/graph/schema.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import { releaseVerdict } from '../src/guard/design-release.ts'
-import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, NO_WRITE_RULE } from '../src/guard/main-agent-rules.ts'
+import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, NO_WAIT_RULE, NO_WRITE_RULE } from '../src/guard/main-agent-rules.ts'
 import type { PreExecuteDecision, UserNotice } from '../src/shared/dsh-min.ts'
 import { denied, designHost, healthOf, journaled, type DesignHost, type FakeAgent } from './design-host.ts'
 import { sh } from './git-fixture.ts'
@@ -187,6 +188,93 @@ test('asking through a card is denied by name; the tool is the same for everyone
   const plain = await mainAgent()
   assert.match(denied(await plain.host.preExecute(plain.agent, 'ask_user_question', {})), /^You called ask_user_question\./)
   assert.equal((await plain.host.preExecute(plain.host.addAgent('other', { workspace: 'else' }), 'ask_user_question', {})).kind, 'allow')
+})
+
+// ---------------------------------------------------------------- main-agent-no-wait
+
+test('main-agent-no-wait: a sleep at a command position, a named timeout over 30 seconds and a job wait over five seconds are denied, on both shell dialects', async () => {
+  const { host, agent } = await mainAgent()
+  for (const [name, args, fact] of [
+    ['bash', { command: 'sleep 300' }, 'You tried to run sleep on the shell: "sleep 300".'],
+    ['bash', { command: 'while true; do sleep 30; done' }, 'You tried to run sleep on the shell: "while true; do sleep 30; done".'],
+    ['bash', { command: 'nohup ./tools/sleep 60' }, 'You tried to run sleep on the shell: "nohup ./tools/sleep 60".'],
+    ['pwsh', { command: 'sleep 300' }, 'You tried to run sleep on the shell: "sleep 300".'],
+    ['pwsh', { command: 'Start-Sleep -Seconds 120' }, 'You tried to run sleep on the shell: "Start-Sleep -Seconds 120".'],
+    ['pwsh', { command: 'Get-Content a.txt; start-sleep 60' }, 'You tried to run sleep on the shell: "Get-Content a.txt; start-sleep 60".'],
+    ['bash', { command: 'npm run build', timeoutMs: 120000 }, 'You asked the shell to hold this call for 120000 ms: "npm run build".'],
+    ['pwsh', { command: 'npm run build', timeoutMs: 60001 }, 'You asked the shell to hold this call for 60001 ms: "npm run build".'],
+    ['job_output', { wait: true, timeout_ms: 10000 }, 'You asked to wait for a background job for 10000 ms.'],
+  ] as const) {
+    const reason = denied(await host.preExecute(agent, name, args))
+    assert.ok(reason.startsWith(fact), `${name} ${JSON.stringify(args)}: ${reason}`)
+    assert.ok(reason.includes('Boundary: A waiting step holds back the turn'), name)
+    assert.ok(reason.includes('Right path: Run long commands in the background (run_in_background: true)'), name)
+    assert.ok(reason.includes('Exception: If this wait is really needed, the human says so in chat and you lift the rule with guard_lift'), name)
+  }
+})
+
+test('main-agent-no-wait: a sleep in an argument or a string is not a command position; short commands, the line itself, a background call and a short or waiting-less job output pass', async () => {
+  const { host, agent } = await mainAgent()
+  for (const [name, args] of [
+    ['bash', { command: 'grep -rn sleep src/' }],
+    ['bash', { command: 'echo sleep; echo done' }],
+    ['bash', { command: 'git status' }],
+    ['bash', { command: 'npm run build', timeoutMs: 30000 }],
+    ['bash', { command: 'npm run build', run_in_background: true }],
+    ['bash', { command: 'npm run build', run_in_background: true, timeoutMs: 30000 }],
+    ['pwsh', { command: 'Write-Output not-sleep-yet' }],
+    ['pwsh', { command: 'Get-ChildItem | Where-Object Name -like "*sleep*"' }],
+    ['job_output', { id: 'job-1' }],
+    ['job_output', { id: 'job-1', wait: true }],
+    ['job_output', { id: 'job-1', wait: true, timeout_ms: 5000 }],
+  ] as const) {
+    assert.equal((await host.preExecute(agent, name, args)).kind, 'allow', `${name} ${JSON.stringify(args)}`)
+  }
+})
+
+test('main-agent-no-wait: only the main agent is judged; an ordinary session and a subagent wait as they please (the scope, Q3)', async () => {
+  const { host, agent } = await mainAgent()
+  const plain = host.addAgent('plain', { workspace: 'other' })
+  const child = host.addAgent('child', { origin: 'subagent', parentSession: agent.id })
+  for (const target of [plain, child]) {
+    assert.equal((await host.preExecute(target, 'bash', { command: 'sleep 300' })).kind, 'allow', target.id)
+    assert.equal((await host.preExecute(target, 'job_output', { wait: true, timeout_ms: 600000 })).kind, 'allow', target.id)
+  }
+})
+
+test('main-agent-no-wait: a call that both writes and waits is denied by the write rule first, the waterfall\'s order', async () => {
+  const { host, agent } = await mainAgent()
+  const reason = denied(await host.preExecute(agent, 'bash', { command: 'sleep 30 > a.txt' }))
+  assert.match(reason, /^You tried to change files through the shell: /)
+  assert.ok(reason.includes('Boundary: You are the main agent'), reason)
+})
+
+test('main-agent-no-wait: a denial lands in the violation journal with the rule id and the name the call used', async () => {
+  const { host, agent } = await mainAgent({ dialect: DIALECT })
+  denied(await host.preExecute(agent, 'Bash', { command: 'sleep 30' }))
+  const [line] = await journaled(host, 1)
+  assert.equal(line?.rule, NO_WAIT_RULE)
+  assert.equal(line?.tool, 'Bash')
+  assert.equal(line?.agentId, 's1')
+  assert.match(String(line?.correction), /^You tried to run sleep on the shell/)
+})
+
+test('main-agent-no-wait: the lift record takes the rule off and a restore arms it again (the one rule a lift path names, nowait design §3)', async () => {
+  const { host, agent } = await mainAgent()
+  const attempt = async (): Promise<string> => {
+    const decision = await host.preExecute(agent, 'bash', { command: 'sleep 300' })
+    return decision.kind === 'allow' ? 'allow' : (decision as { reason: string }).reason
+  }
+  assert.notEqual(await attempt(), 'allow')
+  await mkdir(join(host.workspace('ws'), '.llm'), { recursive: true })
+  const root = host.workspace('ws')
+  assert.notEqual(await attempt(), 'allow', 'an empty lift record lifts nothing')
+  const at = '2026-11-13T09:00:00.000Z'
+  await appendLift(root, { at, rule: NO_WAIT_RULE, action: 'lift', via: 'board', words: '/rules lift design:main-agent-no-wait' })
+  assert.equal(await attempt(), 'allow', 'the lifted rule does not judge')
+  assert.equal((await host.preExecute(agent, 'job_output', { wait: true, timeout_ms: 600000 })).kind, 'allow', 'the lift takes the whole rule off')
+  await appendLift(root, { at, rule: NO_WAIT_RULE, action: 'restore', via: 'board', words: '/rules lift design:main-agent-no-wait' })
+  assert.notEqual(await attempt(), 'allow', 'the restore arms the rule again')
 })
 
 // ---------------------------------------------------------------- git-snapshot through the rules

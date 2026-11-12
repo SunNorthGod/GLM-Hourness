@@ -24,7 +24,7 @@ import { installMetricsFileGuard, metricsFilesOnly } from '../src/metrics/rules.
 import { habitAskFirst, installHabitRule } from '../src/memory/habit-rule.ts'
 import { installLoopsFileGuard, installLoopsScheduleGuard, loopsFilesOnly, loopsScheduleTools, LOOPS_FILES_ONLY } from '../src/loops/guard.ts'
 import { LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
-import { MAIN_AGENT_RULES } from '../src/guard/main-agent-rules.ts'
+import { MAIN_AGENT_RULES, NO_WAIT_RULE } from '../src/guard/main-agent-rules.ts'
 import { CATALOG } from '../src/rules/builtin.ts'
 import { RULES_FILES_ONLY } from '../src/rules/gate.ts'
 import { apply as rulesApply, type RulesContext } from '../src/rules/index.ts'
@@ -245,7 +245,7 @@ test('guard catalog: each listed rule is the id of a rule object its row install
   // m4-gate acceptance 6 as the human worded it, plus the memory row's habit-ask-first (m5-habit-rule): six, one, two, one, one.
   assert.deepEqual(['guard', 'graph', 'loops', 'metrics', 'memory'].map(row => listed(row).length), [6, 1, 2, 1, 1])
   assert.equal(GUARD_RULES.length, 11)
-  assert.equal(MAIN_AGENT_RULES.length, 9, 'the main agent\'s nine rules are unchanged')
+  assert.equal(MAIN_AGENT_RULES.length, 10, 'the main agent\'s ten rules are unchanged (the tenth is the nowait rule)')
   // No mode column: a rule of the catalog denies from the day its row is enabled (d-code-rules-enforce).
   for (const entry of GUARD_RULES) {
     assert.deepEqual(Object.keys(entry).sort(), ['blocks', 'id', 'liftVia', 'row', 'title'], JSON.stringify(entry))
@@ -795,9 +795,11 @@ const TRIGGERS: Readonly<Record<string, (host: ReturnType<typeof designHost>, ag
   },
   // Any session runs the graph's command line to write.
   'main-agent-graph-cli': async (host, agent) => { await host.preExecute(agent, 'pwsh', { command: 'npm run -s graph -- approve \'{"id":"goal-1"}\'' }) },
+  // The main agent sleeps at a command position.
+  'main-agent-no-wait': async (host, agent) => { await host.preExecute(agent, 'bash', { command: 'sleep 30' }) },
 }
 
-test('main agent rules: ids are unique, titles are one short plain line, every rule steps no later than the merged step', () => {
+test('main agent rules: ids are unique, titles are one short plain line; M3\'s rules step no later than the merged step, the nowait rule is step 9', () => {
   const ids = MAIN_AGENT_RULES.map(rule => rule.id)
   assert.equal(new Set(ids).size, ids.length)
   for (const rule of MAIN_AGENT_RULES) {
@@ -806,7 +808,7 @@ test('main agent rules: ids are unique, titles are one short plain line, every r
     assert.equal(rule.title.includes('\n'), false, rule.id)
     assert.ok([...rule.title].length <= 40, rule.id)
     assert.deepEqual(plainWordsIn(rule.title), [], rule.id)
-    assert.ok(rule.step <= MERGED_STEP, `${rule.id} is a step ${rule.step} rule`)
+    assert.ok(rule.step <= MERGED_STEP || (rule.step === 9 && rule.id === NO_WAIT_RULE), `${rule.id} is a step ${rule.step} rule`)
   }
   assert.deepEqual(ids, Object.keys(TRIGGERS), 'the table lists exactly the rules that have a trigger here')
 })
