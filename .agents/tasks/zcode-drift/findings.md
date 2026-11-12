@@ -73,3 +73,42 @@ Caveats:
 - The installed copy is user-patched; per repo rules it stays a mechanism reference only, never a verbatim source. This audit used the user's own upstream snapshot (`orig-3180.bak`) to attribute deltas cleanly.
 - Version string: the bundle has no embedded version; "3.18.0" is the desktop app version (`app.asar` `package.json`) corroborated by the `.bak` naming series. The `orig-3171.bak` equals our pristine copy's size, tying the series to 3.17.1.
 - Not audited here (out of the audited set): the deferred/resident tool registry contents, tool schemas re-derived from zod, and workflow actor identity (`kDn`) — the first two are covered indirectly by the unchanged mirror items, the third is not sent by this project.
+
+## 6. Multi-version re-audit, 2026-11-13 (upstream 3.18.0 → 3.18.2)
+
+Same lane, re-run on main `8a647ef4` at the person's request ("ZCode has upgraded several versions recently"). Read-only on the install dirs; the comparison helper lives in `%TEMP%\zdrift-audit-20261113\` (never enters the repo) and imports the repo's `loadItems` so the item set is the gate's. The authoritative pin is still `reference/zcode-3.17.1/zcode.cjs` (MD5 re-verified `331AB13D0CB2E9504EA25420FF9AE663`).
+
+### 6.1 What the desktop runs now
+
+- Desktop app: **3.18.2** (`resources\app.asar` → `package.json`, `@zcode/desktop` `"version": "3.18.2"`). On-disk `app.asar` 384,840,277 B, mtime 2026-11-12 18:38 (archive-preserved build time). The updater cache holds the installer: `%LOCALAPPDATA%\@zcodedesktop-updater\pending\ZCode-3.18.2-win-x64.exe` (237,673,864 B, PE FileVersion 3.18.2.10443, downloaded 2026-11-12 21:11, `update-info.json` sha512 on record). The update landed between the 2026-11-11 audit and 2026-11-13. No 3.18.1 trace exists on disk (no `.bak`, no installer cache entry) — 3.18.0 (2026-11-10) was replaced by 3.18.2.
+- Installed bundle `C:\Program Files\ZCode\resources\glm\zcode.cjs`: **15,681,103 B, MD5 `d0001cb26f8ea5321e844f332d4b864a`, mtime 2026-11-13 01:38** = upstream 3.18.2 + user patch (re-patched after the update).
+- `.bak` trail unchanged: `orig-3163` → `orig-3171` → `orig-3172` → `orig-3180` (`orig-3180.bak` re-verified: 15,664,893 B, MD5 `572c763b983d274eee60164b60776a19`). **Trail gap: no `orig-3182.bak` was kept for the new base.** The upstream original was recovered during this audit from the installer (`7z`: exe → `$PLUGINSDIR\app-64.7z` → `resources\glm\zcode.cjs`): **15,675,386 B, MD5 `a1c69d9b17cec3d00f00d5c5effcc464`**, temp copy `%TEMP%\zdrift-audit-20261113\installer-extract\upstream-3182.cjs`. Whether to persist it as `zcode.cjs.orig-3182.bak` is the person's call (this lane is read-only on the install dir); the temp copy does not survive OS temp cleanup.
+
+### 6.2 Method
+
+Unchanged from §2: the gate's own item set — `scripts/check-verbatim.mjs` `loadItems()` (502 items; MIN_LINE 13; rendered Harness bullet split into its two bundle pieces; JS escapes unescaped) — line by line against four bundles: pristine 3.17.1, `orig-3180.bak` (re-run), recovered upstream 3.18.2, installed (3.18.2 + patch). Gate sanity on this worktree: `node scripts/check-verbatim.mjs` → OK, 502 verbatim, 0 known deviations, 301 lines checked (identical to 2026-11-11, so the audited set equals the gate's).
+
+### 6.3 Per-version results
+
+| Bundle | Items with missing lines | Which |
+| --- | --- | --- |
+| `zcode.cjs.orig-3180.bak` (upstream 3.18.0) | 2 of 502 | `zcode-text.ts literal 6` (1/4 lines) + `literal 11` (2/2 lines) — the two known LocalToolSearch example moves |
+| upstream 3.18.2 (recovered) | 2 of 502 | exactly the same two items |
+| installed (3.18.2 + patch) | 2 of 502 | exactly the same two items; user patch touches none of the 502 |
+
+- **Nothing beyond the two known moves.** Upstream drift 3.18.0 → 3.18.2 on the audited set is zero: no additional item moved, no checked line changed. The representative diffs in §3 (TodoWrite → TaskStop swap) remain the current wording — there are no new ones to quote.
+- The TaskStop wording introduced in 3.18.0 persisted into 3.18.2: select example at upstream-3182 line 2359 (3.18.0 installed: 2360; pristine 3.17.1: 2251), example header 2373 (2374 / 2265), `DeferredToolCall` TaskStop input 2375. A byte-level comparison of the whole example region (2,570 B) between 3.18.0 and 3.18.2 shows every difference is minified-identifier churn (`lwt`→`hwt`, `pY`→`fY`, `vAa/yAa`→`bRa/vRa`, `jAo`→`bRo`, `uPn`→`TPn`, `BAo`→`SRo`, `uwt`→`gwt`); no string-literal content differs.
+- The 3.18.2 rebuild moved code wholesale (diff `orig-3180.bak` → upstream 3.18.2: 468 hunks, ~29.8 MB of diff text — identifier and module-order churn across a bundle of few huge lines). That churn is exactly why the missing `.bak` matters; the audited item set is untouched by it.
+
+### 6.4 User patch on the 3.18.2 base
+
+Diff installed vs recovered upstream 3.18.2: **exactly 11 hunks, +5,717 B — byte-identical delta size to the 3.18.0-base patch recorded in §4.** The patch set did not grow; it was re-applied as-is on the new base. All five §4 features verified present: `__zcodePatchCallModel` ×4; `__ZC_DECL` ×7 / `__ZC_PID` ×7 with the start-plan branch keeping the official notice plus the appended "Engineering Environment Notice" (×1); `__zcodeMcpSync` ×2; the extended retry classifier (Chinese provider-busy / rate-limit strings, `providerCode` present). Hunk locations (upstream line numbers): 126, 2717, 14359–14360, 14362, 14446, 14580, 14756, 14760, 14762, 14764, 14803; 8 of the 11 carry the `__zcode`/`__ZC_` markers directly.
+
+### 6.5 Verdict
+
+**The 3.17.1 pristine pin remains valid after 3.18.2; no re-baseline follow is warranted.** Two upstream releases (3.18.0, 3.18.2) moved only the two known example literals; everything else the dialect sends is byte-identical across pristine 3.17.1, both upstream copies, and the installed bundle. The §5 recommendation stands unchanged: keep the pin; the optional cosmetic follow (adopt the TaskStop example wording in `src/toolsearch/zcode-text.ts`) remains low-priority and is now corroborated across two releases. Re-check again on the next desktop update that touches the sections in §3.
+
+Additional caveats:
+
+- Attribution of the installed bundle relied on the recovered upstream copy; its provenance chain (installer exe → `app-64.7z` → `resources/glm/zcode.cjs`, FileVersion 3.18.2.10443, archive mtimes matching the on-disk install) is recorded in §6.1 so the recovery is reproducible.
+- Same scope limits as §5: deferred/resident tool registry contents and schemas re-derived from zod are covered only indirectly by the mirror items.
