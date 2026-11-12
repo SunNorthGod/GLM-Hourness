@@ -254,3 +254,22 @@ worker 会话不注入、不暂停、不重派。政策差的后果全部落在�
 3. **metrics 契约同步**：kinds 表与 `src/shared/metrics.ts` 词表必须同批改，漏一边编译失败（既有契约检查兜住，属好事）。
 4. **fail closed 的误报面**：图读不出按差报 vs 降级说一次——本稿取「图整体读不出 → 降级说一次」（与 docs gaps 同案），单类读不出（节点没了）→ 按差报。两档边界在 R3 的 L2 里钉死。
 5. **豁免规则的边界**：特性落地前的旧派发、寄存器丢失且批注是旧格式，两者都无基线可比。规则只有一条：没有 policy 行就没有政策差（宁缺毋错报）。
+
+## 13. 实施记录（0.3 增补，2026-11-13）
+
+按 §12 的四批全部落地，分支 `reval`，每批一个提交，全部门禁过后才进下一批。
+
+| 批 | 提交 | 内容 |
+| --- | --- | --- |
+| R1 | `037f127a` | `src/execute/policy-digest.ts`：四类摘要（gate 复用 `normDigest(parseGateNorm)`；floor 取 `parseFloor` 的 entries+unparsed；rules 读导出文件文本、不在与空文件同一个稳定摘要、读不出记 unreadable；checker 取 `envBranch` 的 config 路径，与 guard 的图半边同源）；`policy:` 行 render/parse（按前缀找行，空白容错，最后一个生效）；`policyStaleness` 逐类对比。偏差：`GATE_NORM_ID`、`FLOOR_NORM_ID`、`POLICY_CLASSES` 保持模块内常量（knip 基线 18 不涨） |
+| R2 | `e3c7b5d2` | `Attempt`/`DispatchComment`/`DispatchRecord` 加 `policy`，派发批注在 pins 行后写 policy 行，`parseDispatchComment` 改为 pins 与 policy 都按前缀从后向前找（旧格式照常解析、policy 缺省）；派发时算四类摘要进批注与寄存器（各角色一律）；`rulesReadOf` 放在 handback.ts（dispatch 值依赖 handback 的既有方向，不加新环）；reconcile 重建带 policy。偏差：`tests/execute-row.spec.ts` 一条既有断言随批注新形状更新 |
+| R3 | `1ae02a9e` | 交回处现算当前四类摘要对 `attempt.policy` 逐类对比；有差则交回批注加 `政策差：` 行（`HandbackComment.policyDrift`，render/parse 成对）、notify 第四种事件 `'policy'`、`execute.policy-drift` {task, attempt, classes}（kinds 表 + shared 词表 + execute 层 MetricEvent 三处同批）、done 流程照走 |
+| R4 | （reval 分支） | `ReviewBriefInput.policyDelta`，审查简报按 §4.3 措辞加 delta 节；审查派发把被审任务最新 done 交回的政策差传进简报；`reviewTargetOf` 未动 |
+
+两处测试落点与 §12 的指定不同（理由在 progress.md）：`'policy'` 通知载荷形状断言放 `tests/execute-handback.spec.ts`（持有 sent 捕获的 rig 在那里；`execute-notice.spec.ts` 是派发状态通知，另一个主题）；审查派发接线测试放 `tests/execute-row.spec.ts`（`execute-review.spec.ts` 是 review.ts 纯函数 spec，没有派发 rig）。
+
+实施中发现并修掉的一个寄存器窗口：policy 摘要的计算一度放在 `startActivation` 与 `registerAttempt` 之间，async 缝隙让「已启动未注册」的子会话存在——L2 的验收审查重派测试偶发红（测试的 `processed()` 在条目未注册时立刻放行，rig 清场后在途写撞上已删树）。修法是计算移到 `startActivation` 之前，start→register 保持同步连排（§3.1.4 的语义本就要求这样，生产里同一缝隙会削弱子会话首次调用的写护栏）。
+
+探针钉四条落在 `glm-exec-review`（设计写的 `glm-dispatch` 是派发可行性三场景组，不跑执行行；真正走 `dispatch_task`、交回与审查派发的是 exec 场景族）与 `glm-exec-docs`（负对照）：场景加 `norm-merge-gate` 种子、派发与交回之间经 `probe_human_write` 给 `norm-review-floor` 加一条可判类（覆盖层不改 `probe-dispatch.mjs`，只在场景覆盖行加探针行）；检查读通知文本而不是 source 载荷——运行时请求记录只记 `source.kind`（probe-llm 的 summarizeMessage），载荷形状由 L2 在 UserNotice 对象上钉住。两轮探针：567/585（562/580 基线 + 5 条新检查全过，18 条基线红逐字不变）。指标 kinds 同步：`.agents/tasks/metrics/design.md` 的 M7 节 23→24 种、字段表加行，`tests/metrics-schema.spec.ts` 钉单同步——这处是 R3 遗漏、终局链补上（R3/R4 的全量链曾被 jscpd 挡在 test:1，spec 没跑全；终局链以退出码为准）。
+
+门禁：每批 build/preflight/test 全绿，棘轮 eslint 73 / knip 18 / jscpd 1 逐批持平；`tests/execute-policy.spec.ts` 进 `package.json` 的 test:2 链。origin/main 两次并入（`09897366` 文档、`f0c0cd77` worker-git 索引拒绝 + 文档，后者带一次合并后全量链与一轮探针）。实施过程逐批记录在同目录 progress.md。

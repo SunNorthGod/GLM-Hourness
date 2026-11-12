@@ -61,3 +61,8 @@ Plan: .agents/tasks/reval/design.md 0.2, §12 batches R1-R4, probe, merge.
 
 - Probe 1: 566/585 - the policy-notice check failed on a checker-side read: the recorded request messages carry only source.kind (probe-llm.mjs summarizeMessage), so source.hournessExecute is not there to read; the notice itself WAS delivered (found in the kept run dir's requests.jsonl). The shipped code is correct; the payload shape stays pinned by the L2 test on the UserNotice object. Fixed the two reval checks to match the notice text instead.
 - Probe 2: 567/585 - all five reval checks pass, the 18 baseline labels unchanged, none of the failures is a reval check. Lock .llm/probe-lock taken with owner.txt, refreshed during the run, removed after. No rebuild during the probes. Logs: reval-probe-1.log, reval-probe-2.log (in this directory).
+
+## Probe 3 (post-merge) + docs
+
+- origin/main merged into reval again (f0c0cd77): worker-git index-plumbing denial (5a3c5d53, another lane) + docs. One test-import conflict in tests/execute-row.spec.ts resolved (union of both sides' imports). Full chain green after the merge (227 specs, ratchets 73/18/1). Probe 3 on the merged tree: 567/585, 18 baseline FAILs, 0 reval FAILs - the merged world validates through the exec scenarios, which exercise worker-git heavily.
+- Docs: design.md §13 implementation record; docs/HANDOFF.md §10 item 5 rewritten (reval implemented and merged; nowait/comms-split stay pending) and the tail's question-40 marked decided.
