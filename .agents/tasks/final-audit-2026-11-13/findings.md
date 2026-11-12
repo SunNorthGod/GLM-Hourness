@@ -129,3 +129,17 @@ face-migration progress.md 批 A 的清单逐标签对上(其「exec dispatch(GL
 12. 空提交事故的 `4df09fe` 在仓外 ws-node,本仓无影响(图、svg 复测干净)。
 13. `docs/rules/`、`docs/loops/` 尚未诞生——按 HANDOFF §2 的条件存在条款属正常(人还没在本仓设过档位/条目)。
 14. 复测全绿汇总:eslint 73 压制、knip 18、jscpd 1(7 行)、逐字 502/0、graph.svg 与重渲染逐字节一致(revision de48f2426b4c)。
+
+## 对账清账（2026-11-13，doc-reconciliation lane）
+
+### 提交 1（eed32ce1）——7 条应修 + 版本号
+
+- 应修 1：`packages/hourness/README.md` 行表补 execute/metrics/env/bootstrap 四行（按 `cordis.patch.yml` 的 17 行排位），graph-panel 行改为「/graph-run；面板只读」（照 HANDOFF §3 的措辞）；引言的行数 twelve→seventeen（中英两处）。同文件顺带修了 engines 行：README 写 0.2.1-rc.3 而 `engines.dsh` 是 `^0.2.2-rc.1`——审计清单没列这处，属同类漂移，一并改真。
+- 应修 2：`docs/DESIGN.md` §2.2 表补 `glm-hourness/metrics` 行（默认启用 2026-11-04 起，L3 三场景过，桌面核对欠）；bootstrap 行改为出厂启用（`7176e503` 2026-11-12、`0cc628a5` 579/579、B10 `5de7c061` 收档）。
+- 应修 3：`docs/ORCHESTRATION.md` §19 节首、§19.2 引言、§3.1 接管接缝改为「已实现并出厂启用 + B10 已过」。
+- 应修 4：`ORCHESTRATION.md` §4.9「本仓库的图」整条改为已处置（`331c2950`，2026-11-01），「要执行的命令」改「已执行的命令」，STAND-IN 句同步改已随 m3 换掉；`HANDOFF.md` §3 design 行的「已知残余」改「已知残余已清」。
+- 应修 5：`docs/DEVELOPMENT.md` §4 与 §11 第 3 条改为如实：devDependencies 与 `reference/` 仍在 0.2.1-rc.3，运行时 2026-11-10 起 0.2.2-rc.1，rc.1 重导出挂账（本批不做）。
+- 应修 6：`source-transcript.md` 已 `git rm --cached`（工作副本保留），`.gitignore` 在白名单之后加例外，`git check-ignore` 验证命中；处置写进提交说明。
+- 应修 7：glm 包 glm-llm 注释改「Ships disabled by design, not by a pending gate」（沙盒与桌面 L4 已于 2026-10-28/29 过，出处 DESIGN §2.2/§2.5）；hourness 包 bootstrap 注释改为 /wish 入口（B8 已合入）、启用 2026-11-12、B10 桌面已过（`5de7c061`）。
+- 根 `package.json` 0.3.0 → 0.3.1。
+- 核查：tests/ 与 scripts/ 无引用旧注释原文的断言（grep 0 命中）；本提交为纯文档与注释，全量门禁按工单在整批对账完成后跑一次。
