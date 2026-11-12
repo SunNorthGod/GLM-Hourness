@@ -1858,7 +1858,7 @@ const compactInstructions = runScenario('glm-compact-instructions', 'glm-5.3', [
   { tool: { name: 'Read', arguments: { file_path: join(instructionsWs, 'README.md') } } },
   { tool: { name: 'Read', arguments: { file_path: join(instructionsWs, 'README.md') } } },
   { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task: 'I1', prompt: 'Probe task I1: reply done.', cwd: instructionsWs, scope: '.', model: 'glm-5.3' } } } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the subagent run' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 4 127.0.0.1 | Out-Null', description: 'probe: let the subagent run' } } },
   { text: 'done' },
 ], 'Read the README twice, dispatch task I1, wait, then reply done.', [...dispatchRow(join(instructionsDir, 'dispatch.jsonl')), '- id: compaction-basic', '  config: { thresholdRatio: 0.02, retainTokens: 0 }'], instructionsWs, [[{ text: 'child done' }]], instructionsProfile)
 const instructionsChildId = dispatchRecord('glm-compact-instructions').find(entry => entry.kind === 'started')?.childId
@@ -2253,14 +2253,31 @@ const designMainScript = ({ read, write, shell, ask, status }) => (ws) => {
     { tool: { name: shell, arguments: { command: 'git status', description: 'probe: git status' } } },
     { tool: { name: shell, arguments: { command: 'git checkout -- README.md', description: 'probe: git checkout' } } },
     { tool: { name: ask, arguments: { questions: [] } } },
+    // The no-wait rule (nowait design §3): a command-position sleep, a named 120-second
+    // timeout and a ten-second job wait are denied; the lift through the service (the
+    // write /rules lift makes once the board side is connected) takes the rule off and
+    // the same sleep and the same timeout run.
+    { tool: { name: shell, arguments: { command: 'sleep 30', description: 'probe: sleep at a command position' } } },
+    { tool: { name: shell, arguments: { command: 'git status', timeoutMs: 120000, description: 'probe: a named two-minute timeout' } } },
+    { tool: { name: 'job_output', arguments: { wait: true, timeout_ms: 10000 } } },
+    { tool: { name: 'probe_lift', arguments: { rule: 'design:main-agent-no-wait' } } },
+    { tool: { name: shell, arguments: { command: 'sleep 30', description: 'probe: sleep after the lift' } } },
+    { tool: { name: shell, arguments: { command: 'git status', timeoutMs: 120000, description: 'probe: the same timeout after the lift' } } },
     { text: 'done', line: '/wish off' },
   ]
 }
 const designIdle = (status) => () => [{ text: 'ok' }, { text: 'done', ...status }]
 const designGlmIdle = designScenario('glm-design-wish-idle', 'glm-5.3', designIdle({ status: true }), { wish: DESIGN_WISH })
 const designPlainIdle = designScenario('non-glm-design-wish-idle', 'deepseek-probe', designIdle({ command: { name: 'hourness-status' } }), { wish: DESIGN_WISH, on: profiles['probe-hourness'] })
-const designGlmMain = designScenario('glm-design-main', 'glm-5.3', designMainScript({ read: 'Read', write: 'Write', shell: 'Bash', ask: 'ask_user_question', status: { status: true } }), { git: true })
-const designPlainMain = designScenario('non-glm-design-main', 'deepseek-probe', designMainScript({ read: 'read', write: 'write', shell: 'pwsh', ask: 'ask_user_question', status: { command: { name: 'hourness-status' } } }), { on: profiles['probe-hourness'], git: true })
+const designMainLiftOverlay = (name) => [
+  '- insert:',
+  '    - id: glm-hourness-probe/lift',
+  `      name: ${JSON.stringify(slash(join(repo, 'scripts', 'probe', 'probe-lift.mjs')))}`,
+  '      inject: [tools]',
+  `      config: { out: ${JSON.stringify(slash(join(runDir, name, 'lift.jsonl')))}, lift: true }`,
+]
+const designGlmMain = designScenario('glm-design-main', 'glm-5.3', designMainScript({ read: 'Read', write: 'Write', shell: 'Bash', ask: 'ask_user_question', status: { status: true } }), { git: true, extra: designMainLiftOverlay('glm-design-main') })
+const designPlainMain = designScenario('non-glm-design-main', 'deepseek-probe', designMainScript({ read: 'read', write: 'write', shell: 'pwsh', ask: 'ask_user_question', status: { command: { name: 'hourness-status' } } }), { on: profiles['probe-hourness'], git: true, extra: designMainLiftOverlay('non-glm-design-main') })
 // One main agent per project: the main agent session (the simulated human's
 // /wish) types a second root session of the same workspace into existence
 // and has it type /wish, which only says where the main agent is, then
@@ -2289,7 +2306,7 @@ const designWishOffIdle = designScenario('glm-design-wish-off-idle', 'glm-5.3', 
   { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish off', say: 'Reply done.' } },
   // The woken session runs its turn while the main one waits; without the
   // wait the run ends before that turn sends its first request.
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the second session run' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 4 127.0.0.1 | Out-Null', description: 'probe: let the second session run' } } },
   { text: 'done' },
 ], { others: [[{ text: 'done' }]] })
 // Stage reminders and design-before-release (docs/ORCHESTRATION.md §3.5, §6.1; M3 step 5).
@@ -2311,7 +2328,8 @@ async function stageGraph(name, seeds) {
   return graph
 }
 const stageDispatch = (name, task, file) => ({ tool: { name: 'DeferredToolCall', arguments: { name: 'probe_dispatch', input: { task, prompt: `Write ${file}, then reply done.`, cwd: stageWs(name), scope: '.', model: 'glm-5.3' } } } })
-const stageWait = { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the subagent run' } } }
+// The pacing wait of a main-agent script cannot be a Start-Sleep: the no-wait rule denies a command-position sleep, so the wait is a loopback ping (about the same seconds, no sleep token).
+const stageWait = { tool: { name: 'Bash', arguments: { command: 'ping -n 4 127.0.0.1 | Out-Null', description: 'probe: let the subagent run' } } }
 const stageChild = (name, file) => [{ tool: { name: 'Write', arguments: { file_path: join(stageWs(name), file), content: 'x\n' } } }, { text: 'child done' }]
 const stageFocus = id => ({ tool: { name: 'graph_focus', arguments: { id } } })
 const stageRead = name => ({ tool: { name: 'Read', arguments: { file_path: join(stageWs(name), 'README.md') } } })
@@ -2560,7 +2578,7 @@ const bootstrapExisting = designScenario(BOOTSTRAP_EXISTING, 'glm-5.3', ws => [
   { tool: { name: 'record_human_answer', arguments: { kind: 'question', question: 'question-3', answer: 'agree', words: [BS_AGREE], recordedAs: '照第 1 版清单接管' } } },
   { tool: { name: 'Bash', arguments: { command: "git add docs/graph; git commit -m 'Add the project graph (hourness bootstrap)'", description: 'probe: commit the project graph' } } },
   { ...bsRead(ws), line: '/hourness-init status' },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 45', description: 'probe: let the trial round finish and its notice deliver before the host exits' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 46 127.0.0.1 | Out-Null', description: 'probe: let the trial round finish and its notice deliver before the host exits' } } },
   { text: 'done' },
 ], { wish: BS_WISH, extra: BOOTSTRAP_ROW, human: { replies: { question: [BS_AGREE, BS_AGREE] }, maxReplies: 2 } })
 // The trial under rc.3's real sandbox (takeover design 0.6 §6, §15.2; U1, U4, U7, U8, U9): a committed project whose CI lists four
@@ -2595,7 +2613,7 @@ const bootstrapTrial = designScenario(BOOTSTRAP_TRIAL, 'glm-5.3', ws => [
   bsRead(ws),
   { tool: { name: 'graph_propose', arguments: { node: { type: 'goal', title: '探针项目要做成什么' }, reason: 'probe: the anchor of the takeover' } } },
   { tool: { name: 'graph_propose', arguments: { node: { type: 'norm', id: 'norm-merge-gate', title: '合入前的检查', parent: 'goal-1', acceptance: BS_TRIAL_COMMANDS.map(command => `\`$ ${command}\``) }, reason: 'probe: the project\'s CI commands' } } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 60', timeout: 120000 } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 61 127.0.0.1 | Out-Null', timeout: 120000 } } },
   { ...bsRead(ws), line: '/hourness-init status' },
   { text: 'done' },
 ], { wish: true, extra: BOOTSTRAP_ROW })
@@ -2631,10 +2649,10 @@ const bootstrapResume = designScenario(BOOTSTRAP_RESUME, 'glm-5.3', ws => [
   ...bsRoundTail,
   { tool: { name: 'probe_hold_journal', arguments: {} } },
   { tool: { name: 'record_human_answer', arguments: { kind: 'question', question: 'question-3', answer: 'agree', words: [BS_AGREE], recordedAs: '照第 1 版清单接管' } } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 9', description: 'probe: the helper releases the journal lock' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 10 127.0.0.1 | Out-Null', description: 'probe: the helper releases the journal lock' } } },
   { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish' } },
   { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish here', say: 'Reply done.' } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 40', description: 'probe: let the resumed write, the second session\'s turn and the trial round settle' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 41 127.0.0.1 | Out-Null', description: 'probe: let the resumed write, the second session\'s turn and the trial round settle' } } },
   { text: 'done' },
 ], { wish: BS_RESUME_WISH, extra: [...BOOTSTRAP_ROW, ...bsResumeRow], human: { replies: { question: [BS_AGREE, BS_AGREE] }, maxReplies: 2 }, others: [[{ tool: { name: 'Bash', arguments: { command: "git add docs/graph; git commit -m 'Add the project graph (hourness bootstrap)'", description: 'probe: commit the project graph' } } }, { tool: { name: 'Read', arguments: { file_path: join(bsResumeWs, 'README.md') } } }, { text: 'second session committed the graph' }]] })
 
@@ -2863,7 +2881,7 @@ const execScenario = (name, model, glmRoute) => {
     { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model, why: EXEC_WHY, quick: true, review: { depth: 'light', why: 'probe: one file' } } } },
     { tool: { name: glmRoute ? 'Read' : 'read', arguments: { file_path: join(repo, 'package.json') } } },
     { tool: { name: 'subagent', arguments: { description: 'probe plain subagent', prompt: 'Write README.md in the project root, then report.' } } },
-    shellCall('Start-Sleep -Seconds 8', 'probe: let the worker run'),
+    shellCall('ping -n 9 127.0.0.1 | Out-Null', 'probe: let the worker run'),
     { text: 'done', ...(glmRoute ? { status: true } : { command: { name: 'hourness-status' } }) },
   ]
   const worker = [
@@ -2876,6 +2894,8 @@ const execScenario = (name, model, glmRoute) => {
     { tool: { name: 'graph_comment', arguments: { id: 'task-1', text: 'probe worker comment' } } },
     shellCall('git push origin HEAD', 'probe: try to push'),
     shellCall('git reset --hard', 'probe: reset the worktree'),
+    // The worker waits as it pleases: the no-wait rule judges the main agent only (nowait design §3, Q3).
+    shellCall('sleep 30', 'probe: the worker sleeps at a command position'),
     { tool: { name: 'structured_output', arguments: EXEC_HAND_BACK } },
     { text: 'worker done' },
   ]
@@ -2930,13 +2950,13 @@ const execPlan = designScenario(EXEC_PLAN, 'glm-5.3-flash', () => [
   { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
   { tool: { name: 'dispatch_task', arguments: { id: 'task-2', model: 'glm-5.3-flash', why: PLAN_WHY } } },
   { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: PLAN_WHY } } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let both workers submit their plans' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let both workers submit their plans' } } },
   { tool: { name: 'send_message', arguments: { agent_id: '{worker:task-1}', message: 'probe: keep the feed to twenty items' } } },
   { tool: { name: 'answer_worker', arguments: { request: '{plan-request:task-1}', verdict: 'approve' } } },
   { tool: { name: 'answer_worker', arguments: { request: '{plan-request:task-2}', verdict: 'approve' } } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let worker one ask' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let worker one ask' } } },
   { tool: { name: 'answer_worker', arguments: { request: '{ask-request:task-1}', text: 'Twenty items, then stop.' } } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the workers hand back' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let the workers hand back' } } },
   { text: 'done', status: true },
 ], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...clockRow(OFF_PEAK_AT)], others: [execPlanWorker2, execPlanWorker1] })
 
@@ -2987,19 +3007,19 @@ const execReviewDispatch = { id: '{review:task-1}', model: 'glm-5.3-flash', why:
 const execReview = designScenario(EXEC_REVIEW, 'glm-5.3-flash', () => [
   { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
   { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: REVIEW_WHY, quick: true, review: { depth: 'light', why: 'probe: one file' } } } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the worker hand back' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let the worker hand back' } } },
   { tool: { name: 'dispatch_task', arguments: { ...execReviewDispatch, depth: 'light', depthWhy: 'probe: one file' } } },
   { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the void and its re-dispatch run' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let the void and its re-dispatch run' } } },
   { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the blocking round stop' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let the blocking round stop' } } },
   { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
   { tool: { name: 'propose_to_human', arguments: { kind: 'question', form: 'recommend', title: '「Add the feed」审了 1 轮还没过', proposal: '按挡路的那一处先修一轮', reason: '审查发现挡路的发现还没修完', cost: '一轮修复加一次审查', notTaken: '不先放弃这件活，放弃了目标会缺一块', text: '审查发现挡路的发现还没修完，我建议按挡路的那一处先修一轮，可以吗？代价是一轮修复加一次审查。', parent: 'task-1', sources: ['{review:task-1}'] } } },
   { tool: { name: 'graph_show', arguments: { id: 'task-1' } }, tell: '先修挡路的那一处吧，修完再看。' },
   { tool: { name: 'record_human_answer', arguments: { kind: 'question', question: '{question:task-1}', answer: 'agree', words: ['先修挡路的那一处吧，修完再看。'], recordedAs: '先修挡路的那一处' } } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 3', description: 'probe: let the decide settle' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 4 127.0.0.1 | Out-Null', description: 'probe: let the decide settle' } } },
   { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the passing round finish' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let the passing round finish' } } },
   { text: 'done', status: true },
 ], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false'], others: [
   execReviewWorker,
@@ -3051,11 +3071,11 @@ const docsWs = await seedDocsProject(EXEC_DOCS)
 const execDocs = runScenario(EXEC_DOCS, 'glm-5.3-flash', [
   { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
   { tool: { name: 'dispatch_task', arguments: { id: 'task-1', ...docsDispatch } } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let worker one hand back' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let worker one hand back' } } },
   { tool: { name: 'dispatch_task', arguments: { id: 'task-2', ...docsDispatch } } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let worker two hand back' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let worker two hand back' } } },
   { tool: { name: 'dispatch_task', arguments: { id: '{review:task-1}', model: 'glm-5.3-flash', why: DOCS_WHY, depth: 'full', depthWhy: 'probe: full it is' } } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the review pass' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let the review pass' } } },
   { text: 'done', status: true },
 ], 'Dispatch two workers in components, review the first, then reply done.', [
   ...designRows({ record: slash(join(runDir, EXEC_DOCS, 'human.jsonl')), wish: true }),
@@ -3116,7 +3136,7 @@ function plantCommit(ws, parent, files, message) {
 }
 const mergeWt = join(runDir, EXEC_MERGE, 'ws', '.worktrees', 'hz-task-1')
 const mergeBash = (command, description) => ({ tool: { name: 'Bash', arguments: { command, description } } })
-const mergeSleep = (seconds, why) => mergeBash(`Start-Sleep -Seconds ${seconds}`, `probe: ${why}`)
+const mergeSleep = (seconds, why) => mergeBash(`ping -n ${seconds + 1} 127.0.0.1 | Out-Null`, `probe: ${why}`)
 const mergeSquash = (branch, subject, wt = mergeWt) => mergeBash([
   `git -C '${wt}' checkout -q -b ${branch}`,
   `git -C '${wt}' reset -q --soft main`,
@@ -3498,12 +3518,12 @@ const requestWorkerScript = [
 const requestWorkerRun = designScenario('guard-request-worker', 'glm-5.3', () => [
   { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
   { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: REQUEST_WORKER_WHY, quick: true } } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the worker hit the denial and ask' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let the worker hit the denial and ask' } } },
   requestExceptionCall(true),
   probeSay(true, '可以', 'probe-request-worker-1'),
   { echoToolText: true },
   { tool: { name: 'answer_worker', arguments: { request: '{ask-request:task-1}', text: 'The human approved the request: make the identical call once now.' } } },
-  { tool: { name: 'Bash', arguments: { command: 'Start-Sleep -Seconds 8', description: 'probe: let the worker hand back' } } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let the worker hand back' } } },
   { text: 'done', status: true },
 ], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...probeRow(join(requestWorkerDir, 'lift.jsonl')), ...clockRow(OFF_PEAK_AT)], others: [requestWorkerScript] })
 const requestWorkerViolations = jsonl(join(requestWorkerDir, 'home', 'audit', 'violations.jsonl'))
@@ -4110,7 +4130,9 @@ function designChecks() {
         [`design main (${label}): after /wish off the request has no section, the first request's face and the leave notice; the row is not in effect; the Write after it ran, so did the one before`, !hasSection(5) && isDeepStrictEqual(faceOf(steps[5]), faceOf(steps[0])) && left(steps[5]) && !left(steps[4]) && notInEffect(rowAt(scenario, 5)) && files(scenario, 'before.txt', 'after.txt').every(Boolean), `${sectionAt(steps[5])}; ${JSON.stringify(rowAt(scenario, 5) ?? null)}; files ${files(scenario, 'before.txt', 'after.txt').join(',')}`],
         [`design main (${label}): the main agent again: a Write and a shell write are refused by name with the main agent's correction, and neither file exists`, [8, 9].every(index => lastToolResult(steps[index])?.isError === true) && lastToolResult(steps[8]).text.includes('Boundary: You are the main agent of this session (/wish)') && lastToolResult(steps[8]).text.includes('You tried to write') && lastToolResult(steps[9]).text.includes('You tried to change files through the shell') && files(scenario, 'denied.txt', 'denied2.txt').every(present => !present), `${[8, 9].map(index => `${lastToolResult(steps[index])?.isError}:${(lastToolResult(steps[index])?.text ?? '').slice(0, 50)}`).join(' | ')}; files ${files(scenario, 'denied.txt', 'denied2.txt').join(',')}`],
         [`design main (${label}): git status runs without a snapshot or a notice; git checkout -- README.md runs, the next request has the git snapshot notice with the way back, one ref is under refs/hourness/snapshots/, and the edit is in the snapshot`, lastToolResult(steps[10])?.isError !== true && messagesOf(steps[10], 'glm-git-snapshot').length === 0 && lastToolResult(steps[11])?.isError !== true && messagesOf(steps[11], 'glm-git-snapshot').length === 1 && messagesOf(steps[11], 'glm-git-snapshot')[0].text.startsWith('[git 快照] 执行「git checkout -- README.md」之前存了快照 ') && snapshotsOf(scenario).length === 1 && lfOf(readFileSync(join(scenario.ws, 'README.md'), 'utf8')) === 'probe workspace\n' && lfOf(snapshotEditOf(scenario)) === 'probe workspace\nedited by the person\n', `${lastToolResult(steps[10])?.isError}/${messagesOf(steps[10], 'glm-git-snapshot').length}; ${lastToolResult(steps[11])?.isError}/${messagesOf(steps[11], 'glm-git-snapshot').length}; refs ${snapshotsOf(scenario).length}`],
-        [`design main (${label}): ask_user_question called by name is refused with the main agent's ask correction, and both refusals and the shell write are in the violation journal`, lastToolResult(steps[12])?.isError === true && lastToolResult(steps[12]).text.includes('You called ask_user_question.') && lastToolResult(steps[12]).text.includes('Exception: none') && jsonl(join(scenario.dir, 'home', 'audit', 'violations.jsonl')).map(record => record.rule).join(',') === 'main-agent-no-write,main-agent-no-write,main-agent-ask', jsonl(join(scenario.dir, 'home', 'audit', 'violations.jsonl')).map(record => record.rule).join(',')],
+        [`design main (${label}): ask_user_question called by name is refused with the main agent's ask correction, and both refusals and the shell write are in the violation journal`, lastToolResult(steps[12])?.isError === true && lastToolResult(steps[12]).text.includes('You called ask_user_question.') && lastToolResult(steps[12]).text.includes('Exception: none') && jsonl(join(scenario.dir, 'home', 'audit', 'violations.jsonl')).filter(record => record.kind === undefined).slice(0, 3).map(record => record.rule).join(',') === 'main-agent-no-write,main-agent-no-write,main-agent-ask', jsonl(join(scenario.dir, 'home', 'audit', 'violations.jsonl')).map(record => record.rule).join(',')],
+        [`design main (${label}): the no-wait rule: a command-position sleep, a named 120-second timeout and a ten-second job wait are refused with the background as the right path, and the three denials join the violation journal`, [13, 14, 15].every(index => lastToolResult(steps[index])?.isError === true) && lastToolResult(steps[13]).text.includes('You tried to run sleep on the shell: "sleep 30".') && lastToolResult(steps[13]).text.includes('Right path: Run long commands in the background (run_in_background: true)') && lastToolResult(steps[14]).text.includes('You asked the shell to hold this call for 120000 ms') && lastToolResult(steps[15]).text.includes('You asked to wait for a background job for 10000 ms.') && jsonl(join(scenario.dir, 'home', 'audit', 'violations.jsonl')).filter(record => record.kind === undefined).map(record => record.rule).join(',') === 'main-agent-no-write,main-agent-no-write,main-agent-ask,main-agent-no-wait,main-agent-no-wait,main-agent-no-wait', `${[13, 14, 15].map(index => `${lastToolResult(steps[index])?.isError}:${(lastToolResult(steps[index])?.text ?? '').slice(0, 60)}`).join(' | ')}; ${jsonl(join(scenario.dir, 'home', 'audit', 'violations.jsonl')).map(record => record.rule).join(',')}`],
+        [`design main (${label}): the lift through the service (the write /rules lift makes) takes the rule off: probe_lift answers lifted with the bare id in the record, and the same sleep and the same named timeout run`, lastToolResult(steps[16])?.isError !== true && String(lastToolResult(steps[16])?.text ?? '').includes('"outcome":"lifted"') === true && String(lastToolResult(steps[16])?.text ?? '').includes('"rule":"main-agent-no-wait"') === true && lastToolResult(steps[17])?.isError !== true && lastToolResult(steps[18])?.isError !== true && jsonl(join(scenario.dir, 'lift.jsonl')).some(entry => entry.kind === 'lift' && entry.result?.ok === true) && jsonl(join(scenario.dir, 'home', 'audit', 'violations.jsonl')).some(record => record.kind === 'lift' && record.rule === 'main-agent-no-wait' && record.action === 'lift'), `${lastToolResult(steps[16])?.text?.slice(0, 80) ?? 'no lift'}; post-lift ${[17, 18].map(index => `${lastToolResult(steps[index])?.isError}`).join('/')}`],
         [`design main (${label}): the row activated quietly, the record is gone after /wish off, and no question card was raised`, scenario.status === 0 && rowQuiet(scenario) && humanQuiet(scenario) && designRecord(scenario).kind === 'none', `exit ${scenario.status}; record ${designRecord(scenario).kind}`],
       ]
     }),
@@ -4172,6 +4194,7 @@ function execChecks() {
       [`exec dispatch (${label}): the graph: status refused by name, the comment runs and lands in the task history as the worker's`, lastToolResult(worker[6])?.isError === true && lastToolResult(worker[7])?.isError !== true && history.some(entry => entry.actor === 'llm' && entry.text === 'probe worker comment'), `${lastToolResult(worker[6])?.isError}/${lastToolResult(worker[7])?.isError}; history ${JSON.stringify(history.map(entry => [entry.actor, entry.op]))}`],
       [`exec dispatch (${label}): git: the push is refused with the branch correction and journaled; reset --hard runs after the harness's snapshot, whose ref and journal line are there`, lastToolResult(worker[8])?.isError === true && result(worker[8]).includes('use git only on your branch') && lastToolResult(worker[9])?.isError !== true && snapshots.length === 1 && snapshots[0]?.subcommand === 'reset' && String(snapshots[0]?.ref ?? '').startsWith('refs/hourness/snapshots/') && gitRefs.length === 1 && violations.some(record => record.rule === 'worker-git' && record.agentId === childId), `push ${result(worker[8]).slice(0, 60)}; reset ${lastToolResult(worker[9])?.isError}; snapshot ${JSON.stringify(snapshots[0] ?? null).slice(0, 140)}; refs ${gitRefs.join(', ')}`],
       [`exec dispatch (${label}): the plain subagent's write is refused with the dispatch correction and the file is untouched`, plainWrite?.isError === true && result(plain[1]).includes('plain subagent tool') && readFileSync(join(ws, 'README.md'), 'utf8') !== 'plain\n', `${plainWrite?.isError}:${result(plain[1]).slice(0, 90)}`],
+      [`exec dispatch (${label}): the worker's command-position sleep runs (the no-wait rule judges the main agent only, nowait design §3 Q3): an allowed record line carries it and no main-agent-no-wait record names the worker`, lastToolResult(worker[10])?.isError !== true && commands.some(line => line.verdict === 'allowed' && JSON.stringify(line).includes('sleep')) && violations.every(record => record.rule !== 'main-agent-no-wait' || record.agentId !== childId), `sleep ${lastToolResult(worker[10])?.isError}:${(lastToolResult(worker[10])?.text ?? '').slice(0, 40)}; record ${commands.filter(line => JSON.stringify(line).includes('sleep')).map(line => `${line.tool}:${line.verdict}`).join(',') || 'none'}`],
       [`exec dispatch (${label}): no settlement notice for the dispatched worker reaches the main agent (delivery caller), while the plain subagent's does`, childId !== undefined && settled.length >= 1 && settled.every(message => !String(message.text).includes(childId)), `${settled.length} settlement(s): ${settled.map(message => String(message.text).slice(0, 40)).join(' | ') || 'none'}`],
       [`exec dispatch (${label}): the command record of the chain is under .llm/execute/tasks/task-1: allowed writes, refusals, and the reset with its git subcommand`, commands.length >= 5 && commands.some(line => line.verdict === 'allowed' && line.tool === 'write' && line.writes === true) && commands.some(line => line.verdict === 'refused') && commands.some(line => line.verdict === 'allowed' && line.tool === 'pwsh' && JSON.stringify(line.git ?? []).includes('reset')), `${commands.length} line(s): ${commands.map(line => `${line.tool}:${line.verdict}`).join(', ') || 'none'}`],
       [`exec dispatch (${label}): the dispatch comment on the task carries the child, the model and the reason`, dispatchComment !== undefined && String(dispatchComment.text).includes(`模型 glm-probe/${model}，理由：${EXEC_WHY}`) && String(dispatchComment.text).includes(childId ?? ''), (String(dispatchComment?.text ?? '').split('\n')[0] ?? 'no comment').slice(0, 170)],
@@ -4436,6 +4459,7 @@ function driveChecks() {
   const view = goal => goal === undefined || goal === null ? 'none' : `${goal.phase}${goal.blockedReason?.code === undefined ? '' : `/${goal.blockedReason.code}`}`
   return [
     [`exec drive: after the person's release the main agent's next step has a goal, with no goal command typed (only the person's /wish in the second root session), the objective names goal-1 and holds the acceptance, and goal-1 carries the 自动推进已开始 comment naming the session`, root?.other?.kind === 'success' && root.other.text === '/wish' && main.slice(0, driveAt('goal-started') + 1).every(step => step.line === undefined && step.command === undefined) && started?.phase === 'active' && String(started.objective ?? '').includes('Project graph goal goal-1') && String(started.objective ?? '').includes('the feed builds') && startComment !== undefined && startComment.includes('会话 probe-other-'), `${root?.other?.kind ?? 'no /wish'}; goal ${view(started)}; ${startComment?.slice(0, 120) ?? 'no start comment'}`],
+    [`exec drive: the goal's objective carries the nowait sentence (nowait design §3.2): the background, the notice, the turn that ends`, String(started?.objective ?? '').includes('Run long commands in the background (run_in_background): the job\'s end, with its output, arrives by itself as a notice.') && String(started?.objective ?? '').includes('Never hold the turn open with sleep, polling or a long job wait; when nothing is left to do in the turn, end it.'), `objective ${String(started?.objective ?? '').length} code points, tail ${(String(started?.objective ?? '').split('\n').at(-1) ?? '').slice(0, 100)}`],
     [`exec drive: update_goal complete with gaps is refused by the completion gate with what is missing, and the goal stays active`, resultAt('complete-gaps')?.isError === true && textAt('complete-gaps').includes('The completion gate keeps goal goal-1 open. What is missing:') && goalAt('goal-after-gaps')?.phase === 'active', `${textAt('complete-gaps').split('\n').slice(0, 2).join(' | ').slice(0, 160)}; goal ${view(goalAt('goal-after-gaps'))}`],
     [`exec drive: send_message to the worker that handed back is refused by worker-message-live-only`, childId !== undefined && resultAt('message-ended')?.isError === true && textAt('message-ended').includes('That worker has ended') && textAt('message-ended').includes(childId), `${childId ?? 'no child'}: ${textAt('message-ended').slice(0, 140)}`],
     [`exec drive: await_human blocks the goal hourness-waiting-human`, textAt('await').includes('"blocked":true') && waitingAt >= 0, `${textAt('await').slice(0, 100)}; ${watched.map(entry => `${entry.operation}:${view(entry.goal)}`).join(' ') || 'no goal change'}`],

@@ -33,26 +33,15 @@
    - design-main 的 GLM 路线 shell 是 Bash（native pwsh），命令按 pwsh 方言读；
      sleep 钉 `sleep 30`（命令位开头，两方言正则都中）。
    - prompt 句子钉不在 glm-design-main（它没有 goal 轮），改钉在 exec-drive 场景
-     （已有 `started.objective` 断言，:4438），设计 §5 探针第 5 条勘误。
-   - worker 放行钉在 exec-dispatch 的 child 脚本末尾追加 `sleep 30`（worker 的
+     （已有 `started.objective` 断言），设计 §5 探针第 5 条勘误。
+   - worker 放行钉在 exec-dispatch 的 child 脚本加 `sleep 30`（worker 的
      commands.jsonl 记 allowed，violations 无 main-agent-no-wait）。
 4. **objective 尾注测试**：`tests/execute-drive.spec.ts:51` 的 `$` 锚定断言目标
    以「it lists what is missing.」结尾，新句加在 DRIVE_BODY 末尾后要改这条。
+5. **步骤索引**：探针的 `lastToolResult(steps[i])` 读的是脚本第 i-1 项的结果
+   （request i 携带上一请求的 tool result），脚本项与 request 一一对应。
 
-## 阶段 2：N2 提示词一句（完成）
-
-- `src/execute/drive.ts`：DRIVE_BODY 末尾加一句（nowait 设计 §3.2，原型
-  orchestrator.md:16 同义）：`Run long commands in the background
-  (run_in_background): the job's end, with its output, arrives by itself as a
-  notice. Never hold the turn open with sleep, polling or a long job wait;
-  when nothing is left to do in the turn, end it.` SPLIT_SENTENCE 与两级循环
-  （tiers）未动。
-- L2：execute-drive.spec.ts——原 :51 的 `$` 尾锚改为新句（objective 现在以新句
-  结尾），加新句逐字断言；新测：nonGoals 1500 字符把 objective 顶过 2000，
-  `Not in scope:` 先切、新句整句存活。16/16 绿。
-- 快链绿（build/preflight/lint 73 持平/secrets）。
-
-## 阶段 1：N1 守卫规则（完成）
+## 阶段 1：N1 守卫规则（完成，提交 933f0c0f）
 
 - `src/guard/main-agent-rules.ts`：`NO_WAIT_RULE = 'main-agent-no-wait'`，第十行
   `{ enforcement: 'deny', subjects: 'main-agent', step: 9 }`；`step` 联合体扩
@@ -83,3 +72,66 @@
   check:secrets。工作树 node_modules 缺失，建了 junction 到主检出（`mklink /J
   node_modules ..\..\node_modules`），依赖两分支一致。
 
+## 阶段 2：N2 提示词一句（完成，提交 d99102c3）
+
+- `src/execute/drive.ts`：DRIVE_BODY 末尾加一句（nowait 设计 §3.2，原型
+  orchestrator.md:16 同义）：`Run long commands in the background
+  (run_in_background): the job's end, with its output, arrives by itself as a
+  notice. Never hold the turn open with sleep, polling or a long job wait;
+  when nothing is left to do in the turn, end it.` SPLIT_SENTENCE 与两级循环
+  （tiers）未动。
+- L2：execute-drive.spec.ts——原 :51 的 `$` 尾锚改为新句（objective 现在以新句
+  结尾），加新句逐字断言；新测：nonGoals 1500 字符把 objective 顶过 2000，
+  `Not in scope:` 先切、新句整句存活。16/16 绿。
+- 快链绿（build/preflight/lint 73 持平/secrets）。
+
+## 阶段 3：L3 探针（初版）
+
+- `scripts/probe/probe-lift.mjs`：加 `probe_lift` 工具（config.lift 挂载）——经
+  `glmHournessLifts.setLifted` 写撤下记录，即 `/rules lift` 接上后的写法；不带
+  follow-up。
+- `scripts/probe/run-probe.mjs`：designMainScript 末尾加六步（两路线同构），
+  design-main 两条场景挂 probe-lift overlay；exec-dispatch worker 加 sleep 30
+  与放行钉；exec-drive 加 objective 新句钉。
+
+## 阶段 3a：第一次探针跑（537/587，50 败）归因与修复（2026-11-13 03:28-03:55）
+
+- 对照基线 18 条（`.llm/probe-smallfix-fails.txt`，562/580 的红名单）逐条分类。
+- 根因一（新回归，已修）：主脚本 pacing 全是 `Start-Sleep`——命令位 sleep 被
+  no-wait 规则拒（规则正确，探针脚本要跟上新世界）。被拒后 pacing 丢失，
+  settle 通知把主会话多叫醒（persona 4 请求 vs 3）、时序检查错位（exec
+  review/merge/skeleton/modules 级联）。修复：stageWait 与 exec/dispatch、
+  exec/plan、exec/review、exec/docs、mergeSleep、guard-request-worker、
+  bootstrap existing/trial/resume 的主脚本 pacing 全换成
+  `ping -n N+1 127.0.0.1 | Out-Null`（约同秒等待，无 sleep 词）。普通场景
+  （limits-time、glm-dispatch、rules-*、loops-*，无 /wish 不被判）保留原样。
+- 根因二（新回归，已修）：`probe_lift` 报 unknown tool——overlay 写成了顶层
+  `{id,...}` 根项（Loader 读作「配置已存在的行」，行从未插入）。exec 场景的
+  extra 能用的原因是 glm-hourness/execute 本来就在 profile 里。修复：照
+  liftRow 的形状写成独立 `- insert:` 根项。
+- 基线 18 条与本次失败标签重合的（design modules、glm execution ×2、
+  rules-handover ×2、rules-peak-wake）原因文本同形（非本次回归）。
+- 第一次跑的锁：probe-lock 被 smallfixes-lane 持有（owner.txt 2 分钟前续写过），
+  按 §1.1 用 probe-lock-2；owner.txt 每 5 分钟核对续写，跑完自删。
+
+## 阶段 3b：探针收敛（2026-11-13 04:10-05:08，四跑）
+
+- 第二跑 565/587：两根因修复生效，剩 4 败全在 design-main 两钉——lift 服务把
+  `kind:'lift'` 记录写进同一违规流水（guard 行的 journal 即 lift 记录的写入
+  端），join 断言把 lift 记录的 rule 也数了进去。
+- 第三跑 567/587：join 加 `record.kind === undefined` 过滤（仓内既有惯例，
+  11 处同形）后 no-wait 钉全绿；ask 钉还红——它钉的是「全流水恰 3 条」，而
+  no-wait 三拒合法地追加在后。修复：改钉流水前三条（`slice(0, 3)`）。
+- 第四跑 **569/587 = 580 - 18 基线红 + 7 新钉全绿**；FAIL 标签与
+  `.llm/probe-smallfix-fails.txt` 的基线 18 条逐字相同（diff 为空）。
+- 新钉七条全绿：design-main 两路线的三拒钉 + lift 后放行钉（lift.jsonl、
+  violations 里的 lift 记录、裸 id 入 lifts.jsonl）、exec-dispatch 两路线的
+  worker sleep 放行钉、exec-drive 的 objective 新句钉。
+- 锁全程用 probe-lock-2，每跑之间核对 owner.txt 归属，跑完自删；日志
+  `.llm/nowait-probe-full-1.log`（nowait- 前缀）。git head 未变（probe 期间
+  零重建）。
+
+## 阶段 4：全量门禁（完成）
+
+- build ✓、preflight ✓、npm test ✓（exit 0，3745+ 用例，0 失败）、
+  probe ✓（569/587）。棘轮 73/18/1 持平（eslint 73 压制、knip 18、jscpd 1）。
