@@ -154,3 +154,18 @@ face-migration progress.md 批 A 的清单逐标签对上(其「exec dispatch(GL
 
 - 备注 1：`DEVELOPMENT.md` §7 表补三行——(a) 2026-11-10 rules-peak-stop 查结（FLAKE、竞态约 30ms 窗口、断言按契约放宽 `888bd1b6`、复跑放行废除）；(b) 2026-11-12 flow-1 空提交虚报（双侧根因、`50e5e451`/`69757062`、桌面重跑 `6800976` 非空后 B10 收档 `5de7c061`）；(c) 2026-11-12 嵌套 home 桌面事故（相对 `-Root`、仓外零写入复核、绝对 `-Root` 教训）。
 - `HANDOFF.md` §5 末尾重复的「3.」改为第 28 条并指向 DEVELOPMENT §7，注明 2026-11-13 改号缘由；查结全文只留在 DEVELOPMENT §7 一处。
+
+### PARK（2026-11-13，ZCode 重启前挂起，doc lane）
+
+- 三笔提交都已落在本地 main，**均未推送**：`eed32ce1`（7 条应修 + 版本号 0.3.1 + source-transcript 去跟踪与 .gitignore 例外，工作副本保留）、`06defe64`（FACTS 两行新事实 + pi-ai 出处）、`dd844972`（DEVELOPMENT §7 三起事故 + HANDOFF §5 重复「3.」改第 28 条指向）。对账注记（提交 1、2 的）已随提交 3 入库。
+- 工作树：跟踪文件干净（`git status --porcelain` 无行）；`dist/` 与 `.llm/` 为忽略产物。
+- 门禁进度：`npm run build` 退出 0（build-info commit `dd84497`）；`npm run preflight` 退出 0（22 行组合）；`npm test` 正在后台跑（重启即被杀，日志 `.llm/auditfix-test.log`），**结果未取得、不算数**。期望 3745 过、棘轮 73/18/1 持平。
+- 未开始：探针（清 GIT_CONFIG_COUNT/GIT_CONFIG_KEY_0/GIT_CONFIG_VALUE_0；锁按 DEVELOPMENT §1.1；日志前缀 `auditfix-`；探针期间不重建；期望 562/580、基线 18 条 FAIL 标签不变；若红先查是否断言引用旧注释原文，改断言要记录）。
+- 未开始：提交 3 之后的对账注记与收尾小提交；推送 `origin main` 与 `github`（`https_proxy=http://127.0.0.1:7890 git push github main`）。
+- 重启后接续顺序：重跑三道门禁 → 探针 → 补 findings 对账注记（提交 3 + 门禁/探针数字）并小提交 → 推双远端。审计报告在最后统一给出。
+
+### PARK 补记（2026-11-13，挂起前最后一拍）
+
+- `npm test` 在挂起指令后自行跑完：**退出码 0**（整链通过；`check-lint` 尾部 knip 18、jscpd 1 处 7 行，与基线持平）。逐文件计数之和的 3745 未在本日志里重算，链级判定以退出码 0 为准。门禁三道至此全绿（build 0 / preflight 0 / test 0）。
+- git 状态变化（本 lane 之外发生）：本地 main 顶端多了 `8a647ef4`（docs(graph)：reval/nowait 人已定、goal 标题跟 3.17.1），且 `origin/main` 与 main 同点——三笔对账提交已被推送（非本 lane 执行）；`github` 镜像是否已推未核。
+- 探针仍未跑。挂起期间的唯一脏文件就是本 findings.md 的对账与挂起记录（未提交，按「不开始新工作」保留在盘上）。
