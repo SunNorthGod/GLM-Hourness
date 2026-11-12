@@ -16,7 +16,7 @@ import { GLM_REASONING_EFFORTS } from '../src/glm-llm/models.ts'
 import { removalsOfRole } from '../src/execute/faces.ts'
 import { dispatchTool, createGraphCache, type DispatchDeps } from '../src/execute/dispatch.ts'
 import { dispatchDescription } from '../src/execute/examples.ts'
-import { forgetAttempt, registeredAttempt, type Attempt } from '../src/execute/attempts.ts'
+import { forgetAttempt, registerAttempt, registeredAttempt, type Attempt } from '../src/execute/attempts.ts'
 import { REVIEW_SCHEMA } from '../src/execute/schemas.ts'
 import { apply as executeApply } from '../src/execute/index.ts'
 import { designHost, denied } from './design-host.ts'
@@ -269,6 +269,38 @@ test('a registered worker writes inside its file scope and its .hourness/; outsi
     // The command record carries the allowed and the refused calls (§3.8.5).
     const records = readFileSync(join(project.root, '.llm', 'execute', 'tasks', 'task-1', `${childId}.commands.jsonl`), 'utf8')
     assert.ok(records.includes('"verdict":"refused"') && records.includes('"verdict":"allowed"'), `the command record is missing verdicts: ${records.slice(0, 200)}`)
+    cleanup(childId)
+  }
+  finally {
+    dispose(project)
+  }
+})
+
+test('worker-git keeps the index writes to the worker\u2019s own worktree: read-tree and update-index run there, read-tree --index-output at the main checkout\u2019s index is refused, and a dispatch without a worktree cannot write the main checkout\u2019s index', async () => {
+  const seam = await dispatchedWorker(['pwsh'])
+  const { project, cleanup, childId, child, exec } = seam
+  try {
+    // In its own worktree the plumbing writes the worker's own index: it runs (§3.2.4 step 2).
+    const own = await exec('pwsh', { command: 'git read-tree HEAD' }, { agent: child }) as { isError: boolean, content: { text?: string }[] }
+    assert.ok(!own.isError, `git read-tree in the worktree was refused: ${own.content.map(part => part.text ?? '').join('')}`)
+    const refresh = await exec('pwsh', { command: 'git update-index -q --refresh' }, { agent: child }) as { isError: boolean, content: { text?: string }[] }
+    assert.ok(!refresh.isError, `git update-index in the worktree was refused: ${refresh.content.map(part => part.text ?? '').join('')}`)
+    // `--index-output` can point the write anywhere: at the main checkout's index it is refused, absolute and relative alike.
+    const absolute = await exec('pwsh', { command: `git read-tree --index-output=${join(project.root, '.git', 'index')} HEAD` }, { agent: child }) as { isError: boolean, content: { text?: string }[] }
+    assert.ok(absolute.isError && absolute.content.map(part => part.text ?? '').join('').includes('--index-output points outside your worktree'), `read-tree --index-output reached the main checkout: ${absolute.content.map(part => part.text ?? '').join('')}`)
+    const relative = await exec('pwsh', { command: 'git read-tree --index-output=../../.git/index HEAD' }, { agent: child }) as { isError: boolean, content: { text?: string }[] }
+    assert.ok(relative.isError && relative.content.map(part => part.text ?? '').join('').includes('--index-output points outside your worktree'), `the relative --index-output reached the main checkout: ${relative.content.map(part => part.text ?? '').join('')}`)
+    // A dispatch without a worktree works in the main checkout: the index-writing plumbing resolves to the main checkout's index and is refused.
+    registerAttempt({ childId: 'hz-bare-1', role: 'worker', node: 'task-1', attempt: 1, graphDir: join(project.root, 'docs', 'graph'), provider: 'probe', model: 'probe-model', why: 'no worktree', plan: 'skipped', pins: '' })
+    const bare = childAgent('hz-bare-1', project.root, 'main-1')
+    const noWorktree = await exec('pwsh', { command: 'git read-tree HEAD' }, { agent: bare }) as { isError: boolean, content: { text?: string }[] }
+    assert.ok(noWorktree.isError && noWorktree.content.map(part => part.text ?? '').join('').includes('it writes the index of the main checkout'), `git read-tree without a worktree ran: ${noWorktree.content.map(part => part.text ?? '').join('')}`)
+    const applyCached = await exec('pwsh', { command: 'git apply --cached change.patch' }, { agent: bare }) as { isError: boolean, content: { text?: string }[] }
+    assert.ok(applyCached.isError && applyCached.content.map(part => part.text ?? '').join('').includes('it writes the index of the main checkout'), `git apply --cached without a worktree ran: ${applyCached.content.map(part => part.text ?? '').join('')}`)
+    forgetAttempt('hz-bare-1')
+    // The denials are in the violation journal.
+    const violations = readFileSync(join(project.root, '.llm', 'audit', 'violations.jsonl'), 'utf8')
+    assert.ok(violations.includes('worker-git'), 'the worker-git denial is not in the violation journal')
     cleanup(childId)
   }
   finally {
