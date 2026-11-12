@@ -143,3 +143,14 @@ face-migration progress.md 批 A 的清单逐标签对上(其「exec dispatch(GL
 - 应修 7：glm 包 glm-llm 注释改「Ships disabled by design, not by a pending gate」（沙盒与桌面 L4 已于 2026-10-28/29 过，出处 DESIGN §2.2/§2.5）；hourness 包 bootstrap 注释改为 /wish 入口（B8 已合入）、启用 2026-11-12、B10 桌面已过（`5de7c061`）。
 - 根 `package.json` 0.3.0 → 0.3.1。
 - 核查：tests/ 与 scripts/ 无引用旧注释原文的断言（grep 0 命中）；本提交为纯文档与注释，全量门禁按工单在整批对账完成后跑一次。
+
+### 提交 2（06defe64）——FACTS 账本
+
+- 备注 11 / F-1：§3 表新增同意格式事实一行（自由文本转述必漂移、可复制 JSON 一次过账；seq 145 与 seq 164→166 两案对照；`bootstrap_review` 回带 `args`、`verifyDecision` 不放宽，`69757062`）。
+- 备注 11：§3 表新增 metrics-pricing 备注粘死一行（apply 期一次性探测输跨包激活竞态 + notes 只进不出；响应式接线 `cbc46d36`）。
+- 备注 10：pi-ai 行出处改为 `.agents/tasks/provider-verify/findings.md`（main），并注明 `origin/provider-verify` 分支已随清扫删除。
+
+### 提交 3（本次）——事故账本
+
+- 备注 1：`DEVELOPMENT.md` §7 表补三行——(a) 2026-11-10 rules-peak-stop 查结（FLAKE、竞态约 30ms 窗口、断言按契约放宽 `888bd1b6`、复跑放行废除）；(b) 2026-11-12 flow-1 空提交虚报（双侧根因、`50e5e451`/`69757062`、桌面重跑 `6800976` 非空后 B10 收档 `5de7c061`）；(c) 2026-11-12 嵌套 home 桌面事故（相对 `-Root`、仓外零写入复核、绝对 `-Root` 教训）。
+- `HANDOFF.md` §5 末尾重复的「3.」改为第 28 条并指向 DEVELOPMENT §7，注明 2026-11-13 改号缘由；查结全文只留在 DEVELOPMENT §7 一处。
