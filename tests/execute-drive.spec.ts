@@ -48,7 +48,9 @@ test('a released goal gets one goal at the holder\'s next step with no command t
   const goal = goalNow(rig)
   assert.deepEqual([goal.phase, goal.activation, goal.maxGoalRounds], ['active', 'armed', 500])
   assert.match(goal.objective, /^Project graph goal goal-1: Static blog\nDone when: 1\. the blog builds\nDrive it through the project graph without waiting for the person: /)
-  assert.match(goal.objective, /run check_commit on the commit you want on main, then fast-forward main to it\. .* Mark this goal complete only when the completion gate passes; it lists what is missing\.$/)
+  assert.match(goal.objective, /run check_commit on the commit you want on main, then fast-forward main to it\. .* Mark this goal complete only when the completion gate passes; it lists what is missing\./)
+  // The nowait sentence (the design's §3.2): the background, the notices, and the turn that ends.
+  assert.ok(goal.objective.includes('Run long commands in the background (run_in_background): the job\'s end, with its output, arrives by itself as a notice. Never hold the turn open with sleep, polling or a long job wait; when nothing is left to do in the turn, end it.'))
   const release = releaseAtOf(await rig.node('goal-1'))
   assert.ok(release !== null)
   assert.deepEqual(rig.emitted.filter(event => event.event === 'hourness.design-released'), [{ event: 'hourness.design-released', key: `design-released:goal-1:${release}`, payload: { goal: 'goal-1', module: '', release } }])
@@ -59,6 +61,16 @@ test('a released goal gets one goal at the holder\'s next step with no command t
   await rig.step()
   assert.equal(rig.live.goalCalls.filter(call => call.op === 'create').length, 1, 'the release comment is the key: one goal')
   assert.equal((await rig.comments('goal-1')).filter(text => text.startsWith('自动推进已开始')).length, 1)
+}))
+
+test('a goal whose Not in scope pushes the objective past 2000 characters loses the scope line first; the nowait sentence is not the first thing cut', () => withRig(() => startedRig({ nodes: [{ ...GOAL, nonGoals: ['x'.repeat(1500)] }] }), async (rig) => {
+  await rig.step()
+  await until(() => rig.live.goalOf('main-1') !== undefined, 'the drive created a goal')
+  await rig.settle()
+  const goal = goalNow(rig)
+  assert.equal(goal.objective.includes('Not in scope:'), false, 'the scope line is what the cut takes first')
+  assert.ok(goal.objective.length <= 2000)
+  assert.ok(goal.objective.includes('Never hold the turn open with sleep, polling or a long job wait; when nothing is left to do in the turn, end it.'), 'the nowait sentence survives whole')
 }))
 
 test('update_goal complete with gaps is denied with the gaps and the goal stays active; with the acceptance review passed it is allowed and the credential marks the graph goal done with the gate evidence', () => withRig(() => startedRig({ nodes: [GOAL] }), async (rig) => {

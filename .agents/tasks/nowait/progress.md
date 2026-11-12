@@ -39,6 +39,19 @@
 4. **objective 尾注测试**：`tests/execute-drive.spec.ts:51` 的 `$` 锚定断言目标
    以「it lists what is missing.」结尾，新句加在 DRIVE_BODY 末尾后要改这条。
 
+## 阶段 2：N2 提示词一句（完成）
+
+- `src/execute/drive.ts`：DRIVE_BODY 末尾加一句（nowait 设计 §3.2，原型
+  orchestrator.md:16 同义）：`Run long commands in the background
+  (run_in_background): the job's end, with its output, arrives by itself as a
+  notice. Never hold the turn open with sleep, polling or a long job wait;
+  when nothing is left to do in the turn, end it.` SPLIT_SENTENCE 与两级循环
+  （tiers）未动。
+- L2：execute-drive.spec.ts——原 :51 的 `$` 尾锚改为新句（objective 现在以新句
+  结尾），加新句逐字断言；新测：nonGoals 1500 字符把 objective 顶过 2000，
+  `Not in scope:` 先切、新句整句存活。16/16 绿。
+- 快链绿（build/preflight/lint 73 持平/secrets）。
+
 ## 阶段 1：N1 守卫规则（完成）
 
 - `src/guard/main-agent-rules.ts`：`NO_WAIT_RULE = 'main-agent-no-wait'`，第十行
