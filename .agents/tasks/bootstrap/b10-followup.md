@@ -228,3 +228,46 @@ b10-park.md），但**每一次 harness 侧的同意落账都被拒**（journal 
   或摘要比对放宽为对人有可见 diff 的形式；修后重走 flow-1。事故收尾
   （Documents default-workspace 归档、b10-stray 条目清除、孤儿实例退出）
   见 b10-park.md 的 INCIDENT CONTAINMENT 节。
+
+### 3.2 同意接缝修复与 flow-1 定案（2026-11-12，b10rr lane）
+
+§3.1 留下的接管线待办按编排方裁定落地：**harness 给规范问句原文、模型机械
+引用；摘要比对逐字不放宽；B10 不按现状关单，重走 flow-1 后定案。**
+
+- 根因（对 b10-r-node 存证的复核）：漂移发生在 propose_to_human 调用——
+  question-3/5/6 六字段逐字核过，模型把问句 head 里 16 码点截断的读者标题
+  （`把 b10-node-note…`）自作主张展开成全名（`把 b10-node-notes 做成能用
+  的个人笔记库`），六个节点摘要与存储 askDigest 无一相等（`8c940eaf`/`3c9e
+  996d` ≠ `681d480c`/`4d6dbbfa`）；harness 的拒收全部正确。对照面：两件事
+  的问句在两次桌面运行都一把过账——questions.md 给的是可整块复制的 JSON，
+  清单问句给的是叙述式字段清单。格式即根因：机械可复制的形状模型复制得住。
+- 修法（最小、在根上）：`bootstrap_review` 的结果带回 `args`——
+  propose_to_human 实参整体成一个 JSON 对象，由与 askDigest 同源的同一组
+  字段拼出（review.ts 单一 `fields` 对象，结果字段与 args 同词同源）；
+  message、步提醒（notice.ts）、描述例子（example.ts）都指名「逐字照传
+  args，改写任一字段拒收」。`verifyDecision` 一字未动。恢复路径保留改问句
+  提示（`question <id>` 替换 parent）。
+- 收尾虚报（§3.1 升级项）核对结论：已有机拦——`takeover-closed
+  {reason: approved}` 只能出自 applyAgreement，先过 verifyDecision；拒绝
+  的同意只落 `accept-refused` 并把阶段退回 review，流水永不代替人的同意
+  （takeover.ts 折叠注释即此意）。按编排方选项以测试钉死：同意接缝 L2 的
+  第三段断言改写问句拒 `changed` 后接管仍开着、流水无 `takeover-closed`。
+- 门禁：build 0 / preflight 0 / test 0（3745 测试 0 失败，
+  `b10rr-test2.log`），棘轮 73/18/1 持平；探针 **562/580**
+  （`b10rr-probe.log`，FAIL 标签与 b10r-probe2 逐条相同，无新红）。
+- **桌面 flow-1 重跑定案（b10-node = 仓外 `b10-r-node`，绝对 `-Root`，
+  session-f50ee92c）**：帧 1/2/2b/3 形状全过（截图 `b10rr-*.png`）；
+  review-open 第 1 轮后问题节点落图即与存储摘要相等（`33eac8c057b5`，中途
+  在盘上核过）；人答「可以，照第 1 版清单接管。」后流水 seq 164
+  `apply-start` → 165 wish 交还 → 166 `takeover-closed {approved 15}`——
+  **一次过账，零拒收**（前一轮六轮 ~5.6M tok 换来的教训兑现在一轮 ~197K
+  tok 的收尾里）。途中一次诚实绕行：门禁验收行带括号注解提交前检查读不出，
+  模型先问人再改（「六行改回纯命令段，注解挪到说明里」），照准后改完。
+  **决定性检查通过**：收尾提交 `6800976`「Add the project graph (hourness
+  bootstrap tk-7w2jgkd3)」非空——22 个节点文件、树 `ad6ef41` ≠ 父
+  `f5242b8`、`git ls-files` 22 行；流水 167 graph-reminder → 168
+  graph-tracked；收尾消息如实报（「提交 6800976，22 个节点文件……已验证
+  git ls-files 列出了全部节点文件」），愿望交回（「实现 CSV 导出」开工吗）。
+  收容与清理：实例 Browser.close 干净退出、无 #32770，凭证副本已删；上一
+  轮废run的 26 个图节点整体移入 `.llm/bootstrap/tk-xqkpdiae/graph-nodes/`
+  留证，未删任何东西。逐字记录 `b10-park.md`（Consent-seam fix lane 节）。

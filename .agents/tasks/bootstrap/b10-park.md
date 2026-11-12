@@ -331,3 +331,89 @@ lane, HEAD cbc46d36 at start, working tree carries the lane's uncommitted work
   - .llm/bootstrap/journal.jsonl unchanged at 6 lines — status created no journal lines and no new tk-* dir (the only dir is the flow-2 accident's tk-xytako7c, kept as evidence).
   - git status --porcelain -- docs/graph: empty (main graph untouched); HEAD e04a67c unchanged.
 - Execute state of flow 1 at close time: task-2 worker installed deps in .worktrees/hz-task-2 (node_modules, package-lock.json present), not yet merged (advances.jsonl has only the takeover's trunk advance); the flow-1 main session idle (sidebar 已完成).
+
+## Consent-seam fix lane (2026-11-12, b10rr, appended after each item)
+
+- HEAD at lane start 00f7c42b, clean tree. Disposition (orchestrator): the
+  harness hands the canonical question text; the model must quote it
+  mechanically; the digest comparison stays exact; B10 stays
+  desktop-unverified until the rerun.
+- Evidence read first (b10-followup §3.1, this file's FLOW-1 RERUN VERDICT,
+  the b10-r-node journal 145 seqs + question-3/5/6 nodes): every consent
+  record was refused `changed`/`stale`; the drift entered at the
+  propose_to_human call (e.g. the node's ask head spelled the project name
+  out while the round's canonical text carries the 16-code-point reader
+  title); the two-things questions, handed as copy-ready JSON blocks in
+  questions.md, recorded fine in BOTH desktop runs — the narrated-fields
+  handoff of the list round is what the flash model keeps rewording.
+- Seam change DONE (uncommitted): bootstrap_review now returns `args`, the
+  exact propose_to_human arguments as one JSON object built from the same
+  field set the round's askDigest covers (review.ts, single `fields`
+  object); the message says pass args verbatim, the harness refuses any
+  differing field (keeps the revision hint via question <id>, parent
+  swapped); the review step reminder (notice.ts) and the description
+  example (example.ts) point at args the same way. verifyDecision
+  untouched. The closing-path consent claim needed no new check: the
+  applied message is only reachable through verifyDecision, and a refused
+  consent closes nothing (journal never stands for the consent) — pinned
+  by test instead.
+- L2 DONE: `the consent seam` test in bootstrap-review.spec.ts — args
+  repeats the returned fields; the stored askDigest equals
+  askDigestOf(args fields) (verbatim copy = first-try record, proven by
+  applyAgreement ok on round 1); a reworded text at propose time is
+  refused `changed` with the standing why; after the refusal the trail
+  holds accept-refused, the takeover is back in review and no
+  takeover-closed row exists. Shared deps builder hoisted
+  (reviewDepsOf) for the two tool tests.
+- Gates: build 0, preflight 0, npm test 0 (3745 tests / 0 fail,
+  .llm/logs/b10rr-test2.log); ratchets eslint 73 / knip 18 / jscpd 1 flat.
+  Not pushed yet.
+- Probe RUNNING: .llm/probe-lock taken by this lane 03:58:44Z, log
+  .llm/logs/b10rr-probe.log (+ .exit when done); GIT_CONFIG_* clean;
+  no rebuild until it ends. Expected 562/580 (b10r baseline minus the two
+  metrics labels), no new reds.
+- Probe DONE: **562/580** (.llm/logs/b10rr-probe.log, exit 1 as the baseline
+  expects, run dir …Temp\glm-hourness-probe-2026-11-12T03-58-55-766Z-wxmk1P).
+  FAIL-label diff vs b10r-probe2: **identical 18**, no new reds, nothing
+  recovered. Lock released (held by this lane only).
+- DESKTOP RERUN PREP DONE (12:1x-12:2x UTC+8): no DeepSeek Harness process
+  running (person's not started, no leftovers); b10-r-node reset for the
+  clean run — HEAD a16c84f, the abandoned run's 26 graph node files moved
+  whole to .llm/bootstrap/tk-xqkpdiae/graph-nodes/ (nothing deleted,
+  journal untouched), docs/ removed; credential copies restored from the
+  user-level files into .llm/b10-l4/dsh-home/glm-hourness/ (byte copy,
+  SHA-256 eec5eaee… matches the recorded prep value, values never read).
+- RERUN RUNNING (12:19, session session-f50ee92c… in b10-node = b10-r-node,
+  instance pid 68108, port 9345, marker verified, welcome skipped; dist =
+  00f7c42 dirty, i.e. this lane's seam build). /wish 加一个把 notes 导出成
+  CSV 的命令 sent via typefile; frame 1 ✓ shot b10rr-f1-frame1.png: wish
+  card 「开了接管 tk-7w2jgkd3（已有项目）：已有项目：4 个代码文件、2 个提交、
+  清单 package.json」 + main agent reading/proposing. Waiting for the two
+  things.
+- FLOW-1 RERUN RESULT (12:19-12:35, b10rr lane): **CONSENT ONE-SHOT, CLOSING
+  REACHED, DECISIVE CHECK PASSED.** Frames: 1 ✓ (tk-7w2jgkd3 card,
+  b10rr-f1-frame1.png); 2 ✓ (two things as ①②, 15 nodes,
+  b10rr-f1-frame2a/2b.png); answer recorded
+  (b10rr-f1-after2things.png; the model then rebuilt gate/floor/env under
+  fixed ids and expanded the tooling task per the trial); review-open
+  round 1 (journal seq 163) — **the question node's digest equaled the
+  stored askDigest on disk (33eac8c057b5, verified mid-flight)**; frame 3 ✓
+  (b10rr-f1-frame3-head/-question2.png, checklist + 注意 lines); consent
+  「可以，照第 1 版清单接管。」 → journal seq 164 apply-start, 165 wish
+  done, **166 takeover-closed {approved 15}** — ONE apply-start, ZERO
+  accept-refused (the failed rerun had 6+ rounds, ~5.6M tok). One honest
+  detour: the gate's acceptance lines carried parenthetical annotations
+  the commit pre-check cannot parse; the model asked before editing the
+  approved norm (b10rr-f1-closing1.png), human agreed, lines rewritten to
+  pure command segments. **DECISIVE CHECK: closing commit 6800976 "Add the
+  project graph (hourness bootstrap tk-7w2jgkd3)" is NON-EMPTY (22 node
+  files, tree ad6ef41 differs from parent f5242b8), tracked under
+  docs/graph/nodes; journal 167 graph-reminder → 168 graph-tracked; the
+  closing message claims git truthfully (hash + count + 「已验证 git
+  ls-files」), b10rr-f1-closing.png; the wish (实现 CSV 导出 开工?) handed
+  back.** Consent cost: one round (~197K tok closing turn).
+- CLEANUP DONE (12:38-12:40): Browser.close sent 12:38:21, exit polled — no
+  DeepSeek Harness process remains, no #32770 (no process, no window);
+  credential copies deleted from dsh-home/glm-hourness/ again. The closing
+  question (实现 CSV 导出 开工?) stays pending in the closed instance's
+  session; nothing was dispatched after the decisive check (scope).
