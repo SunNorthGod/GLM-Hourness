@@ -1,0 +1,24 @@
+{
+  "id": "reval",
+  "type": "feature",
+  "title": "政策改版重验：pins 的同构扩展",
+  "status": "approved",
+  "parent": "m7",
+  "body": "派发批注在 pins 行后加 policy 行（gate/floor/rules/checker 四类各 12 位 SHA-256 前缀，canonical JSON、空集省略、读不出按变了算），Attempt 寄存器同记；worker 交回时重算对比，有差在交回批注加政策差行 + 一条 informational 通知，任务不自动杀；审查派发时审查简报按政策差加一节，审查者按现行规则重判既有工作。与原型的分歧：不给在跑 worker 中途注入政策差（Q3 开）。设计 0.1 在 origin/reval（9e23cff5），五个开放问题 Q1-Q5 待人定。",
+  "acceptance": [
+    "政策摘要四源定义实现且逐类有测试",
+    "交回批注的政策差行与 informational 通知按设计逐字",
+    "审查简报按政策差加节，挡路判据不变",
+    "Q1-Q5 按人定落地，偏离记录在设计"
+  ],
+  "history": [
+    {
+      "at": "2026-11-10T15:17:00.045Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "super-agent 借鉴机制 1 的设计 0.1 已成稿，人 2026-11-10 批准各立设计节点",
+      "relay": "那就都按你的建议来",
+      "to": "approved"
+    }
+  ]
+}

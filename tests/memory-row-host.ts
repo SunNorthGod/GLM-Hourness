@@ -15,6 +15,7 @@ import { apply, type MemoryConfig, type MemoryContext } from '../src/memory/inde
 import type { MemoryRowService } from '../src/memory/service.ts'
 import type { AgentCommandInvocationLike, CommandDefinitionLike, SessionLike, SessionProjectionsService, UserNotice } from '../src/shared/dsh-min.ts'
 import { MEMORY_SERVICE } from '../src/shared/memory-service.ts'
+import type { FacePolicyRegistry } from '../src/shared/face-policy.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { healthOf, optionalServices, runRow, stepOf } from './row-host.ts'
 
@@ -28,6 +29,8 @@ export interface Row {
   readonly runtime: FakeRuntime
   readonly commands: Map<string, CommandDefinitionLike<AgentCommandInvocationLike>>
   readonly projections: Array<Parameters<SessionProjectionsService['register']>[0]>
+  /** The face-policy registry the row's wire-face source registered in (face-migration design 0.1 §6 D). */
+  readonly faces: FacePolicyRegistry
   readonly service: MemoryRowService
   readonly dispose: () => void
   /** The optional services as the host brings them: `provide` brings them, `remove` takes them away. */
@@ -87,7 +90,7 @@ export async function withRow(body: (row: Row) => Promise<void> | void, options:
     runtime.services.set('sessionProjections', { stateOf: (session: SessionLike, key: string) => key === MAIN_AGENT_KEY ? modes.get(session.id) : undefined })
   }
   const optional = optionalServices(runtime, options)
-  const { commands, projections, services } = optional
+  const { commands, projections, faces, services } = optional
   const ctx = optional.ctx as unknown as MemoryContext
   const config: MemoryConfig = {
     ...options.clock === undefined ? {} : { now, append: { lock: { ...realLockEnvironment, now: () => now().getTime() } } },
@@ -104,6 +107,7 @@ export async function withRow(body: (row: Row) => Promise<void> | void, options:
     runtime,
     commands,
     projections,
+    faces,
     service,
     dispose,
     services,

@@ -1,14 +1,16 @@
 /**
  * Per-request assembly rewrite for the ZCode dialect.
  *
- * In the rc.3 runtime the agent-scoped `system-prompt/assemble` waterfall
- * runs every step before `agent/pre-step`, the rendered prompt comes from the
- * returned `sections`, and the request carries exactly the returned `tools`
- * (docs/DESIGN.md §2.4a). A prepend-registered listener sees the route the
- * model-selection listener injected after its own `next()` and rewrites both
- * for that request alone.
+ * In the agent-scoped `system-prompt/assemble` waterfall — which runs every
+ * step before `agent/pre-step` — the rendered prompt comes from the returned
+ * `sections`. The payload carries no tool face (the installed 0.2.2-rc.1
+ * runtime appends its collected face after the waterfall,
+ * docs/DESIGN.md §2.4a): the request's face is the wire face the channel
+ * adapter composes (src/glm-llm/face-wire.ts). A prepend-registered listener
+ * sees the route the model-selection listener injected after its own
+ * `next()` and rewrites the sections for that request alone.
  */
-import type { AssembledSection, AssembledTool, AssemblePayload } from '../shared/dsh-min.ts'
+import type { AssembledSection, AssemblePayload } from '../shared/dsh-min.ts'
 import { OUTPUT_STYLE_SECTION } from '../shared/output-style.ts'
 import { assemblyRoute, isGlmModel } from '../shared/route.ts'
 
@@ -75,19 +77,4 @@ export function rewriteDialectSections<T extends AssemblePayload>(assembly: T, w
   }
   out.splice(identityIndex + 1, 0, ...extras)
   return { ...assembly, sections: out }
-}
-
-/**
- * Rewrite one request's tool face. A GLM request sees the ZCode-facing
- * aliases and not the natives they cover; any other request sees the natives
- * and not the aliases. Both sets stay registered, so the switch costs nothing
- * and follows a mid-session route change on the next step.
- * @param tools - the assembled tool schemas.
- * @param glm - whether the request serves a GLM model.
- * @param aliasNames - ZCode-facing names this row registered.
- * @param coveredNatives - native names those aliases stand in for.
- */
-export function rewriteToolFace(tools: readonly AssembledTool[], glm: boolean, aliasNames: ReadonlySet<string>, coveredNatives: ReadonlySet<string>): readonly AssembledTool[] {
-  const hidden = glm ? coveredNatives : aliasNames
-  return tools.filter(tool => !hidden.has(tool.name))
 }

@@ -33,6 +33,7 @@
  * next script of `others`. Both record the result and the events the session
  * logged meanwhile; `{rev:<node id>}` in the arguments of a scripted call is
  * the current revision of that node on the session's project graph;
+ * `{takeover}` is the id of the takeover last opened in the session's project;
  * `{transcript}` in the arguments of a scripted call is the path that ends the
  * transcript sentence (`read the full transcript at: <path>`) in the last
  * request message carrying one, the GLM compaction checkpoint; a step
@@ -61,6 +62,9 @@ import { spawnSync } from 'node:child_process'
 import { GLM_MODELS, glmInputModalities } from '../../packages/glm/dist/glm-llm/models.js'
 import { asAttachments, glmImageRequestTarget, prepareRequestImages } from '../../packages/glm/dist/glm-llm/images.js'
 import { encodeRequest, splitSystemPrompt } from '../../packages/glm/dist/glm-llm/anthropic.js'
+import { wireFace, facePolicyRegistry } from '../../packages/glm/dist/glm-llm/face-wire.js'
+import { isGlmModel } from '../../packages/glm/dist/shared/route.js'
+import { FACES_SERVICE } from '../../packages/glm/dist/shared/face-policy.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
 import { oldestPending } from '../../packages/hourness/dist/execute/requests.js'
 import { latestDispatch, registeredDispatches } from '../../packages/hourness/dist/execute/attempts.js'
@@ -68,6 +72,12 @@ import { collectStatus } from '../../packages/hourness/dist/report/status.js'
 
 export const name = 'glm-hourness-probe/llm'
 export const inject = ['llm']
+
+/** The `glmHournessFaces` service as the wire face reads it: undefined while the channel row is off or the value has the wrong shape. */
+function facePolicyOf(ctx) {
+  const value = typeof ctx?.get === 'function' ? ctx.get(FACES_SERVICE) : undefined
+  return value !== undefined && value !== null && typeof value.registerSource === 'function' && typeof value.sources === 'function' ? value : undefined
+}
 
 /** Reply to compaction summaries, in the shape the ZCode compact prompt asks for. */
 const COMPACTION_REPLY = '<analysis>probe analysis</analysis>\n\n<summary>probe summary</summary>'
@@ -137,6 +147,23 @@ async function withRevisions(ctx, request, call) {
   text = text.replace(/\{worker:([A-Za-z0-9._-]+)\}/g, (whole, task) => registeredDispatches().find(attempt => attempt.node === task && attempt.childId !== agent?.id)?.childId ?? whole)
   if (text === original) return call
   return { ...call, arguments: JSON.parse(text) }
+}
+
+/**
+ * `{takeover}` in the arguments of a scripted call becomes the id of the last
+ * takeover opened in the project of the request's session (the
+ * `takeover-open` records of `<cwd>/.llm/bootstrap/journal.jsonl`), so a
+ * script can name `attach: bootstrap:{takeover}:cost` without knowing the
+ * generated id. No such record leaves the text as it was.
+ */
+function withTakeover(ctx, request, call) {
+  const text = JSON.stringify(call.arguments ?? {})
+  if (!text.includes('{takeover}')) return call
+  const cwd = ctx.get('agents')?.get(request.sessionId)?.session?.header?.cwd
+  const file = typeof cwd === 'string' ? join(cwd, '.llm', 'bootstrap', 'journal.jsonl') : undefined
+  if (file === undefined || !existsSync(file)) return call
+  const opened = readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)).filter(record => record.op === 'takeover-open').at(-1)
+  return opened === undefined ? call : { ...call, arguments: JSON.parse(text.replaceAll('{takeover}', opened.id)) }
 }
 
 const TRANSCRIPT_MARK = 'read the full transcript at: '
@@ -529,6 +556,17 @@ class ProbeAdapter {
   }
 
   async * stream(request) {
+    // The wire face (face-migration design 0.1 §4.3): the same composition
+    // the real glm-zcode adapter applies at its stream, so the dump below
+    // shows the face the real channel would send. `policy` reads the
+    // glmHournessFaces service the channel row provides; a wrong-shaped or
+    // absent value reads as no role layer.
+    const policy = facePolicyOf(this.ctx)
+    const tools = wireFace(request.tools ?? [], {
+      glm: isGlmModel(request.model),
+      sessionId: request.sessionId ?? '',
+      policy,
+    })
     // Only agent steps follow the script; side requests (session title,
     // compaction summaries) get fixed replies, so their timing cannot shift
     // the scripted sequence. Compaction requests carry tools too.
@@ -621,14 +659,15 @@ class ProbeAdapter {
       }
     }
     if (this.dump !== undefined) {
-      // The glm-zcode encoder over this exact request, with the runtime's
-      // attachment and fs services (the channel row reads them the same way).
+      // The glm-zcode encoder over this exact request (its wire face, the
+      // one computed above), with the runtime's attachment and fs services
+      // (the channel row reads them the same way).
       let wire
       try {
         const { messages } = splitSystemPrompt(request)
         const fs = this.ctx.get('fs')
         const images = await prepareRequestImages(messages, asAttachments(this.ctx.get('attachments')), hostPath => fs?.processPathFromHostPath?.(hostPath), request.signal)
-        wire = { images: wireImages(encodeRequest({ ...request, messages }, [], images)) }
+        wire = { images: wireImages(encodeRequest({ ...request, tools, messages }, [], images)) }
       }
       catch (error) {
         wire = { error: error instanceof Error ? error.message : String(error) }
@@ -659,14 +698,14 @@ class ProbeAdapter {
         // The runtime delivers the prompt as leading system messages (the
         // channel lifts them the same way, src/glm-llm/anthropic.ts).
         system: [request.system ?? '', ...leadingSystem(request.messages ?? [])].filter(text => text.length > 0).join('\n\n'),
-        tools: (request.tools ?? []).map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters, ...(tool.deferLoading === true ? { deferLoading: true } : {}) })),
+        tools: tools.map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters, ...(tool.deferLoading === true ? { deferLoading: true } : {}) })),
         messages: (request.messages ?? []).map(summarizeMessage),
       })}\n`)
     }
     // A step calls one tool (`tool`) or several in one assistant turn (`tools`).
     const scriptedCalls = step.tools ?? (step.tool === undefined ? [] : [step.tool])
     const goal = step.goal === true ? this.goalOf(request) : undefined
-    const calls = await Promise.all(scriptedCalls.map(call => withRevisions(this.ctx, request, withTranscript(request, withRef(request, withGoal(call, goal))))))
+    const calls = await Promise.all(scriptedCalls.map(call => withRevisions(this.ctx, request, withTakeover(this.ctx, request, withTranscript(request, withRef(request, withGoal(call, goal)))))))
     if (calls.length > 0) {
       for (const [index, call] of calls.entries()) {
         const id = `probe-call-${this.requests}-${index}`
@@ -690,5 +729,20 @@ class ProbeAdapter {
 }
 
 export function apply(ctx, config = {}) {
+  // The registry the orchestration rows register their wire-face sources in
+  // (face-migration design 0.1 §4.1). The channel row provides it on the
+  // profiles that carry the glm package; this row provides a fallback on the
+  // single-package hourness profile, so the probe's non-GLM scenarios still
+  // assert the role face through this adapter's wireFace (design 0.1 §0).
+  // Provide and read go through the same service name, so the two sources of
+  // the registry never meet.
+  if (typeof ctx.provide === 'function' && facePolicyOf(ctx) === undefined) {
+    try {
+      ctx.provide(FACES_SERVICE, facePolicyRegistry())
+    }
+    catch {
+      // Lost a race with the channel row's provide: its registry is the one.
+    }
+  }
   return ctx.llm.registerAdapter(['glm-probe'], new ProbeAdapter(ctx, config))
 }

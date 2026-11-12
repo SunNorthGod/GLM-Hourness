@@ -29,7 +29,7 @@ interface Fixture {
 
 function caller(runtime: FakeRuntime): Fixture['call'] {
   let counter = 0
-  return (name, args, extra = {}) => runtime.ctx.tools.execute({ callId: `call-${++counter}`, name, arguments: args, agent: runtime.agent, signal: new AbortController().signal, ...extra })
+  return (name, args, extra = {}) => runtime.ctx.tools.execute({ calls: [{ id: `call-${++counter}`, name, arguments: args }], agent: runtime.agent, signal: new AbortController().signal, log: { turn: runtime.progress.turn, step: runtime.progress.step }, ...extra }).then(batch => batch.results[0].result)
 }
 
 async function workspaceWithGraph(): Promise<{ workspace: string, graph: string }> {

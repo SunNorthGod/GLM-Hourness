@@ -69,7 +69,7 @@ rowTest('the row never holds the main agent: its lifecycle listeners and the out
   assert.deepEqual(runtime.listeners.find(entry => entry.event === 'tools/pre-execute')?.options, { prepend: true }, 'the gate is outermost')
   for (const level of ['无影响', '少做', '不做']) {
     await run(`peak ${level}`)
-    const result = await runtime.ctx.tools.execute({ callId: `call-${level}`, name: 'pwsh', arguments: {}, agent: runtime.agent, signal: new AbortController().signal })
+    const result = (await runtime.ctx.tools.execute({ calls: [{ id: `call-${level}`, name: 'pwsh', arguments: {} }], agent: runtime.agent, signal: new AbortController().signal, log: { turn: runtime.progress.turn, step: runtime.progress.step } })).results[0].result
     assert.equal(result.isError, false, `${level}: a tool call of the main agent in a peak runs`)
     assert.equal((await runtime.preStep()).kind, 'enter', `${level}: a step is admitted`)
   }

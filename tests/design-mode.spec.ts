@@ -22,10 +22,13 @@ import { STR_REPLACE_EDITOR_UNKNOWN, WRITE_NATIVES } from '../src/design/role-fa
 import { claimHolder, holderFileOf, mainAgentOf, readHolder, replaceHolder } from '../src/graph/main-agent-holder.ts'
 import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
 import { PLAIN_QUESTION_GUIDE, PLAIN_WORDS_GUIDE, plainWordsIn } from '../src/graph/plain-question.ts'
-import type { AssemblePayload, AssembledTool, UserNotice } from '../src/shared/dsh-min.ts'
+import { createUserNotice, type AssemblePayload, type AssembledTool, type UserNotice } from '../src/shared/dsh-min.ts'
+import type { FacePolicyRegistry } from '../src/shared/face-policy.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
-import { BASE_TOOLS, designHost, type DesignHost, type FakeAgent } from './design-host.ts'
+import { wireFace } from '../src/glm-llm/face-wire.ts'
+import { BASE_TOOLS, designHost, faceSourceOf, type DesignHost, type FakeAgent } from './design-host.ts'
 import { captureWarnings } from './graph-helpers.ts'
+import { provideTakeover } from './takeover-stub.ts'
 
 // Everything the row says to the person (replies, errors, row health): the last test holds it to plain words.
 const saidToPerson: string[] = []
@@ -72,7 +75,6 @@ const sessionHealth = (host: DesignHost, agent: FakeAgent): { readonly state: st
   return report === undefined ? undefined : { state: report.state, reason: report.reason }
 }
 const sectionOf = (assembled: AssemblePayload): { readonly name: string, readonly text: string } | undefined => assembled.sections.find(section => section.name === MAIN_AGENT_SECTION)
-const toolNames = (assembled: AssemblePayload): string[] => assembled.tools.map(tool => tool.name)
 const projectionOf = (host: DesignHost, agent: FakeAgent): unknown => host.projections.stateOf(agent.session, MAIN_AGENT_KEY)
 const isOn = (host: DesignHost, agent: FakeAgent): boolean => (projectionOf(host, agent) as { active: boolean }).active
 
@@ -136,6 +138,7 @@ test('the first part has the five items: role, the harness boundaries, git with 
     'words you relay as the human\'s must be in a message they sent.',
     'The shell and git are yours; before a git command that can lose uncommitted work or rewrite history, the harness saves a snapshot and tells you how to restore it.',
     'The design loop runs wish, interview, design, release.',
+    'A denial refuses the whole call: nothing in it ran. Re-read the state before going on, and handle your failed checks.',
     'If the human has /plan on, exit_plan_mode only leaves plan mode; it releases nothing on the graph.',
   ]) assert.ok(MAIN_AGENT_ROLE(false).includes(part), part)
   assert.ok(MAIN_AGENT_ROLE(true).includes('writing work goes to workers you dispatch with dispatch_task; subagents started with the subagent tool only read'), 'the F18 sentence is in the execute row variant')
@@ -307,7 +310,7 @@ test('/wish with a sentence wakes an idle agent: its first assembly, started bef
   assert.ok(agent.woken !== undefined)
   const first = await agent.woken
   assert.ok(sectionOf(first), 'the first step of the woken turn carries the identity section')
-  assert.ok(!toolNames(first).includes('write') && !toolNames(first).includes('ask_user_question'))
+  for (const gone of ['write', 'edit', 'ask_user_question']) assert.ok(faceSourceOf(host).removals('s1').has(gone), gone)
 })
 
 test('/wish with a sentence reaches a running agent with steer, at its next step', async () => {
@@ -343,9 +346,9 @@ test('/wish off ends the role from the very next step, deletes the record and te
   const hold = new Promise<void>((resolve) => { release = resolve })
   const leaving = host.execute(agent, '/wish off', hold)
   await tick()
-  const during = await agent.assemble({ tools: FACE })
+  const during = await agent.assemble()
   assert.equal(sectionOf(during), undefined, 'the section is gone before command/done lands')
-  assert.ok(toolNames(during).includes('write') && toolNames(during).includes('ask_user_question'), 'the tool face is the ordinary one again')
+  assert.ok(!faceSourceOf(host).removals('s1').has('write') && !faceSourceOf(host).removals('s1').has('ask_user_question'), 'the tool face is the ordinary one again')
   release()
   const reply = await leaving
   saidToPerson.push(reply?.result.text ?? '')
@@ -360,6 +363,19 @@ test('/wish off ends the role from the very next step, deletes the record and te
   assert.deepEqual(await type(host, agent, '/wish off'), { kind: 'success', text: '这个会话本来就不是主 Agent' })
   assert.deepEqual(await wishNoticesOfStep(agent), [], 'a /wish off that changes nothing sends nothing')
   assert.deepEqual(agent.sent, [])
+})
+
+test('takeover seam: /wish off names the takeover the project still holds, on both the leaving and the not-main answers, and closes nothing', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.open = 'tk-stub0001'
+  const agent = host.addAgent('s1')
+  await type(host, agent, '/wish')
+  assert.deepEqual(await type(host, agent, '/wish off'), { kind: 'success', text: '已退出主 Agent 模式：这个会话的 agent 又可以直接写文件了。接管 tk-stub0001 还开着，要放弃发 /hourness-init off' })
+  assert.deepEqual(await type(host, agent, '/wish off'), { kind: 'success', text: '这个会话本来就不是主 Agent。接管 tk-stub0001 还开着，要放弃发 /hourness-init off' })
+  assert.deepEqual(stub.asked.openOf, [host.workspace('ws'), host.workspace('ws')], 'asked once per off reply')
+  stub.open = undefined
+  assert.deepEqual(await type(host, agent, '/wish off'), { kind: 'success', text: '这个会话本来就不是主 Agent' }, 'no open takeover: the reply is what it was')
 })
 
 /** A command whose request is cancelled after its handler returned: the log ends with `command/done` in error. */
@@ -423,9 +439,9 @@ test('a second session in the project is told where the main agent is and stays 
   const withWish = await type(host, second, '/wish 记一笔账')
   assert.ok(withWish.text.endsWith('要把它移到这里并交给它这句话，输入 /wish here 加这句话，那个会话会变回普通会话。'))
   assert.deepEqual(second.sent, [])
-  const face = await second.assemble({ tools: FACE })
+  const face = await second.assemble()
   assert.equal(sectionOf(face), undefined)
-  assert.deepEqual(toolNames(face), FACE.map(entry => entry.name), 'the tool face is the ordinary one')
+  assert.deepEqual([...faceSourceOf(host).removals('s2')].sort(), ['propose_to_human', 'record_human_answer'], 'the tool face is the ordinary one: only the design tools go')
   const holder = readHolder(recordFile(host))
   assert.ok(holder.kind === 'held' && holder.record.sessionId === 's1')
   assert.equal(host.executed.length, 0)
@@ -477,8 +493,8 @@ test('/wish here moves the role: the record changes hands, the open session gets
   assert.ok(holder.kind === 'held' && holder.record.sessionId === 's2')
   assert.equal(isOn(host, first), false)
   assert.equal(isOn(host, second), true)
-  assert.equal(sectionOf(await first.assemble({ tools: FACE })), undefined)
-  assert.ok(toolNames(await first.assemble({ tools: FACE })).includes('write'), 'the old session has its write tool back')
+  assert.equal(sectionOf(await first.assemble()), undefined)
+  assert.ok(!faceSourceOf(host).removals('s1').has('write'), 'the old session has its write tool back')
   assert.ok(sectionOf(await second.assemble()))
   assert.deepEqual(first.sent, [], 'nothing goes into the inbox of the session that lost the role')
   const told = await wishNoticesOfStep(first)
@@ -504,6 +520,209 @@ test('/wish here in a project with no main agent is a plain /wish', async () => 
   const reply = await type(host, agent, '/wish here')
   assert.ok(reply.text.startsWith('已让这个会话的 agent 当主 Agent'))
   assert.equal(host.executed.length, 0)
+})
+
+// ---------------------------------------------------------------- the takeover's seam (takeover design 0.6 §3.1)
+
+const START_TEXT = '接管已开，主 Agent 开始读这个项目。'
+const TAKEOVER_SOURCE = 'stub-takeover'
+const takeoverNotice = (): UserNotice => createUserNotice(TAKEOVER_SOURCE, 'takeover started', 'The human started a takeover of this project; begin now.')
+const MAIN_REPLY = `已让这个会话的 agent 当主 Agent（项目经理）：它按项目图推进，不写文件；/wish off 退出`
+
+test('takeover seam: a takeover that does not want this /wish is asked nothing more, and /wish is what it was', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.wanted = false
+  const agent = host.addAgent('s1')
+  const reply = await type(host, agent, '/wish 记一笔账')
+  assert.equal(reply.text, `${MAIN_REPLY}。已把你的愿望交给它。${STRONG_MODEL_NOTE}`)
+  assert.deepEqual(stub.asked.wants, [host.workspace('ws')])
+  assert.deepEqual(stub.asked.prepare, [])
+  assert.equal(agent.sent[0]?.message.source.kind, 'glm-design-wish')
+})
+
+test('takeover seam, new project: the takeover\'s words come first, the wish goes to the interview as the wish notice', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.result = { ok: true, text: START_TEXT, holdWish: false }
+  const agent = host.addAgent('s1')
+  const reply = await type(host, agent, '/wish 记一笔账')
+  assert.deepEqual(stub.asked.prepare, [{ trigger: 'wish', wish: '记一笔账' }])
+  assert.equal(reply.text, `${START_TEXT}\n${MAIN_REPLY}。已把你的愿望交给它。${STRONG_MODEL_NOTE}`)
+  assert.deepEqual(agent.sent.map(entry => [entry.via, entry.message.source.kind]), [['followup', 'glm-design-wish']])
+  assert.deepEqual((agent.sent[0]?.message.source.designWish as { text: string }).text, '记一笔账')
+  assert.equal(isOn(host, agent), true)
+  const bare = host.addAgent('s2', { workspace: 'bare' })
+  assert.equal((await type(host, bare, '/wish')).text, `${START_TEXT}\n${MAIN_REPLY}。${STRONG_MODEL_NOTE}`)
+  assert.deepEqual(stub.asked.prepare.at(-1), { trigger: 'wish' }, 'no words: the request has no wish')
+})
+
+test('takeover seam, existing project: no wish notice; the takeover\'s start notice wakes an idle agent, and the role notice is told once', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.result = { ok: true, text: START_TEXT, holdWish: true, notice: takeoverNotice() }
+  const agent = host.addAgent('s1')
+  const reply = await type(host, agent, '/wish 加一个导出')
+  assert.deepEqual(stub.asked.prepare, [{ trigger: 'wish', wish: '加一个导出' }])
+  assert.equal(reply.text, `${START_TEXT}\n${MAIN_REPLY}。${STRONG_MODEL_NOTE}`, 'the wish is not said to be handed over: the takeover keeps it')
+  assert.deepEqual(agent.sent.map(entry => [entry.via, entry.message.source.kind]), [['followup', TAKEOVER_SOURCE]])
+  assert.ok(agent.woken !== undefined, 'the takeover notice woke the idle agent')
+  assert.ok(sectionOf(await agent.woken), 'its first step already has the role')
+  const told = await wishNoticesOfStep(agent)
+  assert.equal(told.length, 1)
+  assert.ok(told[0]?.content[0]?.text.startsWith('The human made this session\'s agent the main agent of this project with /wish'))
+  assert.equal(told[0]?.source.designWish, undefined, 'the role notice does not carry the wish')
+  assert.equal(isOn(host, agent), true)
+})
+
+test('takeover seam, existing project, running agent: the start notice is a steer; an empty /wish is the same', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.result = { ok: true, text: START_TEXT, holdWish: true, notice: takeoverNotice() }
+  const agent = host.addAgent('s1', { status: 'running' })
+  await type(host, agent, '/wish')
+  assert.deepEqual(agent.sent.map(entry => [entry.via, entry.message.source.kind]), [['steer', TAKEOVER_SOURCE]])
+  assert.equal(agent.woken, undefined)
+  assert.deepEqual(stub.asked.prepare, [{ trigger: 'wish' }])
+})
+
+test('takeover seam: a session that is the main agent already gets the start notice of an open takeover, not "already the main agent"', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.wanted = false
+  const agent = host.addAgent('s1')
+  await type(host, agent, '/wish')
+  assert.equal(await wishNoticesOfStep(agent).then(told => told.length), 1)
+  stub.wanted = true
+  stub.result = { ok: true, text: START_TEXT, holdWish: true, notice: takeoverNotice() }
+  const again = await type(host, agent, '/wish')
+  assert.equal(again.text, `${START_TEXT}\n${MAIN_REPLY}。${STRONG_MODEL_NOTE}`)
+  assert.deepEqual(agent.sent.map(entry => [entry.via, entry.message.source.kind]), [['followup', TAKEOVER_SOURCE]])
+  assert.deepEqual(await wishNoticesOfStep(agent), [], 'the role was told before: not again')
+})
+
+test('takeover seam: a main agent that sends a bare /wish while the takeover opens a new project is told what the takeover did first (review B8 F1)', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.wanted = false
+  const agent = host.addAgent('s1')
+  await type(host, agent, '/wish')
+  stub.wanted = true
+  stub.result = { ok: true, text: START_TEXT, holdWish: false }
+  const again = await type(host, agent, '/wish')
+  assert.equal(again.text, `${START_TEXT}\n这个会话已经是主 Agent`)
+  assert.deepEqual(stub.asked.prepare, [{ trigger: 'wish' }])
+  assert.equal(isOn(host, agent), true)
+})
+
+test('takeover seam: the holder claim lost after the takeover opened: the reply is the pointer first (the role did not change), then what the takeover did; an unwritable record says the takeover is open', async () => {
+  const { host } = open({ persistence: true })
+  const stub = provideTakeover(host)
+  stub.wanted = false
+  const first = host.addAgent('s1')
+  const second = host.addAgent('s2')
+  await type(host, first, '/wish')
+  // The takeover's turn finds no record; while `prepare` runs, the session that is the main agent writes it again.
+  const holder = readHolder(recordFile(host))
+  assert.ok(holder.kind === 'held')
+  rmSync(recordFile(host))
+  stub.wanted = true
+  stub.result = { ok: true, text: START_TEXT, holdWish: true, notice: takeoverNotice() }
+  stub.onPrepare = () => { assert.ok(claimHolder(recordFile(host), holder.record)) }
+  const lost = await type(host, second, '/wish')
+  assert.equal(stub.asked.prepare.length, 1, 'the takeover was asked: the claim was lost afterwards')
+  assert.ok(lost.text.startsWith(ROLE_UNCHANGED_MARK), lost.text)
+  assert.ok(lost.text.endsWith(`\n${START_TEXT}`), 'what the takeover did is told after the pointer')
+  assert.equal(isOn(host, second), false, 'the projection reads the pointer as no change of role')
+  assert.equal(second.sent.length, 0, 'no start notice goes to a session that is not the main agent')
+
+  const other = open()
+  const failing = provideTakeover(other.host)
+  failing.result = { ok: true, text: START_TEXT, holdWish: false }
+  const agent = other.host.addAgent('s1')
+  mkdirSync(other.host.userHome, { recursive: true })
+  writeFileSync(join(other.host.userHome, 'main-agent'), 'a file where the directory should be')
+  const refused = await type(other.host, agent, '/wish')
+  assert.equal(refused.kind, 'error')
+  assert.match(refused.text, /^主 Agent 的持有者记录写不了：.*接管已经开着：在主 Agent 会话里发 \/hourness-init off 可放弃，再发 \/wish 接着做$/)
+})
+
+test('takeover seam: a takeover that refuses stops /wish: the error as it is, no role, no record, nothing sent', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.result = { ok: false, text: '这个目录有文件但不是 git 仓库：先在终端里 git init 并提交一次，再发 /wish' }
+  const agent = host.addAgent('s1')
+  assert.deepEqual(await type(host, agent, '/wish 记一笔账'), { kind: 'error', text: '这个目录有文件但不是 git 仓库：先在终端里 git init 并提交一次，再发 /wish' })
+  assert.equal(isOn(host, agent), false)
+  assert.equal(readHolder(recordFile(host)).kind, 'none')
+  assert.deepEqual(agent.sent, [])
+  stub.result = new Error('boom')
+  assert.deepEqual(await type(host, agent, '/wish'), { kind: 'error', text: '接管没能开始：boom' })
+  assert.equal(readHolder(recordFile(host)).kind, 'none')
+})
+
+test('takeover seam: the takeover makes the graph directory before M3 asks for it, and a /wish it does not want still refuses a missing one', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  const missing = host.addAgent('missing', { workspace: 'empty' })
+  rmSync(graphDirOf(host, 'empty'), { recursive: true })
+  stub.wanted = false
+  assert.equal((await type(host, missing, '/wish')).text, `这个工作区还没有项目图：先建空目录 ${graphDirOf(host, 'empty')}`)
+  stub.wanted = true
+  stub.onPrepare = () => { mkdirSync(graphDirOf(host, 'empty'), { recursive: true }) }
+  stub.result = { ok: true, text: START_TEXT, holdWish: false }
+  const reply = await type(host, missing, '/wish')
+  assert.equal(reply.kind, 'success', reply.text)
+  assert.equal(isOn(host, missing), true)
+  assert.equal(readHolder(recordFile(host, 'empty')).kind, 'held')
+})
+
+test('takeover seam: another session is the main agent, so this /wish is pointed and the takeover is not asked to open; /wish here asks it', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.wanted = false
+  const first = host.addAgent('s1')
+  const second = host.addAgent('s2')
+  await type(host, first, '/wish')
+  stub.wanted = true
+  stub.result = { ok: true, text: START_TEXT, holdWish: true, notice: takeoverNotice() }
+  const pointed = await type(host, second, '/wish 加一个导出')
+  assert.ok(pointed.text.startsWith(ROLE_UNCHANGED_MARK), pointed.text)
+  assert.deepEqual(stub.asked.prepare, [])
+  assert.equal(second.sent.length, 0)
+  assert.equal(isOn(host, second), false)
+  const moved = await type(host, second, '/wish here 加一个导出')
+  assert.deepEqual(stub.asked.prepare, [{ trigger: 'wish', wish: '加一个导出' }])
+  assert.ok(moved.text.startsWith(`${START_TEXT}\n主 Agent 已从另一个会话移到这里；`), moved.text)
+  assert.deepEqual(second.sent.map(entry => entry.message.source.kind), [TAKEOVER_SOURCE])
+  assert.equal(isOn(host, second), true)
+})
+
+test('takeover seam: the refusals before it stand: a child, a wish that is too long and a missing graph row never reach the takeover', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  const child = host.addAgent('child', { origin: 'subagent', parentSession: 's1' })
+  assert.equal((await type(host, child, '/wish')).text, '子 agent 的会话不能当主 Agent')
+  const agent = host.addAgent('s1')
+  assert.equal((await type(host, agent, `/wish ${'愿'.repeat(MAX_WISH_LENGTH + 1)}`)).text, '愿望太长，请先用一两句话说')
+  assert.deepEqual(stub.asked.wants, [])
+  const noGraphRow = open({ graph: false })
+  const lone = provideTakeover(noGraphRow.host)
+  assert.equal((await type(noGraphRow.host, noGraphRow.host.addAgent('s1'), '/wish')).kind, 'error')
+  assert.deepEqual(lone.asked.wants, [])
+})
+
+test('takeover seam: a takeover that cannot say whether it wants the /wish is warned about and /wish goes on without it', async () => {
+  const { host } = open()
+  const stub = provideTakeover(host)
+  stub.wanted = new Error('journal broke')
+  const agent = host.addAgent('s1')
+  const { result, warnings } = await captureWarnings(() => type(host, agent, '/wish'))
+  assert.equal(result.kind, 'success')
+  assert.equal(result.text, `${MAIN_REPLY}。${STRONG_MODEL_NOTE}`)
+  assert.equal(warnings.filter(warning => warning.includes('journal broke')).length, 1)
+  assert.deepEqual(stub.asked.prepare, [])
+  assert.equal(isOn(host, agent), true)
 })
 
 test('two projects, two main agents: a session in another workspace is not the holder\'s business', async () => {
@@ -843,8 +1062,8 @@ test('a fork of the main agent session is an ordinary session at once, and turns
   assert.equal(isOn(host, fork), true, 'the fork inherited the command events')
   await host.created(fork)
   assert.deepEqual(host.executed, [], '/wish off is not run inside the agent/created listener')
-  assert.equal(sectionOf(await fork.assemble({ tools: FACE })), undefined, 'by the record it is not the main agent')
-  assert.ok(toolNames(await fork.assemble({ tools: FACE })).includes('write'))
+  assert.equal(sectionOf(await fork.assemble()), undefined, 'by the record it is not the main agent')
+  assert.ok(!faceSourceOf(host).removals('fork').has('write'))
   fork.becomeIdle()
   await tick()
   assert.deepEqual(host.executed, [{ agentId: 'fork', line: '/wish off' }])
@@ -962,68 +1181,64 @@ test('the hooks are installed once per agent, whether agent/created or /wish com
 
 // ---------------------------------------------------------------- the tool face
 
-test('the main agent\'s tools: no write, no edit, no ask_user_question, ZCode names included; an ordinary session\'s tools are untouched', async () => {
-  for (const withDialect of [false, true]) {
-    const { host } = open(withDialect ? { dialect: { claims: () => true, nativeOf: (name: string) => name === 'AskUserQuestion' ? 'ask_user_question' : undefined, faceName: (native: string) => native } } : {})
-    const plain = host.addAgent('plain', { workspace: 'other' })
-    await host.created(plain)
-    const ordinary = await plain.assemble({ tools: FACE })
-    assert.deepEqual(toolNames(ordinary), FACE.map(entry => entry.name))
-    assert.deepEqual(ordinary.tools, [...FACE], 'not even a copy is made')
-    assert.equal(sessionHealth(host, plain), undefined)
+test('the face policy: the main agent loses write, edit and ask_user_question (their ZCode aliases die with the natives), an ordinary session loses only the two design tools', async () => {
+  const { host } = open()
+  const plain = host.addAgent('plain', { workspace: 'other' })
+  await host.created(plain)
+  assert.deepEqual([...faceSourceOf(host).removals('plain')].sort(), ['propose_to_human', 'record_human_answer'], 'an ordinary session keeps its write tools')
+  assert.deepEqual(faceSourceOf(host).narrowing?.('plain'), [])
+  assert.equal(sessionHealth(host, plain), undefined)
 
-    const agent = host.addAgent('s1')
-    await type(host, agent, '/wish')
-    const names = toolNames(await agent.assemble({ tools: FACE }))
-    for (const gone of ['Write', 'Edit', 'write', 'edit', 'ask_user_question']) assert.ok(!names.includes(gone), `${gone} (dialect ${withDialect})`)
-    assert.equal(names.includes('AskUserQuestion'), withDialect ? false : true, withDialect ? 'a dialect alias of ask_user_question goes too' : 'without a dialect only the native name is known')
-    for (const kept of ['read', 'pwsh', 'graph_show', 'Bash', 'str_replace_editor']) assert.ok(names.includes(kept), kept)
-  }
+  const agent = host.addAgent('s1')
+  await type(host, agent, '/wish')
+  const removals = [...faceSourceOf(host).removals('s1')].sort()
+  assert.deepEqual(removals, ['ask_user_question', 'edit', 'write'])
+  // The wire layer matches by native name, so the ZCode aliases Write and Edit die with the natives.
+  const withDesignTools = [...FACE, tool('propose_to_human'), tool('record_human_answer')]
+  const names = wireFace(withDesignTools, { glm: true, sessionId: 's1', policy: host.services.get('glmHournessFaces') as FacePolicyRegistry }).map(entry => entry.name)
+  for (const gone of ['Write', 'Edit', 'write', 'edit', 'ask_user_question']) assert.ok(!names.includes(gone), gone)
+  // An alias the static table does not know is the name it is: only its native removal would take it.
+  assert.ok(names.includes('AskUserQuestion'), 'an alias outside the static table is not a known native')
+  for (const kept of ['read', 'Bash', 'graph_show', 'str_replace_editor', 'propose_to_human', 'record_human_answer']) assert.ok(names.includes(kept), kept)
 })
 
-test('str_replace_editor stays with its command cut to view, without changing the tool object the assembly came with', async () => {
+test('the main agent\'s str_replace_editor is narrowed to command view at the wire layer, without changing the face the source read', async () => {
   const { host } = open()
   const agent = host.addAgent('s1')
   const before = JSON.stringify(FACE)
   await type(host, agent, '/wish')
-  const editor = (await agent.assemble({ tools: FACE })).tools.find(entry => entry.name === 'str_replace_editor')
+  const face = wireFace([...FACE], { glm: true, sessionId: 's1', policy: host.services.get('glmHournessFaces') as FacePolicyRegistry })
+  const editor = face.find(entry => entry.name === 'str_replace_editor')
   const properties = editor?.parameters.properties as { command: { enum: string[], type: string }, path: unknown }
   assert.deepEqual(properties.command, { type: 'string', enum: ['view'] })
   assert.deepEqual(properties.path, { type: 'string' })
   assert.deepEqual(editor?.parameters.required, ['command', 'path'])
-  assert.equal(JSON.stringify(FACE), before)
+  assert.equal(JSON.stringify(FACE), before, 'the face the source read is untouched')
 })
 
-test('a str_replace_editor whose schema is not known is taken off the face and the health says so, and the later "in effect" does not cover it', async () => {
+test('a str_replace_editor whose schema is not known is taken off the wire face and the health says so, and the next step is active again', async () => {
   const { host } = open()
   const agent = host.addAgent('s1')
   await type(host, agent, '/wish')
+  const policy = host.services.get('glmHournessFaces') as FacePolicyRegistry
   for (const shape of [{ type: 'object', properties: {} }, { type: 'object', properties: { command: { type: 'string' } } }, { type: 'object' }]) {
-    const assembled = await agent.assemble({ tools: [tool('read'), tool('str_replace_editor', shape)] })
-    assert.deepEqual(toolNames(assembled), ['read'], JSON.stringify(shape))
+    const face = wireFace([tool('read'), tool('str_replace_editor', shape)], { glm: true, sessionId: 's1', policy })
+    assert.deepEqual(face.map(entry => entry.name), ['read'], JSON.stringify(shape))
     assert.deepEqual(sessionHealth(host, agent), { state: 'degraded', reason: STR_REPLACE_EDITOR_UNKNOWN })
   }
-  await agent.assemble({ tools: FACE })
+  await agent.assemble()
   assert.equal(sessionHealth(host, agent)?.state, 'active', 'a known shape clears it again')
 })
 
-test('the tool face listener has no prepend: another row\'s prepended listener sees the trimmed face whichever of the two was installed first', async () => {
-  for (const externalFirst of [true, false]) {
-    const { host } = open()
-    const agent = host.addAgent('s1')
-    const seen: string[][] = []
-    const external: AssembleListener = async (_assembly, _context, next) => {
-      const out = await next()
-      seen.push(toolNames(out))
-      return out
-    }
-    if (externalFirst) listen(agent, external, true)
-    await type(host, agent, '/wish')
-    if (!externalFirst) listen(agent, external, true)
-    await agent.assemble({ tools: FACE })
-    assert.equal(seen.length, 1)
-    assert.ok(!seen[0]?.includes('write') && !seen[0]?.includes('Write') && !seen[0]?.includes('ask_user_question'), `external first: ${externalFirst}`)
-  }
+test('without the face-policy service the identity section still runs and the row health says the face policy stays out without leaving the row', async () => {
+  const { host } = open({ faces: false })
+  const agent = host.addAgent('s1')
+  await type(host, agent, '/wish')
+  assert.ok(sectionOf(await agent.assemble()))
+  const activation = healthView(host).activation()
+  // An install without the GLM channel row has no wire layer; the face staying whole is that install's designed state, so the note informs and the row stays active (face-migration design 0.1 §4.6).
+  assert.equal(activation.state, 'active')
+  assert.ok(activation.reason.includes('glmHournessFaces'), activation.reason)
 })
 
 // ---------------------------------------------------------------- where the section goes
@@ -1085,9 +1300,9 @@ test('a session state that cannot be read counts as an ordinary session for that
   assert.ok(sectionOf(await agent.assemble()))
   const read = host.projections.stateOf.bind(host.projections)
   host.projections.stateOf = () => { throw new Error('log unreadable') }
-  const { result: first, warnings } = await captureWarnings(() => agent.assemble({ tools: FACE }))
+  const { result: first, warnings } = await captureWarnings(() => agent.assemble())
   assert.equal(sectionOf(first), undefined)
-  assert.ok(toolNames(first).includes('write'))
+  assert.ok(!faceSourceOf(host).removals('s1').has('write'), 'the step counts as an ordinary session for the face policy too')
   assert.equal(warnings.length, 1)
   assert.ok(warnings[0]?.includes('log unreadable'))
   assert.deepEqual(sessionHealth(host, agent), { state: 'degraded', reason: '读不到主 Agent 的会话状态（log unreadable），这一步当作普通会话' })
@@ -1107,10 +1322,10 @@ test('a service the role read leans on that throws does not break the step: the 
   const other = host.addAgent('s2', { inheritFrom: agent })
   const { result, warnings } = await captureWarnings(async () => {
     await host.created(other)
-    return other.assemble({ tools: FACE })
+    return other.assemble()
   })
   assert.equal(sectionOf(result), undefined)
-  assert.deepEqual(toolNames(result), FACE.map(entry => entry.name))
+  assert.deepEqual([...faceSourceOf(host).removals('s2')].sort(), ['propose_to_human', 'record_human_answer'])
   assert.equal(warnings.length, 1, 'once per row, whichever read failed first')
   assert.ok(warnings[0]?.includes('graph row broke'))
   const report = sessionHealth(host, other)

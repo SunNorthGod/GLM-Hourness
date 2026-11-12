@@ -15,7 +15,7 @@ export default {
     // through its package's patch; the client entry under ui/src/ is
     // bundled into packages/<pkg>/ui/client.js by scripts/build-ui.mjs.
     ...PACKAGES.flatMap(pkg => [`${pkg.dir}/ui/index.js`, pkg.client.entry]),
-    // Probe provider, probe clock, probe net log, probe session controller, dispatch spike, lift and environment companions: run-probe.mjs passes their paths to the DSH Loader.
+    // Probe provider, probe clock, probe net log, probe session controller, dispatch spike, lift, environment companions and the takeover-journal lock: run-probe.mjs passes their paths to the DSH Loader.
     'scripts/probe/probe-llm.mjs',
     'scripts/probe/probe-clock.mjs',
     'scripts/probe/probe-net.mjs',
@@ -23,6 +23,7 @@ export default {
     'scripts/probe/probe-lift.mjs',
     'scripts/probe/probe-env.mjs',
     'scripts/probe/probe-sessions.mjs',
+    'scripts/probe/probe-journal-lock.mjs',
     // Calibration bounds, read fence, ablation switch and simulated human: scripts/sandbox.mjs passes their paths to the DSH Loader.
     'scripts/calibrate/limits.mjs',
     'scripts/calibrate/fence.mjs',

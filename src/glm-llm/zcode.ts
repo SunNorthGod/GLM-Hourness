@@ -26,11 +26,14 @@ import { loginFingerprintOf, nodeQuotaFs, QuotaJournal } from './quota-journal.t
 import { metricsWhere, type GlmMetricEvent, type GlmMetricSink } from './metrics.ts'
 import { BIGMODEL_API_ORIGIN } from './zcode-wire.ts'
 import { encodeRequest, decodeMessage, decodeSse, metadataUserId, splitSystemPrompt, type WireShape } from './anthropic.ts'
+import { wireFace } from './face-wire.ts'
 import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
 import { GLM_CONTEXT_WINDOW, GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities, zcodeModelRule, zcodeWireModelId } from './models.ts'
 import { maxOutputTokensFor } from './token-budget.ts'
 import { messageText, type AttachmentsLike, type GenerateOptionsLike } from '../shared/lm-min.ts'
+import { isGlmModel } from '../shared/route.ts'
+import type { FacePolicyRegistry } from '../shared/face-policy.ts'
 import type { HealthState } from '../shared/health.ts'
 import type { MetricsWhere } from '../shared/metrics.ts'
 import type {
@@ -96,6 +99,12 @@ export interface ZcodeAdapterOptions {
   readonly report?: (sessionId: string | undefined, state: HealthState, reason: string) => void
   /** The header of a live DSH session (the `agents` service), read per request to tell a delegated child. */
   readonly sessionHeader?: (sessionId: string) => SessionHeaderLike | undefined
+  /**
+   * The face-policy registry (the `glmHournessFaces` service), read per
+   * request: the role layer of the wire face. Undefined reads as no role
+   * layer — the dialect layer still runs (src/glm-llm/face-wire.ts).
+   */
+  readonly facePolicy?: () => FacePolicyRegistry | undefined
   /** The quota journal that takes the upstream-limit and login-rejected records; default the journal under `home`. */
   readonly journal?: QuotaJournal
   /** Where each of those records also goes as a metric event (src/glm-llm/metrics.ts); without it none is made. */
@@ -503,6 +512,21 @@ export class ZcodeAdapter {
     // The DSH request vocabulary is a structural superset of the internal
     // wire shape; the cast documents that boundary in one place.
     const options = request as unknown as GenerateOptionsLike
+    // The wire face (face-migration design 0.1 §4.3): the request's tool face
+    // is rewritten here, at the adapter's stream — on the installed
+    // 0.2.2-rc.1 runtime the one seam a request's face passes through, since
+    // the runtime appends its collected face after the assemble waterfall and
+    // overwrites anything the waterfall wrote back (docs/DESIGN.md §2.4a). On
+    // rc.3 the adapter received the listeners' rewritten face as
+    // `options.tools`; composing the same face here restores the parity of
+    // the upstream body. A compaction or session-title request carries the
+    // tools of its session's last request header, so it takes the same
+    // rewrite the rc.3 adapter saw.
+    const tools = wireFace(options.tools ?? [], {
+      glm: isGlmModel(request.model),
+      sessionId: request.sessionId ?? '',
+      policy: this.options.facePolicy?.(),
+    })
     const plan = this.options.plan ?? 'coding-plan'
     const report = (state: HealthState, reason: string): void => this.options.report?.(request.sessionId, state, reason)
     const credential = await this.loadCredential().catch((error: unknown) => {
@@ -550,10 +574,10 @@ export class ZcodeAdapter {
     // (session trace, turn query id, query source, subagent type);
     // start-plan keeps its earlier shape.
     const attribution: Omit<TraceContext, 'requestId'> = plan === 'coding-plan'
-      ? this.attribution.attribute({ sessionId: request.sessionId, purpose: request.purpose, reasoningEffort: options.reasoningEffort, tools: options.tools, messages: options.messages })
+      ? this.attribution.attribute({ sessionId: request.sessionId, purpose: request.purpose, reasoningEffort: options.reasoningEffort, tools, messages: options.messages })
       : { sessionId: upstreamSessionId(request.sessionId), sessionType: request.purpose === undefined ? 'main' : 'other', traceId: randomUUID() }
     const wire = plan === 'coding-plan' ? codingPlanWire(options, request.purpose, this.attribution.stepEffortOf(request.sessionId), this.contextWindow()) : undefined
-    const body = JSON.stringify(encodeRequest({ ...options, messages }, systemBlocks, images, metadataUserId(device.value, attribution.sessionId), wire))
+    const body = JSON.stringify(encodeRequest({ ...options, tools, messages }, systemBlocks, images, metadataUserId(device.value, attribution.sessionId), wire))
     const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
 
     // One attempt: route, assemble, sign, send. 3.16.3 wraps the routing

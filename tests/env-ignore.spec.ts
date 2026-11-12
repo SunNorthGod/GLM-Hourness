@@ -62,10 +62,13 @@ test('a negation in .gitignore keeps .llm/ visible: the outcome says so with the
   }
 })
 
-test('outside a git repository there is nothing to do', async () => {
+test('outside a git repository there is nothing to do, and that is not kept: after git init the next run appends', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'env-ignore-nogit-'))
   try {
     assert.equal((await ensureLlmIgnored(dir)).kind, 'no-git')
+    git(dir, ['init'])
+    const outcome = await ensureLlmIgnored(dir)
+    assert.deepEqual([outcome.kind, outcome.kind === 'ignored' && outcome.appended], ['ignored', true])
   }
   finally {
     await rm(dir, { recursive: true, force: true })

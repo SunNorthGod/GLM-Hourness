@@ -22,21 +22,22 @@ import {
   SECURITY_NOTICE_USER,
   TODO_REMINDER_THRESHOLDS,
 } from '../src/glm-prompt/verbatim.ts'
-import type { AgentLike, AssemblePayload } from '../src/shared/dsh-min.ts'
+import type { AgentLike } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { MEMORY_SERVICE } from '../src/shared/memory-service.ts'
 import { LESSONS_QUERY_TOOL, MEMORY_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { fakeRuntime, NATIVE_NAMES, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
 
-// glm:memory (docs/DESIGN.md §5.3 ⑧): only where next() returned every memory tool.
+// glm:memory (docs/DESIGN.md §5.3 ⑧): only where the step's pre-exposure wire
+// face carries every memory tool.
 
-const assembled = (names: readonly string[]): AssemblePayload => ({ sections: [], contexts: [], tools: names.map(name => ({ name, description: name, parameters: { type: 'object' } })), variables: {} })
+const face = (names: readonly string[]): ReadonlyArray<{ readonly name: string }> => names.map(name => ({ name }))
 
-test('memorySectionApplies needs every memory tool among the tools next() returned', () => {
-  assert.equal(memorySectionApplies(assembled(['read', ...MEMORY_TOOL_NAMES])), true)
-  assert.equal(memorySectionApplies(assembled(['read', ...MEMORY_TOOL_NAMES.slice(1)])), false)
-  assert.equal(memorySectionApplies(assembled(['read'])), false)
+test('memorySectionApplies needs every memory tool on the projection face', () => {
+  assert.equal(memorySectionApplies(face(['read', ...MEMORY_TOOL_NAMES])), true)
+  assert.equal(memorySectionApplies(face(['read', ...MEMORY_TOOL_NAMES.slice(1)])), false)
+  assert.equal(memorySectionApplies(face(['read'])), false)
 })
 
 for (const toolSearchMode of ['local', 'off'] as const) {

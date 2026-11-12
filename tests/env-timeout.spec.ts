@@ -147,7 +147,7 @@ async function withGraphRow(body: (fixture: Fixture) => Promise<void>): Promise<
     const runtime = fakeRuntime({ natives: [], cwd: workspace })
     const dispose = apply(runtime.ctx, {})
     let calls = 0
-    const call: Fixture['call'] = (name, args = {}) => runtime.ctx.tools.execute({ callId: `call-${++calls}`, name, arguments: args, agent: runtime.agent, signal: new AbortController().signal })
+    const call: Fixture['call'] = (name, args = {}) => runtime.ctx.tools.execute({ calls: [{ id: `call-${++calls}`, name, arguments: args }], agent: runtime.agent, signal: new AbortController().signal, log: { turn: runtime.progress.turn, step: runtime.progress.step } }).then(batch => batch.results[0].result)
     try {
       await body({ workspace, graph, runtime, call })
     }

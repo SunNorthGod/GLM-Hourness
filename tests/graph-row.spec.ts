@@ -40,7 +40,7 @@ async function withRow(body: (fixture: Fixture) => Promise<void>, config: { dir?
     const runtime = fakeRuntime({ natives: ['Write', 'pwsh'], cwd: workspace, route: { provider: 'glm-zcode', model: 'glm-5.3' } })
     apply(runtime.ctx, { ...config, home })
     let counter = 0
-    const call: Fixture['call'] = (name, args) => runtime.ctx.tools.execute({ callId: `call-${++counter}`, name, arguments: args, agent: runtime.agent, signal: new AbortController().signal })
+    const call: Fixture['call'] = (name, args) => runtime.ctx.tools.execute({ calls: [{ id: `call-${++counter}`, name, arguments: args }], agent: runtime.agent, signal: new AbortController().signal, log: { turn: runtime.progress.turn, step: runtime.progress.step } }).then(batch => batch.results[0].result)
     await body({ workspace, graph, home, runtime, call })
   }
   finally {
@@ -146,7 +146,7 @@ test('row health: a missing graph directory degrades the activation and the sess
     assert.match(warnings.join('\n'), /does not exist/)
     const view = runtime.services.get(healthServiceName('graph')) as RowHealthView
     assert.deepEqual([view.activation().state, view.activation().reason], ['degraded', `图工具已注册（${GRAPH_TOOL_NAMES.length} 个）；图目录 ${missing} 还不存在`])
-    await runtime.ctx.tools.execute({ callId: 'c1', name: 'graph_open', arguments: {}, agent: runtime.agent, signal: new AbortController().signal })
+    await runtime.ctx.tools.execute({ calls: [{ id: 'c1', name: 'graph_open', arguments: {} }], agent: runtime.agent, signal: new AbortController().signal, log: { turn: runtime.progress.turn, step: runtime.progress.step } })
     const session = entry(runtime, 'graph')
     assert.equal(session.status, 'degraded')
     assert.match(session.reason, /^图目录找不到：no project graph at /)

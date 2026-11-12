@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createHash } from 'node:crypto'
-import { DEFAULT_WATCHED, GATE_LINE_FORMS, normDigest, parseGateNorm } from '../src/execute/gate-norm.ts'
+import { DEFAULT_WATCHED, GATE_LINE_FORMS, normDigest, parseGateNorm, unreadableOnlyLines } from '../src/execute/gate-norm.ts'
 import { node } from './execute-helpers.ts'
 
 const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
@@ -39,8 +39,22 @@ test('parseGateNorm: an empty gate is empty, and a malformed line is prose', () 
   assert.deepEqual(prose.prose.map(line => line.index), [0, 1, 2])
 })
 
-test('GATE_LINE_FORMS: the seven forms the takeover proposes', () => {
-  assert.deepEqual([...GATE_LINE_FORMS], ['$ <command>', '$ <command> when <paths>', 'setup $ <command>', 'setup $ <command> when <paths>', 'patrol $ <command>', 'push', 'only <paths>'])
+test('unreadableOnlyLines: an only line the gate cannot read is named for a rewrite; prose and parsed lines are not (§7.6, the empty-graph-commit finding)', () => {
+  // The L4 shapes: the whole-line backticks missing, a Windows backslash path with and without the backticks.
+  assert.deepEqual(unreadableOnlyLines(gateNode(['only docs\\graph/'])), ['only docs\\graph/'])
+  assert.deepEqual(unreadableOnlyLines(gateNode(['`only docs\\graph/`'])), ['only docs\\graph/'])
+  assert.deepEqual(unreadableOnlyLines(gateNode(['only `docs\\graph/`'])), ['only `docs\\graph/`'])
+  assert.deepEqual(unreadableOnlyLines(gateNode(['only docs/graph'])), ['only docs/graph'], 'the right paths without the backticks are named too')
+  // Not named: a parsed only line, prose that merely starts with "only", a bare only with no paths, other prose.
+  assert.deepEqual(unreadableOnlyLines(gateNode(['`only docs/graph/`'])), [])
+  assert.deepEqual(unreadableOnlyLines(gateNode(['only the fast checks run at night'])), [])
+  assert.deepEqual(unreadableOnlyLines(gateNode(['`only `'])), [])
+  assert.deepEqual(unreadableOnlyLines(gateNode(['`$ npm test`', '说明文字'])), [])
+  assert.deepEqual(unreadableOnlyLines(undefined), [])
+})
+
+test('GATE_LINE_FORMS: the eight forms the takeover proposes (the `changed` form arrives with the takeover row)', () => {
+  assert.deepEqual([...GATE_LINE_FORMS], ['$ <command>', '$ <command> when <paths>', 'setup $ <command>', 'setup $ <command> when <paths>', 'patrol $ <command>', 'push', 'only <paths>', 'changed <format> $ <command>'])
 })
 
 test('normDigest: the parsed entries in order, stable, and moved by a change', () => {
@@ -50,4 +64,18 @@ test('normDigest: the parsed entries in order, stable, and moved by a change', (
   const changed = parseGateNorm(gateNode(['`$ npm run test`', '`push`']))
   assert.notEqual(normDigest(gate, sha256), normDigest(changed, sha256))
   assert.match(normDigest(gate, sha256), /^[0-9a-f]{12}$/)
+})
+
+test('parseGateNorm: a `changed` line names the format of its findings; an unknown format is prose; the digest moves with the format (takeover design 0.6 §5.6)', () => {
+  const gate = parseGateNorm(gateNode(['`changed eslint-json $ node x.js {files}`', '`changed nope $ node x.js`', '`changed tsc $ node x.js when src/`']))
+  assert.deepEqual(gate.commands.map(command => [command.kind, command.command, command.changed, command.when]), [
+    ['check', 'node x.js {files}', 'eslint-json', undefined],
+    ['check', 'node x.js', 'tsc', ['src/']],
+  ])
+  assert.deepEqual(gate.prose.map(line => line.text), ['`changed nope $ node x.js`'])
+  const eslint = parseGateNorm(gateNode(['`changed eslint-json $ node x.js {files}`']))
+  const tsc = parseGateNorm(gateNode(['`changed tsc $ node x.js {files}`']))
+  assert.notEqual(normDigest(eslint, sha256), normDigest(tsc, sha256))
+  const plain = parseGateNorm(gateNode(['`$ node x.js`']))
+  assert.notEqual(normDigest(eslint, sha256), normDigest(plain, sha256), 'the changed form digests apart from the plain one')
 })

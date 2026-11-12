@@ -74,7 +74,7 @@ function harness(rules: readonly GuardRule[], options: { prepend?: boolean, jour
   let callNo = 0
   const exec = (name: string, args: unknown, sameStep = false): Promise<unknown> => {
     if (!sameStep) rt.progress.step += 1
-    return rt.ctx.tools.execute({ callId: `${id}-call-${++callNo}`, name, arguments: args, agent, signal: new AbortController().signal })
+    return rt.ctx.tools.execute({ calls: [{ id: `${id}-call-${++callNo}`, name, arguments: args }], agent, signal: new AbortController().signal, log: { turn: rt.progress.turn, step: rt.progress.step } }).then(batch => batch.results[0].result)
   }
   const followups = (): FollowupRecord[] => lines.filter((record): record is FollowupRecord => 'kind' in record && record.kind === 'followup')
   const denials = (): GuardRecord[] => lines.filter(record => !('kind' in record))
@@ -187,7 +187,7 @@ test('a DeferredToolCall wrapper settles by the target it unwraps to, once, and 
   h.rt.sessionEvent(h.agent.session!, 'tool/call', { turn: 2, step: 5, callId: 'call-w', name: 'DeferredToolCall', arguments: { name: 'write', input: WRITE } })
   h.rt.progress.turn = 2
   h.rt.progress.step = 5
-  await h.rt.ctx.tools.execute({ callId: 'call-w:deferred', name: 'write', arguments: WRITE, agent: h.agent, signal: new AbortController().signal })
+  await h.rt.ctx.tools.execute({ calls: [{ id: 'call-w:deferred', name: 'write', arguments: WRITE }], agent: h.agent, signal: new AbortController().signal })
   assert.equal(h.denials().length, 1, 'the inner call is denied and journaled')
   assert.deepEqual(h.followups(), [], 'nothing settles before the model\'s next call')
   // The model's next call is the same target through the wrapper, one step later: the wrapper settles, the target never does.
@@ -200,7 +200,7 @@ test('a DeferredToolCall wrapper settles by the target it unwraps to, once, and 
 test('a wrapped call on the rule\'s right path settles right-path', async () => {
   const h = harness([denyRule('one', call => call.name === 'write', next => next.name === 'read')])
   h.rt.sessionEvent(h.agent.session!, 'tool/call', { turn: 1, step: 1, callId: 'call-d', name: 'DeferredToolCall', arguments: { name: 'write', input: WRITE } })
-  await h.rt.ctx.tools.execute({ callId: 'call-d:deferred', name: 'write', arguments: WRITE, agent: h.agent, signal: new AbortController().signal })
+  await h.rt.ctx.tools.execute({ calls: [{ id: 'call-d:deferred', name: 'write', arguments: WRITE }], agent: h.agent, signal: new AbortController().signal })
   await h.exec('DeferredToolCall', { name: 'read', input: READ })
   assert.deepEqual(h.followups().map(record => record.outcome), ['right-path'])
 })
@@ -240,7 +240,7 @@ test('the outermost gate settles the follow-up, and an inner gate\'s observe of 
   let callNo = 0
   const exec = (name: string, args: unknown): Promise<unknown> => {
     rt.progress.step += 1
-    return rt.ctx.tools.execute({ callId: `cross-${id}-call-${++callNo}`, name, arguments: args, agent, signal: new AbortController().signal })
+    return rt.ctx.tools.execute({ calls: [{ id: `cross-${id}-call-${++callNo}`, name, arguments: args }], agent, signal: new AbortController().signal, log: { turn: rt.progress.turn, step: rt.progress.step } }).then(batch => batch.results[0].result)
   }
   await exec('edit', { file_path: 'C:\\x' }) // the inner gate denies; the outer let it through to there
   assert.deepEqual(shared.lines.map(record => 'kind' in record ? record.kind : record.rule), ['inner-edit'])

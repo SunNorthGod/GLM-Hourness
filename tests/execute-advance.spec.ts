@@ -27,6 +27,7 @@ import { EXECUTE_EVENTS } from '../src/execute/entries.ts'
 import { floorPathIn, parseFloor } from '../src/execute/floor.ts'
 import { normDigest, parseGateNorm } from '../src/execute/gate-norm.ts'
 import { installExecuteRules } from '../src/guard/execute-rules.ts'
+import { appendTakeover, openTakeover } from '../src/bootstrap/takeover.ts'
 import type { AgentLike, PostExecuteListener, PreExecuteListener } from '../src/shared/dsh-min.ts'
 import { node, sha256 } from './execute-helpers.ts'
 import { advanceEvents, doneEvidence, withTrunkRig } from './execute-trunk.ts'
@@ -447,6 +448,30 @@ test('a commit on the trunk passes with only paths staged and is recorded by pat
     assert.equal(code.result.isError, true)
     assert.match(code.text, /^main would move from [0-9a-f]{12} to a new commit without a passed merge check\./)
     assert.equal(rig.repo.git('rev-parse', 'main'), to)
+  })
+})
+
+test('an empty advance while the last closed takeover\'s graph is untracked says so at once; a tracked graph and no takeover stay silent (§7.6, the empty-graph-commit finding)', async () => {
+  await withTrunkRig({}, async (rig) => {
+    await rig.run('git commit --allow-empty -m nothing')
+    assert.deepEqual(rig.reports, [], 'no takeover closed: an empty advance says nothing')
+    assert.equal(rig.sent.length, 0)
+    const opened = await openTakeover(rig.repo.root, { path: 'existing', because: 'b', trigger: 'init', projectRoot: rig.repo.root, graphDir: rig.repo.graphDir })
+    assert.equal(opened.kind, 'opened')
+    if (opened.kind !== 'opened') return
+    assert.ok(await appendTakeover(rig.repo.root, opened.takeover.id, [{ op: 'takeover-closed', data: { reason: 'abandoned', counts: { approved: 0, skipped: 0, rejected: 0, done: 0 } } }]))
+    await rig.run('git commit --allow-empty -m empty-graph-commit')
+    assert.equal(rig.reports.length, 1)
+    assert.match(rig.reports[0] ?? '', /主干前进到没有改任何文件的提交 [0-9a-f]{12}：接管的图还没进 git（docs\/graph），收尾说的「图已提交进 git」不对/)
+    assert.equal(rig.sent.length, 1)
+    const notice = rig.sent.at(-1)
+    assert.match(notice?.content[0]?.text ?? '', /the takeover closing's claim that the graph was committed does not hold/)
+    // the graph lands in git: the next empty advance stays silent
+    rig.repo.git('add', '--', 'docs/graph/nodes')
+    rig.repo.git('commit', '--quiet', '-m', 'graph')
+    await rig.run('git commit --allow-empty -m again')
+    assert.equal(rig.reports.length, 1)
+    assert.equal(rig.sent.length, 1)
   })
 })
 

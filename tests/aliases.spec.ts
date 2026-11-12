@@ -6,6 +6,8 @@ import { buildReadAlias, fileExtension, mapReadArgs, readDescription, renderRead
 import { globResultText, GREP_DESCRIPTION, GREP_SCHEMA, grepNativeCalls, grepResultText, splitGlobPatterns, typeGlobPattern, zcodeDisplayPath } from '../src/glm-prompt/search-alias.ts'
 import { READ_IMAGE_LINE, READ_INPUT_SCHEMA, READ_VIDEO_LINE, readPartialViewNotice, TODO_WRITE_DESCRIPTION, TODO_WRITE_INPUT_SCHEMA } from '../src/glm-prompt/zcode-tool-text.ts'
 import { installDialect } from '../src/glm-prompt/index.ts'
+import { wireFace } from '../src/glm-llm/face-wire.ts'
+import { isGlmModel } from '../src/shared/route.ts'
 import type { ToolDefinitionLike } from '../src/shared/dsh-min.ts'
 import { fakeRuntime, NATIVE_NAMES } from './fake-rc3.ts'
 
@@ -314,14 +316,15 @@ test('aliases cover only the natives they were built over', () => {
   assert.deepEqual(buildAliases(name => natives.get(name)).map(alias => alias.tool.name), ['Edit'])
 })
 
-test('a GLM request does not see read_image once Read stands in for it; a non-GLM request still does', async () => {
+test('a GLM request does not see read_image once Read stands in for it; a non-GLM request still does', () => {
   const rt = fakeRuntime({ natives: [...NATIVE_NAMES, 'read_image'] })
   installDialect(rt.agent, { toolSearchMode: 'off' })
-  const glm = (await rt.assemble({ model: 'glm-5.3' })).tools.map(tool => tool.name)
-  const plain = (await rt.assemble({ model: 'deepseek-flash' })).tools.map(tool => tool.name)
+  const faceOf = (model: string): string[] => wireFace(rt.schemas(), { glm: isGlmModel(model), sessionId: rt.agent.id, policy: undefined }).map(tool => tool.name)
+  const glm = faceOf('glm-5.3')
+  const plain = faceOf('deepseek-flash')
   assert.ok(glm.includes('Read') && !glm.includes('read_image') && !glm.includes('read'))
   assert.ok(plain.includes('read_image') && plain.includes('read') && !plain.includes('Read'))
   const imageOnly = fakeRuntime({ natives: ['read_image'] })
   installDialect(imageOnly.agent, { toolSearchMode: 'off' })
-  assert.deepEqual((await imageOnly.assemble({ model: 'glm-5.3' })).tools.map(tool => tool.name), ['read_image'])
+  assert.deepEqual(wireFace(imageOnly.schemas(), { glm: true, sessionId: imageOnly.agent.id, policy: undefined }).map(tool => tool.name), ['read_image'])
 })

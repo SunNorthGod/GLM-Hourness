@@ -6,14 +6,14 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { openEngine } from '../src/graph/engine.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
-import { EXECUTE_TOOL_NAMES, GRAPH_TOOL_NAMES, WORKER_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { EXECUTE_TOOL_NAMES, OPERATE_TOOL_NAMES, WORKER_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { PEAK_MODE_SERVICE, peakModeService, type PeakModeService } from '../src/shared/peak-mode.ts'
 import { EXECUTE_SERVICE, type ExecuteService } from '../src/shared/execute-service.ts'
 import { EXECUTE_RULES, installExecuteRules, type CommandRecordLine } from '../src/guard/execute-rules.ts'
 import { REQUESTS_SERVICE, type RequestsService } from '../src/guard/request-service.ts'
-import type { AgentLike, AssembledTool, InjectableServices, LlmCatalog, ServiceLookup, SessionLike, ToolDefinitionLike } from '../src/shared/dsh-min.ts'
+import type { AgentLike, InjectableServices, LlmCatalog, ServiceLookup, SessionLike, ToolDefinitionLike } from '../src/shared/dsh-min.ts'
 import { GLM_REASONING_EFFORTS } from '../src/glm-llm/models.ts'
-import { faceOfRole } from '../src/execute/faces.ts'
+import { removalsOfRole } from '../src/execute/faces.ts'
 import { dispatchTool, createGraphCache, type DispatchDeps } from '../src/execute/dispatch.ts'
 import { dispatchDescription } from '../src/execute/examples.ts'
 import { forgetAttempt, registeredAttempt, type Attempt } from '../src/execute/attempts.ts'
@@ -497,26 +497,25 @@ test('with the execute service on, the main agent\u2019s no-write denial points 
   assert.match(off, /hand it to a subagent with the subagent tool/)
 })
 
-// ---- the face filter (§2.3.2) ----
+// ---- the wire face (§2.3.2, face-migration design 0.1 §6 C: the removals ride the glmHournessFaces registry to the wire layer) ----
 
-const FACE_TOOLS: readonly AssembledTool[] = [...GRAPH_TOOL_NAMES, ...EXECUTE_TOOL_NAMES, ...WORKER_TOOL_NAMES, 'read'].map(name => ({ name, description: name, parameters: { type: 'object', properties: {} } }))
-
-test('faceOfRole: the main agent keeps everything; a non-main agent loses the execute and operate tools; a worker keeps the worker tools; a reviewer loses submit_plan; a dispatched chain loses the nine graph writes', () => {
-  const names = (tools: readonly AssembledTool[]): readonly string[] => tools.map(tool => tool.name)
+test('removalsOfRole: the main agent keeps everything but the worker tools; a non-main agent loses the execute and operate tools; a worker keeps the worker tools; a reviewer loses submit_plan; a dispatched chain loses the nine graph writes', () => {
   const attempt = (role: Attempt['role']): Attempt => ({
     childId: `hz-task-1-a1-000000`, role, node: 'task-1', attempt: 1, provider: 'p', model: 'm', why: 'w', plan: 'required', pins: 'pins: x',
   })
-  const main = names(faceOfRole(FACE_TOOLS, { main: true, dispatched: false }))
-  assert.deepEqual(EXECUTE_TOOL_NAMES.filter(name => main.includes(name)), EXECUTE_TOOL_NAMES)
-  assert.deepEqual(WORKER_TOOL_NAMES.filter(name => main.includes(name)), [], 'the main agent is no worker: its face has none of the worker tools')
-  const plain = names(faceOfRole(FACE_TOOLS, { main: false, dispatched: false }))
-  for (const name of EXECUTE_TOOL_NAMES) assert.ok(!plain.includes(name), `a non-main agent kept ${name}`)
-  const worker = names(faceOfRole(FACE_TOOLS, { main: false, attempt: attempt('worker'), dispatched: true }))
-  assert.deepEqual(WORKER_TOOL_NAMES.filter(name => worker.includes(name)), WORKER_TOOL_NAMES)
-  assert.ok(!worker.includes('graph_status') && worker.includes('graph_comment'), `the worker's graph face is wrong: ${worker.join(', ')}`)
-  const reviewer = names(faceOfRole(FACE_TOOLS, { main: false, attempt: attempt('review'), dispatched: true }))
-  assert.ok(!reviewer.includes('submit_plan') && reviewer.includes('ask_main'), `the reviewer's face is wrong: ${reviewer.join(', ')}`)
-  const child = names(faceOfRole(FACE_TOOLS, { main: false, dispatched: true }))
-  for (const name of WORKER_TOOL_NAMES) assert.ok(!child.includes(name), `a read-only child kept ${name}`)
-  assert.ok(!child.includes('graph_edit') && child.includes('graph_show'), `a read-only child's graph face is wrong: ${child.join(', ')}`)
+  const main = removalsOfRole({ main: true, dispatched: false })
+  assert.equal(main.size, WORKER_TOOL_NAMES.length, 'the main agent is no worker: the removals are the worker tools')
+  assert.deepEqual([...main].sort(), [...WORKER_TOOL_NAMES].sort())
+  const plain = removalsOfRole({ main: false, dispatched: false })
+  for (const name of EXECUTE_TOOL_NAMES) assert.ok(plain.has(name), `a non-main agent keeps ${name}`)
+  for (const name of OPERATE_TOOL_NAMES) assert.ok(plain.has(name), `a non-main agent keeps ${name}`)
+  const worker = removalsOfRole({ main: false, attempt: attempt('worker'), dispatched: true })
+  for (const name of WORKER_TOOL_NAMES) assert.ok(!worker.has(name), `a registered worker lost ${name}`)
+  assert.ok(worker.has('graph_status'), 'the worker loses the graph writes, graph_status among them')
+  assert.equal(worker.has('graph_comment'), false, 'the worker keeps the read-and-annotate graph tools')
+  const reviewer = removalsOfRole({ main: false, attempt: attempt('review'), dispatched: true })
+  assert.ok(reviewer.has('submit_plan') && !reviewer.has('ask_main'), `the reviewer's removals are wrong: ${[...reviewer].join(', ')}`)
+  const child = removalsOfRole({ main: false, dispatched: true })
+  for (const name of WORKER_TOOL_NAMES) assert.ok(child.has(name), `a read-only child keeps ${name}`)
+  assert.ok(child.has('graph_edit') && !child.has('graph_show'), `a read-only child's graph removals are wrong: ${[...child].join(', ')}`)
 })

@@ -13,8 +13,10 @@
     - id: glm-hourness/glm-llm
       # Native ZCode channel: /glm-login fills the encrypted credential store;
       # a missing credential fails the stream with the re-login instruction.
-      # Ships disabled until the sandbox (docs/DEVELOPMENT.md §3) passes: an
-      # unverified adapter row must never activate on the user's next restart.
+      # Ships disabled by design, not by a pending gate: the row passed the
+      # sandbox (docs/DEVELOPMENT.md §3) and the desktop L4 real sessions on
+      # 2026-10-28/29; docs/DESIGN.md §2.2 keeps the channel row
+      # factory-disabled and §2.5 keeps the probe on its scripted provider.
       name: dsh-glm-zcode/glm-llm
       disabled: true
       inject: [llm]

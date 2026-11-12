@@ -151,7 +151,7 @@ runTest('the row registers /graph-run; its short input stays on the command reco
   return Promise.resolve()
 })
 
-runTest('start: the main agent gets a followup naming the node and asking for graph_focus; the click lands in the node history as the human', async ({ graph, calls, main, send }) => {
+runTest('start: an approved task moves to in progress as the human with the click as the reason, then the main agent gets a followup naming the node and asking for graph_focus', async ({ graph, calls, main, send }) => {
   assert.deepEqual(await send('start task-1'), { kind: 'success', text: '已让主 Agent 从「开始按钮」开始做' })
   assert.deepEqual(sequence(calls), [`${MAIN}.followup`])
   const message = only(calls, 'followup')
@@ -159,13 +159,19 @@ runTest('start: the main agent gets a followup naming the node and asking for gr
   assert.deepEqual(message.source.graphRun, { action: 'start', node: 'task-1', commandId: 'command-1' })
   const text = message.content[0]?.text ?? ''
   assert.ok(text.includes('graph_focus {"id":"task-1"}'), text)
-  assert.ok(text.includes('graph_status'), 'an approved task is to be marked doing')
-  const entry = (await nodeOf(graph, 'task-1')).history.at(-1)
-  assert.deepEqual([entry?.actor, entry?.op, entry?.text], ['human', 'comment', runNote('start')])
-  // A busy agent gets it as a followup too: after its current turn, not into it.
+  assert.ok(text.includes('它已从已批准改为进行中'), text)
+  assert.ok(!text.includes('graph_status'), 'the harness wrote the status; the agent is not asked to')
+  const started = await nodeOf(graph, 'task-1')
+  const entry = started.history.at(-1)
+  assert.deepEqual([started.status, entry?.actor, entry?.op, entry?.from, entry?.to, entry?.reason], ['doing', 'human', 'status', 'approved', 'doing', runNote('start')])
+  // A busy agent gets it as a followup too: after its current turn, not into it. The task is in progress now, so the click is a comment.
   main.status = 'running'
   assert.deepEqual(await send('start task-1'), { kind: 'success', text: '已让主 Agent 从「开始按钮」开始做（它正忙，这一轮做完就接着做）' })
   assert.deepEqual(sequence(calls), [`${MAIN}.followup`, `${MAIN}.followup`])
+  const again = await nodeOf(graph, 'task-1')
+  const comment = again.history.at(-1)
+  assert.deepEqual([again.status, comment?.actor, comment?.op, comment?.text], ['doing', 'human', 'comment', runNote('start')])
+  assert.ok(!((calls[1] as { readonly message: UserNotice }).message.content[0]?.text ?? '').includes('它已从已批准改为进行中'))
 })
 
 runTest('stop on the main agent: cancel keeping the inbox, then the pause notice before its next step, not into its inbox', async ({ graph, calls, main, focus, send }) => {
@@ -228,7 +234,7 @@ runTest('the panel offers a redo on a task in progress once its acceptance chang
   const engine = openEngine(graph)
   assert.equal((await send('start task-1')).kind, 'success')
   const rev = async () => (await loadGraph(graph)).revisions.get('task-1')
-  assert.ok((await engine.apply('llm', { op: 'status', id: 'task-1', rev: await rev(), to: 'doing', reason: '开工' })).ok)
+  assert.equal((await nodeOf(graph, 'task-1')).status, 'doing', 'start put it in progress')
   assert.equal(offersRedo(await nodeOf(graph, 'task-1')), false)
   assert.ok((await engine.apply('human', { op: 'edit', id: 'task-1', rev: await rev(), set: { acceptance: ['改过的条件'] }, reason: '改条件' })).ok)
   const changed = await nodeOf(graph, 'task-1')

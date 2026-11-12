@@ -294,8 +294,8 @@ function laneFor(key: string, size: number): Lane {
 
 // ------------------------------------------------------------- the process
 
-/** End the process and everything it spawned (design §6.6): Windows takes `taskkill /T /F`, the others the process group. */
-function killTree(pid: number): void {
+/** End the process and everything it spawned (design §6.6): Windows takes `taskkill /T /F`, the others the process group. The takeover's trial ends its runs the same way (takeover design 0.6 §6.3). */
+export function killTree(pid: number): void {
   if (process.platform === 'win32') {
     try {
       spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }).on('error', () => undefined)

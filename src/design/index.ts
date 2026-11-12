@@ -3,9 +3,11 @@
  * agent mode. `/wish` makes one session per project the main agent, the
  * person's one conversation with the project (decision d-one-main-agent).
  * From the next step on, that session's system prompt carries the identity
- * section `hourness:main-agent` (identity.ts) and its tool face has no
- * tool that writes files and no ask_user_question (role-face.ts). Every
- * other session, and every delegated child, is unchanged.
+ * section `hourness:main-agent` (identity.ts), and its wire face has no
+ * tool that writes files and no ask_user_question (role-face.ts, applied at
+ * the GLM channel's wire layer through the face-policy service, since the
+ * 0.2.2-rc.1 runtime composes the request face itself). Every other
+ * session, and every delegated child, is unchanged.
  *
  * Who is the main agent: the session projection of /wish (mode.ts) says
  * what a session was told, the holder record under the DSH user directory
@@ -21,26 +23,28 @@
  * takes the role over).
  *
  * The person's persona (the row's `persona` setting, persona.ts) is a system
- * prompt section for the main agent only. The tool face listener, the inner
- * one, adds it, so the dialect's listener sees the section and places it
- * whichever way round the two rows were installed. A session that is not the
- * main agent, a delegated child included, never gets it.
+ * prompt section for the main agent only. The inner of the row's two
+ * assembly listeners adds it, so the dialect's listener sees the section and
+ * places it whichever way round the two rows were installed. A session that
+ * is not the main agent, a delegated child included, never gets it.
  *
- * Both assembly listeners are installed per agent by `installAgentHooks`,
- * at agent creation and again by /wish itself, because an idle agent that
+ * The assembly listener is installed per agent by `installAgentHooks`, at
+ * agent creation and again by /wish itself, because an idle agent that
  * /wish wakes assembles its first step before the command returns, and the
- * row's agent/created listener may not have run for it. Activation never
- * throws: a missing service or a failed registration warns and says why in
- * the row health. It ships disabled (packages/hourness/cordis.patch.yml).
+ * row's agent/created listener may not have run for it. The face-policy
+ * source is registered once at activation. Activation never throws: a
+ * missing service or a failed registration warns and says why in the row
+ * health. It ships disabled (packages/hourness/cordis.patch.yml).
  */
 import { statSync } from 'node:fs'
+import { bootstrapWishSeam } from '../bootstrap/service.ts'
 import { holderFile, holderHome, projectKey, readHolder, releaseHolder } from '../graph/main-agent-holder.ts'
 import { graphFocus, graphService } from '../graph/service.ts'
 import { installMainAgentRules, type BypassAlert } from '../guard/main-agent.ts'
 import { insertHournessSection } from '../guard/sections.ts'
 import { projectJournal } from '../memory/audit.ts'
 import { projectHomeFor } from '../data/project-home.ts'
-import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
+import { FACES_NOTE, registerFaceSource } from '../shared/face-policy.ts'
 import { createUserNotice, type AgentLike, type CommandDefinitionLike, type CommandsExecutor, type DesignAgentLike, type DesignAgentsService, type DesignInvocationLike, type InjectHost, type PreExecuteListener, type ProvideHost, type ServiceLookup, type SessionLike, type SessionPersistenceLike, type SessionProjectionsService } from '../shared/dsh-min.ts'
 import { executeService } from '../shared/execute-service.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
@@ -54,7 +58,7 @@ import { localTime, mainAgentProjection, modeOf, roleOf, staleRecordKept, wishHa
 import { DEFAULT_PERSONA_NAME, PERSONA_NAME_LIMIT, PERSONA_TEXT_LIMIT, readPersona } from './persona.ts'
 import { proposeTool, type DesignToolDeps } from './propose.ts'
 import { recordTool } from './record.ts'
-import { mainAgentFace, ordinaryFace } from './role-face.ts'
+import { designFaceSource } from './role-face.ts'
 import { installStageNotice } from './stage-notice.ts'
 import { HIDDEN_FROM_MAIN_AGENT, TALK_PROJECTION, parseTalkState, personSaid, talkApply, talkFold, talkInit, type TalkState } from './talk.ts'
 import { createStepMailbox } from '../shared/step-mailbox.ts'
@@ -122,7 +126,6 @@ function isDirectory(dir: string): boolean {
 /** cordis plugin entry: register /wish and the main agent projection, keep the role consistent. Activation never throws. */
 export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void {
   const { list: disposers, drain: dispose } = disposerList()
-  const problem = dialectWarner('design')
   // The person's persona, read once: it does not change within a session (docs/ORCHESTRATION.md §3.1).
   const persona = readPersona(config)
   for (const text of persona.warnings) console.warn(`${name}: ${text}`)
@@ -134,6 +137,8 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
   // Why the human's messages are read from the session log (the projection hournessTalk is not registered), and why the two tools are not registered.
   let talkNote: string | undefined
   let toolsNote: string | undefined = '设计工具要工具服务（tools）'
+  // Why the row's face policy is not on the wire layer (face-migration design 0.1 §4.6): the service is absent, or the registration failed. Information only — an install without the GLM channel row has no wire layer at all, the face staying whole is that install's designed state, and the row's health semantics do not change (design 0.1 §4.6).
+  let facesNote: string | undefined = FACES_NOTE
 
   // Graph writes by sessions that have no right to the human's words that were refused, newest last: the last 50, told for 24 hours after the latest.
   const bypasses: Array<{ readonly at: number, readonly text: string }> = []
@@ -145,10 +150,11 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
   }
 
   const status = (): [HealthState, string] => {
+    // facesNote informs, it does not degrade (face-migration design 0.1 §4.6: the health semantics do not change).
     const notes = [boundary, talkNote, toolsNote, persona.problem, bypassNote()].filter(note => note !== undefined)
     return [
       registration !== undefined ? 'inactive' : waiting === undefined && notes.length === 0 ? 'active' : 'degraded',
-      [registration ?? `命令 /${WISH_COMMAND} 已注册`, waiting ?? '会话状态服务已就绪', ...notes].join('；'),
+      [registration ?? `命令 /${WISH_COMMAND} 已注册`, waiting ?? '会话状态服务已就绪', ...notes, ...facesNote === undefined ? [] : [facesNote]].join('；'),
     ]
   }
   const health = provideRowHealth(ctx, 'design', ...status())
@@ -309,13 +315,11 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
   }
 
   const installed = new WeakSet<AgentLike>()
-  // One assembly step of an agent as our two listeners see it: who the agent is, read once at the start by the identity listener (outermost of ours), and the problems of the step. The tool face listener (inside every prepended listener) reads the same role and adds its problems; the identity listener reports once when the step is over, so a later "in effect" never covers an earlier problem and the pending state of /wish is consumed by one reader only.
-  const steps = new WeakMap<AgentLike, { readonly role: RoleReading, readonly problems: string[] }>()
   // What the latest assembly of an agent decided: the stage reminder (an `agent/pre-step` notice, after the step's assembly) goes to a main agent only.
   const assembledAsMain = new WeakMap<AgentLike, boolean>()
   // Sessions this row has reported as a main agent: when one stops being it, the report must not go on saying so.
   const reportedMain = new WeakSet<SessionLike>()
-  /** The identity section and the tool face of the main agent, on this agent's own assembly. */
+  /** The identity section of the main agent on this agent's own assembly; its persona goes on in the inner listener below. The tool face is the face-policy source's (role-face.ts), applied at the wire layer. */
   function installAgentHooks(agent: AgentLike): void {
     if (installed.has(agent)) return
     installed.add(agent)
@@ -327,52 +331,33 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
       if (bypasses.length > 0) health.reactivate(...status())
       // A persona the person wrote that was not added is the main agent's degraded state too: the session report would otherwise say "in effect".
       const unadded = reading.main ? persona.problem : undefined
-      const step = { role: reading, problems: [...reading.problems, ...refused === undefined ? [] : [refused], ...unadded === undefined ? [] : [unadded]] }
-      steps.set(agent, step)
+      const problems = [...reading.problems, ...refused === undefined ? [] : [refused], ...unadded === undefined ? [] : [unadded]]
       assembledAsMain.set(agent, reading.main)
-      let assembled
-      try {
-        assembled = await next()
-      }
-      finally {
-        steps.delete(agent)
-      }
+      const assembled = await next()
       const session = agent.session
-      const said = step.problems.join('；')
+      const said = problems.join('；')
       if (!reading.main) {
-        if (step.problems.length > 0) health.report(sessionIdOf(agent), 'degraded', said)
+        if (problems.length > 0) health.report(sessionIdOf(agent), 'degraded', said)
         else if (session !== undefined && reportedMain.delete(session)) health.report(session.id, 'inactive', MAIN_AGENT_INACTIVE)
         return assembled
       }
       if (session !== undefined) reportedMain.add(session)
-      health.report(sessionIdOf(agent), step.problems.length > 0 ? 'degraded' : 'active', step.problems.length > 0 ? said : MAIN_AGENT_ACTIVE)
+      health.report(sessionIdOf(agent), problems.length > 0 ? 'degraded' : 'active', problems.length > 0 ? said : MAIN_AGENT_ACTIVE)
       // The boundary sentence names dispatch_task once the execute row is on (M7 E4, F18); read per step, the row can load later.
       return { ...assembled, sections: insertHournessSection(assembled.sections, { name: MAIN_AGENT_SECTION, text: MAIN_AGENT_IDENTITY(executeService(ctx) !== undefined), interpolate: false }) }
     }, { prepend: true }))
-    // Not prepend: inside every prepended listener, so the dialect's and tool search's listeners already see the face without the tools.
+    // Not prepend: inside every prepended listener, so the dialect's listener sees the persona section and places it whichever way round the two rows were installed.
     disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
       const assembled = await next()
-      const step = steps.get(agent)
-      const dialect = dialectService(ctx, problem)
-      // The two tools of this row are the main agent's only: every other session's face is without them.
-      if (!(step?.role ?? roleForStep(agent)).main) {
-        const tools = ordinaryFace(assembled.tools, tool => toNativeTool(dialect, tool, problem))
-        return tools === assembled.tools ? assembled : { ...assembled, tools: [...tools] }
-      }
-      const face = mainAgentFace(assembled.tools, tool => toNativeTool(dialect, tool, problem))
-      for (const why of face.problems) {
-        if (step === undefined) health.report(sessionIdOf(agent), 'degraded', why)
-        else step.problems.push(why)
-      }
-      // The person's persona, for the main agent only; the dialect's listener, outside this one, places it.
-      const sections = persona.section === undefined ? assembled.sections : insertHournessSection(assembled.sections, persona.section)
-      return { ...assembled, sections, tools: face.tools }
+      if (assembledAsMain.get(agent) !== true || persona.section === undefined) return assembled
+      return { ...assembled, sections: insertHournessSection(assembled.sections, persona.section) }
     }))
     // The stage reminder: after the step's assembly, so `assembledAsMain` is this step's. Its failure leaves the identity section and the tool face in place.
     try {
       const uninstall = installStageNotice(agent, {
         eligible: () => assembledAsMain.get(agent) === true,
         graph: () => graphFocus(ctx),
+        holds: (cwd, goalId) => bootstrapWishSeam(ctx)?.holds(cwd, goalId) ?? false,
         report: (reported, state, reason) => { health.report(sessionIdOf(reported), state, reason) },
         executeOn: () => executeService(ctx) !== undefined,
       })
@@ -428,7 +413,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
       }
       catch (error) {
         console.warn(`${name}: the main agent hooks are not installed for agent ${agent.id}: ${message(error)}`)
-        health.report(agent.id, 'degraded', `身份节和工具面没装上：${message(error)}`)
+        health.report(agent.id, 'degraded', `身份节没装上：${message(error)}`)
       }
     },
     demoteOthers: async (key, except) => {
@@ -452,6 +437,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
       if (posted.via === 'none') health.report(agent.id, 'degraded', `提示没能送到这个会话：${posted.reason}`)
     },
     now: () => new Date(),
+    takeover: () => bootstrapWishSeam(ctx),
     moved: holderMove,
   }
 
@@ -555,6 +541,20 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
     }
   }
   else toolsNote = '宿主没有 inject，设计工具拿不到工具服务'
+
+  // The row's face policy (role-face.ts): registered on the glmHournessFaces registry the glm-llm row provides, read per request at the GLM channel's wire layer (face-migration design 0.1 §4.1, §6 B).
+  registerFaceSource(ctx, {
+    warn: text => console.warn(`${name}: ${text}`),
+    reactivate: () => health.reactivate(...status()),
+    setNote: note => { facesNote = note },
+  }, designFaceSource({
+    isMain: (sessionId) => {
+      const live = agents()?.get(sessionId)
+      return live === undefined ? undefined : roleForStep(live).main
+    },
+    report: (sessionId, text) => { health.report(sessionId, 'degraded', text) },
+  }))
+  health.reactivate(...status())
 
   // The main agent has no tool that writes files, but the runtime executes by name: the rules deny a write, a question card and a git command that cannot be saved first (src/guard/main-agent.ts).
   try {
