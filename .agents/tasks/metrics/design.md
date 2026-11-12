@@ -302,9 +302,9 @@
 
 `loop-fired`、`loop-done`、`loop-entry`、`loop-drift`、`loop-note`、`loop-read`、`loop-contribution`、`loop-duplicate`、`loop-holder`、`loop-handover`、`loop-task-delete`。0.5 起 `loop-done` 的 `outcome` 多 `refused`（带 `reason`，0.6 多一个 `not-in-checkout`）与 `unfinished`（脚本超时没跑完，`d-script-timeout`），`loop-entry` 的 `op` 多 `repin`、`external`、`adopt`。`loop-read` 写进 `last-step.json` 指向的项目（0.6），不再有机器一级的一份。
 
-#### M7 0.6 §3.16（`by: execute` 或 `operate`，23 种）
+#### M7 0.6 §3.16 与 reval 设计 0.2 §4.5（`by: execute` 或 `operate`，24 种）
 
-`execute.` 开头 21 种：`dispatch`、`dispatch-refused`、`plan`、`ask`、`handback`、`review-depth`、`review`、`stop`、`check`、`advance`、`advance-refused`、`unchecked-advance`、`goal`、`tier`（M7 0.5 新增）、`completion-gate`、`acceptance-review`、`reconcile`、`loop-entry`、`loop-fallback`、`loop-contribute`、`peak-cap`；`operate.` 开头 2 种：`report`、`patrol`。主 Agent 选模型的理由：类别与文字不进流水，流水只记 `execute.dispatch` 的模型与 `whyRef`（理由所在的节点与历史序号），理由文字留在会话日志与图上的派发批注（M7 0.6 §3.16、§5）。
+`execute.` 开头 22 种：`dispatch`、`dispatch-refused`、`plan`、`ask`、`handback`、`review-depth`、`policy-drift`（reval 设计 0.2 §4.5 加）、`review`、`stop`、`check`、`advance`、`advance-refused`、`unchecked-advance`、`goal`、`tier`（M7 0.5 新增）、`completion-gate`、`acceptance-review`、`reconcile`、`loop-entry`、`loop-fallback`、`loop-contribute`、`peak-cap`；`operate.` 开头 2 种：`report`、`patrol`。主 Agent 选模型的理由：类别与文字不进流水，流水只记 `execute.dispatch` 的模型与 `whyRef`（理由所在的节点与历史序号），理由文字留在会话日志与图上的派发批注（M7 0.6 §3.16、§5）。
 
 #### M6 0.6 §14.2（`by: glm`，4 种）
 
@@ -401,6 +401,7 @@
 | `execute.ask` | `task:id`、`waitedMs:int`、`result:id` |
 | `execute.handback` | `task:id`、`n:int`、`status:id`、`stopReason:id`、`commits:int`、`files:int`、`ms:int`、`outside:int`（范围外文件数） |
 | `execute.review-depth` | `task:id`、`declared:id`、`effective:id`、`floors:id[]`（命中底线清单的哪几类）、`unparsed:bool` |
+| `execute.policy-drift` | `task:id`、`attempt:int`、`classes:id[]`（交回时发现自派发后改了的政策类；reval 设计 0.2 §4.5） |
 | `execute.review` | `task:id`、`round:int`、`depth:id`、`model:id`、`blocking:int`、`nonBlocking:int`、`downgraded:int` |
 | `execute.stop` | `node:id`、`kind:id`、`rounds:int` |
 | `execute.check` | `commit:id`、`task?:id`、`ok:bool`、`kind:id`、`cmds:int[]`（每条命令的序号）、`exits:int[]`、`ms:int[]`、`setup:bool`、`lockMs:int` |

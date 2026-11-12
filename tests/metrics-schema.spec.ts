@@ -42,8 +42,8 @@ test('every namespace holds exactly the kinds its design section lists', () => {
   const rules = ['rules.judged', 'rules.session-summary', 'rules.ticket', 'rules.wake', 'rules.write', 'rules.proposal', 'rules.peak-mode', 'rules.recovery', 'rules.detector-run', 'rules.check', 'rules.health', 'rules.script', 'rules.late-verdict', 'rules.repo', 'rules.stale']
   // loop board 0.6 §6.10: 11 kinds.
   const loops = ['loop-fired', 'loop-done', 'loop-entry', 'loop-drift', 'loop-note', 'loop-read', 'loop-contribution', 'loop-duplicate', 'loop-holder', 'loop-handover', 'loop-task-delete']
-  // M7 0.6 §3.16: 21 execute.* and 2 operate.*.
-  const execute = ['execute.dispatch', 'execute.dispatch-refused', 'execute.plan', 'execute.ask', 'execute.handback', 'execute.review-depth', 'execute.review', 'execute.stop', 'execute.check', 'execute.advance', 'execute.advance-refused', 'execute.unchecked-advance', 'execute.goal', 'execute.tier', 'execute.completion-gate', 'execute.acceptance-review', 'execute.reconcile', 'execute.loop-entry', 'execute.loop-fallback', 'execute.loop-contribute', 'execute.peak-cap']
+  // M7 0.6 §3.16 plus the kind the reval design 0.2 §4.5 added: 22 execute.* and 2 operate.*.
+  const execute = ['execute.dispatch', 'execute.dispatch-refused', 'execute.plan', 'execute.ask', 'execute.handback', 'execute.review-depth', 'execute.policy-drift', 'execute.review', 'execute.stop', 'execute.check', 'execute.advance', 'execute.advance-refused', 'execute.unchecked-advance', 'execute.goal', 'execute.tier', 'execute.completion-gate', 'execute.acceptance-review', 'execute.reconcile', 'execute.loop-entry', 'execute.loop-fallback', 'execute.loop-contribute', 'execute.peak-cap']
   const operate = ['operate.report', 'operate.patrol']
   // M6 0.6 §14.2: 4 kinds.
   const glm = ['glm.quota-read', 'glm.upstream-limit', 'glm.login-rejected', 'glm.peak-reminder']
