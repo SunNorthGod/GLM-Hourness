@@ -100,13 +100,13 @@ $bin = 'C:\Users\29596\AppData\Local\Programs\DeepSeek Harness\resources\app.asa
 
 ## 4. 契约校验（编译期）
 
-DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-attachment`、`@deepseek-ai/cordis`，版本 `0.2.1-rc.3`，与运行时一致）。
+DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-attachment`、`@deepseek-ai/cordis`，版本 `0.2.1-rc.3`）。它自 2026-11-10 起不再与运行时一致：桌面版已升级到 0.2.2-rc.1（`HANDOFF.md` §10），devDependencies 与 `reference/` 的运行时导出仍停在 0.2.1-rc.3，rc.1 的重导出按本节规则待做（挂账，另行跟踪）；rc.1 上才核实过的接口，证据出处以装机运行时为准（`DESIGN.md` §2.4a）。
 
 - `src/glm-llm/zcode.ts` 底部有 `AdapterContractCheck`：`ZcodeAdapter` 必须结构兼容 `LlmAdapter` 的全部公开成员。任何签名/返回形状漂移 → `npm run build` 失败。
 - 薄适配层（`src/shared/dsh-min.ts`、`src/shared/lm-min.ts`）里有三处同样的检查：`LlmStreamOptionsContractCheck`（官方 `GenerateOptions` 必须覆盖 `llm/stream` 监听器读取的字段）、`LlmCatalogContractCheck`（官方 `LlmRuntime` 的 `listModels`、`resolveModelInfo` 必须满足执行行读的形状，含档位记录）、`AttachmentsContractCheck`（官方 `AttachmentStore` 必须覆盖通道读图用的成员）。其余宿主接口没有已安装的官方类型，逐项证据见 `DESIGN.md` §2.4a 接口对照表。
 - 新增 adapter / 服务实现时，同样用「官方类型 + 类型级断言」把契约钉死在 tsc 里，禁止只靠运行时手测。
-- 契约来源优先级：桌面版运行时的包（`reference/dsh-desktop-0.2.1-rc.3/`，从 `app.asar` 导出）> 官方 `.d.ts` > `reference/deepseek-harness` 源码 > 运行时行为观察。`reference/deepseek-harness` 是更新的主干，版本号相同但接口不同，只用来理解设计意图（`DESIGN.md` §2.4a）。
-- 重新导出运行时包（桌面版升级后）：用 Electron node 模式读 `resources/app.asar/dsh/node_modules/@deepseek-ai/` 并整目录复制到 `reference/dsh-desktop-<版本>/`（跳过嵌套 `node_modules`）。然后按 `DESIGN.md` §2.4a 接口对照表逐项复核，改动只落在薄适配层，再跑 `npm run probe`。
+- 契约来源优先级：桌面版运行时的包（`reference/dsh-desktop-0.2.1-rc.3/`，从 `app.asar` 导出）> 官方 `.d.ts` > `reference/deepseek-harness` 源码 > 运行时行为观察。`reference/deepseek-harness` 是更新的主干，版本号相同但接口不同，只用来理解设计意图（`DESIGN.md` §2.4a）。2026-11-10 起运行时是 0.2.2-rc.1 而 `reference/` 仍只有 rc.3 的导出：`reference/dsh-desktop-0.2.1-rc.3/` 在重导出完成前是「上一版运行时」的证据源，rc.1 的接口证据按 `DESIGN.md` §2.4a 的行号引自装机运行时的包。
+- 重新导出运行时包（桌面版升级后）：用 Electron node 模式读 `resources/app.asar/dsh/node_modules/@deepseek-ai/` 并整目录复制到 `reference/dsh-desktop-<版本>/`（跳过嵌套 `node_modules`）。然后按 `DESIGN.md` §2.4a 接口对照表逐项复核，改动只落在薄适配层，再跑 `npm run probe`。2026-11-10 的 rc.1 升级未执行本条，挂账另行跟踪（`HANDOFF.md` §10）。
 - 换 ZCode 基线（ZCode 自动更新之后）：安装目录的包随更新变化，门禁不读它。把新版的 pristine 包复制到 `reference/zcode-<版本>/zcode.cjs` 并记下大小与 MD5，旧版副本留作对照；按旧版到新版逐段比对本仓库引用的每段文本与代码（3.16.3 → 3.17.1 用压缩名归一后的偏移映射，差异清单在不入库的 `.agents/tasks/zcode-3171/diff.md`）。文本全部更新之后，最后一个提交把 `scripts/check-verbatim.mjs` 的 `REFERENCE_BUNDLE` 改指新副本，`AGENTS.md` 与各文档的基线条款同批改（`DESIGN.md` §5.9）。
 
 ## 5. 纪律
@@ -236,7 +236,7 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 
 1. 补丁与次版本升级：一次一个提交，过全部门禁（build、preflight、`npm test`；动到运行时会加载的依赖再加 `npm run probe`），提交信息写明升级前后的版本与变更要点。
 2. 主版本升级：作为决策交给用户（决策分级第 4 类，`ORCHESTRATION.md` §2.9.1），不自行升级。
-3. `@deepseek-ai/*`（`cordis` 与 `dsh-*`）钉在桌面版运行时所带的版本（`dsh-*` 为 `0.2.1-rc.3`，`cordis` 为 `4.0.5`，与 `reference/dsh-desktop-0.2.1-rc.3/` 一致），不跟注册表走，只在桌面版升级时一起动：按 §4 重新导出 `reference/dsh-desktop-<版本>/`，按 `DESIGN.md` §2.4a 接口对照表逐项复核，再跑 `npm run probe`。只经这些包进入本仓库的安全公告同样随桌面版处理。
+3. `@deepseek-ai/*`（`cordis` 与 `dsh-*`）钉在桌面版运行时所带的版本，不跟注册表走，只在桌面版升级时一起动：按 §4 重新导出 `reference/dsh-desktop-<版本>/`，按 `DESIGN.md` §2.4a 接口对照表逐项复核，再跑 `npm run probe`。现行钉的版本（`dsh-*` 为 `0.2.1-rc.3`，`cordis` 为 `4.0.5`）是 2026-11-10 升级前的运行时（`reference/dsh-desktop-0.2.1-rc.3/`）；运行时已是 0.2.2-rc.1，本条的重导出与依赖跟动未做，挂账另行跟踪（`HANDOFF.md` §10），做完之前 `@deepseek-ai/*` 不另动。只经这些包进入本仓库的安全公告同样随桌面版处理。
 4. 新增依赖一律精确版本（`pnpm add -D -E <包>@<版本>`），任何新增先问用户。
 5. pnpm 的 store：本仓库的 `node_modules` 链接自仓库内的 `.pnpm-store/`（不入库），与本机全局 store 不同，所以 `pnpm add`、`pnpm update` 要在仓库根目录带 `--store-dir .pnpm-store`，否则报 `ERR_PNPM_UNEXPECTED_STORE`。`pnpm install --frozen-lockfile` 目前失败：根 `package.json` 的 `peerDependencies` 不在锁文件里（M1.9 之前即如此），尚未处理。
 6. 升级检查器后重跑 `npm run lint`：新版规则带来的新告警按新代码处理，修掉；修不掉的交给用户决定，不扩大基线。

@@ -229,25 +229,25 @@
       config: {}
     - id: glm-hourness/bootstrap
       # Take over a project (docs/ORCHESTRATION.md §19; takeover design 0.6):
-      # the command /hourness-init and the service glmHournessBootstrap. In a
-      # workspace without a project graph the main agent's /hourness-init
-      # scans the project read-only (git and file reads only), decides new
-      # project, existing project or gaps of an existing graph, git-inits an
-      # empty folder, keeps .llm/ out of git, makes <graph>/nodes/, opens a
-      # takeover in .llm/bootstrap/journal.jsonl and wakes the main agent
-      # with the takeover-start notice; every step of the main agent then
-      # carries the takeover reminder, and once the first goal is on the
-      # graph the harness proposes the three norm templates under it. Until
-      # the design row's /wish calls the takeover (not merged yet, plan B8),
-      # the path is an empty graph directory, /wish without words, then
-      # /hourness-init in the same session. Installs no guard rule. Ships
-      # enabled since the takeover enablement (2026-11-11): the L3 probe
-      # scenarios (bootstrap-new, bootstrap-existing, bootstrap-trial,
-      # bootstrap-gaps, bootstrap-reopen, bootstrap-resume) passed at
-      # 0cc628a5 (579/579); the desktop L4 flows — /wish to the first
-      # dispatch in two scratch workspaces against mockup-takeover.svg, and
-      # /hourness-init status — run as batch B10 on this build, recorded
-      # under .agents/tasks/bootstrap/ (docs/DEVELOPMENT.md §3, AGENTS.md).
+      # the command /hourness-init and the service glmHournessBootstrap. The
+      # entry is /wish: the design row's /wish asks the service's wants and
+      # calls prepare (seam B8, merged); /hourness-init is the other entry —
+      # the session is already the main agent — and the fallback when /wish
+      # did not call the takeover. In a workspace without a project graph
+      # the takeover scans the project read-only (git and file reads only),
+      # decides new project, existing project or gaps of an existing graph,
+      # git-inits an empty folder, keeps .llm/ out of git, makes
+      # <graph>/nodes/, opens a takeover in .llm/bootstrap/journal.jsonl and
+      # wakes the main agent with the takeover-start notice; every step of
+      # the main agent then carries the takeover reminder, and once the
+      # first goal is on the graph the harness proposes the three norm
+      # templates under it. Installs no guard rule. Ships enabled since the
+      # takeover enablement (2026-11-12): the L3 probe scenarios
+      # (bootstrap-new, bootstrap-existing, bootstrap-trial, bootstrap-gaps,
+      # bootstrap-reopen, bootstrap-resume) passed at 0cc628a5 (579/579), and
+      # the desktop L4 batch B10 passed on 2026-11-12 (closed at 5de7c061);
+      # recorded under .agents/tasks/bootstrap/ (docs/DEVELOPMENT.md §3,
+      # AGENTS.md).
       name: dsh-hourness/bootstrap
       inject: [commands]
       config: {}

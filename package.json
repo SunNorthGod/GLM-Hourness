@@ -1,6 +1,6 @@
 {
   "name": "dsh-glm-hourness",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "GLM-Hourness development workspace that builds and checks the two DSH bundles under packages/ (dsh-glm-zcode, dsh-hourness)",
   "type": "module",
