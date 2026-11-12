@@ -218,7 +218,7 @@ test('a config the loader normalized through Config goes to apply as it is', asy
 
 /** The real dialect on the fake agent: it has no natives, so no alias is registered, and no tool search. */
 function withDialect(agent: FakeAgent, config: GlmPromptConfig = {}): () => void {
-  Object.assign(agent.ctx, { tools: { get: () => undefined, register: () => () => undefined } })
+  Object.assign(agent.ctx, { tools: { get: () => undefined, register: () => () => undefined, schemas: () => agent.stagedFace } })
   return installDialect(agent, { toolSearchMode: 'off', ...config })
 }
 
@@ -277,7 +277,9 @@ for (const order of ['dialect first', 'design first'] as const) {
   })
 
   test(`GLM route (${order}): with the memory tools the persona follows the memory section; the start-plan tier, which has no context management section, puts it after the last dialect section`, async () => {
-    const memory = await (await session(order, { persona: PERSONA })).assemble({ sections: DSH_SECTIONS, variables: GLM, tools: memoryTools })
+    const withMemory = await session(order, { persona: PERSONA })
+    withMemory.stagedFace = memoryTools
+    const memory = await withMemory.assemble({ sections: DSH_SECTIONS, variables: GLM })
     assert.deepEqual(namesOf(memory), ['glm:cli-prefix', 'harness:identity', 'glm:dynamic-behavior', 'glm:reporting-depth', 'glm:session-guidance', 'glm:memory', OUTPUT_STYLE_SECTION, 'glm:context-management', 'tool:read', MAIN_AGENT_SECTION])
     const start = await (await session(order, { persona: PERSONA }, { dialect: { tier: 'start-plan' } })).assemble({ sections: DSH_SECTIONS, variables: GLM })
     assert.deepEqual(namesOf(start), ['glm:cli-prefix', 'harness:identity', 'glm:reporting-depth', OUTPUT_STYLE_SECTION, 'tool:read', MAIN_AGENT_SECTION])

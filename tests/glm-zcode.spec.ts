@@ -311,7 +311,10 @@ test('the model request leaves with 3.16.3\'s header order: SDK headers sorted, 
 })
 
 test('a step that exposes local tool search sends x-zcode-session-features in its sorted place (3.17.1)', async () => {
-  const tools = ['Read', 'LocalToolSearch', 'DeferredToolCall'].map(name => ({ name, description: name, parameters: { type: 'object' } }))
+  // The pre-exposure face the adapter composes the exposure from: deferred
+  // tools present and both controls registered, so the request face keeps
+  // them (src/glm-llm/face-wire.ts).
+  const tools = ['Read', 'web_fetch', 'LocalToolSearch', 'DeferredToolCall'].map(name => ({ name, description: name, parameters: { type: 'object' } }))
   const names = await wireNames({ privateCipher: await sealedSigningKey(FIRST_PAT, PAT_KEY_ID), mapping: FLAGGED_MAPPING }, { stored: { ...credential, jwt: 'zcode-jwt' }, tools })
   const after = ['x-title', 'x-zcode-agent', 'x-zcode-app-version', 'x-zcode-query-source', 'x-zcode-session-features', 'x-zcode-session-type', 'x-zcode-trace-id']
   assert.deepEqual(names, [...SDK_HEADERS, 'X-Session-Id', ...after, ...SIGNATURE_BLOCK, 'X-ZCode-Authorization', 'accept'])

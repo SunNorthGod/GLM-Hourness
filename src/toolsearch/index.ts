@@ -1,23 +1,31 @@
 /**
  * ZCode local tool search on one agent (docs/DESIGN.md §5.7, §5.10): part of
- * the dialect, driven by the glm-prompt row's per-request rewrite.
+ * the dialect. Installation registers LocalToolSearch and DeferredToolCall in
+ * the agent scope and one `agent/pre-step` listener, which computes the
+ * step's exposure state itself: the pre-exposure wire face of the agent's
+ * registry view (src/glm-llm/face-wire.ts `wireFaceProjection`) — the
+ * assemble waterfall no longer carries a tool face on the installed runtime,
+ * so the state no longer rides on the glm-prompt row's rewrite. A GLM step
+ * (the payload's model selection) builds the exposure: its deferred names
+ * leave the request face and the control tools stay; a non-GLM step has no
+ * exposure and no announcement. The listener appends the ZCode announcement
+ * of added, re-added and removed deferred names as a `<system-reminder>`
+ * notice whose delta persists in the notice source, so later steps, resumed
+ * sessions and compacted histories re-derive what the model has been told.
  *
- * Installation registers LocalToolSearch and DeferredToolCall in the agent
- * scope and one `agent/pre-step` listener. For each GLM request the dialect
- * hands its rewritten face to `expose()`: deferred tools leave the face and
- * the control tools stay. Non-GLM requests go through `hide()`, which only
- * removes the control tools. The pre-step listener appends the ZCode
- * announcement of added, re-added and removed deferred names as a
- * `<system-reminder>` notice whose delta persists in the notice source, so
- * later steps, resumed sessions and compacted histories re-derive what the
- * model has been told.
+ * The registry view has no step admission; this package registers no
+ * conditional tools, so the view and the request face differ only on the
+ * host's own `when` tools (face-migration design 0.1 §4.4, recorded).
  *
  * DeferredToolCall runs its target through `ctx.tools.execute` without a
  * parent token: ZCode resolves the wrapper before dispatch, so the target is
  * the call every pre/post-execute listener (guard, journal, checkpoints)
  * should see under its own name.
  */
-import { createUserNotice, type AgentLike, type AssembledTool, type DerivedMessage, type ToolDefinitionLike, type ToolExecutionContext } from '../shared/dsh-min.ts'
+import { createUserNotice, type AgentLike, type DerivedMessage, type ToolDefinitionLike, type ToolExecutionContext } from '../shared/dsh-min.ts'
+import type { FacePolicyRegistry } from '../shared/face-policy.ts'
+import { isGlmModel } from '../shared/route.ts'
+import { wireFaceProjection } from '../glm-llm/face-wire.ts'
 import { searchTools } from './search.ts'
 import {
   ANNOUNCEMENT_SOURCE,
@@ -47,10 +55,6 @@ import {
 
 /** The dialect's handle on one agent's tool search. */
 export interface ToolSearchHandle {
-  /** Rewrite one GLM request's face (the dialect's alias face). */
-  expose(face: readonly AssembledTool[]): readonly AssembledTool[]
-  /** Rewrite one non-GLM request's face: the control tools leave it. */
-  hide(face: readonly AssembledTool[]): readonly AssembledTool[]
   dispose(): void
 }
 
@@ -106,18 +110,20 @@ function parseDeferredInput(args: unknown): { name: string, input: Record<string
 }
 
 /**
- * Install tool search on one agent. Returns undefined, leaving the face
- * untouched, when the agent has no session history to derive state from.
+ * Install tool search on one agent. `policy` reads the face-policy registry
+ * per step (the role layer of the projection). Returns undefined, leaving
+ * the face untouched, when the agent has no session history to derive state
+ * from.
  */
-export function installToolSearch(agent: AgentLike): ToolSearchHandle | undefined {
+export function installToolSearch(agent: AgentLike, options: { readonly policy?: () => FacePolicyRegistry | undefined } = {}): ToolSearchHandle | undefined {
   const session = agent.session
   if (typeof session?.deriveMessages !== 'function') {
     console.warn(`dsh-glm-hourness/glm-prompt: tool search not installed for agent ${agent.id}: no session history`)
     return undefined
   }
   const history = (): readonly DerivedMessage[] => session.deriveMessages() as readonly DerivedMessage[]
-  // The latest assembled GLM request; tool calls and the pre-step of a step
-  // always follow that step's assembly.
+  // The exposure state of the latest step; tool calls of a step always follow
+  // its pre-step, which computes it before the step is admitted.
   let current: ToolSearchExposure | undefined
 
   const localToolSearch: ToolDefinitionLike = {
@@ -164,16 +170,21 @@ export function installToolSearch(agent: AgentLike): ToolSearchHandle | undefine
       if (candidate === undefined || entry === undefined) throw new Error(deferredToolNotAvailable(name))
       if (name === TOOL_SEARCH_NAME || name === DEFERRED_TOOL_CALL_NAME || !candidate.deferred) throw new Error(deferredToolResident(name))
       const call = exec as ToolExecutionContext
-      const result = await agent.ctx.tools.execute({
-        callId: `${call.callId}:deferred`,
-        rootCallId: call.rootCallId ?? call.callId,
-        name,
-        arguments: input.input,
+      // The target runs as a one-call batch (rc.1 dsh-tools `execute` takes
+      // `{calls, agent, signal}`; the 0.2.1-rc.3 service took the single
+      // same-process call, docs/DESIGN.md §2.4a): no `log`, so the batch logs
+      // no session events of its own, and no `toolSet`, so the target
+      // resolves against the registry view. The listeners see it under its
+      // own name, as ZCode's wrapper resolution does.
+      const batch = await agent.ctx.tools.execute({
+        calls: [{ type: 'tool-call', id: `${call.callId}:deferred`, name, arguments: input.input }],
         agent,
         signal: call.signal,
       })
-      for (const context of result.additionalContexts ?? []) call.deferContext(context)
-      if (result.concludesTurn === true) call.concludeTurn()
+      const result = batch.results[0]?.result
+      if (result === undefined) throw new Error(deferredToolNotAvailable(name))
+      for (const context of batch.additionalContexts ?? []) call.deferContext(context)
+      if (batch.concluded === true) call.concludeTurn()
       if (result.isError) throw new Error(result.error?.message ?? result.content.map(block => block.text ?? '').join('\n'))
       const value: DeferredValue = { name, content: result.content }
       return value
@@ -182,10 +193,18 @@ export function installToolSearch(agent: AgentLike): ToolSearchHandle | undefine
 
   const disposers = [agent.ctx.tools.register(localToolSearch), agent.ctx.tools.register(deferredToolCall)]
 
-  // Announcement (ZCode attachment collection): after the step's input is
-  // admitted, before the request. Mirrors installModelSelection's guard so
-  // an empty decision never turns into a step.
-  disposers.push(agent.ctx.on('agent/pre-step', async ({ messages, signal, step }, next) => {
+  // Announcement (ZCode attachment collection): the step's exposure state is
+  // computed before the step is admitted — the pre-exposure wire face of the
+  // registry view, GLM by the payload's model selection (the same selection
+  // the assemble waterfall's variables carry) — then the delta of that state
+  // against the persisted announcements rides on the admitted decision.
+  // Mirrors installModelSelection's guard so an empty decision never turns
+  // into a step.
+  disposers.push(agent.ctx.on('agent/pre-step', async ({ messages, modelSelection, signal, step }, next) => {
+    const glm = isGlmModel(modelSelection?.model)
+    current = glm
+      ? buildToolExposure(wireFaceProjection(agent.ctx.tools.schemas(agent), { glm: true, sessionId: session.id, policy: options.policy?.() }))
+      : undefined
     const decision = await next()
     if (decision.kind === 'reject' || signal.aborted) return decision
     if (decision.messages.length === 0 && (step === 1 || messages.length > 0)) return decision
@@ -205,14 +224,6 @@ export function installToolSearch(agent: AgentLike): ToolSearchHandle | undefine
   }))
 
   return {
-    expose(face) {
-      current = buildToolExposure(face)
-      return current.tools
-    },
-    hide(face) {
-      current = undefined
-      return face.filter(tool => tool.name !== LOCAL_TOOL_SEARCH_NAME && tool.name !== DEFERRED_TOOL_CALL_NAME)
-    },
     dispose() {
       for (const dispose of disposers.splice(0)) dispose()
     },

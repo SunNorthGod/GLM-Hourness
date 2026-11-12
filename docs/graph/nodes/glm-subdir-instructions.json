@@ -2,7 +2,7 @@
   "id": "glm-subdir-instructions",
   "type": "task",
   "title": "GLM 路由上子目录 AGENTS.md 送不到模型：查 ZCode 3.17.1 的做法，定修法",
-  "status": "approved",
+  "status": "done",
   "parent": "bottom",
   "kind": "implement",
   "body": "缺口：dsh-agent-instructions 只在原生 read、write、edit 成功触碰会话工作目录之下的文件后，下一次请求追加一条消息，列出工作目录到该文件所在目录之间每一层的 AGENTS.md、CLAUDE.md 与两种 .local 文件（agent-instructions:1210–1221）。GLM 路由上模型调的是 ZCode 别名 Read、Write、Edit（src/glm-prompt/aliases.ts、read-alias.ts），执行时 exec.name 是别名，触发表认不出，任何项目子目录里的 AGENTS.md（含用户自己写的）都送不到模型。依据：docs-at-hand 设计 §1（分支 docs-at-hand，7a46dd2）的 headless 沙盒实测，GLM 路由 7 步、8 次请求都只有基线 1 条。分支 glm-subdir-instructions。要查的：ZCode 3.17.1 自己是否送子目录指令、DSH 契约里有哪些接缝、修法对请求一致性的影响；工具名与工具描述保持 ZCode 3.17.1 不变。若修法让请求偏离 ZCode（ZCode 不送而我们送），只做到评审通过，不合入，留给人定。报告在 .agents/tasks/glm-subdir-instructions/report.md。",
@@ -10,6 +10,12 @@
     "报告写明 ZCode 3.17.1 是否送子目录指令（带 zcode.cjs 行号），DSH 契约接缝的盘点，各修法对发给 GLM 上游的请求的影响与推荐",
     "ZCode 送、或修法不改变请求以外的东西时：L2 与 L3 探针（脚本化假模型）通过，独立评审通过，全量门禁绿，合入 main；否则停在分支上，岔路写成给人的问题",
     "对模型可见的工具名与工具描述与 ZCode 3.17.1 一致，没有改"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "ab867f47"
+    }
   ],
   "history": [
     {
@@ -33,6 +39,20 @@
       "actor": "llm",
       "op": "comment",
       "text": "桌面 L4 两态（批次二，2026-11-10）：off 态默认 profile 子目录 AGENTS.md 触碰后无任何本行通知（宿主只送根基线）；on 态（profile 覆盖 subdirInstructions: true）通知逐字同宿主原生形、浅到深两目录、Read 成功。缺省关的出厂语义保持；缺省值去留待主人看过两态后随口定。"
+    },
+    {
+      "at": "2026-11-12T17:21:05.985Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "人定 C 合入缺省关，L2/L3/独立评审/全量门禁过；缺省值去留等真会话看过再定（HANDOFF §10 第 4 条）",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "ab867f47"
+        }
+      ]
     }
   ]
 }

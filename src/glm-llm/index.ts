@@ -11,6 +11,7 @@
  * (src/glm-llm/metrics.ts).
  */
 import { ZcodeAdapter } from './zcode.ts'
+import { facePolicyRegistry } from './face-wire.ts'
 import { credentialHome } from '../shared/data-home.ts'
 import { homeField, planField } from './config-fields.ts'
 import { asAttachments } from './images.ts'
@@ -18,6 +19,7 @@ import { glmMetricSink } from './metrics.ts'
 import { GLM_CONTEXT_WINDOW } from './models.ts'
 import Schema from '../shared/schemastery.ts'
 import { provideRowHealth } from '../shared/health.ts'
+import { FACES_SERVICE, facePolicyOf } from '../shared/face-policy.ts'
 import type { AdapterRegistry, AgentsService, FsPathService, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 import type { SessionHeaderLike } from './headers.ts'
 import type { AttachmentsLike } from '../shared/lm-min.ts'
@@ -70,21 +72,31 @@ export function apply(ctx: (LlmContextLike | { llm?: LlmContextLike }) & Service
   const plan = config.plan ?? 'coding-plan'
   const window = contextWindowOf(config.contextWindow)
   if (window.refused !== undefined) console.warn(`dsh-glm-hourness/glm-llm: ${window.refused}`)
-  const health = provideRowHealth(ctx, 'glm-llm', window.refused === undefined ? 'active' : 'degraded', `已注册路由 ${provider}（套餐 ${plan}，凭证目录 ${home}，上下文窗口 ${window.value}）${window.refused === undefined ? '' : `；${window.refused}`}`)
+  // The face-policy registry (face-migration design 0.1 §4.1): the service the
+  // orchestration rows register their wire-face sources in. A context that
+  // cannot take it leaves the role layer out — the adapters still send the
+  // dialect face — and the row health says so.
+  const faces = facePolicyRegistry()
+  const provided = provideFaces(ctx, faces)
+  const activation = `已注册路由 ${provider}（套餐 ${plan}，凭证目录 ${home}，上下文窗口 ${window.value}）`
+  const refused = window.refused === undefined ? provided.failure : provided.failure === undefined ? window.refused : `${window.refused}；${provided.failure}`
+  const health = provideRowHealth(ctx, 'glm-llm', refused === undefined ? 'active' : 'degraded', `${activation}${refused === undefined ? '' : `；${refused}`}`)
   const unregister = registrarOf(ctx)([provider], new ZcodeAdapter({
     home,
     ...(config.plan === undefined ? {} : { plan: config.plan }),
     contextWindow: window.value,
     ...imageServices(ctx),
     sessionHeader: sessionHeaders(ctx),
+    facePolicy: () => facePolicyOf(ctx),
     // A session's report replaces the activation text, so a refused window rides on each report and keeps an answered request partly in effect.
-    report: (sessionId, state, reason) => window.refused === undefined
+    report: (sessionId, state, reason) => refused === undefined
       ? health.report(sessionId, state, reason)
-      : health.report(sessionId, state === 'active' ? 'degraded' : state, `${reason}；${window.refused}`),
+      : health.report(sessionId, state === 'active' ? 'degraded' : state, `${reason}；${refused}`),
     metric: glmMetricSink(ctx),
   }))
   return () => {
     unregister()
+    provided.withdraw?.()
     health.dispose()
   }
 }
@@ -127,5 +139,20 @@ export function imageServices(ctx: ServiceLookup): { resolveAttachments: () => A
   return {
     resolveAttachments: () => asAttachments(lookup('attachments')),
     mapHostPath: hostPath => (lookup('fs') as Partial<FsPathService> | undefined)?.processPathFromHostPath?.(hostPath),
+  }
+}
+
+const FACES_FAILURE = '面注册表服务未提供：角色面的改写不生效，工具面只有方言层'
+
+/** Provide the face-policy registry; its disposer, or (warned) why the context could not take it. */
+function provideFaces(ctx: Partial<ProvideHost>, registry: ReturnType<typeof facePolicyRegistry>): { readonly withdraw?: () => void, readonly failure?: string } {
+  try {
+    if (typeof ctx.provide !== 'function') throw new Error('the context has no provide')
+    return { withdraw: ctx.provide(FACES_SERVICE, registry) }
+  }
+  catch (error) {
+    const failure = error instanceof Error ? error.message : String(error)
+    console.warn(`dsh-glm-hourness/glm-llm: ${FACES_SERVICE} not provided; ${FACES_FAILURE}: ${failure}`)
+    return { failure: `${FACES_FAILURE}（${failure}）` }
   }
 }

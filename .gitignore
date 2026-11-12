@@ -12,6 +12,9 @@ dist/
 !.agents/tasks/**/
 !.agents/tasks/**/*.md
 !.agents/tasks/**/*.svg
+# docs-at-hand 的视频字幕逐字稿（source-transcript.md）：按 HANDOFF §10 的定案不入库，
+# 只留主检出的工作副本；例外放在上面的白名单之后才能把它重新挡住。
+.agents/tasks/docs-at-hand/source-transcript.md
 .agents/tasks/**/runs/
 # wire-run 是探针式运行目录（含嵌套的会话路径，Windows 上超过路径长度上限，git 遍历时报 Filename too long）。
 .agents/tasks/**/wire-run/

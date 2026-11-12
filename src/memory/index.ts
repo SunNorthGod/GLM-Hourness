@@ -41,6 +41,7 @@ import { memoryRowService } from './service.ts'
 import { readBoth, type Both, type GraphRead, type MemoryEnv, type NoteKey, type Places, type SourceCheck } from './storage.ts'
 import { learningTools, memoryTools } from './tools.ts'
 import { dataHomes, dataService } from '../shared/data-home.ts'
+import { FACES_NOTE, registerSubagentRemovals } from '../shared/face-policy.ts'
 import { createUserNotice } from '../shared/dsh-min.ts'
 import type { AgentLike, DerivedMessage, InjectHost, LlmStreamHost, PreExecuteHost, ProvideHost, ServiceLookup, SessionEventHost, SessionLike, SessionProjectionsService, ToolsLike } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
@@ -80,6 +81,9 @@ export const INDEX_SOURCE = 'glm-hourness-memory'
 
 /** The session projection that gives the panel the paths of the journals. */
 export const MEMORY_PROJECTION = 'hournessMemory'
+
+/** The wire face of a delegated child (face-migration design 0.1 §6 D): no memory tools, no learning tools. */
+const SUBAGENT_REMOVALS: ReadonlySet<string> = new Set([...MEMORY_TOOL_NAMES, ...LEARNING_TOOL_NAMES])
 
 const WAITING_COMMANDS = '命令 /memory 等 commands 服务'
 const WAITING_PROJECTION = '会话投影 hournessMemory 等 sessionProjections 服务'
@@ -217,12 +221,15 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
   let registration: string | undefined
   let service: string | undefined
   let rule: string | undefined
+  // Why the row's wire-face source is not on the wire layer (face-migration design 0.1 §4.6): information only, it does not degrade — an install without the GLM channel row has no wire layer at all. The reader turns live when the source registers below.
+  let facesNote: () => string | undefined = () => FACES_NOTE
   const homeConfigured = config.home !== undefined && config.home.length > 0
   const activation = (): [HealthState, string] => {
     const problems = [registration, service, rule, waiting.commands, waiting.projection].filter((text): text is string => text !== undefined)
     const note = homeConfigured ? '；行配置 home 已不再使用（M5），项目目录跟会话的工作区' : ''
+    const faces = facesNote() === undefined ? '' : `；${facesNote()}`
     if (registration !== undefined) return ['inactive', `${registration}${note}`]
-    return [problems.length === 0 ? 'active' : 'degraded', `记忆工具已注册，项目目录跟会话的工作区${problems.length === 0 ? '' : `；${problems.join('；')}`}${note}`]
+    return [problems.length === 0 ? 'active' : 'degraded', `记忆工具已注册，项目目录跟会话的工作区${problems.length === 0 ? '' : `；${problems.join('；')}`}${note}${faces}`]
   }
   const health: RowHealth = provideRowHealth(ctx, 'memory', ...activation())
   disposers.push(() => { health.dispose() })
@@ -327,12 +334,6 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
     }
   }, 'memory')
 
-  /** A delegated child's request loses the memory tools and the learning tool. */
-  const hideTools = (agent: AgentLike): (() => void) => agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
-    const assembled = await next()
-    return { ...assembled, tools: assembled.tools.filter(tool => !MEMORY_TOOL_NAMES.includes(tool.name) && !LEARNING_TOOL_NAMES.includes(tool.name)) }
-  })
-
   // The nightly consolidation pass on the loop board (dreaming design §3.1): a refused hand-over is warned once and
   // kept on the row health, the way the graph row keeps its third-rework entry; the tools and the index go on either way.
   disposers.push(installDreamEntry(ctx, { now, ...(config.append === undefined ? {} : { append: config.append }) }, message => {
@@ -345,8 +346,8 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
 
   disposers.push(ctx.on('agent/created', ({ agent }) => {
     try {
-      const offs = agent.session?.header.origin === 'subagent' ? [hideTools(agent)] : [installLearning(agent), installIndex(agent)]
-      for (const off of offs) if (off !== undefined) disposers.push(off)
+      if (agent.session?.header.origin === 'subagent') return
+      for (const off of [installLearning(agent), installIndex(agent)]) if (off !== undefined) disposers.push(off)
     }
     catch (error) {
       console.warn(`${name}: the memory is not installed for agent ${agent.id}: ${messageOf(error)}`)
@@ -372,6 +373,12 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
       void journal.usage(record)
     }
   })()))
+
+  // The wire face (face-migration design 0.1 §6 D): the row's face-policy source registered on the glmHournessFaces registry once it arrives — a delegated child's request loses the memory tools and the learning tools at the wire layer.
+  facesNote = registerSubagentRemovals(ctx, {
+    warn: warnOnce,
+    reactivate: () => health.reactivate(...activation()),
+  }, SUBAGENT_REMOVALS)
 
   // The commands and the projection arrive when their services do; without them the tools and the index work all the same.
   const optional = { name, ctx, waiting, health, activation }

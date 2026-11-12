@@ -1,12 +1,12 @@
 /**
- * The tool faces of the dispatch chain (M7 design 0.6 §2.3.2): the execute
- * row gives every agent an agent-scoped `system-prompt/assemble` listener
- * without `prepend` — inside the dialect and tool-search listeners, which
- * already see the filtered face — that removes, after `next()`, the tools
- * that agent has no business seeing. The tools stay registered globally, so
- * a call by name still executes and each tool body checks its caller; the
- * graph row's nine write tools are what `worker-graph-readonly` catches by
- * name (§3.2.3).
+ * The wire face of the dispatch chain (M7 design 0.6 §2.3.2, moved to the
+ * GLM channel's wire layer by the face migration, design 0.1 §3/§6 C): the
+ * execute row registers one face-policy source on the `glmHournessFaces`
+ * registry (read per request at the wire layer), and it names, for one
+ * session, the registered (native) tools that session does not see. The
+ * tools stay registered globally, so a call by name still executes and each
+ * tool body checks its caller; the graph row's nine write tools are what
+ * `worker-graph-readonly` catches by name (§3.2.3).
  *
  * Who loses what: an agent that is not the main agent loses the execute
  * row's and the operate row's tools; an agent that is no registered worker
@@ -14,10 +14,12 @@
  * Every agent of a chain rooted in the main agent — a registered worker or
  * reviewer, and the read-only subagents they start — loses the nine graph
  * write tools and keeps `graph_show`, `graph_open`, `graph_focus` and
- * `graph_comment`. A session already open when the row activates gets the
- * listener at its first step (the host-level `agent/pre-step` backstop).
+ * `graph_comment`. A session the row cannot resolve in the live-agent
+ * registry counts as no removal: the face keeps every tool, the way a
+ * session of a row that is off does.
  */
-import type { AgentsService, AssembledTool, LiveAgentLike, SessionLike } from '../shared/dsh-min.ts'
+import type { FacePolicySource } from '../shared/face-policy.ts'
+import type { AgentsService, LiveAgentLike, SessionLike } from '../shared/dsh-min.ts'
 import { dispatchRoot } from '../guard/design-release.ts'
 import { EXECUTE_TOOL_NAMES, GRAPH_TOOL_NAMES, OPERATE_TOOL_NAMES, WORKER_TOOL_NAMES } from '../shared/tool-names.ts'
 import type { Attempt } from './attempts.ts'
@@ -35,18 +37,16 @@ export interface FaceRole {
   readonly dispatched: boolean
 }
 
-/** The tools an agent of that role keeps, in the assembled order. Pure. */
-export function faceOfRole(tools: readonly AssembledTool[], role: FaceRole): readonly AssembledTool[] {
+/** The registered (native) names an agent of that role does not see on its wire face; empty keeps the face whole. Pure. */
+export function removalsOfRole(role: FaceRole): ReadonlySet<string> {
   const reviewer = role.attempt !== undefined && (role.attempt.role === 'review' || role.attempt.role === 'acceptance-review')
   const worker = role.attempt !== undefined && role.attempt.role === 'worker'
-  const removed = new Set<string>([
+  return new Set<string>([
     ...(role.main ? [] : [...EXECUTE_TOOL_NAMES, ...OPERATE_TOOL_NAMES]),
     ...(!worker && !reviewer ? WORKER_TOOL_NAMES : []),
     ...(reviewer ? ['submit_plan'] : []),
     ...(role.dispatched ? GRAPH_WRITE_TOOLS : []),
   ])
-  if (removed.size === 0) return tools
-  return tools.filter(tool => !removed.has(tool.name))
 }
 
 /** What the filter asks of the host. */
@@ -55,13 +55,13 @@ export interface FaceDeps {
   readonly isMainAgent: (agent: { readonly id: string, readonly session?: SessionLike }) => boolean
   /** The register entry of an agent id, when this process started it. */
   readonly register: (agentId: string) => Attempt | undefined
-  /** The live-agent registry, to follow the dispatch chain; undefined reads as outside every chain. */
+  /** The live-agent registry, to resolve a session id and follow the dispatch chain; undefined reads as outside every chain. */
   readonly agents: () => Pick<AgentsService, 'get'> | undefined
   readonly report: (agentId: string | undefined, state: 'degraded', reason: string) => void
 }
 
-/** The role of one agent, read at assembly time; never throws. */
-export function roleOfAgent(deps: FaceDeps, agent: { readonly id: string, readonly session?: SessionLike | undefined }): FaceRole {
+/** The role of one agent, read at request time; never throws. */
+function roleOfAgent(deps: FaceDeps, agent: { readonly id: string, readonly session?: SessionLike | undefined }): FaceRole {
   const session = agent.session
   let main = false
   if (session !== undefined) {
@@ -94,5 +94,17 @@ function readMain(deps: FaceDeps, root: LiveAgentLike): boolean {
   }
   catch {
     return false
+  }
+}
+
+const NO_REMOVALS: ReadonlySet<string> = new Set()
+
+/** The execute row's face-policy source: registered once at activation, read live per request at the wire layer. */
+export function executeFaceSource(deps: FaceDeps): FacePolicySource {
+  return {
+    removals(sessionId) {
+      const live = deps.agents()?.get(sessionId)
+      return live === undefined ? NO_REMOVALS : removalsOfRole(roleOfAgent(deps, live))
+    },
   }
 }

@@ -69,7 +69,8 @@ const LESSON = {
 
 let counter = 0
 async function call(row: Row, agent: AgentLike | undefined, name: string, file: string | undefined, extra: Partial<ToolExecuteInput> = {}): Promise<ToolFinalResult> {
-  return await row.runtime.ctx.tools.execute({ callId: `call-${++counter}`, name, arguments: file === undefined ? {} : { file_path: file }, signal: new AbortController().signal, ...(agent === undefined ? {} : { agent }), ...extra })
+  const batch = await row.runtime.ctx.tools.execute({ calls: [{ id: `call-${++counter}`, name, arguments: file === undefined ? {} : { file_path: file } }], signal: new AbortController().signal, log: { turn: row.runtime.progress.turn, step: row.runtime.progress.step }, ...(agent === undefined ? {} : { agent }), ...extra })
+  return batch.results[0].result
 }
 
 const noticeOf = (result: ToolFinalResult): UserNotice => {

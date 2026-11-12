@@ -797,6 +797,20 @@ export function createGit(runner: GitRunner = realGitRunner) {
     return result.ok ? succeeded(result.value.split(/\r?\n/)[0]?.trim() || undefined) : result
   }
 
+  /** The `git diff -U0` patch text between two commits (takeover design 0.6 §5.6: the added lines a `changed` line reads). */
+  async function diffPatch(cwd: string, from: string, to: string): Promise<Outcome<string>> {
+    if (!isRev(from) || !isRev(to)) return failed('not a revision')
+    return read(cwd, ['diff', '-U0', '--no-color', '--no-renames', '--ignore-submodules=none', `${from}..${to}`, '--'])
+  }
+
+  /** Every path in a commit's tree, for the files a `changed` line runs on (takeover design 0.6 §5.6). */
+  async function treePaths(cwd: string, rev: string): Promise<Outcome<readonly string[]>> {
+    if (!isRev(rev)) return failed('not a revision')
+    const result = await read(cwd, ['--literal-pathspecs', 'ls-tree', '-r', '--name-only', '-z', '--full-tree', rev])
+    if (!result.ok) return result
+    return succeeded(result.value.split('\0').filter(path => path !== ''))
+  }
+
   /** Where the remote's trunk really is, asked of the remote itself; `undefined` when it has no such branch, a failure when it cannot be reached. */
   async function lsRemote(cwd: string, remote: string, trunk: string): Promise<Outcome<string | undefined>> {
     // A configured remote's name, never a URL: git would open whatever transport a URL names.
@@ -813,7 +827,7 @@ export function createGit(runner: GitRunner = realGitRunner) {
     toplevel, currentBranch, resolveCommit, treeOf, branchTip, mergeBase, isAncestor,
     changedFiles, entryAt, sameContent, taskTrailers, lastTaskCommit, commitsBetween, stagedPaths,
     listWorktrees, ensureWorktree, removeWorktree, discardWorktree, prepareGateWorktree,
-    trunkUpstream, trunkRefs, remoteUrl, remoteHeadBranch, reflogSubject, lsRemote,
+    trunkUpstream, trunkRefs, remoteUrl, remoteHeadBranch, reflogSubject, lsRemote, diffPatch, treePaths,
   }
 }
 

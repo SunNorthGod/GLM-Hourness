@@ -6,9 +6,11 @@
  * agent (invocation.agent) and, for a direct child, through the subagents
  * service:
  *
- * - start: `followup` a message that names the node and asks for
- *   graph_focus on it; an idle agent starts a turn, a running one takes it
- *   after the current turn.
+ * - start: an approved task moves to in progress as the human (the click
+ *   is the reason, as for a reopened task on redo; one already in progress
+ *   gets a comment), then `followup` a message that names the node and asks
+ *   for graph_focus on it; an idle agent starts a turn, a running one takes
+ *   it after the current turn.
  * - stop: cancel the main agent's turn (`keepInbox`) when it stands on the
  *   node, put a message that the human paused the node and it must not be
  *   re-dispatched before the main agent's next step (the row's step
@@ -133,9 +135,9 @@ function stopChildren(children: readonly Child[]): string[] {
   })
 }
 
-/** Write the control's history entry as the human: a comment, or for a reopened task the status change with the note as its reason. */
-async function record(engine: GraphEngine, graph: LoadedGraph, node: GraphNode, note: string, reopen: boolean): Promise<string | undefined> {
-  const result = reopen
+/** Write the control's history entry as the human: a comment, or for a task that moves to in progress (an approved one started, a done one redone) the status change with the note as its reason. */
+async function record(engine: GraphEngine, graph: LoadedGraph, node: GraphNode, note: string, toDoing: boolean): Promise<string | undefined> {
+  const result = toDoing
     ? await engine.apply('human', { op: 'status', id: node.id, rev: graph.revisions.get(node.id), to: 'doing', reason: note })
     : await engine.apply('human', { op: 'comment', id: node.id, text: note })
   return result.ok ? undefined : refusalForHuman(result.error, node.status)
@@ -158,10 +160,10 @@ function listLines(value: FieldChange['to']): string[] {
   return Array.isArray(value) && value.length > 0 ? value.map(item => `- ${typeof item === 'string' ? item : JSON.stringify(item)}`) : ['（没有）']
 }
 
-function startLines(node: GraphNode): string[] {
+function startLines(node: GraphNode, started: boolean): string[] {
   return [
-    header('start', node),
-    `${focusStep(node)}${node.status === 'approved' ? `开工时用 graph_status 把它标为 doing。` : ''}按验收条件推进，标完成要带证据。`,
+    `${header('start', node)}${started ? '它已从已批准改为进行中。' : ''}`,
+    `${focusStep(node)}按验收条件推进，标完成要带证据。`,
   ]
 }
 
@@ -193,9 +195,10 @@ export async function runFromCommand(invocation: AgentCommandInvocationLike, con
   const busy = agent.status === 'running' ? '（它正忙，这一轮做完就接着做）' : ''
 
   if (action === 'start') {
-    const problem = await record(engine, graph, node, runNote('start'), false)
+    const started = node.status === 'approved'
+    const problem = await record(engine, graph, node, runNote('start'), started)
     if (problem !== undefined) return refused(action, problem)
-    agent.followup(message(invocation, action, node, `从「${node.title}」开始做`, startLines(node)))
+    agent.followup(message(invocation, action, node, `从「${node.title}」开始做`, startLines(node, started)))
     return { kind: 'success', text: `已让主 Agent 从「${node.title}」开始做${busy}` }
   }
 

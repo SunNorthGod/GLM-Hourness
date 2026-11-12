@@ -1,13 +1,18 @@
 /**
- * Test double of the rc.3 runtime surface the dialect rows touch
- * (docs/DESIGN.md §2.4a). It offers only what the desktop runtime offers:
- * scoped `tools.register(definition)` (rejecting output schemas outside the
- * enforced subset), `tools.get(name, scope)`, `tools.execute(input)`
- * (gated by `tools/pre-execute`, validating success values against the
- * output schema, ending in `tools/post-execute`), the agent-scoped waterfalls, the session's derived
- * history, and cordis `get` / `provide`. The route reaches plugins solely
- * through the assembly variables, exactly as installModelSelection injects
- * them.
+ * Test double of the installed 0.2.2-rc.1 runtime surface the rows touch
+ * (docs/DESIGN.md §2.4a, face-migration design 0.1). It offers only what the
+ * desktop runtime offers: scoped `tools.register(definition)` (rejecting
+ * output schemas outside the enforced subset), `tools.get(name, scope)`,
+ * `tools.schemas(scope)` (the registry view the wire-face projection reads),
+ * `tools.execute(input)` (gated by `tools/pre-execute`, validating success
+ * values against the output schema, ending in `tools/post-execute`), the
+ * agent-scoped waterfalls, the session's derived history, and cordis `get` /
+ * `provide`. The `agent/pre-step` payload carries the step's model
+ * selection. The assemble payload carries no tool face, the way the
+ * installed 0.2.2-rc.1 runtime composes it; the request face is the wire
+ * face over the collected face (`schemas`). The route reaches plugins
+ * through the assembly variables and the pre-step payload, exactly as
+ * installModelSelection injects them.
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -591,6 +596,8 @@ export interface FakeRuntime {
   readonly executed: ToolExecuteInput[]
   /** Run the agent-scoped assemble waterfall with the route the model selection would inject. */
   assemble(route: { provider?: string, model?: string }, sections?: AssemblePayload['sections']): Promise<AssemblePayload>
+  /** The registry view the wire-face projection reads (`ctx.tools.schemas(agent)`). */
+  schemas(): AssembledTool[]
   /** Fire `agent/created` for the fake agent, or for another agent of the host. */
   create(target?: AgentLike): Promise<void>
   /** Fire `session/disposed` for a session (session:1925–1936): observers run synchronously, as in rc.3. */
@@ -600,7 +607,7 @@ export interface FakeRuntime {
   /** The turn and step the `tool/call` events of executed calls carry; a spec moves it as the agent loop advances. */
   readonly progress: { turn: number, step: number }
   /** Run `agent/pre-step` for one step; the runtime's default decision admits the claimed messages. */
-  preStep(options?: { messages?: readonly unknown[], step?: number, turn?: number }): Promise<PreStepDecision>
+  preStep(options?: { messages?: readonly unknown[], step?: number, turn?: number, route?: { provider?: string, model?: string } }): Promise<PreStepDecision>
   /** Run the `agent/request` waterfall for the fake agent (rc.3 agent-loop:1191): the default proposes the route given at `fakeRuntime`. */
   request(turn: number, step: number): Promise<unknown>
   /** Run the `agent/request-error` waterfall (rc.3 agent-loop:1136): the default decides nothing. */
@@ -626,6 +633,17 @@ function native(name: string, calls: Array<{ name: string, args: unknown }>): To
 }
 
 export const NATIVE_NAMES = ['read', 'write', 'edit', 'glob', 'grep', 'pwsh', 'todo_write', 'web_fetch'] as const
+
+/** The batch's argument parse (rc.1 `parseArguments`): the provider's JSON text is parsed, anything else passes through. */
+function parseBatchArguments(raw: unknown): unknown {
+  if (typeof raw !== 'string') return raw
+  try {
+    return JSON.parse(raw) as unknown
+  }
+  catch {
+    return raw
+  }
+}
 
 const SCHEMA_CONSTRAINTS = new Set(['type', 'oneOf', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'const'])
 const SCHEMA_ANNOTATIONS = new Set(['description', 'title', 'default', 'examples'])
@@ -738,20 +756,19 @@ export type ExecTool = (name: string, args: unknown, over?: { readonly agent?: A
 
 /**
  * {@link ExecTool} over a runtime, numbering the calls it makes. `parent` is
- * what rc.3 puts on a call a `run_code` program makes from inside another,
- * which a gate has to judge like a direct one. Both boards' fixtures
+ * what the runtime puts on a call a `run_code` program makes from inside
+ * another, which a gate has to judge like a direct one. Both boards' fixtures
  * (tests/rules-host.ts, tests/loops-host.ts) drive their gate through this.
  */
 export function execTool(runtime: FakeRuntime): ExecTool {
   let counter = 0
   return (name, args, over = {}) => runtime.ctx.tools.execute({
-    callId: `call-${++counter}`,
-    name,
-    arguments: args,
+    calls: [{ id: `call-${++counter}`, name, arguments: args }],
     agent: over.agent ?? runtime.agent,
     signal: new AbortController().signal,
+    log: { turn: runtime.progress.turn, step: runtime.progress.step },
     ...(over.parent === undefined ? {} : { parent: over.parent }),
-  })
+  }).then(batch => batch.results[0].result)
 }
 
 /**
@@ -844,40 +861,65 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
         return () => { scoped.splice(scoped.indexOf(definition), 1) }
       },
       get: name => visible().find(tool => tool.name === name),
-      // Pipeline order of ToolRuntime.execute: pre-execute gate, body, output render, deferred contexts, post-execute.
-      async execute(input): Promise<ToolFinalResult> {
-        executed.push(input)
-        // startCall appends the durable call before prepare (agent-loop:578–582), so the model's call is in
-        // the log when the pre-execute waterfall runs. A call a body issues — a run_code program's, or a
-        // DeferredToolCall's target, `<callId>:deferred` (toolsearch:167) — has no event.
-        if (input.parent === undefined && !String(input.callId).endsWith(':deferred')) {
-          fireSession(input.agent?.session, 'tool/call', { turn: progress.turn, step: progress.step, callId: input.callId, name: input.name, arguments: input.arguments })
-        }
-        // prepareExecution (tools:3320–3321, 3337–3353): the waterfall defaults to allow; a deny reason
-        // becomes the error result and the body never runs, but the result still goes through post-execute
-        // (prepareExecution hands it on as a post-result). ask and cancel are not modeled.
-        const pending: PostExecutePayload = { callId: input.callId, name: input.name, arguments: input.arguments, ...(input.agent === undefined ? {} : { agent: input.agent }), ...(input.parent === undefined ? {} : { parent: input.parent }) }
-        const gate = await of('tools/pre-execute').reduceRight<() => Promise<PreExecuteDecision>>(
-          (next, listener) => async () => (listener as unknown as PreExecuteListener)(pending, next),
-          () => Promise.resolve<PreExecuteDecision>({ kind: 'allow' }),
-        )()
-        if (gate.kind !== 'allow' && gate.kind !== 'deny') throw new Error(`fake-rc3 does not model the ${gate.kind} decision`)
-        const tool = visible().find(candidate => candidate.name === input.name)
+      // The registry view the wire-face projection reads (rc.1 dsh-tools
+      // `schemas`, tools:585–591): model-facing schemas without callbacks,
+      // no step admission. The runtime orders its registrations canonically;
+      // the fake keeps registration order, which is enough for the name
+      // assertions.
+      schemas: scope => scope === undefined || scope === agent
+        ? visible().map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters }))
+        : [],
+      // Pipeline order of ToolRuntime.execute per call: pre-execute gate, body,
+      // output render, deferred contexts, post-execute. The batch form is the
+      // rc.1 contract (dsh-tools `execute`: `{calls, agent, signal, log?}`);
+      // the batch `arguments` the provider sent as JSON text is parsed, an
+      // object passes through (executeToolBatch `parseArguments`).
+      async execute(input) {
+        const results: Array<{ callId: string, result: ToolFinalResult }> = []
         const contexts: unknown[] = []
-        let result: ToolFinalResult
-        try {
-          if (gate.kind === 'deny') throw new Error(gate.reason)
-          if (tool === undefined) throw new Error(`unknown tool "${input.name}"`)
-          const value = await tool.execute(input.arguments, { ...execution(input.callId, input.signal, contexts), ...(input.agent === undefined ? {} : { agent: input.agent }) })
-          const violations = valueViolations(tool.output.schema, value)
-          if (violations.length > 0) throw new Error(`tool "${tool.name}" returned an invalid value: ${violations.join('; ')}`)
-          result = { isError: false, value, content: tool.output.render(input.arguments, value) }
+        let concluded = false
+        for (const block of input.calls) {
+          const callId = block.id
+          const parsed: unknown = parseBatchArguments(block.arguments)
+          const callSignal = input.signal ?? new AbortController().signal
+          executed.push({ callId, name: block.name, arguments: parsed, ...(input.agent === undefined ? {} : { agent: input.agent }), ...(input.parent === undefined ? {} : { parent: input.parent }), signal: callSignal })
+          // startCall appends the durable call before prepare (agent-loop:578–582), so the model's call is in
+          // the log when the pre-execute waterfall runs. A call a body issues — a run_code program's, or a
+          // DeferredToolCall's target, `<callId>:deferred` (toolsearch:173) — has no event, and neither does
+          // a batch without `log` (an inner batch).
+          if (input.log !== undefined && input.parent === undefined && !String(callId).endsWith(':deferred')) {
+            fireSession(input.agent?.session, 'tool/call', { turn: input.log.turn, step: input.log.step, callId, name: block.name, arguments: parsed })
+          }
+          // prepareExecution (tools:3320–3321, 3337–3353): the waterfall defaults to allow; a deny reason
+          // becomes the error result and the body never runs, but the result still goes through post-execute
+          // (prepareExecution hands it on as a post-result). ask and cancel are not modeled.
+          const pending: PostExecutePayload = { callId, name: block.name, arguments: parsed, ...(input.agent === undefined ? {} : { agent: input.agent }), ...(input.parent === undefined ? {} : { parent: input.parent }) }
+          const gate = await of('tools/pre-execute').reduceRight<() => Promise<PreExecuteDecision>>(
+            (next, listener) => async () => (listener as unknown as PreExecuteListener)(pending, next),
+            () => Promise.resolve<PreExecuteDecision>({ kind: 'allow' }),
+          )()
+          if (gate.kind !== 'allow' && gate.kind !== 'deny') throw new Error(`fake-rc3 does not model the ${gate.kind} decision`)
+          const tool = visible().find(candidate => candidate.name === block.name)
+          const callContexts: unknown[] = []
+          let result: ToolFinalResult
+          try {
+            if (gate.kind === 'deny') throw new Error(gate.reason)
+            if (tool === undefined) throw new Error(`unknown tool "${block.name}"`)
+            const value = await tool.execute(parsed, { ...execution(callId, callSignal, callContexts), ...(input.agent === undefined ? {} : { agent: input.agent }) })
+            const violations = valueViolations(tool.output.schema, value)
+            if (violations.length > 0) throw new Error(`tool "${tool.name}" returned an invalid value: ${violations.join('; ')}`)
+            result = { isError: false, value, content: tool.output.render(parsed, value) }
+          }
+          catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            result = { isError: true, content: [{ type: 'text', text: `Error: ${message}` }], error: { message } }
+          }
+          const final = await postExecuted(pending, callContexts.length > 0 ? { ...result, additionalContexts: callContexts } : result)
+          contexts.push(...(final.additionalContexts ?? []))
+          concluded ||= final.concludesTurn === true
+          results.push({ callId, result: final })
         }
-        catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          result = { isError: true, content: [{ type: 'text', text: `Error: ${message}` }], error: { message } }
-        }
-        return postExecuted(pending, contexts.length > 0 ? { ...result, additionalContexts: contexts } : result)
+        return { results, ...(contexts.length > 0 ? { additionalContexts: contexts } : {}), ...(concluded ? { concluded: true } : {}) }
       },
     },
     on: ((event: string, listener: Listener, opts?: { prepend?: boolean }) => {
@@ -901,13 +943,18 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
     history,
     deferred,
     executed,
+    schemas: () => visible().map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters })),
     async assemble(route, sections = [{ name: 'harness:identity', text: 'You are an AI agent powered by DeepSeek Harness.' }]) {
-      const tools: AssembledTool[] = visible().map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters }))
       headerRoute = route
-      // The model-selection listener (innermost) injects the route after its own next().
-      const base = (): Promise<AssemblePayload> => Promise.resolve({ sections, contexts: [], tools, variables: { ...route } })
+      // The model-selection listener (innermost) injects the route after its
+      // own next(). The payload carries no tool face: the installed
+      // 0.2.2-rc.1 runtime composes it so ("tool declarations remain
+      // provider-owned", docs/DESIGN.md §2.4a) and the request face is the
+      // wire face (src/glm-llm/face-wire.ts), applied at the adapter's
+      // stream over the collected face (the `schemas` view here).
+      const base = (): Promise<AssemblePayload> => Promise.resolve({ sections, contexts: [], variables: { ...route } })
       const chain = of('system-prompt/assemble').reduceRight<() => Promise<AssemblePayload>>(
-        (next, listener) => async () => (listener as unknown as (a: AssemblePayload, c: unknown, n: () => Promise<AssemblePayload>) => Promise<AssemblePayload>)({ sections, contexts: [], tools, variables: {} }, undefined, next),
+        (next, listener) => async () => (listener as unknown as (a: AssemblePayload, c: unknown, n: () => Promise<AssemblePayload>) => Promise<AssemblePayload>)({ sections, contexts: [], variables: {} }, undefined, next),
         base,
       )
       return chain()
@@ -922,8 +969,19 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
       fireSession(session, type, data)
     },
     progress,
-    async preStep({ messages = [], step = 1, turn = 1 } = {}) {
-      const payload: PreStepPayload = { agent, messages, signal: new AbortController().signal, step, turn }
+    async preStep({ messages = [], step = 1, turn = 1, route } = {}) {
+      // rc.1 (agent-loop:685–690): the payload carries the step's model
+      // selection; the fake takes the route of the latest `assemble` (the
+      // way the loop's own selection precedes the step) unless given one.
+      const selection = route ?? headerRoute
+      const payload: PreStepPayload = {
+        agent,
+        messages,
+        signal: new AbortController().signal,
+        step,
+        turn,
+        ...(selection === undefined ? {} : { modelSelection: { provider: selection.provider, model: selection.model } }),
+      }
       const chain = of('agent/pre-step').reduceRight<() => Promise<PreStepDecision>>(
         (next, listener) => async () => (listener as unknown as (p: PreStepPayload, n: () => Promise<PreStepDecision>) => Promise<PreStepDecision>)(payload, next),
         () => Promise.resolve({ kind: 'enter', messages }),

@@ -61,6 +61,8 @@ import type { GraphCache } from './dispatch.ts'
 import { floorPathIn } from './floor.ts'
 import { acquireGateLock, ensureExecDir, type GateLockSetup } from './gate-lock.ts'
 import { normDigest, parseGateNorm, type ParsedGate } from './gate-norm.ts'
+import { parseCheckOutput } from '../env/parsers.ts'
+import { baselineOf } from '../bootstrap/review.ts'
 import type { GateLauncher, GateVerdict } from './gate-provider.ts'
 import { watchedDigest, type Git, type SnapshotSaver } from './git.ts'
 import type { LoopEmit } from './loop-link.ts'
@@ -458,6 +460,8 @@ interface GateRunSpec {
   readonly indexes?: readonly number[]
   /** Indexes earlier records covered, merged into a trunk record's `ran`. */
   readonly covered?: readonly number[]
+  /** The baseline commit of each `changed` line (§5.6: the takeover wrote it on the tool node), by acceptance index. */
+  readonly baselines?: ReadonlyMap<number, string>
   readonly tasks: readonly string[]
   readonly gate: ParsedGate
   readonly normDigest: string
@@ -497,7 +501,67 @@ function commandsOf(spec: GateRunSpec): ParsedGate['commands'] {
   const checks = spec.gate.commands.filter(command => command.kind === 'check')
   if (spec.indexes !== undefined) return checks.filter(command => spec.indexes!.includes(command.index))
   const paths = spec.paths
-  return checks.filter(command => command.when === undefined || paths === undefined || command.when.some(prefix => paths.some(path => floorPathIn([prefix], path))))
+  return checks.filter(command => command.changed !== undefined || command.when === undefined || paths === undefined || command.when.some(prefix => paths.some(path => floorPathIn([prefix], path))))
+}
+
+// ---------------------------------------------------------------------------
+// The `changed` lines (takeover design 0.6 §5.6: only new findings fail)
+
+/** The added lines of one side of a `git diff -U0` text, by the b-side path. Pure. */
+function addedByFileOf(diff: string): ReadonlyMap<string, ReadonlySet<number>> {
+  const files = new Map<string, Set<number>>()
+  let current: string | undefined
+  for (const raw of diff.split(/\r?\n/)) {
+    const header = /^diff --git a\/(.+) b\/(.+)$/.exec(raw)
+    if (header !== null) {
+      current = header[2]
+      continue
+    }
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(raw)
+    if (hunk === null || current === undefined) continue
+    const start = Number(hunk[1])
+    const count = hunk[2] === undefined ? 1 : Number(hunk[2])
+    const set = files.get(current) ?? new Set<number>()
+    for (let line = start; line < start + count; line++) set.add(line)
+    files.set(current, set)
+  }
+  return files
+}
+
+/** A finding's file as the diff names it: the worktree path of an absolute one, forward slashes. Pure. */
+function relativeFinding(file: string, root: string): string {
+  const bare = file.replaceAll('\\', '/')
+  const prefix = root.replaceAll('\\', '/')
+  return bare.toLowerCase().startsWith(`${prefix.toLowerCase()}/`) ? bare.slice(prefix.length + 1) : bare
+}
+
+/** The command line of a `changed` run: `{files}` becomes the files of the change that still exist, quoted when they hold spaces. Pure. */
+function changedCommandLine(command: string, files: readonly string[]): string {
+  const filled = files.map(file => file.includes(' ') || file.includes('"') ? `"${file.replaceAll('"', '\\"')}"` : file).join(' ')
+  return command.replaceAll('{files}', filled)
+}
+
+/** What a `changed` line needs: the added lines per file of baseline..commit, and the files of it that still exist at the commit. */
+async function changeAgainst(git: Git, project: string, baseline: string, commit: string): Promise<{ readonly files: readonly string[], readonly added: ReadonlyMap<string, ReadonlySet<number>> } | undefined> {
+  const diff = await git.diffPatch(project, baseline, commit)
+  if (!diff.ok) return undefined
+  const tree = await git.treePaths(project, commit)
+  if (!tree.ok) return undefined
+  const existing = new Set(tree.value)
+  const added = addedByFileOf(diff.value)
+  const files = [...added.keys()].filter(file => existing.has(file))
+  return { files, added }
+}
+
+/** The baseline commit of every `changed` line, read off the tool nodes the takeover baselined (§5.6 item 3); a line without one has no entry and fails with its reason. */
+function baselinesOf(gate: ParsedGate, graph: LoadedGraph): ReadonlyMap<number, string> {
+  const map = new Map<number, string>()
+  for (const command of gate.commands) {
+    if (command.changed === undefined) continue
+    const baseline = baselineOf(graph, command.command)
+    if (baseline !== undefined) map.set(command.index, baseline.commit)
+  }
+  return map
 }
 
 /**
@@ -565,18 +629,58 @@ async function runGate(deps: CheckDeps, spec: GateRunSpec, signal: AbortSignal):
       }
     }
 
-    // Step 7: the commands in order; the first failure stops.
+    // Step 7: the commands in order; the first failure stops. A `changed`
+    // line fails only on findings the change added (§5.6): the rest of its
+    // output is the baseline's old warnings and does not block.
     const ran: number[] = []
     const commands: CheckCommandResult[] = []
     let failure: CheckCommandResult | undefined
     let problem: string | undefined
-    for (const command of commandsOf(spec)) {
-      const log = logOf(String(command.index))
-      const outcome = await runLine(command.command, prepared.path, log.file, timeoutMs, signal)
-      if (signal.aborted) return refused('aborted', 'the check was stopped')
-      const entry: CheckCommandResult = { index: command.index, line: command.command, exit: outcome.exit, ms: outcome.ms, log: log.shown }
+    // One check result in the round's lists; returned so the caller can mark it as the failure.
+    const note = (command: ParsedGate['commands'][number], log: { readonly file: string, readonly shown: string }, exit: number, ms: number): CheckCommandResult => {
+      const entry: CheckCommandResult = { index: command.index, line: command.command, exit, ms, log: log.shown }
       ran.push(command.index)
       commands.push(entry)
+      return entry
+    }
+    for (const command of commandsOf(spec)) {
+      const log = logOf(String(command.index))
+      if (command.changed !== undefined) {
+        const baseline = spec.baselines?.get(command.index)
+        if (baseline === undefined) {
+          failure = note(command, log, -1, 0)
+          problem = 'the change line has no baseline on its tool node (基线：<n> 条（<sha>，<日期>）)'
+          break
+        }
+        const change = await changeAgainst(deps.git, spec.project, baseline, spec.commit)
+        if (change === undefined) {
+          failure = note(command, log, -1, 0)
+          problem = `the change against the baseline ${baseline.slice(0, 7)} cannot be read`
+          break
+        }
+        const outcome = await runLine(changedCommandLine(command.command, change.files), prepared.path, log.file, timeoutMs, signal)
+        if (signal.aborted) return refused('aborted', 'the check was stopped')
+        const entry = note(command, log, outcome.exit, outcome.ms)
+        if (outcome.exit !== 0) {
+          const text = await readFile(join(spec.project, ...log.shown.split('/')), 'utf8').catch(() => '')
+          const findings = parseCheckOutput(command.changed, { stdout: text, stderr: '', exitCode: outcome.exit })
+          const fresh = findings.some(finding => change.added.get(relativeFinding(finding.file, prepared.path))?.has(finding.line) === true)
+          if (!fresh) {
+            // Old warnings only (or output no finding of the format reads): the latter fails (§5.6, unreadable).
+            if (findings.length > 0) continue
+            failure = entry
+            problem = 'the output reads in no finding of the format, and the exit is not 0'
+            break
+          }
+          failure = entry
+          problem = undefined
+          break
+        }
+        continue
+      }
+      const outcome = await runLine(command.command, prepared.path, log.file, timeoutMs, signal)
+      if (signal.aborted) return refused('aborted', 'the check was stopped')
+      const entry = note(command, log, outcome.exit, outcome.ms)
       if (outcome.exit !== 0) {
         failure = entry
         problem = outcome.problem
@@ -821,7 +925,8 @@ export function checkCommitTool(deps: CheckDeps): ToolDefinitionLike {
 
       // Step 4: the job, on the check backend or inside this call.
       const id = `${short(commit)}-${randomBytes(4).toString('hex')}`
-      const spec: GateRunSpec = { kind: 'commands', project, graphDir, commit, trunk, mergeBase, paths, tasks, gate, normDigest: digest, sessionId: agent.session?.id }
+      const baselines = baselinesOf(gate, graph)
+      const spec: GateRunSpec = { kind: 'commands', project, graphDir, commit, trunk, mergeBase, paths, tasks, gate, normDigest: digest, baselines, sessionId: agent.session?.id }
       const way = await deps.launcher.start({
         id,
         label: `hourness check ${short(commit)}`,
@@ -901,7 +1006,7 @@ export async function trunkCheck(deps: CheckDeps, record: LoopEventRecord): Prom
       metricOf(result, false, 0)
       return { outcome: 'done' }
     }
-    const spec: GateRunSpec = { kind: 'trunk', project, graphDir, commit, trunk, mergeBase: undefined, paths: undefined, indexes: missing, covered: [...covered], tasks, gate, normDigest: digest, sessionId: record.session }
+    const spec: GateRunSpec = { kind: 'trunk', project, graphDir, commit, trunk, mergeBase: undefined, paths: undefined, indexes: missing, covered: [...covered], tasks, gate, normDigest: digest, baselines: baselinesOf(gate, graph), sessionId: record.session }
     const outcome = await runGate(deps, spec, new AbortController().signal)
     if (outcome.kind === 'refused') return { outcome: 'failed', reason: `${outcome.code}: ${outcome.reason}` }
     metricOf(outcome.result, outcome.setup, outcome.lockWaitMs)

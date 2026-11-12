@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { PROPOSE_TO_HUMAN, RECORD_HUMAN_ANSWER, DESIGN_TOOL_NAMES } from '../src/shared/tool-names.ts'
-import { ordinaryFace } from '../src/design/role-face.ts'
+import { designFaceSource } from '../src/design/role-face.ts'
 import { proposeTool } from '../src/design/propose.ts'
 import { TALK_PROJECTION, TALK_SHAPES, type TalkState } from '../src/design/talk.ts'
 import { PLAIN_QUESTION_EXAMPLES, PLAIN_QUESTION_GUIDE, plainWordsIn } from '../src/graph/plain-question.ts'
@@ -17,7 +17,7 @@ import { openEngine } from '../src/graph/engine.ts'
 import { nodePlainIssues } from '../src/graph/plain.ts'
 import { PLAIN_LIMITS } from '../src/graph/schema.ts'
 import { loadGraph } from '../src/graph/store.ts'
-import { BASE_TOOLS, hostWithoutTalkProjection, type DesignHost, type FakeAgent } from './design-host.ts'
+import { faceSourceOf, hostWithoutTalkProjection, type DesignHost, type FakeAgent } from './design-host.ts'
 import { FRAMEWORK_PAGE, NO_END_USER, SPLIT_NAMES, fakeBoard, fillRequirementCard, frameworkReleased, mainAgentWithGoal, modulePage, toolDeps, writeDesign } from './design-tools-helpers.ts'
 import { exampleArgs } from './proposal-examples.ts'
 
@@ -267,24 +267,28 @@ test('only the main agent may call it: an ordinary session and a delegated one a
     const error = errorOf(await host.callTool(other, PROPOSE_TO_HUMAN, exampleArgs('want')))
     assert.deepEqual([error?.code, error?.hint], ['forbidden', 'only the main agent puts matters to the human; the human turns main agent mode on with /wish'], other.id)
   }
-  const withTools = [...BASE_TOOLS, ...DESIGN_TOOL_NAMES.map(name => ({ name, description: name, parameters: { type: 'object', properties: {} } }))]
   await host.created(plain)
   await host.created(child)
   await host.created(agent)
+  const source = faceSourceOf(host)
   for (const other of [plain, child]) {
-    assert.deepEqual((await other.assemble({ tools: withTools })).tools.map(tool => tool.name), BASE_TOOLS.map(tool => tool.name), other.id)
+    assert.deepEqual([...source.removals(other.id)].sort(), ['propose_to_human', 'record_human_answer'], other.id)
+    assert.deepEqual(source.narrowing?.(other.id), [], other.id)
   }
-  const main = (await agent.assemble({ tools: withTools })).tools.map(tool => tool.name)
-  assert.ok(DESIGN_TOOL_NAMES.every(name => main.includes(name)), 'the main agent keeps both')
-  assert.equal(main.includes('write'), false)
+  const removals = [...source.removals(agent.id)].sort()
+  assert.ok(!removals.includes(PROPOSE_TO_HUMAN) && !removals.includes(RECORD_HUMAN_ANSWER), 'the main agent keeps both')
+  assert.ok(removals.includes('write'))
 })
 
-test('the face of a session that is not the main agent loses the two tools and nothing else, and is the same array when it has none', () => {
-  const tools = [...BASE_TOOLS, { name: PROPOSE_TO_HUMAN, description: '', parameters: {} }, { name: RECORD_HUMAN_ANSWER, description: '', parameters: {} }]
-  assert.deepEqual(ordinaryFace(tools, name => name).map(tool => tool.name), BASE_TOOLS.map(tool => tool.name))
-  assert.equal(ordinaryFace(BASE_TOOLS, name => name), BASE_TOOLS)
-  const aliased = [...BASE_TOOLS, { name: 'ProposeToHuman', description: '', parameters: {} }]
-  assert.deepEqual(ordinaryFace(aliased, name => name === 'ProposeToHuman' ? PROPOSE_TO_HUMAN : name).map(tool => tool.name), BASE_TOOLS.map(tool => tool.name), 'compared by native name')
+test('the face policy of a session that is not the main agent names the two tools by native name', () => {
+  const source = designFaceSource({
+    isMain: sessionId => sessionId === 's1' ? true : sessionId === 'other' ? false : undefined,
+    report: () => {},
+  })
+  assert.deepEqual([...source.removals('other')].sort(), [...DESIGN_TOOL_NAMES].sort())
+  assert.equal(source.removals('unknown-session').size, 0, 'a session whose role cannot be resolved counts as no removal')
+  assert.deepEqual([...source.removals('s1')].sort(), ['ask_user_question', 'edit', 'write'])
+  assert.deepEqual(source.narrowing?.('s1'), [{ tool: 'str_replace_editor', parameter: 'command', values: ['view'] }])
 })
 
 test('the tool description carries the shapes of a question and the worked examples', async () => {

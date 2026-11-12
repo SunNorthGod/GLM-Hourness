@@ -4,7 +4,9 @@ import { fileToolsOnly, judge, NATIVE_FACE, renderCorrection, workspaceContainme
 import { apply as glmPromptApply, dialectSections, installDialect } from '../src/glm-prompt/index.ts'
 import { REPORTING_DEPTH_SECTION } from '../src/glm-prompt/reporting-depth.ts'
 import { DYNAMIC_BEHAVIOR } from '../src/glm-prompt/verbatim.ts'
+import { wireFace } from '../src/glm-llm/face-wire.ts'
 import { isGlmModel } from '../src/shared/route.ts'
+import type { FakeRuntime } from './fake-rc3.ts'
 import { fakeRuntime } from './fake-rc3.ts'
 
 const rule = workspaceContainment(['C:\\ws\\proj'])
@@ -128,13 +130,18 @@ test('skills note appends to session guidance when skills exist', () => {
 })
 
 
-// rc.3 wiring (docs/DESIGN.md §2.4a, §3): the route reaches the row only
-// through the assembly variables; the tool face is rewritten per request.
+// rc.1 wiring (docs/DESIGN.md §2.4a, face-migration design 0.1): the route
+// reaches the row through the assembly variables; the request face is the
+// wire face, composed by the adapter from the registry view.
 
 const ZCODE_FACE = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'TodoWrite']
 const RESIDENT_FACE = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash']
 const CONTROLS = ['LocalToolSearch', 'DeferredToolCall']
 const COVERED = ['read', 'write', 'edit', 'glob', 'grep', 'pwsh', 'todo_write']
+
+/** The wire face of one route over a runtime's registry view (the composition the adapters run). */
+const faceOf = (rt: FakeRuntime, model: string): string[] =>
+  wireFace(rt.schemas(), { glm: isGlmModel(model), sessionId: rt.agent.id, policy: undefined }).map(tool => tool.name)
 
 test('the dialect follows the model family, case-insensitively', () => {
   assert.equal(isGlmModel('glm-5.3'), true)
@@ -152,11 +159,11 @@ test('installDialect registers the aliases and search controls in scope and one 
   assert.deepEqual(assemble[0].options, { prepend: true })
 })
 
-test('toolSearchMode off registers the aliases only and leaves deferrable tools in the face', async () => {
+test('toolSearchMode off registers the aliases only and leaves deferrable tools in the face', () => {
   const rt = fakeRuntime()
   installDialect(rt.agent, { toolSearchMode: 'off' })
   assert.deepEqual(rt.scoped.map(tool => tool.name), ZCODE_FACE)
-  const names = (await rt.assemble({ model: 'glm-5.3' })).tools.map(tool => tool.name)
+  const names = faceOf(rt, 'glm-5.3')
   assert.ok(names.includes('TodoWrite') && names.includes('web_fetch'))
   assert.equal(rt.listeners.filter(entry => entry.event === 'agent/pre-step').length, 2) // the todo and peak reminders; no announcement
 })
@@ -171,7 +178,7 @@ test('a GLM request gets the ZCode identity and resident face; deferred tools an
   // The 3.17.1 identity names no product; ZCode is in the CLI prefix only.
   assert.ok(assembled.sections[1].text.startsWith('You are an agent working with the user toward their goals'))
   assert.ok(!assembled.sections.some(section => section.text.includes('powered by DeepSeek Harness')))
-  const names = assembled.tools.map(tool => tool.name)
+  const names = faceOf(rt, 'glm-5.3')
   assert.deepEqual(names, [...RESIDENT_FACE, ...CONTROLS])
   for (const name of COVERED) assert.ok(!names.includes(name), name)
 })
@@ -182,7 +189,7 @@ test('a non-GLM request keeps the DSH prompt and natives and never sees the alia
   const assembled = await rt.assemble({ provider: 'deepseek-official', model: 'deepseek-flash' })
   assert.deepEqual(assembled.sections.map(section => section.name), ['harness:identity'])
   assert.ok(assembled.sections[0].text.includes('powered by DeepSeek Harness'))
-  const names = assembled.tools.map(tool => tool.name)
+  const names = faceOf(rt, 'deepseek-flash')
   for (const name of [...ZCODE_FACE, ...CONTROLS]) assert.ok(!names.includes(name), name)
   for (const name of [...COVERED, 'web_fetch']) assert.ok(names.includes(name), name)
 })
@@ -191,9 +198,12 @@ test('a route switch mid-session changes the next request only, with no registra
   const rt = fakeRuntime()
   installDialect(rt.agent)
   const before = rt.scoped.length
-  assert.ok((await rt.assemble({ model: 'glm-5.3' })).tools.some(tool => tool.name === 'Read'))
-  assert.ok((await rt.assemble({ model: 'deepseek-flash' })).tools.some(tool => tool.name === 'read'))
-  assert.ok((await rt.assemble({ model: 'glm-5.3-flash' })).tools.some(tool => tool.name === 'Read'))
+  assert.ok(faceOf(rt, 'glm-5.3').includes('Read'))
+  assert.ok(faceOf(rt, 'deepseek-flash').includes('read'))
+  assert.ok(faceOf(rt, 'glm-5.3-flash').includes('Read'))
+  await rt.assemble({ model: 'glm-5.3' })
+  await rt.assemble({ model: 'deepseek-flash' })
+  await rt.assemble({ model: 'glm-5.3-flash' })
   assert.equal(rt.scoped.length, before)
 })
 
@@ -220,11 +230,11 @@ test('aliases execute the captured natives with mapped arguments', async () => {
   ])
 })
 
-test('an alias whose native is absent is skipped, and its name is not hidden', async () => {
+test('an alias whose native is absent is skipped, and its name is not hidden', () => {
   const rt = fakeRuntime({ natives: ['read', 'web_fetch'] })
   installDialect(rt.agent, { toolSearchMode: 'off' })
   assert.deepEqual(rt.scoped.map(tool => tool.name), ['Read'])
-  const names = (await rt.assemble({ model: 'glm-5.3' })).tools.map(tool => tool.name)
+  const names = faceOf(rt, 'glm-5.3')
   assert.deepEqual(names.sort(), ['Read', 'web_fetch'])
 })
 

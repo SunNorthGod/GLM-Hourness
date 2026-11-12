@@ -58,7 +58,7 @@ function fixture(runtime: FakeRuntime, workspace: string, graph: string): Fixtur
     runtime,
     async focus(id) {
       const callId = `focus-${++calls}`
-      const result = await runtime.ctx.tools.execute({ callId, name: 'graph_focus', arguments: { id }, agent: runtime.agent, signal: new AbortController().signal })
+      const result = await runtime.ctx.tools.execute({ calls: [{ id: callId, name: 'graph_focus', arguments: { id } }], agent: runtime.agent, signal: new AbortController().signal, log: { turn: runtime.progress.turn, step: runtime.progress.step } }).then(batch => batch.results[0].result)
       runtime.history.push(
         { role: 'assistant', source: { kind: 'model', provider: 'glm-zcode', model: 'glm-5.3' }, content: [{ type: 'tool-call', id: callId, name: 'graph_focus', arguments: JSON.stringify({ id }) }] },
         { role: 'tool', toolCallId: callId, isError: result.isError, content: result.content },

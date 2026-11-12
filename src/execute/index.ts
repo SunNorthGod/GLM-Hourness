@@ -8,8 +8,9 @@
  * (src/execute/handback.ts: the summary comment, the effective review depth
  * and the review task, the reviewer's rounds, convergence and the stop
  * draft, the module design review's record), installs the dispatched chain's
- * execution-boundary rules (src/guard/execute-rules.ts), filters every
- * agent's tool face by its role (src/execute/faces.ts), provides the
+ * execution-boundary rules (src/guard/execute-rules.ts), registers the
+ * dispatch chain's wire-face source on the glmHournessFaces registry
+ * (src/execute/faces.ts), provides the
  * `glmHournessExecute` service whose `isWorker` tells M3's guard rules who a
  * dispatch carries, and reports the row health of the sessions it acts in.
  * It registers the main agent's `check_commit` (src/execute/check.ts: the
@@ -74,6 +75,7 @@ import { dataHomes } from '../shared/data-home.ts'
 import type { AgentsService, AgentLike, GoalChangedPayload, InjectHost, PostExecuteListener, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
 import { LOOPS_SERVICE, loopsService } from '../loops/service.ts'
 import { EXECUTE_SERVICE, type ExecuteService } from '../shared/execute-service.ts'
+import { FACES_NOTE, registerFaceSource } from '../shared/face-policy.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { disposerList } from '../shared/row-support.ts'
 import Schema from '../shared/schemastery.ts'
@@ -84,7 +86,7 @@ import { answerWorkerTool, askMainTool, submitPlanTool, type RequestsDeps } from
 import { sha256Hex } from './digest.ts'
 import { handbackProjection, HANDBACK_PROJECTION, readCalls, settleHandback, startHandback, stoppedInMemory, type HandbackDeps } from './handback.ts'
 import { createGit } from './git.ts'
-import { faceOfRole, roleOfAgent, type FaceDeps } from './faces.ts'
+import { executeFaceSource, type FaceDeps } from './faces.ts'
 import { checkCommitTool, trunkCheck, type CheckDeps } from './check.ts'
 import { createLoopLink, stopDraftAction } from './loop-link.ts'
 import { createDrive } from './drive.ts'
@@ -110,7 +112,7 @@ export const name = 'dsh-glm-hourness/execute'
 export interface ExecuteContext extends ServiceLookup, Partial<InjectHost>, Partial<ProvideHost> {
   on(event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
   on(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
-  /** The pre-step is a decision chain: the listener installs the face, runs the drive's step and passes the decision through. */
+  /** The pre-step is a decision chain: the listener installs the dispatch notice, runs the drive's step and passes the decision through. */
   on(event: 'agent/pre-step', listener: (payload: { readonly agent: AgentLike, readonly messages?: readonly unknown[] }, next: () => Promise<unknown>) => Promise<unknown>): () => void
   /** Every tool result before the call settles; the trunk-advance check compares the trunk here (§3.8.4). */
   on(event: 'tools/post-execute', listener: PostExecuteListener, options?: { prepend?: boolean }): () => void
@@ -132,16 +134,18 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   let gateNote: string | undefined
   let trunkNote: string | undefined
   let projectionNote: string | undefined
+  // Why the row's wire-face source is not on the wire layer (face-migration design 0.1 §4.6): the service is absent, or the registration failed. Information only — an install without the GLM channel row has no wire layer at all, the face staying whole is that install's designed state.
+  let facesNote: string | undefined = FACES_NOTE
   const health = provideRowHealth(ctx, 'execute', 'active', '已加载；派发与派发链的写入边界在本行的会话里生效')
   disposers.push(() => { health.dispose() })
   const report = (sessionId: string | undefined, state: HealthState, reason: string): void => {
     health.report(sessionId, state, reason)
   }
   const reactivate = (): void => {
-    // The loop seam's notes: the board being absent is information only, the rest degrades (§2.5 point 7).
+    // The loop seam's notes: the board being absent is information only, the rest degrades (§2.5 point 7); so is the face note (§4.6).
     const loopNotes = [...loopLink.notes(), ...drive.notes()]
     const notes = [toolsNote, rulesNote, gateNote, trunkNote, projectionNote, ...loopNotes.filter(note => note.degraded).map(note => note.text)].filter(note => note !== undefined)
-    const info = loopNotes.filter(note => !note.degraded).map(note => note.text)
+    const info = [...loopNotes.filter(note => !note.degraded).map(note => note.text), ...facesNote === undefined ? [] : [facesNote]]
     health.reactivate(notes.length > 0 ? 'degraded' : 'active', (notes.length > 0 ? [...notes, ...info] : ['已加载；派发与派发链的写入边界在本行的会话里生效', ...info]).join('；'))
   }
   const warnOnce = (() => {
@@ -515,7 +519,7 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   }
   reactivate()
 
-  // The face filter (§2.3.2): agent-scoped, without prepend — inside the dialect's and tool search's listeners, which see the filtered face.
+  // What the wire face reads about one agent (src/execute/faces.ts): the role judgments live here, the removals ride the glmHournessFaces registry to the wire layer.
   const faceDeps: FaceDeps = {
     isMainAgent: isMain,
     register: registeredAttempt,
@@ -530,25 +534,8 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     const uninstall = installDispatchNotice(agent, { lookup: ctx, cache, graphDirOf, isMain, drive: session => drive.status(session), report })
     if (uninstall !== undefined) disposers.push(uninstall)
   }
-  const installed = new WeakSet<AgentLike>()
-  const installFace = (agent: AgentLike): void => {
-    if (installed.has(agent)) return
-    installed.add(agent)
-    disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
-      const assembled = await next()
-      const role = roleOfAgent(faceDeps, agent)
-      const tools = faceOfRole(assembled.tools, role)
-      return tools === assembled.tools ? assembled : { ...assembled, tools: [...tools] }
-    }))
-  }
-  /** The face filter and the dispatch status notice of one agent; neither failure stops the other. */
+  /** The dispatch status notice of one agent; its failure stops nothing. */
   const installOn = (agent: AgentLike): void => {
-    try {
-      installFace(agent)
-    }
-    catch (error) {
-      console.warn(`${name}: the face filter is not installed for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
-    }
     try {
       installNotice(agent)
     }
@@ -556,6 +543,12 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
       console.warn(`${name}: the dispatch status notice is not installed for agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
+  // The wire face (face-migration design 0.1 §6 C): the row's face-policy source registered on the glmHournessFaces registry once it arrives; the source reads the session's role live per request (src/execute/faces.ts).
+  registerFaceSource(ctx, {
+    warn: warnOnce,
+    reactivate,
+    setNote: note => { facesNote = note },
+  }, executeFaceSource(faceDeps))
   try {
     disposers.push(ctx.on('agent/created', ({ agent }) => {
       installOn(agent)
@@ -570,10 +563,10 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     }))
   }
   catch (error) {
-    console.warn(`${name}: agent/created is not listened to; faces follow new agents only: ${error instanceof Error ? error.message : String(error)}`)
+    console.warn(`${name}: agent/created is not listened to; the dispatch notice follows new agents only: ${error instanceof Error ? error.message : String(error)}`)
   }
   try {
-    // A session that was open before this row activated gets the filter at its first step.
+    // A session that was open before this row activated gets the dispatch notice at its first step.
     disposers.push(ctx.on('agent/pre-step', async ({ agent, messages }, next) => {
       installOn(agent)
       // The loop notices kept while the holder was not live go out at its next step (§2.5 point 6).
@@ -584,7 +577,7 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     }))
   }
   catch (error) {
-    console.warn(`${name}: agent/pre-step is not listened to; faces follow new agents only: ${error instanceof Error ? error.message : String(error)}`)
+    console.warn(`${name}: agent/pre-step is not listened to; the dispatch notice follows new agents only: ${error instanceof Error ? error.message : String(error)}`)
   }
 
   return dispose

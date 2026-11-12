@@ -15,6 +15,7 @@ import { apply, type LessonsConfig, type LessonsContext } from '../src/lessons/i
 import { LESSONS_SERVICE, type LessonsService } from '../src/lessons/service.ts'
 import { journalFile } from '../src/lessons/storage.ts'
 import type { AgentCommandInvocationLike, CommandDefinitionLike, SessionLike, SessionProjectionsService, UserNotice } from '../src/shared/dsh-min.ts'
+import type { FacePolicyRegistry } from '../src/shared/face-policy.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { CANDIDATE, NOW } from './lessons-helpers.ts'
 import { healthOf, optionalServices, runRow, stepOf } from './row-host.ts'
@@ -30,6 +31,8 @@ export interface Row {
   readonly commands: Map<string, CommandDefinitionLike<AgentCommandInvocationLike>>
   readonly projections: Array<Parameters<SessionProjectionsService['register']>[0]>
   readonly service: LessonsService
+  /** The face-policy registry the row's wire-face source registered in (face-migration design 0.1 §6 D). */
+  readonly faces: FacePolicyRegistry
   readonly dispose: () => void
   /** The modes the projection of each session reports, for the judgement of the main agent. */
   readonly modes: Map<string, unknown>
@@ -76,7 +79,7 @@ export async function withRow(body: (row: Row) => Promise<void> | void, options:
     runtime.services.set('sessionProjections', { stateOf: (session: SessionLike, key: string) => key === MAIN_AGENT_KEY ? modes.get(session.id) : undefined })
   }
   const optional = optionalServices(runtime, options)
-  const { commands, projections, services } = optional
+  const { commands, projections, faces, services } = optional
   const ctx = optional.ctx as unknown as LessonsContext
   const config: LessonsConfig = { now: () => clock, random: (() => { let drawn = 0x100000; return () => drawn++ })(), ignoreCase: false, append: { lock: { ...realLockEnvironment, now: () => clock.getTime() } }, ...options.config }
   const dispose = apply(ctx, config)
@@ -88,6 +91,7 @@ export async function withRow(body: (row: Row) => Promise<void> | void, options:
     runtime,
     commands,
     projections,
+    faces,
     service,
     dispose,
     modes,

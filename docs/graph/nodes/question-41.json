@@ -1,0 +1,59 @@
+{
+  "id": "question-41",
+  "type": "question",
+  "title": "nowait 设计的四个岔路按推荐定吗",
+  "status": "done",
+  "parent": "nowait",
+  "body": "设计 0.1 在 origin/nowait（4ef89f41），正文 .agents/tasks/nowait/design.md §4。① 拒绝线：shell 点名 timeoutMs>30s 才拦、job_output 等待 >5s 拦（原型 router 守卫的值；预设级 5 秒是改宿主组合的事，不是行内守卫）。② 守卫仍拦点名长超时：宿主 promoteOnTimeout 会兜底转后台，但那 60 秒以上的回合占住本身就是要拦的（与原型一致）。③ 只管主 Agent，不连 worker：worker 的 shell 已被宿主 standard 预设 60 秒转后台，等待单已是通知形态。④ 不另设主 Agent 长 shell 指标：拒绝进违规流水已可考，等减负度量方案一起定。",
+  "options": [
+    {
+      "key": "A",
+      "label": "有要改的，逐条说",
+      "gain": "只翻你想翻的那几条，其余照推荐",
+      "cost": "要逐条点名"
+    },
+    {
+      "key": "B",
+      "label": "四条全按推荐",
+      "gain": "一行拍板，实现按 0.1 开工",
+      "cost": "后面再翻要按推翻重记"
+    }
+  ],
+  "recommend": "B",
+  "crux": "四条推荐里有没有你想翻的？",
+  "verdict": "是 → B；否 → A",
+  "weight": "two-way",
+  "decider": "human",
+  "decision": "B",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "B"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-10T18:37:30.985Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "nowait 设计 0.1 成稿（origin/nowait 4ef89f41），四个岔路合成一个确认问递人；逐条想翻的在回话里点名",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-12T17:40:38.642Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "人拍板 nowait 四岔全按推荐（shell 30s/job 5s、拦点名长超时、只管主 Agent、不加指标）",
+      "relay": "发版不急，视频再说，其余按你说的来",
+      "from": "approved",
+      "to": "done",
+      "option": "B",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "B"
+        }
+      ]
+    }
+  ]
+}
