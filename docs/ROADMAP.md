@@ -104,7 +104,7 @@ M3 起编排层的新行与新文件都在编排层包 `dsh-hourness` 里做（�
 
 ### 借用组件核实清单（L3 / L4）
 
-2026-10-28 对照 rc.3 运行时包的只读核查（结论见 `ORCHESTRATION.md` §2.1、§3、§4.5、§5、§13、§14 与 `FACTS.md` §3）留下的真机核实项，按依赖顺序排列，是相关条目的验收前提。L3 用探针做（`DEVELOPMENT.md` §3），L4 要在桌面版真实会话里看界面。同日的定案（不用队友角色与角色 preset，不用 Agent Team，人的界面不做网页）让其中几项不再需要，保留编号备查。4、4b、12 三项由派发可行性验证一并做完（2026-10-28，L3，探针场景 `glm-dispatch`、`glm-goal`、`goal-headless`）；会影响 M7 实现的发现写在 `DESIGN.md` §2.4a 与 `ORCHESTRATION.md` §2.1、§3.2。这三项也由 M7 的骨架场景 `glm-exec-skeleton` 覆盖（2026-11-06，L3，`ORCHESTRATION.md` §17.14）。第 18、19 项是用户图设计的假设 A6（2026-11-04 随用户图的文档收尾补进），走一遍作业与它的探针场景都等 M7 E6+ 合入。
+2026-10-28 对照 rc.3 运行时包的只读核查（结论见 `ORCHESTRATION.md` §2.1、§3、§4.5、§5、§13、§14 与 `FACTS.md` §3）留下的真机核实项，按依赖顺序排列，是相关条目的验收前提。L3 用探针做（`DEVELOPMENT.md` §3），L4 要在桌面版真实会话里看界面。同日的定案（不用队友角色与角色 preset，不用 Agent Team，人的界面不做网页）让其中几项不再需要，保留编号备查。4、4b、12 三项由派发可行性验证一并做完（2026-10-28，L3，探针场景 `glm-dispatch`、`glm-goal`、`goal-headless`）；会影响 M7 实现的发现写在 `DESIGN.md` §2.4a 与 `ORCHESTRATION.md` §2.1、§3.2。这三项也由 M7 的骨架场景 `glm-exec-skeleton` 覆盖（2026-11-06，L3，`ORCHESTRATION.md` §17.14）。第 18、19 项是用户图设计的假设 A6（2026-11-04 随用户图的文档收尾补进），随走一遍作业与它的探针场景 `glm-exec-walk` 核实完毕（2026-11-14，见下表）。
 
 | # | 核实项 | 层 | 依赖它的条目 | 状态 |
 | --- | --- | --- | --- | --- |
@@ -126,8 +126,8 @@ M3 起编排层的新行与新文件都在编排层包 `dsh-hourness` 里做（�
 | 15 | 用命令通道做 UI 写回时会话日志的增长量，以及确认命令运行不进模型请求 | L3（不进模型）/ L4（UI 写回） | M2.7、M3.5 | 待核实 |
 | 16 | 主 Agent 身份文本与 `glm-prompt` 方言改写的叠加结果 | L3 | M3.1 | L3 已核实（2026-10-30，M3 第 3 步，场景 `glm-design-wish-idle`、`glm-design-main` 及其非 GLM 版）：GLM 路由上身份节在 ZCode 身份节之后、`glm:guard` 之前，非 GLM 路由上在 `glm:guard` 之前，主 Agent 的工具面在方言之后也没有 `Write`、`Edit`、`ask_user_question` |
 | 17 | schedule 投递到冷会话时，恢复出的 agent 的工具面与本包各行是否齐全 | L4 | M7 巡检、M6 排期 | 待核实 |
-| 18 | provider 目录里能否看出哪个模型支持图片输入（用户图设计 0.4.1 §15 A6 之一） | L3 | 用户图 U5b：`截图` 走法可不可用、派发拒绝 `walk_model_no_images` | 待核实，随 U5b 的探针场景 `glm-exec-walk`；看不出时 `截图` 一律不可用，流程改用 `终端`、`命令` 或 `你来走` |
-| 19 | DSH 的读文件工具能否把图片交给模型：走一遍的复核子 agent 只拿到产物路径，看截图靠它（A6 之二） | L3 | 用户图 U5b：复核角色 `walk-review` | 待核实，随 `glm-exec-walk`：场景放一张真实的小图让复核说出图上的字，说不出就把 `截图` 从 `WALK_KINDS` 去掉 |
+| 18 | provider 目录里能否看出哪个模型支持图片输入（用户图设计 0.4.1 §15 A6 之一） | L3 | 用户图 U5b：`截图` 走法可不可用、派发拒绝 `walk_model_no_images` | 已核实（2026-11-14，源级 + L3）：GLM 通道的 `listModels` 逐模型返回 `inputModalities`（`src/glm-llm/zcode.ts:450`，glm-5.3-flash `['text','image']`、glm-5.3 `['text']`），目录会说的就是它；执行行的 `CatalogEntry` 收窄丢掉该字段，走一遍代码直接按原始条目读（`src/execute/walk.ts:245` `modelTakesImages`，目录不标注的 provider 上 `截图` 一律不可走）。派发拒绝 `walk_model_no_images`（`src/execute/dispatch.ts:485`）由 L2（`tests/execute-walk.spec.ts`）钉住，L3 场景 `glm-exec-walk` 在真实运行时跑过整条链 |
+| 19 | DSH 的读文件工具能否把图片交给模型：走一遍的复核子 agent 只拿到产物路径，看截图靠它（A6 之二） | L3 | 用户图 U5b：复核角色 `walk-review` | 已核实（2026-11-14，源级 + L3，`glm-exec-walk`）：读图走 DSH 的独立工具 `read_image`（`dsh-tool-fs`，普通 `read` 不碰图片），三层门控——附件存储挂载（`ctx.get('attachments')`）、部署图片上限、路由声明 image 输入（`assertImageCapableRoute`，`src/glm-llm/models.ts:23` 有记载）；桌面默认构图已挂好，探针的 headless 构图既没挂附件存储、preset 工具集也没有 `read_image`。**再发现一个 rc.1 运行时缺口**：走一遍复核走 spawn 后端，rc.1 的 runner 在回合末拆销与 structured_output 的完成赛跑——验收审查的扁平 schema verdict 能落账，走一遍复核的数组形 schema（`WALK_REVIEW_SCHEMA` 的 `steps`）落不了账，截图/终端走法在本运行时上复核必败（三次尝试耗尽后走 review_failed，第二次派发重走，目标保持打开；`glm-exec-walk` 的检查按此实际行为钉住）。修复属上游（退出竞速）或复核改走持久会话后端，是后续线；真实图片的判读随桌面 L4 |
 
 ## 3. 需要用户的事项
 
