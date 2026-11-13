@@ -51,7 +51,7 @@ export interface StepView {
 }
 
 /** A flow's 走法 merged with the merge gate's command (§2.7). */
-type WalkSpec =
+export type WalkSpec =
   | { readonly kind: Exclude<WalkKind, '你来走'>, readonly seconds: number, readonly command: string }
   | { readonly kind: '你来走' }
 
@@ -326,7 +326,7 @@ function orderedSteps(index: Index, flow: GraphNode, liveSteps: readonly GraphNo
 }
 
 /** The flow's 走法 merged with the merge gate's commands (§2.7 walkSpecOf); `unparsed` says why it cannot be walked automatically. */
-function walkSpecOf(index: Index, flow: GraphNode): WalkSpec | { readonly unparsed: string } {
+function walkSpecFromIndex(index: Index, flow: GraphNode): WalkSpec | { readonly unparsed: string } {
   const parsed = parseWalkLine(flow.body)
   if ('unparsed' in parsed) return parsed
   if (parsed.kind === '你来走') return { kind: '你来走' }
@@ -360,7 +360,7 @@ function flowViewOf(index: Index, flow: GraphNode): FlowView {
     return { step, state, outdated, servers, leaves, ...(lastWalk === undefined ? {} : { lastWalk }) }
   })
   const counts = Object.fromEntries(STEP_STATES.map(state => [state, steps.filter(view => view.state === state).length])) as Record<StepState, number>
-  return { flow, state: flowStateOf(flow, steps), steps, ...(entry === undefined ? {} : { entry }), unreachable, counts, spec: walkSpecOf(index, flow) }
+  return { flow, state: flowStateOf(flow, steps), steps, ...(entry === undefined ? {} : { entry }), unreachable, counts, spec: walkSpecFromIndex(index, flow) }
 }
 
 /** The role's state: its live flows folded (§2.5). */

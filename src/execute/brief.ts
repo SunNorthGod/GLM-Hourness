@@ -649,6 +649,8 @@ export interface AcceptanceBriefInput {
   readonly trunk: { readonly branch: string, readonly sha: string }
   /** The commands of `norm-merge-gate`, for context. */
   readonly gateCommands: readonly string[]
+  /** The user graph's walk results, one line per flow (§5.5 step 5); present only when the goal has a user graph. */
+  readonly walks?: readonly string[]
 }
 
 /**
@@ -675,6 +677,7 @@ export function renderAcceptanceBrief(input: AcceptanceBriefInput): Brief {
     const commit = task.evidence?.find(item => item.kind === 'commit')?.ref
     return `  - ${task.id} "${task.title}" (${task.status}${commit === undefined ? '' : `, trunk commit ${commit.slice(0, 12)}`})`
   })
+  const flows = (input.walks ?? []).map((line, index) => `- flow:${index} ${line}`)
   const lines: string[] = [
     `# Acceptance review of goal ${goal.id}: ${goal.title}`,
     `You are a reviewer dispatched by the main agent for exactly one review of the whole goal (dispatch id "${input.childId}").`,
@@ -685,17 +688,23 @@ export function renderAcceptanceBrief(input: AcceptanceBriefInput): Brief {
     '## Context',
     `- Workspace: your working directory is the main checkout; review branch ${input.trunk.branch} at commit ${trunk12} (git show, git log and git diff read it).`,
     ...(tasks.length > 0 ? ['- The work of the goal:', ...tasks] : []),
+    ...(flows.length > 0 ? ['- The flows of the user graph, walked by the harness before this review (the person met the product through them):', ...flows.map(line => `  ${line}`)] : []),
     `- Not in scope: ${(goal.nonGoals ?? []).join('; ') || 'nothing recorded'}.`,
     `- Project checks for context: ${input.gateCommands.length === 0 ? 'none recorded' : input.gateCommands.join(' ; ')}.`,
     '',
     '## Constraints',
     `- You write nothing except your report ".hourness/${input.childId}.md" in your working directory.`,
     '- Questions that need the main agent: ask_main (state the assumption you will use if no answer comes). Do not end your turn to wait.',
-    '- A finding blocks only when its criterion is acceptance:<i>, the item of the goal it shows unmet. Everything else is not blocking.',
-    '- checked must hold one entry per item below, written "acceptance:<i> <evidence>": the commit, the check log or the file you looked at.',
+    flows.length > 0
+      ? '- A finding blocks only when its criterion is acceptance:<i>, the item of the goal it shows unmet, or flow:<i>, a flow whose walk does not hold up. Everything else is not blocking.'
+      : '- A finding blocks only when its criterion is acceptance:<i>, the item of the goal it shows unmet. Everything else is not blocking.',
+    flows.length > 0
+      ? '- checked must hold one entry per item below, written "acceptance:<i> <evidence>" or "flow:<i> <evidence>": the commit, the check log or the file you looked at.'
+      : '- checked must hold one entry per item below, written "acceptance:<i> <evidence>": the commit, the check log or the file you looked at.',
     '',
     '## Done when',
     ...acceptance.map((item, index) => `- acceptance:${index} ${item}`),
+    ...flows,
     `- Hand back by calling structured_output once with the hourness-review-v1 verdict (verdict, commit ${trunk12}, findings, checked, lessons). Write the long report to ".hourness/${input.childId}.md" and give the path in "report".`,
   ]
   const text = lines.join('\n')

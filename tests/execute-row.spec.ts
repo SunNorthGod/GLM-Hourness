@@ -261,8 +261,13 @@ test('a registered worker writes inside its file scope and its .hourness/; outsi
     assert.ok(!reset.isError, `git reset --hard was refused: ${reset.content.map(part => part.text ?? '').join('')}`)
     assert.ok(existsSync(join(project.root, '.llm', 'snapshots.jsonl')), 'the snapshot before reset --hard left no journal')
     // The graph write tools by name are refused for the chain; graph_comment is not one of them and reaches its own (absent) body.
+    // graph_relink and graph_walk arrived with the user graph (design 0.4.1 §3.5) and are on the same list.
     const graphWrite = await exec('graph_status', { id: 'goal-1' }, { agent: child }) as { isError: boolean }
     assert.ok(graphWrite.isError, 'graph_status by name ran in the chain')
+    const relink = await exec('graph_relink', { id: 'step-1', next: [] }, { agent: child }) as { isError: boolean }
+    assert.ok(relink.isError, 'graph_relink by name ran in the chain')
+    const walk = await exec('graph_walk', { id: 'flow-1', steps: [], reason: 'r', relay: 'words' }, { agent: child }) as { isError: boolean }
+    assert.ok(walk.isError, 'graph_walk by name ran in the chain')
     // The violations are in the journal.
     const violations = readFileSync(join(project.root, '.llm', 'audit', 'violations.jsonl'), 'utf8')
     assert.ok(violations.includes('worker-scope'), 'the worker-scope denial is not in the violation journal')
@@ -533,7 +538,7 @@ test('with the execute service on, the main agent\u2019s no-write denial points 
 
 // ---- the wire face (§2.3.2, face-migration design 0.1 §6 C: the removals ride the glmHournessFaces registry to the wire layer) ----
 
-test('removalsOfRole: the main agent keeps everything but the worker tools; a non-main agent loses the execute and operate tools; a worker keeps the worker tools; a reviewer loses submit_plan; a dispatched chain loses the nine graph writes', () => {
+test('removalsOfRole: the main agent keeps everything but the worker tools; a non-main agent loses the execute and operate tools; a worker keeps the worker tools; a reviewer loses submit_plan; a dispatched chain loses the eleven graph writes', () => {
   const attempt = (role: Attempt['role']): Attempt => ({
     childId: `hz-task-1-a1-000000`, role, node: 'task-1', attempt: 1, provider: 'p', model: 'm', why: 'w', plan: 'required', pins: 'pins: x',
   })
@@ -546,6 +551,7 @@ test('removalsOfRole: the main agent keeps everything but the worker tools; a no
   const worker = removalsOfRole({ main: false, attempt: attempt('worker'), dispatched: true })
   for (const name of WORKER_TOOL_NAMES) assert.ok(!worker.has(name), `a registered worker lost ${name}`)
   assert.ok(worker.has('graph_status'), 'the worker loses the graph writes, graph_status among them')
+  assert.ok(worker.has('graph_relink') && worker.has('graph_walk'), 'the user graph’s two write tools are on the removals list (design 0.4.1 §3.5)')
   assert.equal(worker.has('graph_comment'), false, 'the worker keeps the read-and-annotate graph tools')
   const reviewer = removalsOfRole({ main: false, attempt: attempt('review'), dispatched: true })
   assert.ok(reviewer.has('submit_plan') && !reviewer.has('ask_main'), `the reviewer's removals are wrong: ${[...reviewer].join(', ')}`)

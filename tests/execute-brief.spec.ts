@@ -306,6 +306,26 @@ test('renderAcceptanceBrief: the goal line names the trunk commit, done-when is 
   assert.ok(brief.text.endsWith(`brief ${brief.digest} · graph ${goal.revision}`))
 })
 
+test('renderAcceptanceBrief with walks: the walked flows are flow:<i> items a finding can block on, and without them the brief stays acceptance-only', () => {
+  const goal = withNode(plain(), { ...get(plain(), 'goal-1'), acceptance: ['the blog builds'] })
+  const walked = renderAcceptanceBrief({
+    graph: goal, goal: get(goal, 'goal-1'), childId: 'hz-goal-1-acc-a1-abcdef',
+    trunk: { branch: 'main', sha: 'abcdef0123456789abcdef0123456789abcdef01' }, gateCommands: ['npm test'],
+    walks: ['读者 › 登录 (flow-1): 4/4 steps walked', '管理员 › 处理逾期 (flow-6): failed at "发提醒或登记赔偿" (登记赔偿后状态没变)'],
+  })
+  const lines = walked.text.split('\n')
+  assert.ok(lines.includes('- The flows of the user graph, walked by the harness before this review (the person met the product through them):'), 'the walks come as their own context block')
+  assert.ok(lines.includes('  - flow:0 读者 › 登录 (flow-1): 4/4 steps walked'))
+  assert.ok(lines.includes('  - flow:1 管理员 › 处理逾期 (flow-6): failed at "发提醒或登记赔偿" (登记赔偿后状态没变)'))
+  assert.ok(lines.includes('- flow:0 读者 › 登录 (flow-1): 4/4 steps walked'), 'the done-when lists the flows with their criteria')
+  assert.ok(lines.includes('- A finding blocks only when its criterion is acceptance:<i>, the item of the goal it shows unmet, or flow:<i>, a flow whose walk does not hold up. Everything else is not blocking.'))
+  assert.ok(lines.some(line => line.includes('written "acceptance:<i> <evidence>" or "flow:<i> <evidence>"')))
+
+  const bare = renderAcceptanceBrief({ graph: goal, goal: get(goal, 'goal-1'), childId: 'hz-goal-1-acc-a1-abcdef', trunk: { branch: 'main', sha: 'abcdef0123456789abcdef0123456789abcdef01' }, gateCommands: ['npm test'] })
+  assert.ok(!bare.text.includes('flow:'), 'no walk lines and no flow criteria without walks')
+  assert.ok(bare.text.includes('- A finding blocks only when its criterion is acceptance:<i>, the item of the goal it shows unmet. Everything else is not blocking.'))
+})
+
 test('the release check reads the context, not a stage: an unreleased result in the context refuses a node the graph shows as released', () => {
   const graph = plain()
   const target = get(graph, 'task-1')

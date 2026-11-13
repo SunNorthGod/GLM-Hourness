@@ -1,6 +1,6 @@
 /**
  * The execute row's tables for the loop board (M7 design 0.6 §2.5, §3.11.1):
- * the events it hands over, the seven default entries that listen to them,
+ * the events it hands over, the default entries that listen to them,
  * and the harness actions an entry runs. Data only — the board shows and
  * runs what is written here, M7's fallback executor reads the same tables,
  * and the loop row itself carries none of them, so one matter never wakes
@@ -39,8 +39,10 @@ const TRUNK_ADVANCED = 'hourness.trunk-advanced'
 const OUTSIDE_ADVANCE = 'hourness.outside-advance'
 /** The holder session walked its first step in this process or was created. */
 const HOST_STARTED = 'hourness.host-started'
+/** A walk job of a goal's user-graph flows finished (user graph design 0.4.1 §2.7 step 5). */
+const WALK_DONE = 'hourness.walk-done'
 
-/** The nine events the execute row hands the board, with the fields their entries and filters read (§2.5). */
+/** The ten events the execute row hands the board, with the fields their entries and filters read (§2.5). */
 export const EXECUTE_EVENTS: readonly LoopEventDeclaration[] = [
   {
     id: DESIGN_RELEASED,
@@ -126,6 +128,18 @@ export const EXECUTE_EVENTS: readonly LoopEventDeclaration[] = [
     fields: [],
     personSelectable: true,
   },
+  {
+    id: WALK_DONE,
+    title: '用户流程走一遍的作业结束了，该再派一次或等重新走',
+    fields: [
+      { name: 'job', type: 'string', title: '走一遍的作业号' },
+      { name: 'goal', type: 'string', title: '走了一遍的目标' },
+      { name: 'commit', type: 'string', title: '作业钉住的主干提交' },
+      { name: 'trunkMoved', type: 'boolean', title: '作业运行时主干是否挪到了图目录之外' },
+      { name: 'flows', type: 'strings', title: '每条流程的结局，`流程 结局` 一项' },
+    ],
+    personSelectable: true,
+  },
 ]
 
 // ---- harness actions (§2.5) ----
@@ -150,7 +164,7 @@ export const EXECUTE_ACTIONS: readonly { readonly id: string, readonly title: st
 const tellMain = (text: string) => ({ kind: 'tell-main' as const, text, wake: true })
 
 /**
- * The seven default entries of the execute row (§3.11.1's table): what each
+ * The default entries of the execute row (§3.11.1's table): what each
  * listens to, and the words the main agent gets. The words that need the
  * graph (the stopped draft, the trunk check's verdict, the reconcile list)
  * come from the action's own `tell`, so the entry names the action only.
@@ -218,6 +232,14 @@ export const EXECUTE_ENTRIES: readonly LoopEntryDefinition[] = [
     when: { kind: 'event', events: [HOST_STARTED] },
     action: { kind: 'harness', action: RECONCILE },
     limits: { debounceSeconds: 5, maxPerHour: 6 },
+  },
+  {
+    id: 'execute.walk-done',
+    title: '用户流程走一遍结束之后：再派一次目标',
+    why: '走一遍是后台作业，结束了要有人再派一次目标，流程都走得通时整体审查才会出去',
+    when: { kind: 'event', events: [WALK_DONE] },
+    action: tellMain('Walk job {job} of goal {goal} finished at commit {commit} ({flows}). Run dispatch_task {goal} again with a model and a why; the acceptance review goes out when every flow holds a passing record. When trunkMoved is true, the results do not count for the current code: the flows are walked again on the new trunk.'),
+    limits: { debounceSeconds: 5, maxPerHour: 30 },
   },
 ]
 

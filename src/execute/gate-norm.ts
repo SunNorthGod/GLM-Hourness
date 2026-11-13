@@ -14,13 +14,16 @@
  * `` runs the command on the files the change still holds and fails only
  * when a finding of the named format falls on a line the change added
  * (takeover design 0.6 §5.6: the ratchet; this form arrives with the
- * takeover row, bootstrap-ratchet).
+ * takeover row, bootstrap-ratchet); `` walk <kind> $ <command> `` is a flow
+ * walk the user-graph job runs, never a merge check — it is recognized here
+ * and skipped: `check_commit` and the trunk's patrol run no walk line
+ * (user graph design 0.4.1 §2.7, §11 m7 ⑨).
  */
 import type { GraphNode } from '../graph/schema.ts'
 import { isCheckFormat, type CheckFormat } from '../env/check-entry.ts'
 import { isFloorPath } from './floor.ts'
 
-/** The forms a line of the gate may take, for a takeover draft to propose (design §3.8.1; the `changed` form arrives with the takeover row). */
+/** The forms a line of the gate may take, for a takeover draft to propose (design §3.8.1; the `changed` form arrives with the takeover row, the `walk` form with the user graph). */
 export const GATE_LINE_FORMS = [
   '$ <command>',
   '$ <command> when <paths>',
@@ -30,6 +33,7 @@ export const GATE_LINE_FORMS = [
   'push',
   'only <paths>',
   'changed <format> $ <command>',
+  'walk <kind> $ <command>',
 ] as const
 
 /** The files whose digest re-runs a `setup` command when none are named (§3.8.1; the git executor digests the same list). */
@@ -46,6 +50,15 @@ interface GateCommand {
   readonly changed?: CheckFormat
 }
 
+/** One recognized `` walk <kind> $ <command> `` line (user graph design 0.4.1 §2.7): the walk job runs it, the merge checks never do. */
+export interface GateWalk {
+  /** The acceptance line's index. */
+  readonly index: number
+  /** The walk kind the line names: one of `命令`, `截图`, `终端`, `你来走`. */
+  readonly walkKind: string
+  readonly command: string
+}
+
 export interface ParsedGate {
   readonly commands: readonly GateCommand[]
   /** The `push` line: the trunk is pushed, without force, after it moved. */
@@ -54,6 +67,8 @@ export interface ParsedGate {
   readonly only: readonly string[]
   /** The lines that are prose, with their indexes, shown as written. */
   readonly prose: readonly { readonly index: number, readonly text: string }[]
+  /** The recognized `walk` lines, kept out of the commands and out of the prose; the walk job reads them (through walkCommandsOf), the checks skip them. */
+  readonly walks: readonly GateWalk[]
 }
 
 function parseWhen(value: string): readonly string[] | undefined {
@@ -62,8 +77,15 @@ function parseWhen(value: string): readonly string[] | undefined {
 }
 
 /** The form of one backtick-wrapped line; undefined when it is prose. */
-function parseLine(line: string, index: number): GateCommand | { readonly push: true } | { readonly only: readonly string[] } | undefined {
+function parseLine(line: string, index: number): GateCommand | GateWalk | { readonly push: true } | { readonly only: readonly string[] } | undefined {
   if (line === 'push') return { push: true }
+  // A walk line is recognized and skipped, never run by a check (§2.7): the
+  // command's `{flow}` placeholder is what marks it a flow walk at all.
+  const walk = /^walk\s+(\S+)\s+\$\s(.+)$/.exec(line)
+  if (walk !== null) {
+    const command = walk[2]?.trim() ?? ''
+    return command.length > 0 && !/\r?\n/.test(command) ? { index, walkKind: walk[1] ?? '', command } : undefined
+  }
   if (line.startsWith('only ')) {
     const paths = parseWhen(line.slice('only '.length))
     return paths === undefined ? undefined : { only: paths }
@@ -96,11 +118,13 @@ function parseLine(line: string, index: number): GateCommand | { readonly push: 
  * The gate of a `norm-merge-gate` node (§3.8.1). An undefined node, or one
  * without a single command, is an empty gate — `check_commit` refuses it
  * (`no_gate_norm`), and so does the trunk's advance check. A `setup` line
- * without `when` watches `DEFAULT_WATCHED`; the caller fills that in.
+ * without `when` watches `DEFAULT_WATCHED`; the caller fills that in. A
+ * `walk` line is recognized and skipped: it is neither a command nor prose.
  */
 export function parseGateNorm(node: GraphNode | undefined): ParsedGate {
   const acceptance = node?.acceptance ?? []
   const commands: GateCommand[] = []
+  const walks: GateWalk[] = []
   const prose: { index: number, text: string }[] = []
   let push = false
   const only: string[] = []
@@ -123,9 +147,13 @@ export function parseGateNorm(node: GraphNode | undefined): ParsedGate {
       only.push(...parsed.only)
       return
     }
+    if ('walkKind' in parsed) {
+      walks.push(parsed)
+      return
+    }
     commands.push(parsed)
   })
-  return { commands, push, only, prose }
+  return { commands, push, only, prose, walks }
 }
 
 /**

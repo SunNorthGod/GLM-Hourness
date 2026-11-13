@@ -45,7 +45,7 @@
  * no sentence for, the gate's refusal header) are authored here (D9). The
  * drive's journal is src/execute/drive-log.ts.
  */
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { openEngine, type ApplyResult } from '../graph/engine.ts'
 import { acceptanceRounds, goalCompletion, isDesignReview, isPostRelease, MODULE_READERS, scopedTasks, sentBack, type AcceptanceRound, type CompletionFacts } from '../graph/execute-stage.ts'
 import { isGoalRound } from '../graph/digest-notice.ts'
@@ -75,6 +75,7 @@ import { PROC, unrefDelay, type LoopEmit } from './loop-link.ts'
 import { emitMetric, onMetricEvent } from './metrics.ts'
 import { writeWithRetry } from './retry.ts'
 import { batchSince, DRIVE_START_MARK, driveDecision, nextCounters, pendingRelease, pendingReport, RELEASE_MARK, returnsOf, type DriveCounters, type DriveDecision, type GoalView } from './tiers.ts'
+import { buildCovers, reconcileWalks, walkCommitsOf } from './walk.ts'
 
 // ---- the words (§3.9.1, §3.9.5; D9 for the authored ones) ----
 
@@ -109,7 +110,7 @@ const MOVED_MARK = '自动推进移到会话 '
 const CLOSED: ReadonlySet<string> = new Set(['done', 'dropped', 'superseded'])
 const GONE: ReadonlySet<string> = new Set(['dropped', 'superseded'])
 /** The execution activity of a goal round (§3.9.5): what a round without it did not do (D7). */
-const ACTIVITY: ReadonlySet<string> = new Set(['execute.dispatch', 'execute.handback', 'execute.plan', 'execute.ask', 'execute.check', 'execute.advance'])
+const ACTIVITY: ReadonlySet<string> = new Set(['execute.dispatch', 'execute.handback', 'execute.plan', 'execute.ask', 'execute.check', 'execute.advance', 'execute.walk'])
 const CREDENTIAL_MS = 10 * 60_000
 const PEAK_GRACE_MS = 5 * 60_000
 const START_TRIES = 3
@@ -805,10 +806,29 @@ export function createDrive(deps: DriveDeps): Drive {
 
   // ---- the completion gate (§3.9.3) ----
 
+  /**
+   * The `covers` of the goal's walk commits (user graph design 0.4.1 §5.5
+   * item 8): each walked commit counts when it is an ancestor of the
+   * reviewed trunk commit with only graph paths between. A read that fails
+   * keeps the goal open: the covers function throws, and the gate words it.
+   */
+  async function walkCoversOf(place: Place, graph: LoadedGraph, goal: GraphNode, latest: AcceptanceRound | undefined): Promise<(commit: string) => boolean> {
+    const graphRel = relative(place.project, place.graphDir).replaceAll('\\', '/')
+    try {
+      return await buildCovers(deps.git, place.project, latest?.commit, graphRel, walkCommitsOf(graph, goal))
+    }
+    catch (error) {
+      const why = error instanceof Error ? error.message : String(error)
+      return () => { throw new Error(why) }
+    }
+  }
+
   /** `goalCompletion` with the git facts read here (§3.9.3), and the acceptance round it judged by. */
   async function completionOf(place: Place, graph: LoadedGraph, goal: GraphNode): Promise<{ readonly verdict: ReturnType<typeof goalCompletion>, readonly latest: AcceptanceRound | undefined }> {
     const trunk = await trunkBranchOf(deps.git, place.project, graph)
     const tip = trunk === undefined ? undefined : await deps.git.resolveCommit(place.project, `refs/heads/${trunk}`)
+    const latest = acceptanceRounds(goal).at(-1)
+    const walkCovers = await walkCoversOf(place, graph, goal, latest)
     const tasks = subtreeOf(childrenIndex(graph), goal).filter(node => node.type === 'task')
     const onTrunk = new Map<string, boolean>()
     for (const task of tasks) {
@@ -826,7 +846,6 @@ export function createDrive(deps: DriveDeps): Drive {
         onTrunk.set(evidence.ref, on)
       }
     }
-    const latest = acceptanceRounds(goal).at(-1)
     const inReviewed = new Map<string, boolean>()
     if (latest !== undefined) {
       for (const ref of onTrunk.keys()) {
@@ -839,6 +858,7 @@ export function createDrive(deps: DriveDeps): Drive {
       isAncestor: (older, newer) => older === newer || (newer === latest?.commit && (inReviewed.get(older) ?? false)),
       running: new Set(registeredDispatches().map(attempt => attempt.childId)),
       runningChecks: deps.runningChecks().flatMap(job => job.tasks),
+      covers: walkCovers,
       pinsFresh: (line) => {
         const changes = staleness(graph, line, sha256Hex)
         return changes.length === 0 ? undefined : changes.map(change => `${change.id} ${change.change}`).join(', ')
@@ -1018,6 +1038,13 @@ export function createDrive(deps: DriveDeps): Drive {
     }
     catch (error) {
       deps.report(session, 'degraded', `对账时主干的证据没补完：${errorText(error)}`)
+    }
+    // The walk journals (user graph design 0.4.1 §2.7): abandoned jobs marked, a 命令 flow's evidence written again from its copy.
+    try {
+      evidence += await reconcileWalks(place.graphDir, place.exec, { report: deps.report, now }, session)
+    }
+    catch (error) {
+      deps.report(session, 'degraded', `对账时走一遍的证据没补完：${errorText(error)}`)
     }
     let actions = 0
     try {

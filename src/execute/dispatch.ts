@@ -49,6 +49,7 @@ import { floorHits, parseFloor } from './floor.ts'
 import { writeWithRetry } from './retry.ts'
 import { HANDBACK_SCHEMA, REVIEW_SCHEMA, mergeHandbackSchema } from './schemas.ts'
 import { DEFAULT_WATCHED, parseGateNorm } from './gate-norm.ts'
+import { buildCovers, modelTakesImages, pendingWalks, startWalkJob, walkBlockers, walkBriefLines, walkCommitsOf, type WalkDeps, type WalkDispatch, type WalkStart } from './walk.ts'
 import { createGit, watchedDigest, type Git } from './git.ts'
 import { emitMetric } from './metrics.ts'
 import { errorText, isRecord, refuse, toolShell } from '../design/tool-support.ts'
@@ -92,21 +93,7 @@ export function createGraphCache(problem: (reason: string) => void): GraphCache 
 
 /** The `subagents` and `llm` members the dispatch needs; undefined when the host has no subagents service. */
 interface DispatchServices {
-  readonly start: (spec: {
-    readonly provider: string
-    readonly label: string
-    readonly childId: string
-    readonly request: {
-      readonly cwd: string
-      readonly prompt: readonly unknown[]
-      readonly parent: LiveAgentLike
-      readonly agentOptions: { readonly provider: string, readonly model: string, readonly reasoningEffort?: string }
-      readonly outputSchema: unknown
-      readonly maxDepth?: number
-    }
-    readonly signal: AbortSignal
-    readonly delivery: 'caller'
-  }) => Promise<unknown>
+  readonly start: WalkStart
   readonly maxDepth: () => number | undefined
   readonly catalog: (provider: string) => Promise<readonly CatalogEntry[] | undefined>
   readonly efforts: (provider: string, model: string) => Promise<readonly string[] | undefined>
@@ -175,6 +162,8 @@ export interface DispatchDeps {
   readonly onHandback?: (attempt: Attempt, settlement: Settlement) => void
   /** The runner of the setup commands; tests inject failures. */
   readonly runCommand?: CommandRunner
+  /** The walk job's seams (user graph design 0.4.1 §5.5); undefined reads as no backend for the walk. */
+  readonly walk?: WalkDeps
   /** The clock of history timestamps; tests pin it. */
   readonly now?: () => Date
   /** The random source of the child id suffix; tests pin it. */
@@ -208,6 +197,7 @@ const OUTPUT = {
   type: 'object',
   properties: {
     task: { type: 'string' },
+    status: { type: 'string', enum: ['dispatched', 'walking'], description: 'walking: a goal whose user-graph flows must be walked first; the walk-done notice wakes you, then dispatch again. Every other result is dispatched.' },
     attempt: { type: 'integer' },
     childId: { type: 'string' },
     role: { type: 'string', enum: ['worker', 'review', 'acceptance-review'] },
@@ -219,8 +209,12 @@ const OUTPUT = {
     review: { type: 'string', enum: ['full', 'light', 'skip'] },
     brief: { type: 'string', description: '12 hex digits of the brief.' },
     plan: { type: 'string', enum: ['required', 'approved', 'skipped', 'none'] },
+    job: { type: 'string', description: 'The walk job, when status is walking.' },
+    flows: { type: 'array', items: { type: 'string' }, description: 'The flow ids the walk job runs, when status is walking.' },
+    waitingForPerson: { type: 'array', items: { type: 'string' }, description: 'The flow ids (你来走) that wait for the person’s own walk.' },
+    head: { type: 'string', description: 'The first 7 hex digits of the commit the person should walk, when a walk waits for them.' },
   },
-  required: ['task', 'attempt', 'childId', 'role', 'provider', 'model', 'brief', 'plan'],
+  required: ['task'],
 } as const
 
 /** The provider a dispatch without one runs on: the session's route (subagent:293–303). */
@@ -389,7 +383,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
 
   const tool = {
     ...toolShell('dispatch_task', dispatchDescription(), PARAMETERS, OUTPUT),
-    async execute(args: unknown, exec: ToolExecutionContext): Promise<DispatchSummary> {
+    async execute(args: unknown, exec: ToolExecutionContext): Promise<DispatchSummary | WalkDispatch> {
       const agent = exec.agent
       if (agent === undefined) refuse('forbidden', 'dispatch_task runs for an agent', 'dispatch_task is a tool of a session')
       let main = false
@@ -455,6 +449,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         : trunk ?? refuse('invalid', 'the trunk of the project cannot be read', 'the acceptance review reviews the trunk: check out the main branch in the main checkout, then dispatch again')
 
       const { args: parsed } = verdict
+      let walkLines: readonly string[] = []
       const provider = parsed.provider ?? routeOf(agent)
       if (provider === undefined) refuse('invalid', 'no provider to run the model on', 'pass provider, or dispatch from a session with a provider')
       const catalog = await services.catalog(provider)
@@ -463,6 +458,66 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
       const choice: ModelChoice = { provider, model: parsed.model, ...(parsed.reasoningEffort === undefined ? {} : { reasoningEffort: parsed.reasoningEffort }) }
       const checked = checkModelChoice(choice, catalog, efforts)
       if (!checked.ok) refuse(checked.code, checked.message, checked.hint)
+
+      // The user graph's walks come before the acceptance review (§5.5): the
+      // preconditions, then a background job on the check backend, then —
+      // when every flow holds a valid passing record — the review itself.
+      if (reviewedTrunk !== undefined) {
+        const blockers = walkBlockers(graph, node)
+        if (blockers.length > 0) {
+          refuse('walk_unready', `the flows of ${node.id} cannot be walked yet`, `${blockers.join('; ')}. Fix these, or put to the person what waits for them, then dispatch again.`)
+        }
+        const head = await git.resolveCommit(project, 'HEAD') ?? reviewedTrunk.sha
+        const graphRel = relative(project, dir).replaceAll('\\', '/')
+        let covers: (commit: string) => boolean
+        try {
+          covers = await buildCovers(git, project, reviewedTrunk.sha, graphRel, walkCommitsOf(graph, node))
+        }
+        catch (error) {
+          refuse('walk_unready', `the walk freshness cannot be checked: ${error instanceof Error ? error.message : String(error)}`, 'the trunk of the project cannot be read; check out the main branch in the main checkout, then dispatch again')
+        }
+        const pending = pendingWalks(graph, node, covers)
+        if (pending !== undefined && pending.auto.length === 0 && pending.person.length > 0) {
+          refuse('walk_unready', `the flows of ${node.id} wait for the person's own walk: ${pending.person.map(flow => flow.flow.id).join(', ')}`, `ask the person with propose_to_human (kind question) to walk them on commit ${head.slice(0, 7)}; if they walked another build, redeploy first. Record their walk with graph_walk and their words, then dispatch again.`)
+        }
+        if (pending !== undefined && pending.auto.length > 0) {
+          if (pending.auto.some(flow => flow.spec.kind === '截图') && !modelTakesImages(parsed.model, catalog)) {
+            refuse('walk_model_no_images', `model ${parsed.model} is not marked as taking images, and a 截图 flow needs one`, 'pick a model the catalog marks with image input, or change that flow’s 走法 to 终端, 命令 or 你来走')
+          }
+          if (deps.walk === undefined) {
+            refuse('inactive', 'the walk job has no backend', 'the walk of the user-graph flows needs the check backend (hourness-gate); dispatch again when the execute row is whole')
+          }
+          // A job still running for this goal is reported again, not started twice (§2.7 step 1).
+          const running = deps.walk.launcher.running().find(entry => entry.job.startsWith(`walk-${node.id}-`))
+          const job = running?.job ?? `walk-${node.id}-${Math.floor(random() * 2176782336).toString(36).padStart(6, '0')}`
+          if (running === undefined) {
+            await startWalkJob(deps.walk, {
+              job,
+              project,
+              graphDir: dir,
+              goal: node,
+              flows: pending.auto,
+              person: pending.person.map(flow => flow.flow.id),
+              choice,
+              why: parsed.why,
+              trunk: reviewedTrunk,
+              sessionId: agent.session?.id,
+              parent: agent as unknown as LiveAgentLike,
+            }, exec.signal)
+            emitMetric({ event: 'execute.walk', phase: 'start', goal: node.id, job, flows: pending.auto.map(flow => flow.flow.id) })
+          }
+          return {
+            task: node.id,
+            status: 'walking' as const,
+            job,
+            flows: pending.auto.map(flow => flow.flow.id),
+            waitingForPerson: pending.person.map(flow => flow.flow.id),
+            head: head.slice(0, 7),
+          }
+        }
+        // Every flow holds a valid passing record: the review goes out, its brief naming what the walks found (§5.5 step 5).
+        walkLines = walkBriefLines(graph, node)
+      }
 
       // The design review of a module: propose the review task, then dispatch it (§3.7.5). The review of a task runs in the reviewed task's worktree (§3.7.1).
       const designReview = verdict.subject === 'module'
@@ -552,7 +607,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
               gateCommands,
             })
           : reviewedTrunk !== undefined
-            ? renderAcceptanceBrief({ graph: targetGraph, goal: target, childId, trunk: reviewedTrunk, gateCommands })
+            ? renderAcceptanceBrief({ graph: targetGraph, goal: target, childId, trunk: reviewedTrunk, gateCommands, ...(walkLines.length > 0 ? { walks: walkLines } : {}) })
             : renderDesignReviewBrief({ graph: targetGraph, childId, parent: agent.id, task: target })
 
       // The policy the work is judged by, at dispatch time (reval design §4.1): the dispatch comment and the register carry it. Computed before the activation starts, so the register entry follows the start in the same synchronous stretch (§3.1.4).
@@ -696,7 +751,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
   // Every refusal is a fact of §3.16's table (`execute.dispatch-refused`): its code, never its text.
   return {
     ...tool,
-    async execute(args: unknown, exec: ToolExecutionContext): Promise<DispatchSummary> {
+    async execute(args: unknown, exec: ToolExecutionContext): Promise<DispatchSummary | WalkDispatch> {
       try {
         return await tool.execute(args, exec)
       }

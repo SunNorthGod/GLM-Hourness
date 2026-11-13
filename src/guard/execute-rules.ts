@@ -66,9 +66,16 @@ export const EXECUTE_RULES: readonly { readonly id: string, readonly title: stri
   { id: 'completion-gate', title: '目标完成要 harness 的核对和证据', mode: 'enforce' },
 ]
 
-/** The graph write tools, by DSH native name (§3.2.3). */
-const GRAPH_WRITE_NAMES: ReadonlySet<string> = new Set([
-  'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject',
+/**
+ * The graph write tools, by DSH native name (§3.2.3): every name of
+ * `GRAPH_TOOL_NAMES` but the four read-and-annotate tools (`graph_relink`
+ * and `graph_walk` arrived with the user graph, design 0.4.1 §3.5). Exported
+ * for the contracts test that pins this list and the wire face's removals
+ * against the graph row's tool names, so the next graph write tool cannot
+ * land without both.
+ */
+export const GRAPH_WRITE_NAMES: ReadonlySet<string> = new Set([
+  'graph_propose', 'graph_status', 'graph_edit', 'graph_link', 'graph_unlink', 'graph_relink', 'graph_verify', 'graph_decide', 'graph_approve', 'graph_reject', 'graph_walk',
 ])
 
 const MESSAGE_TOOLS: ReadonlySet<string> = new Set(['send_message', 'interrupt_agent'])

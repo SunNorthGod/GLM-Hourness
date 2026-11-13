@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createHash } from 'node:crypto'
-import { DEFAULT_WATCHED, GATE_LINE_FORMS, normDigest, parseGateNorm, unreadableOnlyLines } from '../src/execute/gate-norm.ts'
+import { DEFAULT_WATCHED, GATE_LINE_FORMS, normDigest, parseGateNorm, unreadableOnlyLines, type GateWalk } from '../src/execute/gate-norm.ts'
 import { node } from './execute-helpers.ts'
 
 const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
@@ -32,7 +32,7 @@ test('parseGateNorm: the command forms, the watch defaults, push and only', () =
 })
 
 test('parseGateNorm: an empty gate is empty, and a malformed line is prose', () => {
-  assert.deepEqual(parseGateNorm(undefined), { commands: [], push: false, only: [], prose: [] })
+  assert.deepEqual(parseGateNorm(undefined), { commands: [], push: false, only: [], prose: [], walks: [] })
   assert.deepEqual(parseGateNorm(gateNode([])).commands, [])
   const prose = parseGateNorm(gateNode(['`$ `', '`when src/`', '`only `']))
   assert.deepEqual(prose.commands, [])
@@ -53,8 +53,32 @@ test('unreadableOnlyLines: an only line the gate cannot read is named for a rewr
   assert.deepEqual(unreadableOnlyLines(undefined), [])
 })
 
-test('GATE_LINE_FORMS: the eight forms the takeover proposes (the `changed` form arrives with the takeover row)', () => {
-  assert.deepEqual([...GATE_LINE_FORMS], ['$ <command>', '$ <command> when <paths>', 'setup $ <command>', 'setup $ <command> when <paths>', 'patrol $ <command>', 'push', 'only <paths>', 'changed <format> $ <command>'])
+test('GATE_LINE_FORMS: the forms the takeover proposes (the `changed` form arrives with the takeover row, the `walk` form with the user graph)', () => {
+  assert.deepEqual([...GATE_LINE_FORMS], ['$ <command>', '$ <command> when <paths>', 'setup $ <command>', 'setup $ <command> when <paths>', 'patrol $ <command>', 'push', 'only <paths>', 'changed <format> $ <command>', 'walk <kind> $ <command>'])
+})
+
+test('parseGateNorm: a `walk` line is recognized and skipped — no command, no prose, no digest entry (user graph design 0.4.1 §2.7, §11 m7 ⑨)', () => {
+  const gate = parseGateNorm(gateNode([
+    '`$ npm test`',
+    '`walk 命令 $ npm run e2e -- --flow {flow}`',
+    '`walk 你来走 $ whatever {flow}`',
+    '`walk nope $ node x.js {flow}`',
+    '`walk`',
+  ]))
+  assert.deepEqual(gate.commands.map(command => command.command), ['npm test'])
+  const walks: readonly GateWalk[] = gate.walks
+  assert.deepEqual(walks.map(walk => [walk.index, walk.walkKind, walk.command]), [
+    [1, '命令', 'npm run e2e -- --flow {flow}'],
+    [2, '你来走', 'whatever {flow}'],
+    [3, 'nope', 'node x.js {flow}'],
+  ], 'the shape decides; whether the kind is usable says walkCommandsOf')
+  assert.deepEqual(gate.prose.map(line => line.index), [4])
+  const without = parseGateNorm(gateNode(['`$ npm test`']))
+  assert.equal(normDigest(gate, sha256), normDigest(without, sha256), 'a walk line is not a check; editing one does not void the check records')
+  // A line that takes a walk shape but no usable command stays prose.
+  const bad = parseGateNorm(gateNode(['`walk 命令 $ `']))
+  assert.deepEqual(bad.walks, [])
+  assert.deepEqual(bad.prose.map(line => line.index), [0])
 })
 
 test('normDigest: the parsed entries in order, stable, and moved by a change', () => {

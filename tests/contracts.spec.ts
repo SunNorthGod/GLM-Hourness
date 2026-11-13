@@ -41,6 +41,8 @@ import type { QuotaView } from '../src/shared/quota.ts'
 import { BOOTSTRAP_TOOL_NAMES, DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, ENV_TOOL_NAMES, EXECUTE_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_HABIT, MEMORY_TOOL_NAMES, OPERATE_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES, STRUCTURED_OUTPUT_TOOL, WORKER_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { emitMetric, setMetricSink, type MetricEvent } from '../src/execute/metrics.ts'
 import { HANDBACK_SCHEMA, REVIEW_SCHEMA, handbackProblems, mergeHandbackSchema, reviewProblems } from '../src/execute/schemas.ts'
+import { GRAPH_WRITE_TOOLS } from '../src/execute/faces.ts'
+import { GRAPH_WRITE_NAMES } from '../src/guard/execute-rules.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { apply as compactApply } from '../src/glm-prompt/compact-row.ts'
@@ -318,6 +320,17 @@ test('tool names: every orchestration tool kept resident exists, and GLM tool se
     assert.ok(known.has(name), `${name} is resident but no orchestration row registers it`)
     assert.ok(RESIDENT_TOOLS.has(name), name)
   }
+})
+
+test('tool names: the graph write tools are exactly the two M7 lists — the wire face\u2019s removals and worker-graph-readonly\u2019s refusals (user graph design 0.4.1 §3.4, §4)', () => {
+  // The graph row's tools minus the four read-and-annotate ones are the write
+  // tools. The user graph's graph_relink and graph_walk arrived in UG2; the
+  // next graph write tool must extend both M7 lists in the same change, and
+  // this comparison is what fails first when it does not.
+  const writes = GRAPH_TOOL_NAMES.filter(name => !['graph_show', 'graph_open', 'graph_focus', 'graph_comment'].includes(name))
+  assert.ok(writes.length >= 11, `the graph write tools are eleven since the user graph, got ${writes.length}`)
+  assert.deepEqual([...writes].sort(), [...GRAPH_WRITE_TOOLS].sort(), 'the wire face’s removals must be exactly the graph write tools')
+  assert.deepEqual([...writes].sort(), [...GRAPH_WRITE_NAMES].sort(), 'worker-graph-readonly must refuse exactly the graph write tools')
 })
 
 test('tool names: the execute row\'s three lists are the contract names, resident, and the dispatch gate keeps the DSH tools', () => {

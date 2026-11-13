@@ -194,8 +194,8 @@ export async function readChecks(execDir: string): Promise<VerifiedCheck[]> {
   return verified
 }
 
-/** Append one JSON line and flush it to the disk before the call returns (§3.8.3 step 8's `fh.sync()`). */
-async function appendJsonl(file: string, value: unknown): Promise<void> {
+/** Append one JSON line and flush it to the disk before the call returns (§3.8.3 step 8's `fh.sync()`); the walk job's journals share it. */
+export async function appendJsonl(file: string, value: unknown): Promise<void> {
   const handle = await open(file, 'a')
   try {
     await handle.appendFile(`${JSON.stringify(value)}\n`, 'utf8')
@@ -347,9 +347,9 @@ function killTree(child: ChildProcess): void {
  * Run one command line of the gate (§3.8.1: through the shell, the text
  * comes from a norm the person approved) in `cwd`, its output and errors in
  * `logFile`, never in memory. The time limit and the signal end the whole
- * process tree.
+ * process tree. The walk job runs its flow commands through it too.
  */
-async function runLine(command: string, cwd: string, logFile: string, timeoutMs: number, signal: AbortSignal): Promise<CommandRun> {
+export async function runLine(command: string, cwd: string, logFile: string, timeoutMs: number, signal: AbortSignal): Promise<CommandRun> {
   const started = Date.now()
   const handle = await open(logFile, 'w')
   try {
@@ -477,15 +477,15 @@ type GateOutcome =
 
 const short = (commit: string): string => commit.slice(0, 12)
 
-/** M3's `takeSnapshot` as the gate guard takes it: a saved snapshot or nothing to save is fine, anything else stops the reset. */
-function snapshotSaver(deps: CheckDeps, project: string): SnapshotSaver {
+/** M3's `takeSnapshot` as the gate guard takes it: a saved snapshot or nothing to save is fine, anything else stops the reset. The walk job saves through the same saver. */
+export function snapshotSaver(snapshots: SnapshotEnvironment | undefined, project: string): SnapshotSaver {
   return async (repo, invocation, risk) => {
     const outcome = await takeSnapshot(
       repo,
       { dir: repo, repoOptions: [], configs: [], sub: invocation.sub, args: invocation.args, unknownGlobal: false },
       risk,
       { command: `git ${invocation.sub} ${invocation.args.join(' ')}`, sessionDir: project },
-      deps.snapshots ?? realSnapshotEnvironment,
+      snapshots ?? realSnapshotEnvironment,
     )
     switch (outcome.kind) {
       case 'saved':
@@ -564,6 +564,61 @@ function baselinesOf(gate: ParsedGate, graph: LoadedGraph): ReadonlyMap<number, 
   return map
 }
 
+/** The outcome of the gate's setup step (§3.8.3 step 6). */
+export interface GateSetup {
+  /** Whether a setup command ran for this run. */
+  readonly ran: boolean
+  /** Why the step failed; the caller turns it into its own refusal. */
+  readonly failure?: {
+    /** `setup`: a setup command failed or was stopped. `record`: the digest record cannot be written. */
+    readonly code: 'setup' | 'record'
+    readonly command: string
+    readonly exit: number
+    readonly problem?: string
+    readonly log: string
+  }
+}
+
+/**
+ * Step 6 of §3.8.3: the setup commands when the worktree is new or a watched
+ * file changed, the digest recorded at `<exec>/gate-setup.json`. The merge
+ * check and the walk job share one gate worktree, so they share this step
+ * and its digest file: whichever ran last keeps the worktree ready for the
+ * other. `created` is whether the caller just created the worktree.
+ */
+export async function gateSetup(
+  setups: ParsedGate['commands'],
+  worktree: string,
+  execDir: string,
+  created: boolean,
+  at: string,
+  logOf: (name: string) => { readonly file: string, readonly shown: string },
+  timeoutMs: number,
+  signal: AbortSignal,
+): Promise<GateSetup> {
+  if (setups.length === 0) return { ran: false }
+  const setupFile = join(execDir, SETUP_FILE)
+  const watched = [...new Set(setups.flatMap(command => command.when ?? []))]
+  const digest = await watchedDigest(worktree, watched)
+  if (!created && await recordedSetup(setupFile) === digest) return { ran: false }
+  for (const command of setups) {
+    const log = logOf(`setup-${command.index}`)
+    const outcome = await runLine(command.command, worktree, log.file, timeoutMs, signal)
+    if (signal.aborted) return { ran: true, failure: { code: 'setup', command: command.command, exit: -1, problem: 'stopped; the process tree was ended', log: log.shown } }
+    if (outcome.exit !== 0) {
+      await rm(setupFile, { force: true }).catch(() => undefined)
+      return { ran: true, failure: { code: 'setup', command: command.command, exit: outcome.exit, ...(outcome.problem === undefined ? {} : { problem: outcome.problem }), log: log.shown } }
+    }
+  }
+  try {
+    await writeFile(setupFile, `${JSON.stringify({ digest, at })}\n`, 'utf8')
+  }
+  catch (error) {
+    return { ran: true, failure: { code: 'record', command: setups[0]?.command ?? '', exit: -1, problem: `the setup record cannot be written: ${error instanceof Error ? error.message : String(error)}`, log: logOf('setup-record').shown } }
+  }
+  return { ran: true }
+}
+
 /**
  * Steps 4–8 of §3.8.3 for one commit. Never throws: every way it does not
  * get to a record is a refusal with its code.
@@ -592,7 +647,7 @@ async function runGate(deps: CheckDeps, spec: GateRunSpec, signal: AbortSignal):
     if (!tree.ok || tree.value === undefined) return refused('gate_worktree_invalid', tree.ok ? `${spec.commit} has no tree` : tree.reason)
 
     // Step 5: the gate worktree on the commit, saved before it is cleaned.
-    const prepared = await deps.git.prepareGateWorktree({ root: spec.project, commit: spec.commit, saveSnapshot: snapshotSaver(deps, spec.project) })
+    const prepared = await deps.git.prepareGateWorktree({ root: spec.project, commit: spec.commit, saveSnapshot: snapshotSaver(deps.snapshots, spec.project) })
     if (!prepared.ok) return refused(prepared.code, prepared.reason)
     try {
       await mkdir(runDir, { recursive: true })
@@ -604,30 +659,14 @@ async function runGate(deps: CheckDeps, spec: GateRunSpec, signal: AbortSignal):
 
     // Step 6: setup when the worktree is new or a watched file changed.
     const setups = spec.gate.commands.filter(command => command.kind === 'setup')
-    let setupRan = false
-    if (setups.length > 0) {
-      const setupFile = join(execDir, SETUP_FILE)
-      const watched = [...new Set(setups.flatMap(command => command.when ?? []))]
-      const digest = await watchedDigest(prepared.path, watched)
-      if (prepared.created || await recordedSetup(setupFile) !== digest) {
-        setupRan = true
-        for (const command of setups) {
-          const log = logOf(`setup-${command.index}`)
-          const outcome = await runLine(command.command, prepared.path, log.file, timeoutMs, signal)
-          if (signal.aborted) return refused('aborted', 'the check was stopped during the setup')
-          if (outcome.exit !== 0) {
-            await rm(setupFile, { force: true }).catch(() => undefined)
-            return refused('setup_failed', `the setup command \`${command.command}\` exited ${outcome.exit}${outcome.problem === undefined ? '' : ` (${outcome.problem})`}; log ${log.shown}`)
-          }
-        }
-        try {
-          await writeFile(setupFile, `${JSON.stringify({ digest, at })}\n`, 'utf8')
-        }
-        catch (error) {
-          return refused('write_failed', `the setup record cannot be written: ${errorText(error)}`)
-        }
-      }
+    const setup = await gateSetup(setups, prepared.path, execDir, prepared.created, at, logOf, timeoutMs, signal)
+    if (setup.failure !== undefined) {
+      const { code, command, exit, problem, log } = setup.failure
+      if (code === 'setup' && problem === 'stopped; the process tree was ended') return refused('aborted', 'the check was stopped during the setup')
+      if (code === 'record') return refused('write_failed', problem ?? 'the setup record cannot be written')
+      return refused('setup_failed', `the setup command \`${command}\` exited ${exit}${problem === undefined ? '' : ` (${problem})`}; log ${log}`)
     }
+    const setupRan = setup.ran
 
     // Step 7: the commands in order; the first failure stops. A `changed`
     // line fails only on findings the change added (§5.6): the rest of its

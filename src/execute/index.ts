@@ -92,6 +92,7 @@ import { createLoopLink, stopDraftAction } from './loop-link.ts'
 import { createDrive } from './drive.ts'
 import { installDispatchNotice } from './notice.ts'
 import { createGateLauncher, GATE_PROVIDER } from './gate-provider.ts'
+import type { WalkDeps, WalkStart } from './walk.ts'
 import { installTrunkGate } from './advance.ts'
 import { floorHits, parseFloor } from './floor.ts'
 
@@ -238,6 +239,20 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     rulesNote = `服务 ${EXECUTE_SERVICE} 没提供上：${error instanceof Error ? error.message : String(error)}`
   }
 
+  // The merge checks (§3.8.2–§3.8.3) and the walk job (user graph design 0.4.1 §5.5) share the check backend: its launcher is built here, attached to the subagents service when that arrives.
+  const launcher = createGateLauncher()
+  // The walk-review activations go through `startActivation`; undefined until the subagents service is there (a `截图` or `终端` flow then reads as `review_failed`).
+  let walkStart: WalkStart | undefined
+  const walkDeps: WalkDeps = {
+    execDir,
+    git: createGit(),
+    launcher,
+    report,
+    emit: (project, sessionId, event) => { loopLink.emit(project, sessionId, event) },
+    runCommand: realCommandRunner,
+    get start() { return walkStart },
+  }
+
   const dispatchDeps: DispatchDeps = {
     lookup: ctx,
     graphDir: graphDirOf,
@@ -250,6 +265,7 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     stoppedInMemory,
     reviewTarget: (graph, reviewTask) => reviewTargetOf(graph, reviewTask, sha256Hex),
     onHandback: (attempt, settlement) => startHandback(handbackDeps, attempt, settlement),
+    walk: walkDeps,
   }
   const dispatch = dispatchTool(dispatchDeps)
 
@@ -292,7 +308,6 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   const requestTools = [submitPlanTool(requestDeps), askMainTool(requestDeps), answerWorkerTool(requestDeps)]
 
   // The merge checks (§3.8.2–§3.8.3): check_commit, its jobs on the check backend; a pass writes the evidence an earlier unchecked move waits for.
-  const launcher = createGateLauncher()
   const checkDeps: CheckDeps = {
     lookup: ctx,
     cache,
@@ -365,9 +380,14 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
       ctx.inject(['subagents'], subagentsCtx => {
         try {
           const undo = launcher.attach(subagentsCtx.subagents)
+          const sub = subagentsCtx.subagents
+          walkStart = spec => sub.startActivation(spec)
           gateNote = undefined
           reactivate()
-          return undo
+          return () => {
+            walkStart = undefined
+            undo()
+          }
         }
         catch (error) {
           gateFailed(error)

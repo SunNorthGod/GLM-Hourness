@@ -5,15 +5,17 @@
  * registry (read per request at the wire layer), and it names, for one
  * session, the registered (native) tools that session does not see. The
  * tools stay registered globally, so a call by name still executes and each
- * tool body checks its caller; the graph row's nine write tools are what
+ * tool body checks its caller; the graph row's write tools — every name of
+ * `GRAPH_TOOL_NAMES` but the four read-and-annotate tools, eleven since the
+ * user graph added `graph_relink` and `graph_walk` — are what
  * `worker-graph-readonly` catches by name (§3.2.3).
  *
  * Who loses what: an agent that is not the main agent loses the execute
  * row's and the operate row's tools; an agent that is no registered worker
  * or reviewer loses the worker tools; a reviewer also loses `submit_plan`.
  * Every agent of a chain rooted in the main agent — a registered worker or
- * reviewer, and the read-only subagents they start — loses the nine graph
- * write tools and keeps `graph_show`, `graph_open`, `graph_focus` and
+ * reviewer, and the read-only subagents they start — loses the graph write
+ * tools and keeps `graph_show`, `graph_open`, `graph_focus` and
  * `graph_comment`. A session the row cannot resolve in the live-agent
  * registry counts as no removal: the face keeps every tool, the way a
  * session of a row that is off does.

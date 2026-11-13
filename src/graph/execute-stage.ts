@@ -26,6 +26,7 @@ import type { LoadedGraph } from './parse.ts'
 import { ancestorsOf, childrenIndex, subtreeOf } from './projection.ts'
 import { STAGES, type GraphNode, type Stage } from './schema.ts'
 import { effectiveStage, goalOf } from './stage.ts'
+import { userCompletionItems } from './user-graph.ts'
 
 export { directionsOf }
 
@@ -309,6 +310,13 @@ export interface CompletionFacts {
    * `staleness` from src/graph/pins.ts, which imports this file.
    */
   readonly pinsFresh: (pinsLine: string) => string | undefined
+  /**
+   * Whether a walked step's commit still counts against the reviewed trunk
+   * commit (user graph design 0.4.1 §5.5 item 8: an ancestor, and only graph
+   * paths between the two). The caller reads it with git; a goal without a
+   * user graph never calls it, and a call that throws keeps the goal open.
+   */
+  readonly covers?: (commit: string) => boolean
 }
 
 const ACCEPTANCE_ROUND = /^验收审查第 (\d+) 轮：(APPROVED|CHANGES_REQUESTED) · 挡路 (\d+) · (\S+) · @([0-9a-f]{7,40}) · (pins: .+?)(?: · 停下)?$/
@@ -419,6 +427,18 @@ export function goalCompletion(graph: LoadedGraph, goal: GraphNode, facts: Compl
   for (const childId of [...running].slice(0, 10)) gaps.push(`dispatch ${childId} is still running`)
   const ids = new Set(all.map(node => node.id))
   for (const task of [...new Set(facts.runningChecks)].filter(id => ids.has(id)).slice(0, 10)) gaps.push(`a merge check of task ${task} is still running`)
+  // The user graph's own gate (§5.5 item 8): every live approved step walked,
+  // its last passing walk still counting against the reviewed trunk. A covers
+  // that cannot be read keeps the goal open (fail closed, R5-F3).
+  try {
+    const covers = facts.covers ?? ((): boolean => { throw new Error('the walk freshness cannot be checked without the trunk facts') })
+    for (const item of userCompletionItems(graph, goal, covers)) {
+      if (!item.ok) gaps.push(item.hint)
+    }
+  }
+  catch (error) {
+    gaps.push(`the user graph's walk state could not be checked: ${error instanceof Error ? error.message : String(error)}`)
+  }
   try {
     if (readers.isSplit(graph, goal)) {
       for (const module of modulesInDesign(graph, goal, readers)) {
