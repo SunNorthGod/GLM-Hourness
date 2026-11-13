@@ -421,14 +421,29 @@ async function checkReport(dir: string, flow: FlowView, timedOut: boolean): Prom
   return { ok: true, steps }
 }
 
-/** Copy the report directory of one flow into the run's directory; the copy is what the evidence and the reviewer name. */
+/** One read with brief retries: a file the driver's closing process just wrote can still be held for a moment (Windows). */
+async function readCopyable(file: string): Promise<Buffer> {
+  let last: unknown
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await readFile(file)
+    }
+    catch (error) {
+      last = error
+      await new Promise(resolve => setTimeout(resolve, 40 * (attempt + 1)))
+    }
+  }
+  throw last instanceof Error ? last : new Error(String(last))
+}
+
+/** Copy the report directory of one flow into the run's directory; the copy is what the evidence and the reviewer name, so a file that cannot be copied fails the flow rather than leaving the copy silently short. */
 async function copyReport(worktree: string, runsDir: string, flowId: string): Promise<void> {
   const from = join(worktree, ...REPORT_ROOT.split('/'), flowId)
   const to = join(runsDir, flowId)
   await mkdir(to, { recursive: true })
-  for (const name of await readdir(from).catch(() => [])) {
-    const content = await readFile(join(from, name)).catch(() => undefined)
-    if (content !== undefined) await writeFile(join(to, name), content).catch(() => undefined)
+  for (const name of await readdir(from)) {
+    const content = await readCopyable(join(from, name))
+    await writeFile(join(to, name), content)
   }
 }
 
@@ -737,7 +752,11 @@ async function walkFlow(deps: WalkDeps, spec: WalkJobSpec, worktree: string, run
     await writeFlowEvidence(deps, { graphDir: spec.graphDir, commit: spec.trunk.sha, job: spec.job, sessionId: spec.sessionId }, flow, kind, command, join(runsDir, flow.flow.id), report, run.exit ?? -1, undefined)
     return flowEnd(timedOut ? 'timeout' : 'no_report', run.exit, report.reason)
   }
-  await copyReport(worktree, runsDir, flow.flow.id)
+  try {
+    await copyReport(worktree, runsDir, flow.flow.id)
+  } catch (error) {
+    return flowEnd('failed', run.exit, `the run's copy could not be written (${error instanceof Error ? error.message : String(error)})`)
+  }
   let judged: ReadonlyMap<string, { readonly ok: boolean, readonly why?: string }> | undefined
   if (kind === '截图' || kind === '终端') {
     const artifacts = new Map<string, string>()
