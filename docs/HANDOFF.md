@@ -11,10 +11,10 @@
 
 - 仓库：`C:\Users\29596\Desktop\Project\GLM-Hourness`；git，远端 Gitee 私有仓库 `NorthGod_BFDG/GLM-Hourness`，主分支 `main`。
 - 目标：让 GLM 以 ZCode 训练分布住进 DeepSeek Harness（DSH），并在其上建一套编排层，把开发体系量化成由 harness 保证实施的标准（`CHARTER.md`）。
-- 运行时：DSH Desktop `0.2.1-rc.3`，profile `desktop`；ZCode 基线 3.17.1（2026-10-30 起，此前为 3.16.3；跟进见项目图 `zcode-3171-follow`）。
+- 运行时：DSH Desktop `0.2.2-rc.1`（2026-11-10 起，此前 0.2.1-rc.3；面层迁移 2026-11-11 完成，§10）；ZCode 基线 3.17.1（2026-10-30 起，此前为 3.16.3；装机 3.18.x 逐版本复核不换基线，跟进见项目图 `zcode-3171-follow` 与 `.agents/tasks/zcode-drift/findings.md`）。
 - 安装形态（split 第 5、6 步起，`DESIGN.md` §2.3）：仓库产出两个 bundle，各带自己的客户端面，profile 里是指向检出的链接，加载 `packages/*/dist` 与 `packages/*/ui/client.js`。行名都经包命名（宿主行 `<包名>/<行>`，客户端行是精确包名），设置页「内置插件」给每行显示 `locale/` 里的标题（m8-row-titles，桌面版截图核对随批次 L4）：
-  - `dsh-glm-zcode@0.3.0`（`packages/glm`）：GLM 通道包，4 个宿主行（`glm-llm`、`glm-login`、`glm-prompt`、`glm-compact`）加客户端行 `glm-ui`（包自己的客户端面，GLM 按钮与设置页；plain-ui 分支 2026-11-04 加 GLM 上手：按钮「GLM · 上手」、开场画面小按钮、三步对话框、设置页重开与未登录中文报错，桌面版待核。默认启用：split 合入后的桌面版验收第一轮通过后启用，2026-10-29）；
-  - `dsh-hourness@0.3.0`（`packages/hourness`）：编排层包，9 个宿主行（`data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`、`rules`、`design`）加客户端行 `ui`（包自己的客户端面，项目图面板）。
+  - `dsh-glm-zcode@0.3.1`（`packages/glm`）：GLM 通道包，4 个宿主行（`glm-llm`、`glm-login`、`glm-prompt`、`glm-compact`）加客户端行 `glm-ui`（包自己的客户端面，GLM 按钮与设置页；plain-ui 分支 2026-11-04 加 GLM 上手：按钮「GLM · 上手」、开场画面小按钮、三步对话框、设置页重开与未登录中文报错，桌面版待核。默认启用：split 合入后的桌面版验收第一轮通过后启用，2026-10-29）；
+  - `dsh-hourness@0.3.1`（`packages/hourness`）：编排层包，16 个宿主行（`data`、`guard`、`memory`、`workflow`、`hourness`、`graph`、`graph-panel`、`rules`、`design`、`execute`、`loops`、`metrics`、`env`、`lessons`、`transcript`、`bootstrap`——bootstrap 出厂启用随 `7176e503`；各行现况以 `packages/hourness/cordis.patch.yml` 与 README 行表为准）加客户端行 `ui`（包自己的客户端面，项目图面板）。
   - 根 `package.json`（`dsh-glm-hourness`）只是开发工作区，不再是 bundle。
   - profile 切换（split 合入时段，2026-10-29）：`glmsandbox` 20:43:14、桌面版 20:43:33（UTC+8）各自只改了 `package.json` 的 `dsh.profile.bundles` 与 `dependencies`。桌面版的 bundles 第 3 项 `dsh-glm-hourness` 原位换成 `dsh-glm-zcode`、`dsh-hourness`，删去末项 `dsh-glm-hourness-ui`，共 13 项：`@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app`、`dsh-glm-zcode`、`dsh-hourness` 与 9 个 experimental bundle（次序不变）；`glmsandbox` 的 bundles 为 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-headless`、`dsh-glm-zcode`、`dsh-hourness`。两边的 dependencies 都只有 `dsh-glm-zcode`、`dsh-hourness`，`link:` 指向主检出的 `packages/glm`、`packages/hourness`；`cordis.patch.yml` 没有改，本项目五条覆盖项按行 id 匹配。备份留在各自的 profile 目录：`desktop/package.json.bak-1793277813423`、`desktop/pnpm-lock.yaml.bak-1793277813423`、`glmsandbox/package.json.bak-1793277794809`、`glmsandbox/pnpm-lock.yaml.bak-1793277794809`，`split` 关闭之前不删，之后删不删由人定。
 - 拉取改变包布局的提交之后（split 起每次都按这一条做）：先关桌面版，再 `npm run build`，再启动。运行中的桌面版在下一次 profile 写入时就按磁盘上的布局重组（`DEVELOPMENT.md` §1.1）。
@@ -36,7 +36,7 @@ package.json   开发工作区根（dsh-glm-hourness，private，不是 bundle�
 ~/.dsh/glm-hourness/  仓库外，用户级目录：audit/usage.jsonl、credentials.json（2026-10-29 起为版本 2）、device-mid.txt（m1-parity 起不再使用，DESIGN.md §2.4）
 reference/     不入库：审计用参考源码（zcode-api、deepseek-harness、ZCode、zcode-plugins）、ZCode 发布包副本 zcode-3.16.3/ 与 zcode-3.17.1/（逐字门禁只读后者）与桌面版运行时包导出 dsh-desktop-0.2.1-rc.3/，约 2.5 GB
 .agents/       不入库：编排任务状态与一次性脚本（如 m1-parity 集成报告 zcode-parity/、批次 L4 记录 m1-l4/、借用审计报告 dsh-borrow-audit/report.md、缓存调查 cache-2026-10-28/）
-.worktrees/    不入库：并行线的 git 工作树。目前没有登记的工作树，目录为空（graph-engine 留下的空目录已于 2026-10-29 删除）
+.worktrees/    不入库：并行线的 git 工作树。当前登记：ablation-trial（钉住，游离 db2bbc69）、comms-split（设计驻留）、user-graph（完成班在用）；reval/nowait 等已合并线的工作树与分支已清（2026-11-13/14）
 ```
 
 ## 3. 组件状态
