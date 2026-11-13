@@ -7,9 +7,11 @@
  * before the delete, and that a board which cannot see the main agent's session
  * clearly removes nothing.
  *
- * The host is the fake schedule service of tests/fake-rc3.ts, which refuses
- * what rc.3 refuses, so a reconciliation that passes a catalog row as
- * `expected` gets `invalid_rule` here just as it would on the real host.
+ * The host is the fake schedule service of tests/fake-rc3.ts, which models the
+ * rc.1 face and refuses what it refuses: `create` without an explicit
+ * `{kind: 'session'}` target (rc.1's own default would open a fresh session
+ * per reminder), a `timing` without exactly the kind and its selector, and an
+ * `edit` whose `expectedUpdatedAt` is not the stored stamp (`schedule_conflict`).
  */
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
@@ -119,6 +121,15 @@ const removedLines = async (root: string): Promise<RemovedTaskLine[]> => {
   return text.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line) as RemovedTaskLine)
 }
 
+/** Bind the weekly entry to its reminder and hand back the reminder's id. */
+async function bindOne(it: Bench): Promise<string> {
+  it.entries = [weekly()]
+  await reconcile(it.deps)
+  const task = it.schedule.tasks()[0]
+  assert.ok(task !== undefined, 'the reminder was made')
+  return task.id
+}
+
 test('bind: a person\'s weekly entry becomes one reminder on the main agent\'s session, written the way the board writes them', async () => {
   await bench(async (it) => {
     it.entries = [weekly()]
@@ -127,7 +138,9 @@ test('bind: a person\'s weekly entry becomes one reminder on the main agent\'s s
     const tasks = it.schedule.tasks()
     assert.equal(tasks.length, 1)
     const task = tasks[0]
-    assert.equal(task.sessionId, HOLDER)
+    // The target is an explicit session one: rc.1's own default would open a fresh session per reminder.
+    assert.deepEqual(task.target, { kind: 'session', sessionId: HOLDER })
+    assert.equal(task.involvedSessionIds.includes(HOLDER), true)
     assert.equal(task.title, `${TASK_TITLE_PREFIX}每周五看一眼没合入的分支`)
     assert.ok(task.prompt.startsWith(`${TASK_PROMPT_PREFIX}u-1a2b3c4d (added by the human). Change it on the loop board, not here.\n`))
     assert.equal(entryIdOfPrompt(task.prompt), 'u-1a2b3c4d')
@@ -140,6 +153,8 @@ test('bind: a person\'s weekly entry becomes one reminder on the main agent\'s s
     assert.equal(binding.sessionId, HOLDER)
     assert.equal(binding.fingerprint, fingerprintOf(task))
     assert.equal(binding.specDigest, specDigestOf(weekly(), ZONE))
+    // The create named the holder session as the actor, so the host's notice skips the session the board writes for.
+    assert.deepEqual(it.schedule.calls.filter(call => call.op === 'create').map(call => call.actor), [HOLDER])
     // A second reconciliation with nothing changed makes nothing and touches nothing.
     const again = await reconcile(it.deps)
     assert.deepEqual([...again.created, ...again.updated, ...again.removed], [])
@@ -189,7 +204,7 @@ test('bind: the main agent moves to another session: the new reminder is made fi
     assert.deepEqual([...done.moved], ['u-1a2b3c4d'])
     const tasks = it.schedule.tasks()
     assert.equal(tasks.length, 1)
-    assert.equal(tasks[0].sessionId, 'session-second')
+    assert.deepEqual(tasks[0].target, { kind: 'session', sessionId: 'session-second' })
     assert.deepEqual(deletions(it.records), [{ why: 'moved', deleted: true }])
     const lines = await removedLines(it.root)
     assert.equal(lines.length, 1)
@@ -197,21 +212,31 @@ test('bind: the main agent moves to another session: the new reminder is made fi
     assert.equal(lines[0].entry, 'u-1a2b3c4d')
     assert.equal(lines[0].record.id, first.id)
     assert.equal(lines[0].record.prompt, first.prompt)
+    // The delete of the moved-away task went through one edit, with the stamp the catalog gave.
+    const edit = it.schedule.calls.filter(call => call.op === 'edit' && call.action === 'delete')
+    assert.equal(edit.length, 1)
+    assert.equal(edit[0].id, first.id)
+    assert.equal(edit[0].actor, 'session-second')
+    assert.equal(typeof edit[0].expectedUpdatedAt, 'string')
   })
 })
 
-test('bind: a reminder somebody edited on the DSH task page is put back with the record of list(), one drift record and one line a day', async () => {
+test('bind: a reminder somebody edited on the DSH task page is put back with one edit and the catalog stamp, one drift record and one line a day', async () => {
   await bench(async (it) => {
-    it.entries = [weekly()]
-    await reconcile(it.deps)
-    const task = it.schedule.tasks()[0]
-    it.schedule.edit(task.id, { prompt: 'Loop board: u-1a2b3c4d (added by the human). Change it on the loop board, not here.\nsomething the person typed' })
+    const task = await bindOne(it)
+    it.schedule.edit(task, { prompt: 'Loop board: u-1a2b3c4d (added by the human). Change it on the loop board, not here.\nsomething the person typed' })
+    const drifted = it.schedule.tasks()[0]
     const done = await reconcile(it.deps)
     assert.deepEqual([...done.updated], ['u-1a2b3c4d'])
     assert.equal(it.schedule.tasks()[0].prompt, promptOf(weekly()))
-    // The host refuses a catalog row as `expected` (review F7): a reconciliation that passed one would never put anything back.
+    // rc.1 has no session-scoped list and no whole-record expected: the repair is one edit with the stamp of the catalog row.
     const asked: readonly ScheduleCall[] = it.schedule.calls
-    assert.ok(asked.some(call => call.op === 'list'), 'the expected record comes from list')
+    const edit = asked.find(call => call.op === 'edit' && call.action === 'update')
+    assert.ok(edit !== undefined, 'the repair is one edit')
+    assert.equal(edit.id, task)
+    assert.equal(edit.actor, HOLDER)
+    assert.equal(edit.expectedUpdatedAt, drifted.updatedAt)
+    assert.ok(!asked.some(call => call.op === 'list'), 'there is no list to read an expected record from')
     assert.deepEqual(drifts(it.records), ['edited'])
     assert.equal(done.lines.filter(line => line.includes('在 DSH 的自动化任务页里改的不算数')).length, 1)
     // The same task says it once a day.
@@ -224,14 +249,12 @@ test('bind: a reminder somebody edited on the DSH task page is put back with the
 
 test('bind: a reminder of the board\'s that no binding names is taken back when the entry is still there, and counted as a duplicate when the entry already has one', async () => {
   await bench(async (it) => {
-    it.entries = [weekly()]
-    await reconcile(it.deps)
-    const task = it.schedule.tasks()[0]
+    const task = await bindOne(it)
     // The state file was lost: the binding is gone, the reminder is not.
     it.state.bindings = {}
     const done = await reconcile(it.deps)
     assert.deepEqual([...done.adopted], ['u-1a2b3c4d'])
-    assert.equal(it.state.bindings['u-1a2b3c4d'].scheduleId, task.id)
+    assert.equal(it.state.bindings['u-1a2b3c4d'].scheduleId, task)
     assert.equal(it.schedule.tasks().length, 1)
     // A second reminder for the same entry is one too many.
     it.schedule.seed(HOLDER, { title: titleOf(weekly().entry), prompt: promptOf(weekly()) })
@@ -384,6 +407,95 @@ test('bind: a one-shot entry that has fired is left as DSH left it and not made 
     const again = await reconcile(it.deps)
     assert.deepEqual([...again.created], [])
     assert.equal(it.schedule.tasks().length, 1)
+  })
+})
+
+test('bind: a task the person paused is left alone — no repair, no not-delivered remake, no removal — and counted once a day', async () => {
+  await bench(async (it) => {
+    const task = await bindOne(it)
+    it.schedule.pause(task)
+    // Past due and past the not-delivered window: a pause is the person's change, not a missed delivery.
+    it.schedule.due(task, new Date(it.at.ms - 1000).toISOString())
+    it.at.ms += NOT_DELIVERED_MS + 60_000
+    const done = await reconcile(it.deps)
+    assert.deepEqual([...done.removed, ...done.updated], [])
+    assert.deepEqual(deletions(it.records), [])
+    assert.equal(it.delivered.length, 0)
+    assert.equal(it.schedule.tasks().length, 1)
+    assert.equal(it.schedule.tasks()[0].id, task)
+    assert.equal(done.lines.filter(line => line.includes('人暂停的提醒：1 条')).length, 1)
+    // The same day says it once.
+    const again = await reconcile(it.deps)
+    assert.equal(again.lines.filter(line => line.includes('人暂停的提醒')).length, 0)
+    // The person resumes: the board writes nothing (the content still matches), and the next delivery counts as a run.
+    it.schedule.resume(task)
+    it.schedule.fire(task, { messageId: 'message-paused-1' })
+    const resumed = await reconcile(it.deps)
+    assert.deepEqual([...resumed.removed, ...resumed.updated], [])
+    assert.deepEqual(it.records.filter(record => record.kind === 'loop-done').map(record => record.kind === 'loop-done' ? record.outcome : ''), ['delivered'])
+    assert.equal(it.state.bindings['u-1a2b3c4d'].deliveredMessageId, 'message-paused-1')
+  })
+})
+
+test('bind: a paused reminder the state does not name is adopted, not deleted, and joins the day\'s count', async () => {
+  await bench(async (it) => {
+    const task = await bindOne(it)
+    it.state.bindings = {}
+    it.schedule.pause(task)
+    const done = await reconcile(it.deps)
+    assert.deepEqual([...done.adopted], ['u-1a2b3c4d'])
+    assert.deepEqual([...done.removed], [])
+    assert.equal(it.schedule.tasks().length, 1)
+    assert.ok(done.lines.some(line => line.includes('人暂停的提醒：1 条')))
+  })
+})
+
+test('bind: an edit refused as schedule_conflict deletes the task and makes it again', async () => {
+  await bench(async (it) => {
+    const task = await bindOne(it)
+    it.schedule.edit(task, { prompt: 'Loop board: u-1a2b3c4d (added by the human). Change it on the loop board, not here.\nsomething the person typed' })
+    it.schedule.conflictOnce(task)
+    const done = await reconcile(it.deps)
+    assert.deepEqual([...done.updated], ['u-1a2b3c4d'])
+    assert.deepEqual(deletions(it.records), [{ why: 'repair', deleted: true }])
+    assert.equal(it.schedule.tasks().length, 1)
+    assert.notEqual(it.schedule.tasks()[0].id, task)
+    assert.equal(it.schedule.tasks()[0].prompt, promptOf(weekly()))
+  })
+})
+
+test('bind: the fake refuses a create without an explicit session target, the trap rc.1\'s default would spring', async () => {
+  await bench(async (it) => {
+    const timing = { kind: 'daily' as const, daily: { time: '09:00:00', time_zone: ZONE } }
+    const missing = { title: 'x', prompt: 'y', timing } as unknown as Parameters<typeof it.schedule.service.create>[0]
+    await assert.rejects(async () => it.schedule.service.create(missing, HOLDER), /session targets only/)
+    const wrong = { title: 'x', prompt: 'y', timing, target: { kind: 'new_once' as const } } as unknown as Parameters<typeof it.schedule.service.create>[0]
+    await assert.rejects(async () => it.schedule.service.create(wrong, HOLDER), /session targets only/)
+    assert.equal(it.schedule.tasks().length, 0)
+  })
+})
+
+test('edit: the absent-updatedAt trap of rc.1 — a wrong stamp conflicts, an omitted stamp skips the check, null matches only an unwritten row', async () => {
+  await bench(async (it) => {
+    const made = await it.schedule.service.create({ title: 'x', prompt: 'y', timing: { kind: 'every', every_seconds: 3600 }, target: { kind: 'session', sessionId: HOLDER } }, HOLDER)
+    assert.equal(typeof made.updatedAt, 'string')
+    // `null` matches rows without an `updatedAt`; this row has one, so it is a conflict.
+    assert.deepEqual(await it.schedule.service.edit({ id: made.id, action: 'update', patch: { title: 'null stamp' }, expectedUpdatedAt: null }, HOLDER), { id: made.id, code: 'schedule_conflict' })
+    // A stale stamp is a conflict.
+    assert.deepEqual(await it.schedule.service.edit({ id: made.id, action: 'update', patch: { title: 'stale' }, expectedUpdatedAt: new Date(Date.parse(made.updatedAt!) - 1_000).toISOString() }, HOLDER), { id: made.id, code: 'schedule_conflict' })
+    // The stamp the row carries writes.
+    const current = await it.schedule.service.edit({ id: made.id, action: 'update', patch: { title: 'current' }, expectedUpdatedAt: made.updatedAt }, HOLDER)
+    assert.ok(!('code' in current) && !('deleted' in current))
+    // The field left out skips the check, whatever the row carries.
+    const skipped = await it.schedule.service.edit({ id: made.id, action: 'update', patch: { title: 'unchecked' } }, HOLDER)
+    assert.ok(!('code' in skipped) && !('deleted' in skipped))
+    assert.equal(skipped.title, 'unchecked')
+    // A row the host never wrote: `null` matches it.
+    const bare = it.schedule.seed(HOLDER, { title: `${TASK_TITLE_PREFIX}bare`, prompt: promptOf(plugin()) }, null)
+    assert.equal(bare.updatedAt, undefined)
+    const onBare = await it.schedule.service.edit({ id: bare.id, action: 'update', patch: { title: 'named' }, expectedUpdatedAt: null }, HOLDER)
+    assert.ok(!('code' in onBare) && !('deleted' in onBare))
+    assert.equal(onBare.title, 'named')
   })
 })
 

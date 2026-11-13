@@ -873,96 +873,133 @@ export interface SessionQueryService {
 }
 
 /**
- * One stored reminder of the host-wide schedule service, as it comes back
- * from `create`, `list` and `catalog` (rc.3 dsh-schedule: the decoders
- * require exactly the keys of their kind, schedule:256–312 `at` and `after`,
- * 356–365 `every`, 411–421 `daily`, 463–472 `weekly`, and the cron decoder
- * after it; `scheduledAt` is a canonical UTC instant, schedule:150–156). The
- * keys of the other kinds are optional here because one type covers all of
- * them; the loop board reads only the ones of the record's own `kind`.
+ * One stored reminder of the host-wide schedule service, as it comes back flat
+ * inside every `create`/`edit` result and every `catalog` entry (rc.1
+ * dsh-schedule: the decoders require exactly the keys of their kind,
+ * types/domain.js:276–384 `at` … `cron` and :993 `rrule`; `scheduledAt` is a
+ * canonical UTC instant). The keys of the other kinds are optional here
+ * because one type covers all of them; the loop board reads only the ones of
+ * the record's own `kind`. A person can turn the board's reminder into an
+ * `rrule` one on the DSH task page; the board reads no `rrule` key, so such a
+ * task always looks edited and is put back (the same convergence an edit gets).
  */
 export interface ScheduleRecordLike {
   readonly id: string
-  readonly kind: 'at' | 'after' | 'every' | 'daily' | 'weekly' | 'cron'
+  readonly kind: 'at' | 'after' | 'every' | 'daily' | 'weekly' | 'cron' | 'rrule'
   readonly title: string
   readonly prompt: string
   readonly scheduledAt: string
+  readonly afterSeconds?: number
   readonly everySeconds?: number
-  /** `HH:mm:ss.SSS`, normalized by the host (schedule:1056–1057). */
+  /** `HH:mm:ss.SSS`, normalized by the host. */
   readonly time?: string
-  /** The `Intl` canonical zone name the host normalized to (schedule:212–222). */
+  /** The `Intl` canonical zone name the host normalized to. */
   readonly timeZone?: string
   readonly weekdays?: readonly number[]
   readonly expression?: string
+  readonly rrule?: string
 }
 
-/** One row of `schedule.catalog()`: the record, the session it is bound to, whether it still fires, and the last delivery (schedule:2129–2136; the delivery is written at schedule:1598). */
+/** Where a reminder is delivered (rc.1 dsh-schedule, types/storage.js:43–48). A `session` target names the session that receives it; `new_once` opens one session for the next delivery; `new` opens one per delivery. */
+export type ScheduleTarget =
+  | { readonly kind: 'session', readonly sessionId: string }
+  | { readonly kind: 'new_once', readonly sessionId?: string, readonly create?: { readonly cwd?: string, readonly agentPreset?: string } }
+  | { readonly kind: 'new', readonly create?: { readonly cwd?: string, readonly agentPreset?: string } }
+
+/** One row of `schedule.catalog()`: the record flat, the delivery target, the involved sessions, whether it still fires, and the last delivery (rc.1 types/index.js:630–644). */
 export interface ScheduleCatalogEntry extends ScheduleRecordLike {
-  readonly sessionId: string
-  readonly status: 'active' | 'inactive'
+  readonly target: ScheduleTarget
+  readonly involvedSessionIds: readonly string[]
+  /** `paused` is a person's deliberate stop on the DSH task page; `ended` is a one-shot that has fired (or an rc.3 `inactive` row as the host decodes it). */
+  readonly status: 'active' | 'paused' | 'ended'
+  readonly createdAt?: string
+  /** Written again on every committed write, strictly later than before; the board passes it as `edit`'s `expectedUpdatedAt`. Absent on rows the host never wrote. */
+  readonly updatedAt?: string
+  readonly executionActive?: true
+  readonly deliveryFloorEndsAt?: string
   readonly lastDelivery?: { readonly scheduledAt: string, readonly deliveredAt: string, readonly messageId: string }
 }
 
 /**
- * The timing of a reminder as `create` and the `change` of `update` take it:
- * exactly one selector, in the host's snake-case wire form (schedule:2083–2093
- * dispatches on these keys; `every_seconds` is at least 60, schedule:21; the
- * `change` of an update carries `kind` and its own selector and nothing else,
- * schedule:1710–1716).
+ * The timing of a reminder as `create` and the `timing` of an `edit` patch
+ * take it: exactly the kind and its own selector, nothing else (rc.1
+ * dsh-schedule, types/update.js:4–14 checks the two-key shape at the
+ * management boundary; `every_seconds` is at least 60).
  */
-export type ScheduleSelector =
-  | { readonly at: string }
-  | { readonly every_seconds: number }
-  | { readonly daily: { readonly time: string, readonly time_zone: string } }
-  | { readonly weekly: { readonly time: string, readonly time_zone: string, readonly weekdays: readonly number[] } }
-  | { readonly cron: { readonly expression: string, readonly time_zone: string } }
+export type ScheduleTiming =
+  | { readonly kind: 'at', readonly at: string }
+  | { readonly kind: 'after', readonly after_seconds: number }
+  | { readonly kind: 'every', readonly every_seconds: number }
+  | { readonly kind: 'daily', readonly daily: { readonly time: string, readonly time_zone: string } }
+  | { readonly kind: 'weekly', readonly weekly: { readonly time: string, readonly time_zone: string, readonly weekdays: readonly number[] } }
+  | { readonly kind: 'cron', readonly cron: { readonly expression: string, readonly time_zone: string } }
+  | { readonly kind: 'rrule', readonly rrule: string }
 
-/** The timing change of an `update`: the kind and the one selector that belongs to it (schedule:1710–1716). */
-export type ScheduleChange = { readonly kind: 'at' | 'every' | 'daily' | 'weekly' | 'cron' } & ScheduleSelector
+/** The selector of a timing without its `kind`: the shape the board computes before it names the kind. */
+type WithoutKind<T> = T extends unknown ? Omit<T, 'kind'> : never
+export type ScheduleSelector = WithoutKind<ScheduleTiming>
 
-/**
- * What `update` answers (schedule:2197–2224, resolveScheduleUpdate at
- * schedule:1806–1837): the committed record, `updated: false` for a change the
- * host normalized to the stored rule, or a result that changed nothing with
- * the code `schedule_conflict`, `schedule_not_found`, `schedule_ended`,
- * `invalid_rule`, `invalid_prompt` or `subagent_session`. An input that does
- * not decode has no `id`.
- */
-export type ScheduleUpdateResult =
-  | { readonly id: string, readonly updated: true, readonly record: ScheduleRecordLike }
-  | { readonly id: string, readonly updated: false, readonly record?: ScheduleRecordLike, readonly code?: string, readonly message?: string }
-  | { readonly id?: undefined, readonly updated?: undefined, readonly code: string, readonly message?: string }
-
-/**
- * The `schedule` service members the loop board calls (rc.3 dsh-schedule,
- * `super(ctx, "schedule")` at schedule:1992; the model-facing tools read the
- * same service as `ctx.schedule`, tool-schedule:540). Read through
- * `ctx.get('schedule')` and not through `inject`: a headless composition
- * mounts no schedule row, and the board degrades without one (loop board
- * design §10.1, §11.1).
- *
- * `create` throws `ScheduleInputError` for a title that is empty or over 120
- * characters (schedule:93–97), for more or fewer than one selector
- * (schedule:2083) and for a session a delegated child owns
- * (schedule:2254–2261, the only session it refuses: an archived session is
- * accepted). `delete` is a hard removal, the saved deliveries with it
- * (schedule:2164–2182). `list` returns the active records of one session
- * (schedule:2120–2122), which is what an `update` has to pass as `expected`.
- */
-export interface ScheduleService {
-  create(sessionId: string, request: { readonly title: string, readonly prompt: string } & ScheduleSelector, signal?: AbortSignal): Promise<ScheduleRecordLike>
-  list(request: { readonly sessionId: string }): Promise<readonly ScheduleRecordLike[]>
-  catalog(): Promise<readonly ScheduleCatalogEntry[]>
-  delete(request: { readonly sessionId: string, readonly id: string }, signal?: AbortSignal): Promise<{ readonly id: string, readonly deleted: boolean, readonly code?: string }>
-  update(request: {
-    readonly sessionId: string
-    readonly id: string
-    /** The complete record the caller observed, as `list` gave it; anything else is `invalid_rule` or `schedule_conflict` (schedule:1806–1815). */
-    readonly expected: ScheduleRecordLike
+/** One `edit` operation: an update applies every patch field in one write; a delete removes the task and its saved deliveries (rc.1 sch:2404–2441). An empty update patch is `invalid_rule`. */
+interface ScheduleEditRequest {
+  readonly id: string
+  readonly action: 'update' | 'delete'
+  readonly patch?: {
     readonly title?: string
     readonly prompt?: string
-    readonly change?: ScheduleChange
-  }, signal?: AbortSignal): Promise<ScheduleUpdateResult>
+    readonly timing?: ScheduleTiming
+    readonly target?: ScheduleTarget
+    readonly active?: boolean
+  }
+  /**
+   * Optimistic concurrency: pass the `updatedAt` the catalog entry carried.
+   * Leaving the field out skips the check; passing `null` matches rows that
+   * have none (rc.1 sch:2415–2418 compares against `current.updatedAt ?? null`).
+   * A mismatch answers `schedule_conflict`.
+   */
+  readonly expectedUpdatedAt?: string | null
+}
+
+/**
+ * What `edit` answers (rc.1 sch:2404–2441): the updated entry for an update,
+ * `{deleted: true}` for a delete, or a non-mutating miss or conflict. A bad
+ * patch (empty, unknown kind) throws `ScheduleInputError` instead.
+ */
+export type ScheduleEditResult =
+  | ScheduleCatalogEntry
+  | { readonly id: string, readonly deleted: true }
+  | { readonly id: string, readonly code: 'schedule_not_found' | 'schedule_conflict' }
+
+/**
+ * The `schedule` service members the loop board calls (rc.1 dsh-schedule,
+ * `TypertRemoteService` at sch:2116; the model-facing tools read the same
+ * service). Read through `ctx.get('schedule')` and not through `inject`: a
+ * headless composition mounts no schedule row, and the board degrades without
+ * one (loop board design §10.1, §11.1).
+ *
+ * `create(request, actorSessionId)` takes the timing in `request.timing` and
+ * the delivery destination in `request.target`. The `target` is typed as
+ * required and session-bound on purpose: rc.1's own default is
+ * `{kind: 'new_once'}` (sch:2237), which would open a fresh session for every
+ * reminder the board makes. `actorSessionId` is the session the board writes
+ * for (the holder's), so the host's `[SCHEDULE CHANGE]` notice skips it
+ * (types/index.js:646–668). `create` throws `ScheduleInputError` for an empty
+ * or over-120-character title, an empty prompt, a timing without exactly two
+ * keys, and a target session that is archived, nonexistent or a delegated
+ * child's. `edit` merges rc.3's update and delete; `view` reads one task
+ * without activating its target sessions. `list` exists host-level (not
+ * session-scoped) and the board has no use for it, so it is not in this face.
+ */
+export interface ScheduleService {
+  create(request: {
+    readonly title: string
+    readonly prompt: string
+    readonly timing: ScheduleTiming
+    /** The board always delivers to one live session; rc.1's default would open one per reminder. */
+    readonly target: { readonly kind: 'session', readonly sessionId: string }
+  }, actorSessionId?: string, signal?: AbortSignal): Promise<ScheduleCatalogEntry>
+  catalog(): Promise<readonly ScheduleCatalogEntry[]>
+  view(request: { readonly id: string }): Promise<ScheduleCatalogEntry | { readonly id: string, readonly code: 'schedule_not_found' }>
+  edit(request: ScheduleEditRequest, actorSessionId?: string, signal?: AbortSignal): Promise<ScheduleEditResult>
 }
 
 /**

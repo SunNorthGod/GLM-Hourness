@@ -13,8 +13,9 @@
  *    the reminders of a session nobody can be told through any more, or — while
  *    it cannot see the session clearly — changes nothing at all. This is the
  *    only place that keeps a reminder from being made on an archived session:
- *    `schedule.create` takes one (schedule:2254–2261 refuses a delegated
- *    child's session and nothing else);
+ *    the host refuses an archived, nonexistent or delegated child's target
+ *    session anyway (rc.1 dsh-schedule `validateTarget`, an rc.3 host took
+ *    an archived one);
  * 1. make what is missing: a new entry, a new main agent, a task somebody
  *    deleted;
  * 2. move what is bound to another session: make the new one first, then
@@ -22,7 +23,9 @@
  * 3. repair what does not match: the board's own digest of the entry, and the
  *    fingerprint of the host's record, say whether the entry changed or
  *    somebody edited the task on the DSH task page. An edit from outside is
- *    put back and said once a day;
+ *    put back and said once a day. A task the person paused on the DSH task
+ *    page is their deliberate change: the board writes nothing of it — no
+ *    repair, no move, no delete-and-recreate — and says the count once a day;
  * 4. take in or remove a reminder of the board's that no binding names: after
  *    the state file was lost it is taken back, and once the entry is certainly
  *    gone it is removed. "Certainly" is the point: an entry missing because the
@@ -39,12 +42,12 @@
 import { createHash } from 'node:crypto'
 import { canonicalJson } from '../rules/model.ts'
 import type { StoreIo } from '../rules/store.ts'
-import type { ScheduleCatalogEntry, ScheduleChange, ScheduleRecordLike, ScheduleSelector, ScheduleService, ServiceLookup } from '../shared/dsh-min.ts'
+import type { ScheduleCatalogEntry, ScheduleRecordLike, ScheduleSelector, ScheduleService, ScheduleTiming, ServiceLookup } from '../shared/dsh-min.ts'
 import { canDeliver, mayRemoveHolderTasks, type HolderState } from './holder.ts'
 import type { Binding, RunnableEntry, RuntimeState } from './inbox.ts'
 import type { LoopEntryDefinition } from './model.ts'
 import { firedRecord, runId, type LoopRecord } from './records.ts'
-import { entryIdOfPrompt, isOurs, promptLineOf, removeTask, TASK_TITLE_PREFIX, trimRemovedTasks, type RemoveDeps, type RemoveReason } from './remove.ts'
+import { entryIdOfPrompt, isOurs, promptLineOf, removeTask, targetSessionIdOf, TASK_TITLE_PREFIX, trimRemovedTasks, type RemoveDeps, type RemoveReason } from './remove.ts'
 import type { LoopsPaths } from './store.ts'
 import type { Trigger } from './trigger.ts'
 import type { Deliver } from './deliver.ts'
@@ -61,7 +64,7 @@ export function scheduleOf(ctx: ServiceLookup, problem?: (text: string) => void)
   const value: unknown = typeof ctx.get === 'function' ? ctx.get('schedule') : undefined
   if (value === undefined || value === null) return undefined
   const members = value as Partial<Record<keyof ScheduleService, unknown>>
-  if (['create', 'list', 'catalog', 'delete', 'update'].every(name => typeof members[name as keyof ScheduleService] === 'function')) return value as ScheduleService
+  if (['create', 'edit', 'catalog'].every(name => typeof members[name as keyof ScheduleService] === 'function')) return value as ScheduleService
   problem?.('DSH 的定时服务形状不对，到点告诉主 Agent 的条目不跑')
   return undefined
 }
@@ -94,14 +97,14 @@ export function selectorOf(when: Trigger, systemTimeZone: string): ScheduleSelec
   }
 }
 
-/** The kind the host's `change` needs beside the selector (schedule:1710–1716); `once` is the host's `at`. */
-function changeKindOf(when: Trigger): ScheduleChange['kind'] | undefined {
+/** The whole `timing` object the host's `create` and `edit` patch take (rc.1 types/update.js:4–14); `once` is the host's `at`. */
+function timingOf(when: Trigger, systemTimeZone: string): ScheduleTiming | undefined {
   switch (when.kind) {
-    case 'once': return 'at'
-    case 'every': return 'every'
-    case 'daily': return 'daily'
-    case 'weekly': return 'weekly'
-    case 'cron': return 'cron'
+    case 'once': return { kind: 'at', at: when.at }
+    case 'every': return { kind: 'every', every_seconds: when.seconds }
+    case 'daily': return { kind: 'daily', daily: { time: `${when.time}:00`, time_zone: when.timeZone ?? systemTimeZone } }
+    case 'weekly': return { kind: 'weekly', weekly: { time: `${when.time}:00`, time_zone: when.timeZone ?? systemTimeZone, weekdays: [...when.weekdays] } }
+    case 'cron': return { kind: 'cron', cron: { expression: when.expression, time_zone: when.timeZone ?? systemTimeZone } }
     default: return undefined
   }
 }
@@ -117,7 +120,9 @@ export function specDigestOf(item: RunnableEntry, systemTimeZone: string): strin
  * The fingerprint of a host record: its kind, title and prompt, with the
  * timing keys of its own kind. The next due time of a repeating reminder
  * changes with every delivery, so it is not part of it; for a one-shot it is
- * the time itself (design §6.2).
+ * the time itself (design §6.2). An `rrule` record — a rule a person picked on
+ * the DSH task page — has no key of its own here: it reads as the cron shape
+ * and so always looks edited, which puts the board's timing back.
  */
 export function fingerprintOf(record: ScheduleRecordLike): string {
   const timing: Record<string, unknown> = record.kind === 'at' || record.kind === 'after'
@@ -230,6 +235,8 @@ export async function reconcile(deps: BindDeps): Promise<BindOutcome> {
         delete state.bindings[entry]
         continue
       }
+      // A task the person paused stays: their deliberate change survives the holder being gone, and comes back with the session.
+      if (task.status === 'paused') continue
       if (await drop(task, why, entry)) delete state.bindings[entry]
     }
     return out
@@ -246,12 +253,12 @@ export async function reconcile(deps: BindDeps): Promise<BindOutcome> {
    * (review F13).
    */
   for (const task of catalog) {
-    if (task.status === 'inactive' || !isOurs(new Set(), task)) continue
+    if (task.status === 'ended' || !isOurs(new Set(), task)) continue
     const entry = entryIdOfPrompt(task.prompt)
-    if (entry === undefined || state.bindings[entry] !== undefined || task.sessionId !== session) continue
+    if (entry === undefined || state.bindings[entry] !== undefined || targetSessionIdOf(task) !== session) continue
     const item = wanted.get(entry)
     if (item === undefined) continue
-    state.bindings[entry] = { scheduleId: task.id, sessionId: task.sessionId, specDigest: specDigestOf(item, zone), fingerprint: fingerprintOf(task), ...(task.lastDelivery === undefined ? {} : { deliveredMessageId: task.lastDelivery.messageId }) }
+    state.bindings[entry] = { scheduleId: task.id, sessionId: session, specDigest: specDigestOf(item, zone), fingerprint: fingerprintOf(task), ...(task.lastDelivery === undefined ? {} : { deliveredMessageId: task.lastDelivery.messageId }) }
     out.adopted.push(entry)
   }
 
@@ -261,16 +268,18 @@ export async function reconcile(deps: BindDeps): Promise<BindOutcome> {
     if (selector === undefined) continue
     const digest = specDigestOf(item, zone)
     const task = binding === undefined ? undefined : byId.get(binding.scheduleId)
-    // A one-shot that has fired stays as DSH left it: inactive, and not made again (design §6.2).
+    // A one-shot that has fired stays as DSH left it: ended, and not made again (design §6.2).
     if (binding?.done === true && task !== undefined) continue
-    if (task?.status === 'inactive') {
+    if (task?.status === 'ended') {
       state.bindings[item.entry.id] = { ...binding, done: true }
       out.lines.push(`「${item.entry.title}」已跑过（${task.lastDelivery?.deliveredAt ?? task.scheduledAt}）`)
       continue
     }
+    // A person's pause is deliberate: no repair, no move, no delete-and-remake; the page says the count once a day.
+    if (task?.status === 'paused') continue
     // Item 2: the main agent moved. The new reminder is made first, so a crash in between leaves one too many, not none.
-    if (task !== undefined && task.sessionId !== session) {
-      const made = await create(schedule, session, item, selector, deps)
+    if (task !== undefined && targetSessionIdOf(task) !== session) {
+      const made = await create(schedule, session, item, deps)
       if (made === undefined) continue
       state.bindings[item.entry.id] = made
       out.moved.push(item.entry.id)
@@ -279,7 +288,7 @@ export async function reconcile(deps: BindDeps): Promise<BindOutcome> {
     }
     // Item 1: nothing is there (a new entry, a new main agent, a task somebody deleted).
     if (task === undefined) {
-      const made = await create(schedule, session, item, selector, deps)
+      const made = await create(schedule, session, item, deps)
       if (made === undefined) continue
       state.bindings[item.entry.id] = made
       out.created.push(item.entry.id)
@@ -288,7 +297,7 @@ export async function reconcile(deps: BindDeps): Promise<BindOutcome> {
     // Item 3: the content does not match. Whose change it was decides what the page says.
     const outside = fingerprintOf(task) !== binding.fingerprint
     if (outside || binding.specDigest !== digest) {
-      const repaired = await repair(schedule, session, item, selector, task, digest, deps, drop)
+      const repaired = await repair(schedule, session, item, task, digest, deps, drop)
       if (repaired !== undefined) {
         state.bindings[item.entry.id] = repaired
         out.updated.push(item.entry.id)
@@ -305,17 +314,17 @@ export async function reconcile(deps: BindDeps): Promise<BindOutcome> {
   // Item 4, second half: what is left over is removed, once the board can say why.
   const bound = new Set(Object.values(state.bindings).map(binding => binding.scheduleId))
   for (const task of catalog) {
-    if (bound.has(task.id) || gone.has(task.id) || task.status === 'inactive') continue
+    if (bound.has(task.id) || gone.has(task.id) || task.status === 'ended' || task.status === 'paused') continue
     if (!isOurs(new Set(), task)) continue
     const entry = entryIdOfPrompt(task.prompt)
     if (entry === undefined) continue
     const item = wanted.get(entry)
-    if (!mayRemoveHolderTasks(holder) && task.sessionId === session) {
+    if (!mayRemoveHolderTasks(holder) && targetSessionIdOf(task) === session) {
       out.kept.push(`${task.id}：此刻看不清主 Agent 的会话，多出来的提醒先不删`)
       if (sayOnce(state, task.id, deps.now())) out.lines.push('DSH 里多了一条循环板的提醒，此刻不删')
       continue
     }
-    if (item !== undefined && task.sessionId !== session) {
+    if (item !== undefined && targetSessionIdOf(task) !== session) {
       await drop(task, 'moved', entry)
       continue
     }
@@ -328,15 +337,28 @@ export async function reconcile(deps: BindDeps): Promise<BindOutcome> {
     else out.kept.push(`${task.id}：条目 ${entry} 此刻不在执行表里，先等它`)
   }
 
+  // The person-paused tasks of the board's, said once a day (design §6.2: a pause is the person's change, not a miss).
+  const paused = catalog.filter(task => task.status === 'paused' && (bound.has(task.id) || (isOurs(new Set(), task) && entryIdOfPrompt(task.prompt) !== undefined)))
+  if (paused.length > 0 && sayOnce(state, 'loops:paused', deps.now())) out.lines.push(`人暂停的提醒：${paused.length} 条`)
+
   await trim(deps, state)
   return out
 }
 
-/** Make one reminder and the binding of it; undefined when the host refused it, which is said once. */
-async function create(schedule: ScheduleService, session: string, item: RunnableEntry, selector: ScheduleSelector, deps: BindDeps): Promise<Binding | undefined> {
+/**
+ * Make one reminder and the binding of it; undefined when the host refused it,
+ * which is said once. The target is an explicit `{kind: 'session'}` one: the
+ * host's own default would be `{kind: 'new_once'}`, a fresh session per
+ * reminder. The actor is the holder session, so the host's `[SCHEDULE CHANGE]`
+ * notice skips the session the board writes for.
+ */
+async function create(schedule: ScheduleService, session: string, item: RunnableEntry, deps: BindDeps): Promise<Binding | undefined> {
+  const zone = (deps.timeZone ?? ((): string => Intl.DateTimeFormat().resolvedOptions().timeZone))()
+  const timing = timingOf(item.entry.when, zone)
+  if (timing === undefined) return undefined
   try {
-    const record = await schedule.create(session, { title: titleOf(item.entry), prompt: promptOf(item), ...selector })
-    return { scheduleId: record.id, sessionId: session, specDigest: specDigestOf(item, (deps.timeZone ?? ((): string => Intl.DateTimeFormat().resolvedOptions().timeZone))()), fingerprint: fingerprintOf(record) }
+    const record = await schedule.create({ title: titleOf(item.entry), prompt: promptOf(item), timing, target: { kind: 'session', sessionId: session } }, session)
+    return { scheduleId: record.id, sessionId: session, specDigest: specDigestOf(item, zone), fingerprint: fingerprintOf(record) }
   }
   catch (error) {
     deps.report(`「${item.entry.title}」的到点提醒建不上：${message(error)}`, 'degraded')
@@ -345,47 +367,51 @@ async function create(schedule: ScheduleService, session: string, item: Runnable
 }
 
 /**
- * Put one reminder back to what the entry says. The host needs the whole
- * record the caller observed as `expected`, and it must come from `list`: a row
- * of the catalog carries three keys more and the host's whole-key decoding
- * refuses it (schedule:74–77, 1806–1815; review F7).
+ * Put one reminder back to what the entry says: one `edit` with the patch and
+ * the `updatedAt` of the catalog row as `expectedUpdatedAt` (rc.1 has no
+ * whole-record `expected` and no session-scoped `list`; the review-F7 rule
+ * that the expected record must come from `list` is gone with them). A row the
+ * host never wrote has no `updatedAt`, and the field is left out — `undefined`
+ * skips the check, while `null` would only match unwritten rows and refuse
+ * every written one.
  */
 async function repair(
   schedule: ScheduleService,
   session: string,
   item: RunnableEntry,
-  selector: ScheduleSelector,
   task: ScheduleCatalogEntry,
   digest: string,
   deps: BindDeps,
   drop: (task: ScheduleCatalogEntry, why: RemoveReason, entry?: string) => Promise<boolean>,
 ): Promise<Binding | undefined> {
-  const kind = changeKindOf(item.entry.when)
-  if (kind === undefined) return undefined
+  const timing = timingOf(item.entry.when, (deps.timeZone ?? ((): string => Intl.DateTimeFormat().resolvedOptions().timeZone))())
+  if (timing === undefined) return undefined
   const base = { scheduleId: task.id, sessionId: session, specDigest: digest }
   try {
-    const active = await schedule.list({ sessionId: session })
-    const expected = active.find(record => record.id === task.id)
-    if (expected === undefined) {
-      // DSH no longer has it: nothing to put back, the next reconciliation makes it again.
-      const made = await create(schedule, session, item, selector, deps)
+    const result = await schedule.edit({
+      id: task.id,
+      action: 'update',
+      patch: { title: titleOf(item.entry), prompt: promptOf(item), timing },
+      ...(task.updatedAt === undefined ? {} : { expectedUpdatedAt: task.updatedAt }),
+    }, session)
+    if ('code' in result) {
+      if (result.code === 'schedule_not_found') {
+        // DSH no longer has it: nothing to put back, the next reconciliation makes it again.
+        const made = await create(schedule, session, item, deps)
+        return made === undefined ? undefined : { ...made, specDigest: digest }
+      }
+      if (!mayRemoveHolderTasks(deps.holder())) {
+        deps.report(`DSH 里的「${item.entry.title}」和循环板的不一样，此刻不重建，下一拍再试（${result.code}）`, 'info')
+        return undefined
+      }
+      // The task cannot be put back (a conflict, a rule DSH will not take): it goes and is made again.
+      if (!await drop(task, 'repair', item.entry.id)) return undefined
+      const made = await create(schedule, session, item, deps)
       return made === undefined ? undefined : { ...made, specDigest: digest }
     }
-    const result = await schedule.update({ sessionId: session, id: task.id, expected, title: titleOf(item.entry), prompt: promptOf(item), change: { kind, ...selector } })
-    if (result.updated === true) return { ...base, fingerprint: fingerprintOf(result.record) }
-    if (result.code === undefined) return { ...base, fingerprint: fingerprintOf(expected) }
-    if (result.code === 'schedule_not_found') {
-      const made = await create(schedule, session, item, selector, deps)
-      return made === undefined ? undefined : { ...made, specDigest: digest }
-    }
-    if (!mayRemoveHolderTasks(deps.holder())) {
-      deps.report(`DSH 里的「${item.entry.title}」和循环板的不一样，此刻不重建，下一拍再试（${result.code}）`, 'info')
-      return undefined
-    }
-    // The task cannot be put back (a conflict, a rule DSH will not take, an ended task): it goes and is made again.
-    if (!await drop(task, 'repair', item.entry.id)) return undefined
-    const made = await create(schedule, session, item, selector, deps)
-    return made === undefined ? undefined : { ...made, specDigest: digest }
+    // The `{deleted}` answer belongs to the delete action, not to an update.
+    if ('deleted' in result) return undefined
+    return { ...base, fingerprint: fingerprintOf(result) }
   }
   catch (error) {
     deps.report(`「${item.entry.title}」的到点提醒改不回来：${message(error)}`, 'degraded')
@@ -455,9 +481,8 @@ async function afterDue(
     // The reminder is replaced, so the host counts its next occurrence from now instead of staying overdue.
     if (await drop(task, 'not-delivered', item.entry.id)) {
       delete state.bindings[item.entry.id]
-      const selector = selectorOf(item.entry.when, (deps.timeZone ?? ((): string => Intl.DateTimeFormat().resolvedOptions().timeZone))())
       const schedule = deps.schedule()
-      const made = selector === undefined || schedule === undefined ? undefined : await create(schedule, holder.session, item, selector, deps)
+      const made = schedule === undefined ? undefined : await create(schedule, holder.session, item, deps)
       if (made !== undefined) state.bindings[item.entry.id] = made
     }
     return

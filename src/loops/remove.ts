@@ -1,10 +1,10 @@
 /**
  * Removing one DSH reminder (docs/ORCHESTRATION.md §18.10; loop board design
  * 0.6 §6.2 "the rule for deleting a task", §11.3): the one function that calls
- * `schedule.delete`. Deleting a task is irreversible — the host drops the row
- * and the saved deliveries with it (schedule:2164–2182) — so the function
- * deletes only when both of these hold, and answers `kept` with the reason when
- * either does not:
+ * `schedule.edit` with `action: 'delete'` (rc.1 merged rc.3's `delete` into
+ * it). Deleting a task is irreversible — the host drops the row and the saved
+ * deliveries with it — so the function deletes only when both of these hold,
+ * and answers `kept` with the reason when either does not:
  *
  * - the board can prove the task is its own: the id is in `bindings`, or the
  *   title and the first line of the prompt are both written the way the board
@@ -58,10 +58,11 @@ export interface RemovedTaskLine {
   readonly at: string
   readonly project: string
   readonly scheduleId: string
-  readonly sessionId: string
+  /** The session the reminder delivered to; absent for the host's per-delivery `new` target. */
+  readonly sessionId?: string
   readonly entry?: string
   readonly why: RemoveReason
-  /** The whole row of `schedule.catalog()`, with its status and last delivery. */
+  /** The whole row of `schedule.catalog()`, with its target, status and last delivery. */
   readonly record: ScheduleCatalogEntry
 }
 
@@ -82,11 +83,15 @@ async function writeRemoved(file: string, line: RemovedTaskLine): Promise<{ read
 
 /**
  * Delete one reminder of the board's, or keep it and say why. `entry` is the
- * entry the task belonged to when the board knows it.
+ * entry the task belonged to when the board knows it. The actor is the holder
+ * session, so the host's `[SCHEDULE CHANGE]` notice skips the session the
+ * board works for; a task still bound to a moved-away session that is alive
+ * gets one notice, which an rc.3 host did not send.
  */
 export async function removeTask(deps: RemoveDeps, task: ScheduleCatalogEntry, why: RemoveReason, entry?: string): Promise<RemoveOutcome> {
   const holder = deps.holder()
-  if (task.sessionId === holder.session && !mayRemoveHolderTasks(holder)) {
+  const session = targetSessionIdOf(task)
+  if (session !== undefined && session === holder.session && !mayRemoveHolderTasks(holder)) {
     return { kind: 'kept', why: `主 Agent 的会话此刻看不清（${holder.reason ?? holder.kind}），绑在它上面的提醒不删` }
   }
   if (!isOurs(deps.ours(), task)) return { kind: 'kept', why: '证明不了这条 DSH 提醒是循环板建的' }
@@ -94,7 +99,7 @@ export async function removeTask(deps: RemoveDeps, task: ScheduleCatalogEntry, w
     at: new Date(deps.now()).toISOString(),
     project: deps.paths.projectRoot,
     scheduleId: task.id,
-    sessionId: task.sessionId,
+    ...(session === undefined ? {} : { sessionId: session }),
     ...(entry === undefined ? {} : { entry }),
     why,
     record: task,
@@ -107,9 +112,13 @@ export async function removeTask(deps: RemoveDeps, task: ScheduleCatalogEntry, w
   let deleted = false
   let fault: string | undefined
   try {
-    const result = await deps.schedule.delete({ sessionId: task.sessionId, id: task.id })
-    deleted = result.deleted
-    if (!deleted) fault = result.code ?? 'DSH 说没有这条提醒'
+    const result = await deps.schedule.edit({
+      id: task.id,
+      action: 'delete',
+      ...(task.updatedAt === undefined ? {} : { expectedUpdatedAt: task.updatedAt }),
+    }, holder.session)
+    if ('deleted' in result) deleted = result.deleted
+    else if ('code' in result) fault = result.code
   }
   catch (error) {
     fault = message(error)
@@ -132,6 +141,11 @@ export async function removeTask(deps: RemoveDeps, task: ScheduleCatalogEntry, w
 /** Whether the board can prove it made this task (design §6.2): its own binding, or both of its own writings. */
 export function isOurs(bindings: ReadonlySet<string>, task: Pick<ScheduleCatalogEntry, 'id' | 'title' | 'prompt'>): boolean {
   return bindings.has(task.id) || (task.title.startsWith(TASK_TITLE_PREFIX) && entryIdOfPrompt(task.prompt) !== undefined)
+}
+
+/** The session a reminder delivers to, or undefined for the host's open-a-session-per-delivery `new` target (rc.1 types/storage.js:43–48). */
+export function targetSessionIdOf(task: Pick<ScheduleCatalogEntry, 'target'>): string | undefined {
+  return task.target.kind !== 'new' ? task.target.sessionId : undefined
 }
 
 /** The title of a reminder of the board's; the host trims it and takes at most 120 characters (schedule:93–97). */

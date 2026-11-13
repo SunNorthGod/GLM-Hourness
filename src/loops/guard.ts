@@ -97,8 +97,13 @@ function journalOf(deps: LoopsGuardDeps): (record: GuardRecord, payload: ToolExe
 /** The id the schedule gate carries in the violation journal and the rules board's catalog. */
 export const LOOPS_SCHEDULE_TOOLS = 'loops:schedule-tools'
 
-/** The three calls of DSH's schedule tools the rule judges (tool-schedule:508, 570, 600; `schedule_list` only reads). */
-export const SCHEDULE_TOOL_NAMES = ['schedule_create', 'schedule_update', 'schedule_delete'] as const
+/**
+ * The calls of DSH's schedule tools the rule judges; `schedule_list` and
+ * `schedule_view` only read and pass (rc.1 dsh-schedule tool directory,
+ * dsh-schedule/README.md:30–37). rc.1 merged rc.3's `schedule_update` and
+ * `schedule_delete` into one `schedule_edit`.
+ */
+export const SCHEDULE_TOOL_NAMES = ['schedule_create', 'schedule_edit'] as const
 
 function scheduleCorrection(fact: string): Correction {
   return {
@@ -114,9 +119,10 @@ function scheduleCorrection(fact: string): Correction {
  * `schedule_create` whose instruction begins, after its surrounding whitespace,
  * with the board's own first line is refused, so a reminder of an agent cannot
  * be taken for one of the board's by the reconciliation (review F13); a
- * `schedule_update` or `schedule_delete` of a task of the board's is refused.
- * `ours` is that fact: `undefined` means it could not be told, and then the call
- * passes and the reconciliation puts the task back afterwards.
+ * `schedule_edit` of a task of the board's is refused (an update or a delete,
+ * whichever its `action` says). `ours` is that fact: `undefined` means it could
+ * not be told, and then the call passes and the reconciliation puts the task
+ * back afterwards.
  */
 export function loopsScheduleTools(ours: boolean | undefined): GuardRule {
   return {
@@ -128,10 +134,13 @@ export function loopsScheduleTools(ours: boolean | undefined): GuardRule {
         if (!prompt.trim().startsWith(TASK_PROMPT_PREFIX)) return ALLOW
         return { kind: 'deny', rule: LOOPS_SCHEDULE_TOOLS, correction: scheduleCorrection(`You tried to create a reminder whose instruction begins with "${TASK_PROMPT_PREFIX}", which is how the loop board writes its own.`) }
       }
-      if (call.name !== 'schedule_update' && call.name !== 'schedule_delete') return ALLOW
+      if (call.name !== 'schedule_edit') return ALLOW
       if (ours !== true) return ALLOW
+      // The rc.1 service face takes the id at the top of the edit request; the tool package (dsh-tool-schedule) is not in
+      // the rc.1 export, so the tool's own argument shape is UNVERIFIED — read here as a top-level `id`, to check on the
+      // desktop (L4). A wrong reading would only let one rename through: the reconciliation puts the task back.
       const id = typeof args.id === 'string' ? args.id : ''
-      return { kind: 'deny', rule: LOOPS_SCHEDULE_TOOLS, correction: scheduleCorrection(`You tried to ${call.name === 'schedule_delete' ? 'delete' : 'change'} the reminder "${id}", which the loop board made for one of its loops.`) }
+      return { kind: 'deny', rule: LOOPS_SCHEDULE_TOOLS, correction: scheduleCorrection(`You tried to change the reminder "${id}", which the loop board made for one of its loops.`) }
     },
   }
 }
@@ -139,13 +148,13 @@ export function loopsScheduleTools(ours: boolean | undefined): GuardRule {
 export interface ScheduleGuardDeps extends LoopsGuardDeps {
   /** The schedule ids the board bound in a project, from its state. */
   readonly bindings: (projectRoot: string) => ReadonlySet<string>
-  /** The task of one id as the host has it, for a task the state does not name; undefined when the catalog cannot be read, and then the call passes. */
+  /** The task of one id as the host has it, for a task the state does not name; undefined when it cannot be read, and then the call passes. */
   readonly taskOf: (id: string) => Promise<{ readonly prompt: string } | undefined>
 }
 
 /**
- * Install the gate on the three schedule tools through the guard framework's
- * one gate, outermost on `tools/pre-execute`. The catalog is only read for a
+ * Install the gate on the schedule tools through the guard framework's
+ * one gate, outermost on `tools/pre-execute`. The host is only read for a
  * call that names an id the board's own state does not, so an ordinary call
  * pays nothing. Throws only when the host refuses the registration.
  */

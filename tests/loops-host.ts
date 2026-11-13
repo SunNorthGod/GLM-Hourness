@@ -1,11 +1,11 @@
 /**
- * The loop row on the fake rc.3 host, for the specs that drive it
+ * The loop row on the fake rc.1 host, for the specs that drive it
  * (loops-guard.spec, loops-row.spec; docs/ORCHESTRATION.md §18): a git project in
  * a temporary directory, a host whose agent works in it, the data service that
  * says where the violation journal goes, the session projection registry, and the row
  * applied on a clock the test fixes. The tool-call gate is exercised through the
  * host's own `tools.execute`, which runs the `tools/pre-execute` waterfall the way
- * rc.3 does (tests/fake-rc3.ts).
+ * the runtime does (tests/fake-rc3.ts).
  */
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -64,12 +64,13 @@ export interface LoopsFixtureOptions {
 }
 
 /**
- * The natives the gates judge: the file tools, the shell, and the four
- * reminder tools the Web composition mounts over the host's schedule service
- * (rc.3 dsh-tool-schedule registers exactly these names, tool-schedule:508,
- * 548, 570, 600).
+ * The natives the gates judge: the file tools, the shell, and the reminder
+ * tools the Web composition mounts over the host's schedule service (rc.1's
+ * directory has `schedule_create`, `schedule_list`, `schedule_view` and
+ * `schedule_edit`, which merged rc.3's update and delete;
+ * dsh-schedule/README.md:30–37).
  */
-const NATIVES = ['pwsh', 'write', 'edit', 'read', 'str_replace_editor', 'schedule_create', 'schedule_list', 'schedule_update', 'schedule_delete']
+const NATIVES = ['pwsh', 'write', 'edit', 'read', 'str_replace_editor', 'schedule_create', 'schedule_list', 'schedule_view', 'schedule_edit']
 
 /** A timer that holds what it is asked to run until a test fires it; firing or cancelling takes it out of `held`. */
 function fakeDelay(held: LoopsFixture['delayed']): NonNullable<LoopsConfig['delay']> {

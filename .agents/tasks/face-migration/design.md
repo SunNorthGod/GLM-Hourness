@@ -11,6 +11,8 @@
 
 ## 1. rc.1 运行时事实(实读 2026-11-11)
 
+> 勘误(2026-11-13):十条事实已对照 `reference/dsh-desktop-0.2.2-rc.1/` 导出全量复核,10/10 成立,下文行为描述照旧;仅两处行号位移——事实 4 的 `executable` 从 `dsh-tools/lib/index.js:537-543` 移到 :530-534(`toolSet.view(scope).get(name)` 在 :531);事实 7 的 cordis waterfall 从 :937-944 移到 :903-918(`next` 定义在 :910-914,仍无参)。抽检表见该导出的 `README.md`。其余引用行号(:354、:358-413、:367-381、:396-400、:401、:402-412、:416-425、:453-468、:492、:497-501、:560-570、agent-loop :673、:679、:685-694、:868、:1041-1052、:1345-1346、dsh-llm :776-833、:787、:2353-2359、:2402)全部原行号命中。
+
 1. **assemble 载荷无工具面**。`dsh-system-prompt/lib/index.js:358-413`:`assemble()` 组装 `{sections, contexts, variables}`(396-400),跑瀑布(401),然后返回 `{...transformed, tools}`(402-412)——`tools` 来自 `toolProviders`(367-381),瀑布写回的 tools 字段被丢弃;文档行 354 原话「tool declarations stay provider-owned」。瀑布仍可改 sections/contexts/variables。
 2. **请求面的来源**。`dsh-tools/lib/index.js:416-425`:ToolsService 构造时把自己注册为 systemPrompt 的 tool provider,`({scope, toolSet}) => selectExecutor(scope).describe(definitions(scope, toolSet))`——请求面 = 工具注册表对该作用域 + 本步准入的视图。
 3. **restrict() 的契约**。`dsh-tools/lib/index.js:453-468`:只能经 agent 作用域上下文调用;`{allow?, deny?}` 名字集合;名字必须 ∈ `view(scope).restrictableNames`(只认继承来的全局与祖先作用域注册);返回 disposer,撤销即解除;跨层相交(`view()` 492:`layers.every(layer => layer.admits(name))`),本作用域自己的注册豁免且遮蔽同名继承(497-501)。

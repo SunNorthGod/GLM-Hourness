@@ -530,10 +530,12 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
           const schedule = scheduleOf(ctx)
           if (schedule === undefined) return undefined
           try {
-            return (await schedule.catalog()).find(task => task.id === id)
+            // One read instead of a catalog sweep; it activates no target session (rc.1 sch:2305–2311).
+            const task = await schedule.view({ id })
+            return 'code' in task ? undefined : task
           }
           catch {
-            // The catalog cannot be read: the call passes and the reconciliation puts the task back afterwards (design §6.2).
+            // The task cannot be read: the call passes and the reconciliation puts the task back afterwards (design §6.2).
             return undefined
           }
         },
