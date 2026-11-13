@@ -170,8 +170,8 @@ rowTest('the board\'s own writes are not tool calls: /loops restore changes docs
   assert.deepEqual(await violations(), [])
 })
 
-test('loops:schedule-tools judges the three calls of DSH\'s schedule tools and nothing else', () => {
-  assert.deepEqual([...SCHEDULE_TOOL_NAMES], ['schedule_create', 'schedule_update', 'schedule_delete'], 'schedule_list only reads')
+test('loops:schedule-tools judges the two calls of DSH\'s schedule tools and nothing else', () => {
+  assert.deepEqual([...SCHEDULE_TOOL_NAMES], ['schedule_create', 'schedule_edit'], 'schedule_list and schedule_view only read')
   const create = (prompt: string): ToolCall => ({ name: 'schedule_create', arguments: { title: 'x', prompt } })
   // A reminder that passes itself off as the board's is refused, whatever the board's state says (review F13).
   for (const ours of [true, false, undefined]) {
@@ -182,16 +182,17 @@ test('loops:schedule-tools judges the three calls of DSH\'s schedule tools and n
     assert.equal(rule.detect(create(`   ${TASK_PROMPT_PREFIX}x`)).kind, 'deny', 'surrounding whitespace does not help')
     assert.equal(rule.detect(create('Remind me to water the plants.')).kind, 'allow', 'an unrelated reminder passes')
     assert.equal(rule.detect({ name: 'schedule_list', arguments: {} }).kind, 'allow')
+    assert.equal(rule.detect({ name: 'schedule_view', arguments: { id: 'schedule-1' } }).kind, 'allow')
     assert.equal(rule.detect({ name: 'write', arguments: { file_path: 'x', content: 'y' } }).kind, 'allow')
   }
-  // Changing or deleting a reminder of the board's is refused; one that is not the board's, or a fact that could not be told, passes.
-  for (const name of ['schedule_update', 'schedule_delete']) {
-    assert.equal(loopsScheduleTools(true).detect({ name, arguments: { id: 'schedule-1' } }).kind, 'deny', name)
-    assert.equal(loopsScheduleTools(false).detect({ name, arguments: { id: 'schedule-1' } }).kind, 'allow', name)
-    assert.equal(loopsScheduleTools(undefined).detect({ name, arguments: { id: 'schedule-1' } }).kind, 'allow', name)
+  // An edit (rc.1's update or delete, whichever its action says) of a reminder of the board's is refused; one that is not the board's, or a fact that could not be told, passes.
+  for (const action of ['update', 'delete']) {
+    assert.equal(loopsScheduleTools(true).detect({ name: 'schedule_edit', arguments: { id: 'schedule-1', action } }).kind, 'deny', action)
+    assert.equal(loopsScheduleTools(false).detect({ name: 'schedule_edit', arguments: { id: 'schedule-1', action } }).kind, 'allow', action)
+    assert.equal(loopsScheduleTools(undefined).detect({ name: 'schedule_edit', arguments: { id: 'schedule-1', action } }).kind, 'allow', action)
   }
-  const denial = loopsScheduleTools(true).detect({ name: 'schedule_delete', arguments: { id: 'schedule-1' } })
-  assert.match(renderCorrection((denial as Extract<RuleVerdict, { kind: 'deny' }>).correction), /^You tried to delete the reminder "schedule-1", which the loop board made for one of its loops\.\nBoundary: Rule loops:schedule-tools blocks changes to the loop board's own DSH reminders[^\n]+\nRight path: That reminder belongs to the loop board; changes go through the loop board \(loop_propose\), not the schedule tools\.\nException: .+/)
+  const denial = loopsScheduleTools(true).detect({ name: 'schedule_edit', arguments: { id: 'schedule-1', action: 'delete' } })
+  assert.match(renderCorrection((denial as Extract<RuleVerdict, { kind: 'deny' }>).correction), /^You tried to change the reminder "schedule-1", which the loop board made for one of its loops\.\nBoundary: Rule loops:schedule-tools blocks changes to the loop board's own DSH reminders[^\n]+\nRight path: That reminder belongs to the loop board; changes go through the loop board \(loop_propose\), not the schedule tools\.\nException: .+/)
 })
 rowTest('a schedule_create that pretends to be the board\'s is denied on the host and journaled as loops:schedule-tools, while another reminder passes', async ({ exec, calls, violations }) => {
   const denied = await exec('schedule_create', { title: 'x', prompt: `${TASK_PROMPT_PREFIX}u-1a2b3c4d (added by the human). Change it on the loop board, not here.\nhi` })
@@ -206,17 +207,17 @@ rowTest('a schedule_create that pretends to be the board\'s is denied on the hos
   assert.equal(records[0].mode, undefined)
   assert.equal(records[0].tool, 'schedule_create')
 })
-rowTest('a schedule_delete of a reminder the board made is denied; of somebody else\'s it runs, and a catalog that cannot be read lets both through', async ({ exec, calls, schedule }) => {
+rowTest('a schedule_edit of a reminder the board made is denied; of somebody else\'s it runs, and a task that cannot be read lets both through', async ({ exec, calls, schedule }) => {
   const mine = schedule.seed('session-main', { title: '循环板 · morning', prompt: `${TASK_PROMPT_PREFIX}operate.morning (default of dsh-hourness). Change it on the loop board, not here.\nThe morning report.` })
   const theirs = schedule.seed('session-main', { title: 'Water the plants', prompt: 'Water the plants on the balcony.' })
-  assert.equal((await exec('schedule_delete', { id: mine.id })).isError, true)
-  assert.equal((await exec('schedule_update', { id: mine.id, title: 'mine now' })).isError, true)
-  assert.equal((await exec('schedule_delete', { id: theirs.id })).isError, false)
-  assert.deepEqual(calls.map(call => call.name), ['schedule_delete'])
+  assert.equal((await exec('schedule_edit', { id: mine.id, action: 'delete' })).isError, true)
+  assert.equal((await exec('schedule_edit', { id: mine.id, action: 'update', patch: { title: 'mine now' } })).isError, true)
+  assert.equal((await exec('schedule_edit', { id: theirs.id, action: 'delete' })).isError, false)
+  assert.deepEqual(calls.map(call => call.name), ['schedule_edit'])
   // The host cannot say whose reminder it is: the call runs, and the reconciliation puts the task back afterwards.
-  schedule.breakOp('catalog')
-  assert.equal((await exec('schedule_delete', { id: mine.id })).isError, false)
-  assert.deepEqual(calls.map(call => call.name), ['schedule_delete', 'schedule_delete'])
+  schedule.breakOp('view')
+  assert.equal((await exec('schedule_edit', { id: mine.id, action: 'delete' })).isError, false)
+  assert.deepEqual(calls.map(call => call.name), ['schedule_edit', 'schedule_edit'])
 })
 test('both rules are listed in the guard framework\'s catalog without a mode column, and nothing under src/loops/ has a mode that only records', () => {
   assert.deepEqual(GUARD_RULES.filter(rule => rule.row === 'loops').map(rule => [rule.id, rule.liftVia]), [['files-only', 'any'], ['schedule-tools', 'any']])
