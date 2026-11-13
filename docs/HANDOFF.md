@@ -113,7 +113,7 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 20. 依赖安装：`pnpm add`、`pnpm update` 要带 `--store-dir .pnpm-store`（`node_modules` 链接自仓库内的 store）；`pnpm install --frozen-lockfile` 失败，根 `package.json` 的 `peerDependencies` 不在锁文件里，M1.9 之前即如此（`DEVELOPMENT.md` §11）。检查器基线里的存量告警（多为测试里多余的类型断言与无 `await` 的 async 回调）尚未清理，2026-10-29 为 ESLint 250 条压制、knip 21 条、jscpd 2 处，按棘轮只减不增（`DEVELOPMENT.md` §10，`ORCHESTRATION.md` §7.7）。
 21. 权限预设 `workspace-write` 下，pwsh 经 Windows ACL 沙盒运行，`node --test` 派生测试子进程报 `spawn EPERM`，模型确认不了测试结果，会转而申请沙盒升级（`FACTS.md` §3）。用户桌面版的默认预设是 `danger-full-access`，目前不受影响；标定运行器按桌面版预设传 `DSH_PERMISSION_MODE`。
 22. 标定起步的两个任务对两档模型都没有区分度（基线 12/12 完成），只能比积分、耗时与返工；更难的任务随 M3、M7 扩充（`ORCHESTRATION.md` §10.5.2）。
-23. 派发可行性验证的发现，M7 实现时处理（`ORCHESTRATION.md` §2.1、§3.2）：子 agent 的会话头 `cwd` 是父 agent 的目录，guard 对子 agent 的包含根因而是父工作区，DSH 的文件沙盒根也是父工作区，独立工作树要建在父工作区之内；服务只按调用方传入的 `maxDepth` 限深，本包的派发工具要传；GLM 路由上 `structured_output`、`send_message`、`update_goal` 是延迟工具，要经 DeferredToolCall 调用；headless 运行器在第一次静止空闲时退出，不跑目标轮，用 goal 驱动的标定任务要另想办法撑住进程。
+23. 派发可行性验证的发现，M7 实现时处理（`ORCHESTRATION.md` §2.1、§3.2）：子 agent 的会话头 `cwd` 是父 agent 的目录，guard 对子 agent 的包含根因而是父工作区，DSH 的文件沙盒根也是父工作区，独立工作树要建在父工作区之内；服务只按调用方传入的 `maxDepth` 限深，本包的派发工具要传；GLM 路由上 `structured_output`、`send_message`、`update_goal` 是延迟工具，要经 DeferredToolCall 调用；headless 运行器不跑目标轮：rc.3 在第一个静止空闲点以 0 退出，rc.1 上回合末尾被排的新一轮与运行器收尾赛跑——轮输掉竞争被 disposed、赢的真跑后仍以 1 退出（`FACTS.md` §3），用 goal 驱动的标定任务要另想办法撑住进程。
 24. 原生通道的提示词缓存：2026-10-28 修复主因（`DESIGN.md` §4.5b）。网关按 `x-session-id` 做缓存亲和，通道此前每请求随机生成；现在按 DSH 会话固定。GLM-5.3-Flash 在会话第二步仍常只命中共用前缀，原因未明。同批补上保留式思考（历史 reasoning 带签名回传，§4.5c，命中率不变、每步未命中输入变多）与四处 ZCode 请求细节。2026-10-29 桌面 L4 会话（GLM-5.3-Flash，单次运行）第二步命中（输入 483、缓存读 18112），之后各主步缓存读 18560–21120，压缩后第一步为 0（前缀变了）。
 25. 空闲会话手动压缩的 `x-query-id`：DSH 的 `/compact` 与压力压缩发出同样形状的请求，本包沿用上一回合的 query id；3.16.3 的 `/compact` 是独立输入，有自己的 query id。只差这一个压缩请求（`DESIGN.md` §4.5b、§4.8；m1-parity 评审第 3 轮的非阻断发现）。
 26. 批次 L4 没有在桌面版上看到、只由 L2 覆盖的 m1-parity 路径：委派子会话的 `subagent` 头值与父会话的 trace id（没有截包）；拿不到项目令牌时失败即停的界面呈现（不破坏真实登录）；deviceMid 缺失时的写回（本机状态文件已有 deviceMid）；项目令牌被拒后的刷新重发。没有测过：两个进程同时写同一个凭证文件（`DESIGN.md` §4.1）。
@@ -122,6 +122,8 @@ M6 桌面版核对（批次 L4，项目图 `m6-l4`、`m6-gap`，2026-11-01，主
 反向代理已从项目范围移除（`DESIGN.md` §1）；profile 中指向 8317 的 pi-ai `glm` 路由属于用户配置，用户 2026-10-28 把清理交给 agent。批次 L4 于 2026-10-29 通过后，这条路由已于同日从 profile 删除（项目图 `m1-cleanup`），含这条路由的改前备份也按用户要求删除；重启后模型菜单只有「DeepSeek 账号」与「GLM (ZCode native)」两组（本包这一组随后改名为「GLM（ZCode 原生通道）」，`m8-ui-audit` V-02）。
 
 28. `rules-peak-stop` 探针场景的唤醒窗计时抖动已查结（2026-11-10，判定 FLAKE、非产品缺陷，场景断言按设计契约放宽 `888bd1b6`，「复跑放行」协议废除）：根因、判定与处置记在 `DEVELOPMENT.md` §7 的 2026-11-10 一行，这里不再重复一份。此段原来以重复的「3.」编号挂在本表第 27 条后，与既有第 3 条相撞，2026-11-13 对账时改为本条。
+
+29. 基线红对账收口（2026-11-13，basered 车道）：DSH 基线换 rc.1 后积了两天的 18 条探针基线红（574/592）全部判定清零，592/592 全绿，「探针红即缺陷」的门禁纪律恢复。13 条 exit-1 是 rc.1 headless 的收尾形状（可接受但意外）：drive 场景脚本工作完成后，回合末尾被排的新一轮与运行器收尾赛跑，整跑以 1 退出而 stdout 恰为末步文本、stderr 无行输出；轮被 disposed 或真跑（探针 provider 对耗尽的脚本重复末步 `done`，无新工作）都算完成，探针以 tailOk 钉形状（drive.jsonl 有 op:start + exit 0 或 exit 1 + stdout `done` + stderr 无本包行），dispatch 的主请求计数放宽到观测包络 7–9（两种收尾各有工件），不豁免退出码（`FACTS.md` §3，`5e047202`）。3 条 rules 票是 rc.1 让行看到根会话结束：已清除的等待单终态 `cancelled`（`clearedAt` 早于新 `closedAt`，唤醒文本与 `clearedAt` 不变，流水多一条会话结束的 ticket-update），`ORCHESTRATION.md` §16.12 的设计行为（`src/rules/tickets.ts` `holderGone`），期望改钉 cancelled 生命周期。2 条 glm-execution 是上游漂移：rc.1 组合砍了 `dsh-fs-observation-policy`，未读先写不再被运行时拒绝而直接落盘，Glob 顺序红是它的级联（写落盘后 unread.txt 更新，仍是新在前），期望对齐、`FACTS.md` §3 各记一行。0 条豁免挂账。
 
 ## 6. 环境事实
 
