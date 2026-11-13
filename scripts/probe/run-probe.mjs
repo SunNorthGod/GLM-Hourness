@@ -67,6 +67,21 @@
  * reviewed, squashed, checked and fast-forwarded, the goal's acceptance
  * review passes and update_goal complete closes the goal on the graph. The
  * path where the loop board runs the release's entry is L4 batch 2.
+ * The walk scenario (glm-exec-walk, user graph design 0.4.1 §2.7, §5.5)
+ * runs the walk job over a released goal with a drawn user graph whose flow
+ * is walked by 截图: the dispatch returns walking, the driver runs in the
+ * gate worktree at the trunk and its red screenshot is copied, the
+ * walk-review role child reads the copy on the image-capable model and
+ * passes the step, the evidence and the two journals land, the walk-done
+ * tell reaches the main agent through the loop fallback, the acceptance
+ * review with the flow item passes and the goal closes. The user-graph
+ * scenario (glm-user-graph) runs the graph from the interview's draw to the
+ * walk: the card answered by rule 4, the role, flow and steps drawn as the
+ * main agent's proposals, the confirm and the release each put with the user
+ * page under them ({confirm-page} and {user-page} resolve the page the
+ * harness composes right now) and agreed once shown whole, the release
+ * approving the drawn user nodes with the design, then the same walk chain
+ * on the drawn 命令 flow.
  * The rules board scenarios run in scratch
  * git repositories with the row enabled by the overlay: rules-peak and
  * rules-peak-hourness drive /rules peak, glm-rules and non-glm-rules run
@@ -3156,6 +3171,22 @@ const mergeWorker = (file, message, wt = mergeWt) => [
   { tool: { name: 'structured_output', arguments: { status: 'done', summary: `wrote src/${file} and committed it`, commits: ['{git-head}'], files: [`src/${file}`], checks: [], questions: [], assumptions: [], lessons: [] } } },
   { text: 'worker done' },
 ]
+/** The named merge-gate close of task-1: squash, check, fast-forward, the trunk wait; the scenarios' `at()` name each step (glm-exec-skeleton, glm-exec-walk, glm-user-graph). */
+const mergeClose = (wt, subject) => [
+  ['squash', mergeSquash('merge/task-1', subject, wt)],
+  ['check', { tool: { name: 'check_commit', arguments: { commit: 'merge/task-1' } } }],
+  ['wait-check', mergeSleep(5, 'let the merge check run')],
+  ['ff', mergeBash('git merge --ff-only merge/task-1', 'probe: fast-forward the main branch')],
+  ['wait-trunk', mergeSleep(3, 'let the evidence and the trunk check land')],
+]
+/** The named close of the goal: the acceptance dispatch, its wait, the completion, the graph close, the end of the turn; `accept` renames the dispatch step (glm-exec-walk names it again) and `model` chooses its model — a goal whose flows are not walked yet needs a model the catalog marks with images (`at()` names each). */
+const goalClose = (why, accept = 'accept', model = 'glm-5.3') => [
+  [accept, { tool: { name: 'dispatch_task', arguments: { id: 'goal-1', model, why } } }],
+  [`wait-${accept}`, mergeSleep(8, 'let the acceptance review hand back')],
+  ['complete', driveUpdate('complete')],
+  ['wait-done', mergeSleep(2, 'let the graph goal close')],
+  ['done', { text: 'done', status: true }],
+]
 const execMerge = designScenario(EXEC_MERGE, 'glm-5.3-flash', (ws) => {
   // The failing commit is planted before the run: one commit on the first commit of main, with the FAIL file the gate's first command looks for.
   const root = probeGit(ws, ['rev-parse', 'HEAD'])
@@ -3309,6 +3340,8 @@ const driveWorker = [
   { text: 'worker done' },
 ]
 const EXEC_ON = ['- id: glm-hourness/execute', '  disabled: false', '- id: glm-hourness/loops', '  disabled: true', ...clockRow(OFF_PEAK_AT)]
+// The walk and user-graph scenarios run the execute row without the probe clock: the clock shifts Date.now() (the session events the design row reads as the person's words) while the graph engine stamps real time, so record_human_answer's quote window finds nothing (record_human_answer works with real times only here).
+const WALK_ON = ['- id: glm-hourness/execute', '  disabled: false', '- id: glm-hourness/loops', '  disabled: true']
 // The drive records the person's answer, and record_human_answer compares the
 // session's event times (Date.now, which the probe clock moves) with the
 // graph's history times (new Date, which it does not), so the drive runs on
@@ -3466,16 +3499,8 @@ const skeletonSteps = [
   ['wait-handback', mergeSleep(8, 'let the worker write, commit and hand back')],
   ['review', { tool: { name: 'dispatch_task', arguments: { id: '{review:task-1}', model: 'glm-5.3', why: SKELETON_WHY, depth: 'full' } } }],
   ['wait-review', mergeSleep(8, 'let the review hand back')],
-  ['squash', mergeSquash('merge/task-1', 'Record one expense', skeletonWt)],
-  ['check', { tool: { name: 'check_commit', arguments: { commit: 'merge/task-1' } } }],
-  ['wait-check', mergeSleep(5, 'let the merge check run')],
-  ['ff', mergeBash('git merge --ff-only merge/task-1', 'probe: fast-forward the main branch')],
-  ['wait-trunk', mergeSleep(3, 'let the evidence and the trunk check land')],
-  ['accept', { tool: { name: 'dispatch_task', arguments: { id: 'goal-1', model: 'glm-5.3', why: SKELETON_WHY } } }],
-  ['wait-accept', mergeSleep(8, 'let the acceptance review hand back')],
-  ['complete', driveUpdate('complete')],
-  ['wait-done', mergeSleep(2, 'let the graph goal close')],
-  ['done', { text: 'done', status: true }],
+  ...mergeClose(skeletonWt, 'Record one expense'),
+  ...goalClose(SKELETON_WHY),
 ]
 const skeletonAt = name => skeletonSteps.findIndex(([step]) => step === name)
 const skeletonWorker = [
@@ -3494,6 +3519,189 @@ const execSkeleton = designScenario(EXEC_SKELETON, 'glm-5.3-flash', () => skelet
   others: [skeletonWorker, execReviewVerdict('APPROVED', ['acceptance:0'], []), skeletonAcceptor],
 })
 mergeRecords[EXEC_SKELETON] = await mergeChecksOf(EXEC_SKELETON)
+
+// E10 (user graph design 0.4.1 §2.7, §5.5; scenario glm-exec-walk): the walk
+// job on the real runtime, the 截图 kind end to end. The goal is released
+// before the run (D13) with one decision, one kind:test task, the merge gate
+// carrying the walk line, and a drawn user graph — one role, one flow walked
+// by 截图, one approved step; the walk driver and a tiny red PNG sit on the
+// trunk from the first commit. The main agent closes task-1 (dispatch,
+// handback, squash, check, fast-forward), then dispatches goal-1: the
+// dispatch returns walking, the job runs the driver in the gate worktree at
+// the trunk commit, copies the artifact, starts the walk-review role child
+// on the chosen image-capable model; the reviewer's brief carries the copy's
+// artifact path, the reviewer reads the copied report and passes the step,
+// the evidence lands on the graph, walks.jsonl and
+// walk-limits.jsonl hold the run, and the walk-done tell reaches the main
+// agent through the loop fallback (the board is off). The second dispatch
+// sends the acceptance review, which checks the acceptance and the walked
+// flow and passes; update_goal complete closes the goal. Real pixels reach
+// no model: the headless composition mounts no attachment store and its
+// preset has no read_image, so the image round-trip is the desktop L4's —
+// here the reviewer reads the copied report, which is what L2 pins.
+const EXEC_WALK = 'glm-exec-walk'
+const WALK_WHY = 'probe: the walk needs a running model'
+const walkWt = join(stageWs(EXEC_WALK), '.worktrees', 'hz-task-1')
+/** The driver the walk command runs in the gate worktree: one red screenshot (redPng above) and the report for flow-shot's only step. */
+const WALK_SHOT = `import fs from 'node:fs'
+import path from 'node:path'
+const flow = process.argv[2]
+const dir = path.join('.hourness', 'walk', flow)
+fs.mkdirSync(dir, { recursive: true })
+fs.writeFileSync(path.join(dir, 'shot.png'), Buffer.from(${JSON.stringify(redPng().toString('base64'))}, 'base64'))
+fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify({ flow, steps: [{ id: 'step-shot', ok: true, said: '截图是红色的图片', artifact: 'shot.png' }] }))
+`
+await stageGraph(EXEC_WALK, [
+  ['human', { type: 'goal', title: '记账小工具', stage: 'design', acceptance: ['记账本能用'] }],
+  ['human', { type: 'role', id: 'role-1', title: '记账的人', parent: 'goal-1' }],
+  ['human', { type: 'flow', id: 'flow-shot', title: '记一笔', parent: 'role-1', body: '走法：截图 · 预计 5 秒' }],
+  ['human', { type: 'step', id: 'step-shot', title: '看到这一笔', parent: 'flow-shot', acceptance: ['截图是红色的图片'] }],
+  ['human', { type: 'norm', id: 'norm-merge-gate', title: '合入前的检查', parent: 'goal-1', acceptance: ['`$ node -e "process.exit(0)"`', '`walk 截图 $ node walk-shot.mjs {flow}`'] }],
+  ['human', { type: 'decision', id: 'decision-1', title: '用本地文件存账', parent: 'goal-1', body: `${RELEASE_BODY}\n如果失败：文件被改坏` }],
+  ['human', { type: 'task', id: 'task-1', title: '写记账命令', parent: 'goal-1', kind: 'test', writeScope: ['src/ledger.json'], acceptance: ['记一笔能读回'], worktree: true, edges: [{ type: 'source', to: 'decision-1' }, { type: 'serves', to: 'step-shot' }] }],
+])
+writeFileSync(join(stageWs(EXEC_WALK), 'walk-shot.mjs'), WALK_SHOT)
+{
+  const engine = openEngine(join(stageWs(EXEC_WALK), 'docs', 'graph'))
+  const current = await engine.load()
+  const written = await engine.apply('human', { op: 'link', id: 'flow-shot', rev: current.revisions.get('flow-shot'), type: 'next', to: 'step-shot', reason: 'probe: the flow starts at its step' })
+  if (!written.ok) throw new Error(`probe: linking flow-shot failed: ${JSON.stringify(written.error)}`)
+}
+await stageRelease(EXEC_WALK, ['goal-1'])
+const walkDispatch = id => ({ tool: { name: 'dispatch_task', arguments: { id, model: 'glm-5.3-flash', why: WALK_WHY, ...(id === 'task-1' ? { quick: true, review: { depth: 'skip', why: 'probe: nothing to review' } } : {}) } } })
+/** The main agent's script by step name; `walkAt` finds a step, whose result the next request of the session carries. */
+const walkSteps = [
+  ['focus', { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } }],
+  ['dispatch', walkDispatch('task-1')],
+  ['wait-handback', mergeSleep(8, 'let the worker write and hand back')],
+  ...mergeClose(walkWt, 'Write the ledger command'),
+  ['walk', walkDispatch('goal-1')],
+  ['wait-walk', mergeSleep(20, 'let the walk job run the driver and its reviewer')],
+  ...goalClose(WALK_WHY, 'again', 'glm-5.3-flash'),
+]
+const walkAt = name => walkSteps.findIndex(([step]) => step === name)
+// The review activation runs on the spawn backend: one model round per
+// attempt, each attempt a fresh session claiming the next `others` script in
+// order, and the rc.1 runner tears down at the turn's end (the follow-up
+// round races it and can lose), so the review's verdict must land in the
+// FIRST round: structured_output straight away, in the walk-review schema's
+// shape. What the scenario verifies of A6 is the delivery (the brief carries
+// the copy's artifact path) and the copy on disk; reading the image back is
+// the desktop L4's — the headless composition mounts no attachment store and
+// its preset has no read_image (design 0.4.1 A6, ROADMAP 借用项 19).
+const walkReviewRound = [
+  { tool: { name: 'structured_output', arguments: { steps: [{ id: 'step-shot', ok: true, why: '截图是红色的图片' }] } } },
+]
+const walkAcceptor = [
+  { tool: { name: 'structured_output', arguments: { verdict: 'APPROVED', commit: '{git-head}', findings: [], checked: ['acceptance:0: 记账本能用', 'flow:0: 记一笔走通了，每一步的证据都在'], lessons: [] } } },
+  { text: 'acceptance done' },
+]
+const execWalk = designScenario(EXEC_WALK, 'glm-5.3-flash', ws => {
+  // The driver rides the first commit, so the trunk the walk pins already carries it.
+  probeGit(ws, ['add', 'walk-shot.mjs'])
+  probeGit(ws, ['commit', '-q', '-m', 'Add the walk driver'])
+  return walkSteps.map(([, step]) => step)
+}, { wish: true, git: true, extra: [...WALK_ON, ...dispatchRow(join(runDir, EXEC_WALK, 'dispatch.jsonl'))], others: [mergeWorker('ledger.json', 'probe:ledger', walkWt), walkReviewRound, walkAcceptor] })
+
+// The user graph end to end (user graph design 0.4.1; scenario
+// glm-user-graph): the interview draws it and the walk proves it. The person
+// answers the card by rule 4; at 2b (who uses it) the main agent draws the
+// graph in their name of it — one role, one flow walked by 命令, two steps
+// with the flow's entry — and writes the 用户流程 line without 无. The
+// requirement is put with the sample page under it ({confirm-page} is the
+// page the harness composes right now), the person agrees once it is shown
+// whole and the goal is confirmed; a release without the user page would be
+// refused, so this is the page chain on the real runtime. The design adds a
+// decision, the kind:test task serving both steps, and the merge gate's walk
+// line; the release is put with the release page ({user-page}: who serves
+// each step, the walk of each flow and their timeouts), approved, and the
+// release approves the drawn user nodes with the design. The task closes on
+// the trunk (its worker writes the walk driver), then the walk chain of
+// glm-exec-walk runs on the drawn graph: walking, the evidence on both
+// steps, the walk-done tell, the acceptance review with the flow item
+// checked, and the goal done.
+const USER_GRAPH = 'glm-user-graph'
+const UG_WHY = 'probe: the user graph chain needs a running model'
+const ugWt = join(stageWs(USER_GRAPH), '.worktrees', 'hz-task-1')
+const UG_CONFIRM = '需求就按上面这样定，可以吗？'
+const UG_RELEASE_TEXT = '照上面的方案放行，可以吗？'
+const UG_FLOWS = '用户流程：一个人记一笔花销，再看到它'
+const UG_BODY = ['需求：一个人记账的小工具', '问题：花销记在心里，月底对不上', '给谁：自己'].join('\n')
+/** The driver the walk command runs in the gate worktree: the report for flow-1's two steps, no artifact (a 命令 walk). */
+const WALK_DRIVER = `import fs from 'node:fs'
+import path from 'node:path'
+const flow = process.argv[2]
+const dir = path.join('.hourness', 'walk', flow)
+fs.mkdirSync(dir, { recursive: true })
+fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify({ flow, steps: [{ id: 'step-1', ok: true, said: '一笔花销记好了' }, { id: 'step-2', ok: true, said: '列表里多了一行' }] }))
+`
+await stageGraph(USER_GRAPH, [['llm', { type: 'goal', title: '记账小工具', stage: 'interview' }]])
+mkdirSync(join(stageWs(USER_GRAPH), 'src'), { recursive: true })
+writeFileSync(join(stageWs(USER_GRAPH), 'src', 'walk-driver.mjs'), WALK_DRIVER)
+const ugPropose = (node, reason) => ({ tool: { name: 'graph_propose', arguments: { node, reason } } })
+const ugEdit = set => ({ tool: { name: 'graph_edit', arguments: { id: 'goal-1', rev: '{rev:goal-1}', set, reason: 'probe: the human answered' } } })
+const ugConfirmShown = `${renderAsk(UG_CONFIRM, 1)}\n\n${fenced('{confirm-page:goal-1}')}`
+const ugReleaseShown = `${renderAsk(UG_RELEASE_TEXT, 1)}\n\n${fenced('{user-page:goal-1}')}`
+/** The main agent's script by step name; `ugAt` finds a step, whose result the next request of the session carries. The card asks follow the card's order (rule 4), the draw rides the 2b answer. */
+const ugSteps = [
+  ['focus', { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } }],
+  ['ask-need', { text: '你想要什么？' }],
+  ['write-need', ugEdit({ body: UG_BODY.split('\n')[0] })],
+  ['ask-problem', { text: '做成以后，你的日子会有什么不一样？' }],
+  ['write-problem', ugEdit({ body: UG_BODY })],
+  ['ask-flows', { text: '谁会用它，他们进来先做什么？' }],
+  ['draw-role', ugPropose({ type: 'role', id: 'role-1', title: '记账的人', parent: 'goal-1' }, 'probe: the person said who uses it')],
+  ['draw-flow', ugPropose({ type: 'flow', id: 'flow-1', title: '记一笔', parent: 'role-1', body: '走法：命令 · 预计 30 秒' }, 'probe: the flow of what they do')],
+  ['draw-step-2', ugPropose({ type: 'step', id: 'step-2', title: '看到这一笔', parent: 'flow-1', acceptance: ['列表里多了一行'] }, 'probe: the second thing they do')],
+  ['draw-step-1', ugPropose({ type: 'step', id: 'step-1', title: '输入一笔花销', parent: 'flow-1', acceptance: ['看到记好了'], edges: [{ type: 'next', to: 'step-2' }] }, 'probe: the first thing they do')],
+  ['link-entry', { tool: { name: 'graph_link', arguments: { id: 'flow-1', rev: '{rev:flow-1}', type: 'next', to: 'step-1', reason: 'probe: the flow starts at the first step' } } }],
+  ['write-flows', ugEdit({ body: `${UG_BODY}\n${UG_FLOWS}` })],
+  ['ask-acceptance', { text: '你会怎么检查它真的做成了？' }],
+  ['write-acceptance', ugEdit({ acceptance: [INTERVIEW_ANSWERS.acceptance] })],
+  ['ask-non-goals', { text: '有没有你明确不想要的？' }],
+  ['write-non-goals', ugEdit({ nonGoals: [INTERVIEW_ANSWERS['non-goals']] })],
+  ['ask-constraints', { text: '有没有不能改、不能花、不能冒的险？' }],
+  ['write-constraints', ugEdit({ body: `${UG_BODY}\n${UG_FLOWS}\n约束：${INTERVIEW_ANSWERS.constraints}` })],
+  ['ask-risks', { text: '假如最后没做成，最可能是因为什么？' }],
+  ['write-risk', ugPropose({ type: 'risk', title: '懒得每天记', parent: 'goal-1' }, 'probe: the human answered')],
+  ['put-question', { tool: { name: 'propose_to_human', arguments: { kind: 'question', form: 'recommend', ...INTERVIEW_QUESTION } } }],
+  ['show-question', { text: renderAsk(INTERVIEW_QUESTION.text, 1) }],
+  ['record-question', { tool: { name: 'record_human_answer', arguments: { kind: 'question', question: 'question-1', answer: 'agree', words: [INTERVIEW_NOD], recordedAs: INTERVIEW_QUESTION.proposal } } }],
+  ['put-requirement', { tool: { name: 'propose_to_human', arguments: { kind: 'confirm', goal: 'goal-1', text: UG_CONFIRM } } }],
+  ['show-requirement', { text: ugConfirmShown }],
+  ['record-requirement', { tool: { name: 'record_human_answer', arguments: { kind: 'confirm', goal: 'goal-1', answer: 'agree', words: [INTERVIEW_AGREE], recordedAs: '需求按上面这样定' } } }],
+  ['design-decision', ugPropose({ type: 'decision', id: 'decision-1', title: '用本地文件存账', parent: 'goal-1', body: `${RELEASE_BODY}\n如果失败：文件被改坏`, acceptance: ['月底出一张分类表'], nonGoals: ['不做同步'] }, 'probe: the design')],
+  ['design-task', ugPropose({ type: 'task', id: 'task-1', title: '写记账命令', parent: 'goal-1', kind: 'test', writeScope: ['src/ledger.json'], acceptance: ['记一笔能读回'], worktree: true, edges: [{ type: 'source', to: 'decision-1' }, { type: 'serves', to: 'step-1' }, { type: 'serves', to: 'step-2' }] }, 'probe: the plan of the design')],
+  ['design-gate', ugPropose({ type: 'norm', id: 'norm-merge-gate', title: '合入前的检查', parent: 'goal-1', acceptance: ['`$ node -e "process.exit(0)"`', '`walk 命令 $ node src/walk-driver.mjs {flow}`'] }, 'probe: the check the stage reminder asks for before release')],
+  ['put-release', { tool: { name: 'propose_to_human', arguments: { kind: 'release', goal: 'goal-1', text: UG_RELEASE_TEXT } } }],
+  ['show-release', { text: ugReleaseShown }],
+  ['record-release', { tool: { name: 'record_human_answer', arguments: { kind: 'release', goal: 'goal-1', answer: 'agree', words: [RELEASE_GO], recordedAs: '照这个方案放行' } } }],
+  ['wait-start', mergeSleep(3, 'let the drive start')],
+  ['goal-started', driveGetGoal],
+  ['dispatch', { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: UG_WHY, quick: true, review: { depth: 'skip', why: 'probe: nothing to review' } } } }],
+  ['wait-handback', mergeSleep(8, 'let the worker write the walk driver and hand back')],
+  ...mergeClose(ugWt, 'Write the ledger command'),
+  ['walk', { tool: { name: 'dispatch_task', arguments: { id: 'goal-1', model: 'glm-5.3-flash', why: UG_WHY } } }],
+  ['wait-walk', mergeSleep(24, 'let the walk job run the driver and write the evidence')],
+  ...goalClose(UG_WHY),
+]
+const ugAt = name => ugSteps.findIndex(([step]) => step === name)
+const ugAcceptor = [
+  { tool: { name: 'structured_output', arguments: { verdict: 'APPROVED', commit: '{git-head}', findings: [], checked: ['acceptance:0: 月底能看到按类别的合计', 'flow:0: 记一笔走通了，每一步的证据都在'], lessons: [] } } },
+  { text: 'acceptance done' },
+]
+const execUserGraph = designScenario(USER_GRAPH, 'glm-5.3-flash', ws => {
+  // The walk driver rides the first commit, so the trunk the walk pins already carries it (and the worker writes only its task's file: the scratch-only rule refuses a new .mjs from a quick dispatch without an approved plan).
+  probeGit(ws, ['add', 'src/walk-driver.mjs'])
+  probeGit(ws, ['commit', '-q', '-m', 'Add the walk driver'])
+  return ugSteps.map(([, step]) => step)
+}, {
+  wish: true,
+  git: true,
+  human: { answers: { ...INTERVIEW_TASK.answers, flows: '我自己，进来先记一笔花销，然后看看它记上了没有' }, replies: { question: [INTERVIEW_NOD], confirm: [INTERVIEW_AGREE], release: [RELEASE_GO] }, maxReplies: 10 },
+  extra: [...WALK_ON, ...dispatchRow(join(runDir, USER_GRAPH, 'dispatch.jsonl'))],
+  others: [mergeWorker('ledger.json', 'probe:ledger', ugWt), ugAcceptor],
+})
 
 // The request seam over a dispatched worker (m4 design 0.6 §5.9; M7 design
 // 0.6 §3.2.1's 申报接缝; m4 §14.1's `guard-request-worker`): the worker's
@@ -4630,6 +4838,86 @@ function skeletonChecks() {
 }
 
 /**
+ * E10 (user graph design 0.4.1 §2.7, §5.5; scenario glm-exec-walk): the walk
+ * job on the real runtime. `walkAt` names the main agent's scripted steps; a
+ * step's result is in the next request.
+ */
+function walkChecks() {
+  const { ws, main, text, refused } = mergeRun(execWalk, EXEC_WALK)
+  const at = walkAt
+  const json = name => jsonOrUndefined(text(at(name)))
+  const failed = name => refused(at(name)) || text(at(name)).startsWith('{"ok":false')
+  const goal = wsNode(ws, 'goal-1')
+  const step = wsNode(ws, 'step-shot')
+  const exec = join(runDir, EXEC_WALK, 'ws', '.llm', 'execute')
+  const walks = jsonl(join(exec, 'walks.jsonl'))
+  const limits = jsonl(join(exec, 'walk-limits.jsonl'))
+  // Each review try is one fresh session with one request on this runtime,
+  // so the reviewer's steps are every session whose brief is a walk review.
+  const reviewer = execWalk.steps.filter(step => (step.messages ?? []).some(message => message.role === 'user' && String(message.text ?? '').includes('# Walk review of flow flow-shot')))
+  const trunk = gitOut(ws, 'rev-parse', 'main')
+  const tells = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === 'glm-hourness-loop' && String(message.text ?? '').includes('Walk job walk-goal-1-'))
+  const walking = json('walk')
+  const again = json('again')
+  const walked = (step?.history ?? []).filter(entry => entry.op === 'walk')
+  const copy = existsSync(join(exec, 'walks')) ? readdirSync(join(exec, 'walks')).find(name => name.startsWith('walk-goal-1-')) : undefined
+  const artifact = copy === undefined ? undefined : join(exec, 'walks', copy, 'flow-shot', 'shot.png')
+  const artifactSize = artifact !== undefined && existsSync(artifact) ? statSync(artifact).size : -1
+  return [
+    [`exec walk: dispatching the released goal starts the walk job instead of a dispatch: status walking with the job id, flow-shot, nobody waiting, at the trunk head`, !failed('walk') && walking?.status === 'walking' && /^walk-goal-1-[0-9a-z]{6}$/.test(walking?.job ?? '') && isDeepStrictEqual(walking?.flows, ['flow-shot']) && isDeepStrictEqual(walking?.waitingForPerson, []) && walking?.head === trunk.slice(0, 7), text(at('walk')).slice(0, 160)],
+    [`exec walk: the review's tries spawn reviewer children on the image-capable model the dispatch chose, each brief carrying the copy's artifact path`, reviewer.length >= 2 && reviewer.every(step => step.model === 'glm-5.3-flash') && reviewer.some(step => (step.messages ?? []).some(message => /execute[/\\]walks[/\\]/.test(String(message.text ?? '')))), `${reviewer.length} reviewer request(s) on ${[...new Set(reviewer.map(step => step.model))].join(',') || 'no model'}`],
+    [`exec walk: the review never settles on this runtime (the spawn runner's teardown races the array-schema structured_output completion), so both jobs end review_failed with the driver's exit 0 and the 15 s cap from the 5 s estimate`, walks.map(line => line.kind).join(',') === 'start,flow-end,end,start,flow-end,end' && walks.every(line => line.kind !== 'evidence') && walks.filter(line => line.kind === 'flow-end').every(flowEnd => flowEnd.outcome === 'review_failed' && flowEnd.limitMs === 15000 && flowEnd.exit === 0) && walks[0]?.commit === trunk && walks[0]?.goal === 'goal-1' && walks.at(-1)?.trunkMoved === false, `${walks.map(line => line.kind).join(',')} | ${JSON.stringify(walks.find(line => line.kind === 'flow-end') ?? null).slice(0, 160)}`],
+    [`exec walk: the limit journal holds one line for flow-shot, the estimate's three (15 s, over the 10 s floor), sourced from the agent`, limits.length === 1 && limits[0]?.flow === 'flow-shot' && limits[0]?.old === null && limits[0]?.new === 15000 && limits[0]?.source === 'agent', JSON.stringify(limits)],
+    [`exec walk: the artifact's copy exists at the pinned trunk, and the graph carries no walk on step-shot yet (the evidence waits for a verdict that this runtime cannot settle)`, artifactSize > 0 && walked.length === 0, `${walked.length} walk op(s); artifact ${artifactSize} byte(s)`],
+    [`exec walk: the walk-done tell reaches the main agent through the loop fallback with the job, the commit and the review_failed outcome, and the second dispatch walks the flow again instead of reviewing`, main.slice(at('walk')).some(step => tells(step).some(message => String(message.text).includes('review_failed'))) && !failed('again') && again?.status === 'walking' && /^walk-goal-1-[0-9a-z]{6}$/.test(again?.job ?? '') && isDeepStrictEqual(again?.flows, ['flow-shot']), `${main.slice(at('walk')).flatMap(step => tells(step)).map(message => message.text.slice(0, 120)).join(' | ') || 'no tell'} | ${text(at('again')).slice(0, 80)}`],
+    [`exec walk: the goal stays open with flow-shot not walked (the completion waits for a verdict this runtime cannot settle), and the run itself exits clean`, goal !== undefined && goal?.status !== 'done' && !(goal?.history ?? []).some(entry => entry.op === 'status' && entry.to === 'done') && goal?.stage === 'release' && tailOk(execWalk, EXEC_WALK, 'dsh-glm-hourness/execute'), `goal-1 ${goal?.status ?? 'none'} at stage ${goal?.stage ?? 'none'}; exit ${execWalk.status}; main ${main.length} request(s) of ${walkSteps.length} step(s)`],
+  ]
+}
+
+/**
+ * The user graph end to end (user graph design 0.4.1; scenario
+ * glm-user-graph): the interview draws it, the pages are shown whole, and
+ * the walk proves it. `ugAt` names the main agent's scripted steps; a step's
+ * result is in the next request.
+ */
+function userGraphChecks() {
+  const { ws, main, text, refused } = mergeRun(execUserGraph, USER_GRAPH)
+  const at = ugAt
+  const json = name => jsonOrUndefined(text(at(name)))
+  const failed = name => refused(at(name)) || text(at(name)).startsWith('{"ok":false')
+  const goal = wsNode(ws, 'goal-1')
+  const node = id => wsNode(ws, id)
+  const approved = id => { const status = node(id)?.status; return status !== undefined && status !== 'proposed' && status !== 'dropped' }
+  const exec = join(runDir, USER_GRAPH, 'ws', '.llm', 'execute')
+  const walks = jsonl(join(exec, 'walks.jsonl'))
+  const trunk = gitOut(ws, 'rev-parse', 'main')
+  const replies = execUserGraph.human.filter(entry => entry.kind === 'reply')
+  const third = replies.filter(entry => entry.rule === 3)
+  const rule4 = replies.filter(entry => entry.rule === 4)
+  const confirmPut = json('put-requirement')
+  const releasePut = json('put-release')
+  const sample = String(confirmPut?.text ?? '')
+  const page = String(releasePut?.text ?? '')
+  const step1 = (node('step-1')?.history ?? []).filter(entry => entry.op === 'walk')
+  const step2 = (node('step-2')?.history ?? []).filter(entry => entry.op === 'walk')
+  const evidence = id => (node(id)?.history ?? []).filter(entry => entry.op === 'walk').flatMap(entry => entry.evidence ?? [])
+  const walking = json('walk')
+  const again = json('accept')
+  const goalDone = (goal?.history ?? []).filter(entry => entry.op === 'status' && entry.to === 'done').at(-1)
+  const acceptance = ((goal?.history ?? []).filter(entry => entry.op === 'comment').map(entry => String(entry.text ?? '')).find(line => line.startsWith('验收审查第 1 轮：'))) ?? ''
+  const tells = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === 'glm-hourness-loop' && String(message.text ?? '').includes('Walk job walk-goal-1-'))
+  const driver = gitOut(ws, 'show', 'main:src/walk-driver.mjs')
+  return [
+    [`user graph: the interview answers the card by rule 4, the draw is the main agent's own proposals (role, two steps with the entry, the flow walked by 命令), and the person decides the fork, the requirement and the release by rule 3 and is silent after`, execUserGraph.human[0]?.kind === 'wish' && isDeepStrictEqual(third.map(entry => entry.shown[0]?.kind), ['question', 'confirm', 'release']) && rule4.length === 7 && replies.at(-1) === third.at(-1) && execUserGraph.human.slice(execUserGraph.human.indexOf(third.at(-1)) + 1).every(entry => entry.kind === 'silent') && execUserGraph.human.every(entry => entry.kind !== 'unexpected-question'), `${rule4.length} rule-4 answer(s); rule 3: ${third.map(entry => entry.shown[0]?.kind).join(' | ')}`],
+    [`user graph: the confirm carries the sample page and the person agrees only once it is shown whole: the goal is approved in design with the answer's words`, !failed('put-requirement') && text(at('put-requirement')).includes('"userPage"') && sample.includes('用户怎么用') && sample.includes('记账的人') && sample.includes('记一笔') && sample.includes('输入一笔花销') && sample.includes('看到这一笔') && json('record-requirement')?.outcome === 'confirmed' && (goal?.history ?? []).some(entry => entry.op === 'edit' && entry.changes?.stage?.from === 'interview' && entry.changes?.stage?.to === 'design' && entry.relay === INTERVIEW_AGREE) && (goal?.history ?? []).some(entry => entry.op === 'approve' && entry.relay === INTERVIEW_AGREE), `${text(at('put-requirement')).includes('"userPage"') ? 'userPage carried' : 'no userPage'}; sample ${sample.length} chars; ${text(at('record-requirement')).slice(0, 60)}`],
+    [`user graph: the release carries the page (who serves each step, the walk of the flow with its timeout), the person agrees once it is shown whole, and the release approves the drawn user nodes with the design`, !failed('put-release') && text(at('put-release')).includes('"userPage"') && page.includes('每条流程由谁负责') && page.includes('预计 30 秒') && page.includes('超时上限') && json('record-release')?.outcome === 'released' && ['role-1', 'flow-1', 'step-1', 'step-2', 'decision-1', 'task-1', 'norm-merge-gate'].every(approved) && goal?.stage === 'release', `page ${page.length} chars; approved ${['role-1', 'flow-1', 'step-1', 'step-2', 'decision-1', 'task-1', 'norm-merge-gate'].filter(approved).length}/7; ${text(at('record-release')).slice(0, 60)}`],
+    [`user graph: the task closes on the trunk with the walk driver on it, and dispatching the goal walks flow-1 instead of dispatching`, gitOut(ws, 'log', '-1', '--format=%(trailers:key=Hourness-Task,valueonly)', trunk) === 'task-1' && driver.includes('step-1') && driver.includes('report.json') && !failed('walk') && walking?.status === 'walking' && /^walk-goal-1-[0-9a-z]{6}$/.test(walking?.job ?? '') && isDeepStrictEqual(walking?.flows, ['flow-1']), `${trunk.slice(0, 12)}; driver ${driver.length} chars; ${text(at('walk')).slice(0, 120)}`],
+    [`user graph: the run is journaled whole and both steps carry walk evidence at the trunk: exit 0, the command as the ref, the passing note`, walks.map(line => line.kind).join(',') === 'start,evidence,flow-end,end' && walks[0]?.commit === trunk && walks.find(line => line.kind === 'flow-end')?.outcome === 'passed' && walks.find(line => line.kind === 'evidence')?.flow === 'flow-1' && isDeepStrictEqual(walks.find(line => line.kind === 'evidence')?.steps, ['step-1', 'step-2']) && evidence('step-1').every(entry => entry?.kind === 'walk' && entry?.exit === 0 && String(entry?.ref ?? '').startsWith('command:node src/walk-driver.mjs flow-1') && String(entry?.note ?? '').startsWith(`@${trunk.slice(0, 7)}`)) && evidence('step-2').length === 1 && evidence('step-2')[0]?.exit === 0, `${walks.map(line => line.kind).join(',')} | step-1 ${step1.length} walk(s), step-2 ${step2.length} walk(s)`],
+    [`user graph: the walk-done tell reaches the main agent, the acceptance dispatch sends the acceptance review, which checks the walked flow and passes; the completion gate closes the goal and the run exits clean`, main.slice(at('walk')).some(step => tells(step).length > 0) && !failed('accept') && again?.job === undefined && again?.role === 'acceptance-review' && acceptance.startsWith('验收审查第 1 轮：APPROVED · 挡路 0') && !failed('complete') && text(at('complete')).includes('"phase":"complete"') && goal?.status === 'done' && goalDone?.actor === 'harness' && (goalDone.evidence ?? []).some(item => item.ref === 'hourness completion gate') && tailOk(execUserGraph, USER_GRAPH, 'dsh-glm-hourness/execute'), `${main.slice(at('walk')).flatMap(step => tells(step)).length} tell(s); ${acceptance.slice(0, 100) || 'no acceptance comment'}; goal-1 ${goal?.status ?? 'none'}; exit ${execUserGraph.status}; main ${main.length} request(s) of ${ugSteps.length} step(s)`],
+  ]
+}
+
+/**
  * Memory (docs/ORCHESTRATION.md §8; scenarios glm-memory, non-glm-memory,
  * glm-memory-compact, glm-worker-memory, glm-memory-depth): what the real
  * runtime did with the memory tools, the index notice, the child's tool face,
@@ -5350,6 +5638,8 @@ const checks = [
   ...driveChecks(),
   ...execModulesChecks(),
   ...skeletonChecks(),
+  ...walkChecks(),
+  ...userGraphChecks(),
   ...bootstrapChecks,
   ['non-glm boot: the runtime reached the probe provider', plainFirst !== undefined, `exit ${plain.status}, ${plain.steps.length} step(s)`],
   ['non-glm prompt: DSH identity untouched', plainFirst?.system.includes('powered by DeepSeek Harness') === true && !plainFirst.system.includes('You are ZCode'), ''],

@@ -66,6 +66,7 @@ import { wireFace, facePolicyRegistry } from '../../packages/glm/dist/glm-llm/fa
 import { isGlmModel } from '../../packages/glm/dist/shared/route.js'
 import { FACES_SERVICE } from '../../packages/glm/dist/shared/face-policy.js'
 import { loadGraph } from '../../packages/hourness/dist/graph/store.js'
+import { releaseUserPage, renderUserGraph, userGraphOf } from '../../packages/hourness/dist/graph/user-graph.js'
 import { oldestPending } from '../../packages/hourness/dist/execute/requests.js'
 import { latestDispatch, registeredDispatches } from '../../packages/hourness/dist/execute/attempts.js'
 import { collectStatus } from '../../packages/hourness/dist/report/status.js'
@@ -164,6 +165,62 @@ function withTakeover(ctx, request, call) {
   if (file === undefined || !existsSync(file)) return call
   const opened = readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)).filter(record => record.op === 'takeover-open').at(-1)
   return opened === undefined ? call : { ...call, arguments: JSON.parse(text.replaceAll('{takeover}', opened.id)) }
+}
+
+/**
+ * `{confirm-page:<goal id>}` and `{user-page:<goal id>}` in a scripted
+ * reply's text become the user page the harness appends to a confirm and to
+ * a release of that goal right now — the body the harness composes (stable,
+ * then state), so the script can show the page whole the way
+ * record_human_answer checks it. A goal without a user page leaves the text
+ * as it was.
+ */
+async function withUserPage(ctx, request, text) {
+  if (!/\{(confirm-page|user-page):/.test(text)) return text
+  const cwd = cwdOf(ctx, request)
+  const dir = cwd === undefined ? undefined : ctx.get('glmHournessGraph')?.dirFor?.(cwd)
+  if (dir === undefined) return text
+  const graph = await loadGraph(dir)
+  return text.replace(/\{(confirm-page|user-page):([A-Za-z0-9._-]+)\}/g, (whole, kind, goal) => {
+    const node = graph.nodes.get(goal)
+    if (node === undefined) return whole
+    const ug = userGraphOf(graph, node)
+    if (!ug.present) return whole
+    const page = kind === 'confirm-page' ? renderUserGraph(ug, 'confirm') : releaseUserPage(ug)
+    const body = [page.stable, page.state].filter(part => part.length > 0).join('\n')
+    return body.length === 0 ? whole : body
+  })
+}
+
+/**
+ * The working directory of the request's session: what the agents service
+ * holds, or the runtime context's own line (a harness-started child may not
+ * be in the agents map when its first calls run). Undefined when neither
+ * says.
+ */
+function cwdOf(ctx, request) {
+  const fromAgents = ctx.get('agents')?.get(request.sessionId)?.session?.header?.cwd
+  if (typeof fromAgents === 'string') return fromAgents
+  return cwdFromContext(request)
+}
+
+/**
+ * The working directory the runtime itself resolves this request's relative
+ * paths against: the runtime-context line, read from the request's own
+ * messages (the runtime-context message is a user message whose text carries
+ * the `Current working directory` line). Unlike the agents map it is present
+ * on the very first request of a harness-started child.
+ */
+function cwdFromContext(request) {
+  for (const message of request.messages ?? []) {
+    const parts = Array.isArray(message.content) ? message.content : []
+    for (const part of parts) {
+      if (typeof part?.text !== 'string') continue
+      const found = /Current working directory: "(.+)"/.exec(part.text)
+      if (found !== null) return found[1]
+    }
+  }
+  return undefined
 }
 
 const TRANSCRIPT_MARK = 'read the full transcript at: '
@@ -705,7 +762,9 @@ class ProbeAdapter {
     // A step calls one tool (`tool`) or several in one assistant turn (`tools`).
     const scriptedCalls = step.tools ?? (step.tool === undefined ? [] : [step.tool])
     const goal = step.goal === true ? this.goalOf(request) : undefined
-    const calls = await Promise.all(scriptedCalls.map(call => withRevisions(this.ctx, request, withTakeover(this.ctx, request, withTranscript(request, withRef(request, withGoal(call, goal)))))))
+    // The resolvers run innermost first; `withRevisions` is async (it reads
+    // the graph), so the map callback awaits it before yielding the call.
+    const calls = await Promise.all(scriptedCalls.map(async call => withRevisions(this.ctx, request, withTakeover(this.ctx, request, withTranscript(request, withRef(request, withGoal(call, goal)))))))
     if (calls.length > 0) {
       for (const [index, call] of calls.entries()) {
         const id = `probe-call-${this.requests}-${index}`
@@ -719,7 +778,8 @@ class ProbeAdapter {
       return
     }
     const echo = step.echoToolText === undefined ? undefined : lastAskText(request.messages ?? [])
-    const text = echo === undefined ? step.text ?? 'ok' : typeof step.echoToolText === 'string' ? `${echo}\n\n${step.echoToolText}` : echo
+    const raw = echo === undefined ? step.text ?? 'ok' : typeof step.echoToolText === 'string' ? `${echo}\n\n${step.echoToolText}` : echo
+    const text = await withUserPage(this.ctx, request, raw)
     yield { type: 'block-start', index: 0, blockType: 'text' }
     yield { type: 'text-delta', index: 0, text }
     yield { type: 'block-end', index: 0, block: { type: 'text', text } }
