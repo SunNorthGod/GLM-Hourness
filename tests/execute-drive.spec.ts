@@ -51,6 +51,8 @@ test('a released goal gets one goal at the holder\'s next step with no command t
   assert.match(goal.objective, /run check_commit on the commit you want on main, then fast-forward main to it\. .* Mark this goal complete only when the completion gate passes; it lists what is missing\./)
   // The nowait sentence (the design's §3.2): the background, the notices, and the turn that ends.
   assert.ok(goal.objective.includes('Run long commands in the background (run_in_background): the job\'s end, with its output, arrives by itself as a notice. Never hold the turn open with sleep, polling or a long job wait; when nothing is left to do in the turn, end it.'))
+  // The three tiers' judgement hint (user graph design 0.4.1 §4.3): decide yourself, the module back to design, the big loop, unsure goes up.
+  assert.ok(goal.objective.includes('Grade what development raises before you ask: what a released module\'s added tasks can build without changing that module\'s settled design, decide yourself (a question with decider agent) and tell it at the next batch; what changes a released module\'s design sends that module back to design; what needs a new module goes back to the big loop, where alone the module list is set; when unsure, take the higher tier.'), goal.objective)
   const release = releaseAtOf(await rig.node('goal-1'))
   assert.ok(release !== null)
   assert.deepEqual(rig.emitted.filter(event => event.event === 'hourness.design-released'), [{ event: 'hourness.design-released', key: `design-released:goal-1:${release}`, payload: { goal: 'goal-1', module: '', release } }])

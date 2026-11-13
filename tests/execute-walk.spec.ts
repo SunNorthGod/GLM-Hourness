@@ -38,7 +38,7 @@ import type { LoopEmit } from '../src/execute/loop-link.ts'
 import { setMetricSink, type MetricEvent } from '../src/execute/metrics.ts'
 import {
   buildCovers, limitOf, modelTakesImages, pendingWalks, readWalkReport, reconcileWalks,
-  runWalkJob, stepExits, walkBlockers, walkBriefLines, walkCommitsOf,
+  runWalkJob, stepExits, walkAgreementOf, walkBlockers, walkBriefLines, walkCommitsOf,
   WALK_JOB_MS, WALK_REVIEW_SCHEMA,
   type WalkDeps, type WalkJobSpec, type WalkLimitLine, type WalkLine, type WalkOutcome, type WalkReport, type WalkStart,
 } from '../src/execute/walk.ts'
@@ -253,6 +253,26 @@ test('modelTakesImages reads the catalog entry inputModalities; a catalog that s
   assert.equal(modelTakesImages('glm-c', catalog), false, 'an entry without inputModalities is no confirmation')
   assert.equal(modelTakesImages('glm-a', undefined), false, 'no catalog at all is no confirmation')
   assert.equal(modelTakesImages('glm-missing', catalog), false)
+})
+
+test('walkAgreementOf: a test task that serves steps names each flow kind, command and the report path and format; nothing for other tasks', () => {
+  const graph = libraryGraph((nodes) => {
+    nodes.set('task-13', { ...nodes.get('task-13')!, edges: [{ type: 'serves', to: 'step-1' }, { type: 'serves', to: 'step-15' }] })
+  })
+  const task = graph.nodes.get('task-13')
+  assert.ok(task !== undefined)
+  const lines = walkAgreementOf(graph, task)
+  assert.equal(lines.length, 2, '登录 and 录入新书, the two flows the served steps belong to')
+  assert.match(lines[0] ?? '', /^登录 \(flow-1\) walks by 命令: `npm run e2e -- --flow flow-1`\. /)
+  assert.match(lines[0] ?? '', /reads the report the test writes at \.hourness\/walk\/flow-1\/report\.json: \{"flow": "<flow id>", "steps": \[\{"id": "<approved step id>", "ok": true, "said": "one line", "artifact": "<bare file name, 截图 and 终端 only>"\}\]\}$/)
+  assert.match(lines[1] ?? '', /^录入新书 \(flow-5\) walks by 命令: `npm run e2e -- --flow flow-5`/)
+  const bare = libraryGraph()
+  const fixtureTask = bare.nodes.get('task-13')
+  assert.ok(fixtureTask !== undefined)
+  assert.deepEqual(walkAgreementOf(bare, fixtureTask), [], 'the fixture test task serves no steps: no agreement')
+  const worker = bare.nodes.get('task-1')
+  assert.ok(worker !== undefined)
+  assert.deepEqual(walkAgreementOf(bare, worker), [], 'a kind implement task carries no agreement')
 })
 
 test('the walk job budget sits below the gate lock wait, and userCompletionItems judge the walks of the goal against the trunk', () => {

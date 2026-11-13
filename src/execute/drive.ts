@@ -56,6 +56,7 @@ import { childrenIndex, deciderOf, subtreeOf } from '../graph/projection.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import { graphFocus } from '../graph/service.ts'
 import { effectiveStage, goalOf } from '../graph/stage.ts'
+import { userGraphOf } from '../graph/user-graph.ts'
 import { projectOf } from '../data/project-root.ts'
 import { errorText, isRecord, mainAgentCall, refuse, toolShell } from '../design/tool-support.ts'
 import type { ViolationRecord } from '../guard/records.ts'
@@ -102,7 +103,7 @@ const clockOf = (iso: string): string => {
 const peakWaitLine = (hold: PeakHold): string => `Waiting for GLM peak hours to end at ${clockOf(hold.until)}: the work left is held back by the peak mode (${hold.level}). The harness resumes the drive after peak.`
 const clearedLine = (objective: string): string => `The person cleared the drive. If they ask you to continue, call create_goal with this objective: ${objective}`
 
-const DRIVE_BODY = (trunk: string): string => `Drive it through the project graph without waiting for the person: dispatch ready tasks with dispatch_task (choose a model and say why), dispatch their reviews the same way, answer worker requests with answer_worker, integrate with git, run check_commit on the commit you want on ${trunk}, then fast-forward ${trunk} to it. Put matters only the person can decide to them in the chat (at most three at a time); when everything left waits for them, call await_human. Mark this goal complete only when the completion gate passes; it lists what is missing. Run long commands in the background (run_in_background): the job's end, with its output, arrives by itself as a notice. Never hold the turn open with sleep, polling or a long job wait; when nothing is left to do in the turn, end it.`
+const DRIVE_BODY = (trunk: string): string => `Drive it through the project graph without waiting for the person: dispatch ready tasks with dispatch_task (choose a model and say why), dispatch their reviews the same way, answer worker requests with answer_worker, integrate with git, run check_commit on the commit you want on ${trunk}, then fast-forward ${trunk} to it. Put matters only the person can decide to them in the chat (at most three at a time); when everything left waits for them, call await_human. Grade what development raises before you ask: what a released module's added tasks can build without changing that module's settled design, decide yourself (a question with decider agent) and tell it at the next batch; what changes a released module's design sends that module back to design; what needs a new module goes back to the big loop, where alone the module list is set; when unsure, take the higher tier. Mark this goal complete only when the completion gate passes; it lists what is missing. Run long commands in the background (run_in_background): the job's end, with its output, arrives by itself as a notice. Never hold the turn open with sleep, polling or a long job wait; when nothing is left to do in the turn, end it.`
 const SPLIT_SENTENCE = 'The work is split into modules and the person releases each module on its own; dispatch_task refuses the tasks of a module that is not released (not_released). When no released module has work left, write the design of the next module, have it reviewed against norm-directions (dispatch_task with the module id, choose a model and say why) and fix what blocks, then put its release to the person with propose_to_human (kind release, module <id>); when everything left waits for the person, call await_human.'
 const OBJECTIVE_MAX = 2000
 const OBJECTIVE_PREFIX = /^Project graph goal ([^\s:]+):/
@@ -583,6 +584,17 @@ export function createDrive(deps: DriveDeps): Drive {
     })
   }
 
+  /** The goal's flows whose automatic 走法 has no test task yet (user graph design 0.4.1 §4.3), named for the release tell; `none` without a user graph or without the gap. */
+  function noTestFlows(graph: LoadedGraph, goal: GraphNode): string {
+    const flows = userGraphOf(graph, goal).gaps
+      .filter(gap => gap.key === 'flow:no-test')
+      .flatMap(gap => {
+        const flow = graph.nodes.get(gap.nodes[0] ?? '')
+        return flow === undefined ? [] : [`${flow.title} (${flow.id})`]
+      })
+    return flows.length === 0 ? 'none' : flows.join(', ')
+  }
+
   /** `execute.start-drive` (§3.9.1 table row 2), and the move to a new holder (row 3, D14). */
   async function start(input: StartInput): Promise<HarnessResult> {
     const place = placeOfRoot(input.project)
@@ -634,7 +646,7 @@ export function createDrive(deps: DriveDeps): Drive {
     }
     if (!split || module === undefined) return { outcome: 'done' }
     const first = create && input.move !== true
-    let tell = `Module ${module.id} "${module.title}" of goal ${goal.id} is released${first ? ' and the drive has started' : ''}. Decompose it into tasks with dispatch attributes under the module and dispatch them with dispatch_task; do not wait for the person. Modules still in design cannot be dispatched (not_released).`
+    let tell = `Module ${module.id} "${module.title}" of goal ${goal.id} is released${first ? ' and the drive has started' : ''}. Decompose it into tasks with dispatch attributes under the module and dispatch them with dispatch_task; do not wait for the person. Connect each task with graph_link type serves to the step of the user's flows it builds, and give every flow whose 走法 the harness runs one task of kind test connected to at least one step it covers; the flows still missing such a test task: ${noTestFlows(graph, goal)}. Modules still in design cannot be dispatched (not_released).`
     const stale = sentBack(module) ? staleTasks(graph, module) : []
     if (stale.length > 0) tell += ` These tasks of the module were dispatched before it went back to design and their dispatch is stale: ${stale.map(task => `${task.id} ${task.title}`).join(', ')}. Dispatch them again with the new design.`
     return { outcome: 'done', tell }

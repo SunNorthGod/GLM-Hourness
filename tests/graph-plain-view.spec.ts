@@ -301,6 +301,43 @@ test('changesSince: module release and back-to-design rows, and a goal done row'
   assert.ok(texts.includes('「goal-2」做完了，整体审查的结论在它的节点页'))
 })
 
+test('changesSince: the user graph rows - a flow walked through, a flow failed with its step, a new step nobody serves', () => {
+  const walk = (n: number, exit: number, result: string): HistoryEntry => ({
+    at: at(n), actor: 'harness', op: 'walk', reason: '作业走一遍',
+    evidence: [{ kind: 'walk', ref: 'command:npm run e2e', exit, note: `@abc1234 sha256:- ${result}` }],
+  })
+  const graph = graphOf([
+    node({ id: 'goal-1', type: 'goal', status: 'doing', stage: 'execute' }, 0, 'human'),
+    node({ id: 'role-1', type: 'role', parent: 'goal-1', title: '读者' }, 1, 'human'),
+    node({ id: 'flow-ok', type: 'flow', parent: 'role-1', title: '登录', body: '走法：命令 · 预计 30 秒', edges: [{ type: 'next', to: 's-1' }] }, 2, 'human'),
+    node({ id: 's-1', type: 'step', parent: 'flow-ok', title: '打开登录页', acceptance: ['看到了'], edges: [{ type: 'next', to: 's-2' }] }, 3, 'human', [walk(20, 0, '通过')]),
+    node({ id: 's-2', type: 'step', parent: 'flow-ok', title: '进入首页', acceptance: ['进去了'] }, 4, 'human', [walk(21, 0, '通过')]),
+    node({ id: 'feat-ok', type: 'feature', parent: 'goal-1', title: '账号', status: 'done', edges: [{ type: 'serves', to: 's-1' }, { type: 'serves', to: 's-2' }, { type: 'serves', to: 'step-served' }] }, 5, 'human', [
+      { at: at(8), actor: 'human', op: 'status', reason: '夹具', from: 'doing', to: 'done' },
+    ]),
+    node({ id: 'task-ok', type: 'task', parent: 'feat-ok', title: '登录接口', status: 'done' }, 6, 'human', [
+      { at: at(7), actor: 'human', op: 'status', reason: '夹具', from: 'doing', to: 'done' },
+    ]),
+    node({ id: 'flow-bad', type: 'flow', parent: 'role-1', title: '还书', body: '走法：命令 · 预计 30 秒', edges: [{ type: 'next', to: 's-3' }] }, 3, 'human'),
+    node({ id: 's-3', type: 'step', parent: 'flow-bad', title: '看到归还成功', acceptance: ['看到了'] }, 4, 'human', [walk(22, 1, '登记赔偿后状态没变')]),
+    node({ id: 'feat-bad', type: 'feature', parent: 'goal-1', title: '归还', status: 'done', edges: [{ type: 'serves', to: 's-3' }] }, 5, 'human', [
+      { at: at(8), actor: 'human', op: 'status', reason: '夹具', from: 'doing', to: 'done' },
+    ]),
+    node({ id: 'task-bad', type: 'task', parent: 'feat-bad', title: '归还接口', status: 'done' }, 6, 'human', [
+      { at: at(7), actor: 'human', op: 'status', reason: '夹具', from: 'doing', to: 'done' },
+    ]),
+    node({ id: 'flow-new', type: 'flow', parent: 'role-1', title: '预约', body: '走法：你来走' }, 3, 'human'),
+    node({ id: 'step-new', type: 'step', parent: 'flow-new', title: '交押金', acceptance: ['交上了'] }, 30),
+    node({ id: 'step-served', type: 'step', parent: 'flow-new', title: '看到应还日期', acceptance: ['看到了'] }, 31),
+  ])
+  const texts = changesSince(graph, at(10), new Set()).map(row => row.text)
+  assert.ok(texts.includes('「登录」走通了'), 'both steps walked in the window and the flow reads walked now')
+  assert.ok(texts.includes('「还书」走不通：「看到归还成功」'), 'the failing walk names the flow and the step')
+  assert.ok(texts.includes('新加一步「交押金」，还没人负责'), 'a user step without a server reads its own row')
+  assert.ok(texts.includes('新加了一件「看到应还日期」'), 'a served step folds with the rest of the progress')
+  assert.equal(texts.filter(text => text === '「登录」走通了').length, 1, 'one row per flow')
+})
+
 test('moduleStateOf and modulesView: the states, the awaiting release, and nothing without the directions', () => {
   const base = (): { readonly graph: LoadedGraph, readonly goal: GraphNode } => {
     const graph = graphOf([

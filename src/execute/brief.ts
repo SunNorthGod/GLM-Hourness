@@ -25,6 +25,7 @@ import { runningGlm, runningOn, runningWorkers, type Attempt } from './attempts.
 import { digest12 } from './digest.ts'
 import { catalogHint, oneLine, parseModelArgs, type CatalogEntry, type ModelArgs } from './models.ts'
 import { overlaps } from './scope.ts'
+import { walkAgreementOf } from './walk.ts'
 
 // ---- arguments ----
 
@@ -446,6 +447,8 @@ function body(input: BriefInput, cut: ReadonlySet<Truncation>): string {
     `- Project graph: read with graph_show / graph_open; graph_focus "${task.id}" first so the panel shows you on this task. You may only graph_comment.`,
   )
   if (steps.length > 0) lines.push(`- User steps this task serves (flow › step): ${steps.join('; ')}. This is how the user meets what you build.`)
+  const agreement = walkAgreementOf(graph, task)
+  if (agreement.length > 0) lines.push('- The walk agreement (the harness walks the flows you serve through these commands once the work is on the trunk):', ...agreement.map(line => `  - ${line}`))
   if (input.earlier.length > 0) {
     lines.push('- Earlier attempts:')
     for (const [index, attempt] of input.earlier.entries()) {

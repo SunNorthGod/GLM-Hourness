@@ -123,7 +123,27 @@ test('batchOf\'s now and later split in the text: a module release page first, t
   const answered = node({ id: 'task-e', type: 'task', parent: 'goal-1', status: 'doing' }, 2, 'llm', [comment(30, '检查第 3 次没过：$ npm test exit 1 · log · 停下'), { at: at(40), actor: 'human', op: 'comment', text: '继续' }])
   const text = textOf(input(released([...stops, answered])))
   assert.ok(text.includes('Put these to the person now (at most three): what stopped on task-a "task-a"; what stopped on task-b "task-b"; what stopped on task-c "task-c"; later: what stopped on task-d "task-d".'), text)
-  assert.ok(!text.includes('task-e'), 'a stop the person answered is not batched')
+  assert.ok(!text.includes('what stopped on task-e'), 'a stop the person answered is not batched')
+})
+
+test('the user graph gaps read as one line: the unserved step, the orphan work and the flows without their test task; none without a user graph', () => {
+  const extra: readonly GraphNode[] = [
+    node({ id: 'norm-merge-gate', type: 'norm', parent: 'goal-1', title: '合入前检查', acceptance: ['`walk 命令 $ npm run e2e -- --flow {flow}`'] }, 2),
+    node({ id: 'role-1', type: 'role', parent: 'goal-1', title: '读者' }, 2),
+    node({ id: 'flow-1', type: 'flow', parent: 'role-1', title: '登录', body: '走法：命令 · 预计 30 秒', edges: [{ type: 'next', to: 'step-1' }] }, 3),
+    node({ id: 'step-1', type: 'step', parent: 'flow-1', title: '交押金', acceptance: ['交上了'] }, 4),
+    node({ id: 'flow-2', type: 'flow', parent: 'role-1', title: '搜书', body: '走法：命令 · 预计 30 秒', edges: [{ type: 'next', to: 'step-2' }] }, 5),
+    node({ id: 'step-2', type: 'step', parent: 'flow-2', title: '看到结果列表', acceptance: ['看到了'] }, 6),
+    node({ id: 'feat-1', type: 'feature', parent: 'goal-1', title: '书目', status: 'done', edges: [{ type: 'serves', to: 'step-2' }] }, 7),
+    node({ id: 'task-2', type: 'task', parent: 'feat-1', title: '书目存取', kind: 'implement', status: 'done' }, 8),
+    node({ id: 'feat-export', type: 'feature', parent: 'goal-1', title: '导出年度报表' }, 9),
+  ]
+  const text = textOf(input(released(extra)))
+  assert.ok(text.includes('Steps nobody serves: 登录 › 交押金 (step-1)'), text)
+  assert.ok(text.includes('work that serves no step: task-1 (task-1), 导出年度报表 (feat-export)'), 'the released goal\'s own unserved task is an orphan too', text)
+  assert.ok(text.includes('flows with no test task: 搜书 (flow-2)'), text)
+  const plain = textOf(input(released()))
+  assert.ok(!plain.includes('Steps nobody serves'), 'a goal without a user graph has no gap line')
 })
 
 test('the model catalog once per provider in the process, and again after it changes', () => {

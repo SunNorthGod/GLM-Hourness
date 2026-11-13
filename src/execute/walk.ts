@@ -36,7 +36,7 @@ import { openEngine } from '../graph/engine.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { childrenIndex, subtreeOf } from '../graph/projection.ts'
 import type { Evidence, GraphNode } from '../graph/schema.ts'
-import { estimatedTimeoutMs, isUserNode, userGraphOf, walkResult, type FlowView, type WalkSpec } from '../graph/user-graph.ts'
+import { estimatedTimeoutMs, isUserNode, stepsServedBy, userGraphOf, walkResult, type FlowView, type WalkSpec } from '../graph/user-graph.ts'
 import { goalOf } from '../graph/stage.ts'
 import { liveOf } from '../graph/user-live.ts'
 import type { SnapshotEnvironment } from '../guard/git-snapshot.ts'
@@ -245,6 +245,35 @@ export function walkBriefLines(graph: LoadedGraph, goal: GraphNode): readonly st
 export function modelTakesImages(model: string, catalog: readonly CatalogEntry[] | undefined): boolean {
   const entry = catalog?.find(candidate => candidate.id === model) as (CatalogEntry & { readonly inputModalities?: readonly string[] }) | undefined
   return entry?.inputModalities?.includes('image') === true
+}
+
+/**
+ * The walk agreement a `kind: test` task's brief carries (§5.4): per flow
+ * the task's served steps belong to, the walk kind, the merge gate's command
+ * with `{flow}` replaced, and where the harness reads the report the test
+ * writes. The report format's only copy lives here, beside the reader that
+ * judges it (`checkReport`); a flow whose 走法 the harness cannot run stays
+ * out, its agreement is not the test writer's to keep.
+ */
+export function walkAgreementOf(graph: LoadedGraph, task: GraphNode): readonly string[] {
+  if (task.kind !== 'test') return []
+  const served = new Set(stepsServedBy(graph, task).map(step => step.id))
+  if (served.size === 0) return []
+  const goal = goalOf(graph, task.id)
+  if (goal === undefined) return []
+  const lines: string[] = []
+  for (const { flows } of userGraphOf(graph, goal).roles) {
+    for (const flow of flows) {
+      if (!flow.steps.some(step => served.has(step.step.id))) continue
+      if ('unparsed' in flow.spec || flow.spec.kind === '你来走') continue
+      lines.push(
+        `${flow.flow.title} (${flow.flow.id}) walks by ${flow.spec.kind}: \`${flow.spec.command}\`. `
+        + `The harness runs it in the merge gate's worktree at the trunk commit and reads the report the test writes at ${REPORT_ROOT}/${flow.flow.id}/report.json: `
+        + `{"flow": "<flow id>", "steps": [{"id": "<approved step id>", "ok": true, "said": "one line", "artifact": "<bare file name, 截图 and 终端 only>"}]}`,
+      )
+    }
+  }
+  return lines
 }
 
 // ---------------------------------------------------------------------------

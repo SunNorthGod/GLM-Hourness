@@ -465,6 +465,8 @@ test('(a) drive: module A\'s release creates the one goal; B\'s later release ha
   assert.match(goal.objective, /The work is split into modules and the person releases each module on its own; .* call await_human\.$/)
   assert.ok((await rig.comments('goal-1')).includes(`自动推进已开始 · 放行 ${atA} · 模块 module-a · goal ${goal.id} · 会话 main-1 · 主干 main`))
   assert.ok(rig.live.woken.some(entry => entry.text.includes('Module module-a "Feed" of goal goal-1 is released and the drive has started. Decompose it into tasks with dispatch attributes under the module')))
+  // The decomposition sentences of the user graph (design 0.4.1 §4.3): connect tasks to steps, one test task per automatic flow; the rig's goal has no user graph, so none are missing.
+  assert.ok(rig.live.woken.some(entry => entry.text.includes('Connect each task with graph_link type serves to the step of the user\'s flows it builds, and give every flow whose 走法 the harness runs one task of kind test connected to at least one step it covers; the flows still missing such a test task: none.')), rig.live.woken.map(entry => entry.text).join('\n'))
   await setStage(rig, 'module-b', 'release')
   await rig.step()
   const atB = releaseAtOf(await rig.node('module-b'))

@@ -23,7 +23,7 @@ import type { AskForm } from './proposal.ts'
 import { directionsOf, frameworkOf, isSplit, moduleCandidatesOf, modulesOf, moduleOf } from './modules.ts'
 import { CARD_LABELS, effectiveStage, goalOf, isClosed, labeledSections } from './stage.ts'
 import type { GraphNode, HistoryEntry } from './schema.ts'
-import { isUserNode } from './user-graph.ts'
+import { isUserNode, userGraphOf } from './user-graph.ts'
 import { liveOf } from './user-live.ts'
 
 /** Minutes of graph history that fold into one row of the same kind. */
@@ -548,11 +548,23 @@ export function changesSince(graph: LoadedGraph, since: string, quiet: ReadonlyS
 
   const progress: { readonly at: string, readonly kind: string, readonly title: string }[] = []
   const comments = new Map<string, number>()
+  /** The in-window walks per flow id: the rows of §6.1's three new kinds are judged per flow, not per step. */
+  const walks = new Map<string, { readonly at: string, readonly failed: boolean, readonly step: string }[]>()
 
   for (const node of graph.nodes.values()) {
     if (quiet.has(node.id)) continue
     for (const entry of node.history) {
       if (Date.parse(entry.at) <= sinceMs) continue
+      if (entry.op === 'walk') {
+        // The harness's walks (and the person's own, with their words) are what the three user-graph rows read (user graph design 0.4.1 §6.1).
+        if (node.type !== 'step' || node.parent === undefined) continue
+        const exits = (entry.evidence ?? []).map(item => item.exit ?? 0)
+        if (exits.length === 0) continue
+        const list = walks.get(node.parent) ?? []
+        list.push({ at: entry.at, failed: exits.some(exit => exit !== 0), step: node.title })
+        walks.set(node.parent, list)
+        continue
+      }
       if (entry.actor !== 'llm') continue
       const mark = answerKindOf(entry)
       const callId = answerCallOf(entry)
@@ -611,6 +623,14 @@ export function changesSince(graph: LoadedGraph, since: string, quiet: ReadonlyS
       }
       if (entry.op === 'propose') {
         if (node.status === 'proposed') continue
+        // A user step no one serves yet reads as its own row (§6.1); a served one folds with the rest of the progress.
+        if (isUserNode(node) && node.type === 'step') {
+          const served = [...graph.nodes.values()].some(work => liveOf(graph, work) && (work.edges ?? []).some(edge => edge.type === 'serves' && edge.to === node.id))
+          if (!served) {
+            push(entry.at, `新加一步${quote(node.title)}，还没人负责`)
+            continue
+          }
+        }
         progress.push({ at: entry.at, kind: entry.relay === undefined ? 'added' : 'added-relay', title: node.title })
         continue
       }
@@ -634,6 +654,21 @@ export function changesSince(graph: LoadedGraph, since: string, quiet: ReadonlyS
         push(entry.at, other === undefined ? `${quote(node.title)}被取代了` : `${quote(node.title)}被${quote(other.title)}取代了`)
         continue
       }
+    }
+  }
+
+  // The walk rows (§6.1): a flow whose state now reads walked speaks 走通了; otherwise its latest in-window failing walk names the step that did not pass. One row per flow.
+  for (const [flowId, list] of walks) {
+    const flow = graph.nodes.get(flowId)
+    const goal = flow === undefined ? undefined : goalOf(graph, flow.id)
+    if (flow === undefined || goal === undefined) continue
+    const view = userGraphOf(graph, goal).roles.flatMap(role => role.flows).find(candidate => candidate.flow.id === flow.id)
+    const latest = [...list].sort((left, right) => Date.parse(left.at) - Date.parse(right.at)).at(-1)
+    if (latest === undefined) continue
+    if (view !== undefined && view.state === 'walked') push(latest.at, `${quote(flow.title)}走通了`)
+    else {
+      const failed = [...list].filter(item => item.failed).sort((left, right) => Date.parse(left.at) - Date.parse(right.at)).at(-1)
+      if (failed !== undefined) push(failed.at, `${quote(flow.title)}走不通：${quote(failed.step)}`)
     }
   }
 

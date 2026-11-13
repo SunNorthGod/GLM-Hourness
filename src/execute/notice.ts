@@ -34,6 +34,7 @@ import { childrenIndex, subtreeOf } from '../graph/projection.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import { graphFocus } from '../graph/service.ts'
 import { effectiveStage, goalOf, moduleReleaseGate } from '../graph/stage.ts'
+import { userGraphOf } from '../graph/user-graph.ts'
 import { createUserNotice, type AgentLike, type DerivedMessage, type ServiceLookup, type UserNotice } from '../shared/dsh-min.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
@@ -135,6 +136,46 @@ function stoppedNodes(subtree: readonly GraphNode[]): GraphNode[] {
   })
 }
 
+/**
+ * The user graph's decomposition gaps as one notice line (user graph design
+ * 0.4.1 §5.4): who is missing per step, the work nothing serves, the flows
+ * without their test task, and the steps still pointing at dropped ones.
+ * Undefined for a goal without a user graph or without any of these gaps —
+ * the other gaps have their own doors (the release and the walk
+ * preconditions) and no line here.
+ */
+function userGraphGaps(graph: LoadedGraph, goal: GraphNode): string | undefined {
+  const unserved: string[] = []
+  const orphan: string[] = []
+  const noTest: string[] = []
+  const nextDropped: string[] = []
+  for (const gap of userGraphOf(graph, goal).gaps) {
+    if (gap.key === 'step:unserved' || gap.key === 'step:next-dropped') {
+      const step = graph.nodes.get(gap.nodes[0] ?? '')
+      if (step === undefined) continue
+      const flow = step.parent === undefined ? undefined : graph.nodes.get(step.parent)
+      const named = `${flow?.title ?? step.title} › ${step.title} (${step.id})`
+      if (gap.key === 'step:unserved') unserved.push(named)
+      else nextDropped.push(named)
+    }
+    else if (gap.key === 'work:orphan') {
+      const work = graph.nodes.get(gap.nodes[0] ?? '')
+      if (work !== undefined) orphan.push(`${work.title} (${work.id})`)
+    }
+    else if (gap.key === 'flow:no-test') {
+      const flow = graph.nodes.get(gap.nodes[0] ?? '')
+      if (flow !== undefined) noTest.push(`${flow.title} (${flow.id})`)
+    }
+  }
+  const parts = [
+    ...(unserved.length > 0 ? [`Steps nobody serves: ${unserved.join(', ')}`] : []),
+    ...(orphan.length > 0 ? [`work that serves no step: ${orphan.join(', ')}`] : []),
+    ...(noTest.length > 0 ? [`flows with no test task: ${noTest.join(', ')}`] : []),
+    ...(nextDropped.length > 0 ? [`steps whose next points at a dropped step: ${nextDropped.join(', ')}`] : []),
+  ]
+  return parts.length === 0 ? undefined : parts.join('; ')
+}
+
 /** What waits to go to the person (§3.9.7): the framework sent back, the module release pages, the stops. */
 function batchItems(graph: LoadedGraph, goal: GraphNode, subtree: readonly GraphNode[]): BatchItem[] {
   const items: BatchItem[] = []
@@ -201,6 +242,8 @@ export function statusText(input: StatusInput): StatusText | undefined {
     })
     if (stale.length > 0) lines.push(`Stale dispatches, the graph changed after they were dispatched: ${stale.join('; ')}. Their handbacks count as stale; dispatch again when the work should follow the graph as it is now.`)
     if (drive.lost.length > 0) lines.push(`Lost when the app restarted: ${drive.lost.map(item => `${item.task} attempt ${item.attempt} (${item.childId})`).join(', ')}. Dispatch each again when you decide to; its brief lists the commits its branch already has.`)
+    const gaps = userGraphGaps(graph, goal)
+    if (gaps !== undefined && gaps.length > 0) lines.push(gaps)
     if (drive.state !== undefined) lines.push(drive.state)
     for (const entry of drive.returns) {
       const what = `${entry.tier === 3 ? 'goal' : 'module'} ${entry.node}`
