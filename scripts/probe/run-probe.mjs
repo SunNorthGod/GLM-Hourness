@@ -1367,6 +1367,36 @@ const envCeilingTimeouts = envCeilingHub?.agent?.items.find(item => item.id === 
 const envCeilingPage = readEnvLog(envCeilingLog).find(record => record.kind === 'page')?.page
 const envCeilingCheck = Array.isArray(envCeilingPage?.checks) ? envCeilingPage.checks[0] : undefined
 
+// The status hub's batch 6 (m7-6): hourness_report reads the collector —
+// the agent audience holds no person entry and neither kind carries a
+// metrics group; the morning kind answers the four questions, the weekly
+// kind relays the burden numbers and ends on the metrics-board line. The
+// operate row ships disabled; the scenario turns it on (the patrol kind and
+// entry arrive with m7-7 and are not in the schema yet).
+const operateReportDir = join(runDir, 'operate-report')
+const operateReportWs = join(operateReportDir, 'ws')
+mkdirSync(operateReportWs, { recursive: true })
+writeFileSync(join(operateReportWs, 'README.md'), 'probe workspace\n')
+if (!initRepo(operateReportWs)) throw new Error('probe: git init for operate-report failed')
+const operateReport = runScenario('operate-report', 'glm-5.3', [
+  { tool: { name: 'hourness_report', arguments: { kind: 'morning' } }, hub: true },
+  { tool: { name: 'hourness_report', arguments: { kind: 'weekly' } }, hub: true },
+  { text: 'done', hub: true },
+], 'Read the morning report, read the weekly report, then reply done.', ['- id: glm-hourness/operate', '  disabled: false'], operateReportWs)
+// A step is a model round, not a script entry: the morning kind's result is
+// the last tool message the second request carries, the weekly kind's the
+// third's, and a step's hub is captured when that step's call fires. So the
+// first hub sits between the two renders (the morning one has run, the
+// usage journal cannot move before the third request), and the last hub
+// follows the weekly one.
+const operateMorning = lastToolResult(operateReport.steps[1])
+const operateWeekly = lastToolResult(operateReport.steps[2])
+const operateMorningHub = operateReport.steps[1]?.hub
+const operateWeeklyHub = operateReport.steps[2]?.hub
+const operateMorningText = operateMorning?.text ?? ''
+const operateWeeklyText = operateWeekly?.text ?? ''
+const operateNoPerson = hub => hub?.error === undefined && hub?.agent?.items.every(item => item.audience === 'agent') === true && (hub?.agent?.items.length ?? 0) > 0
+
 // Rules board, a rule of the person across the end of a peak (M6 S3, M6
 // design §16 S3, §7.3, docs/ORCHESTRATION.md §16.12). The clone's rules file
 // holds the first rule of M6 design §7.3, which queues the GLM credit runs
@@ -5350,6 +5380,9 @@ const checks = [
   ['env-checks-ceiling: the root agent\'s environment notice gets the held-at-its-ceiling line with the full key, and check_limit is in its tool face', envCeilingMainNotices.some(text => text.split('\n').includes(ENV_CEILING_HELD)) && names(envCeilingMain[0]).has('check_limit'), envCeilingMainNotices.map(text => text.slice(0, 400).replace(/\n/g, ' | ')).join(' || ')],
   ['env-checks-ceiling: check_limit raises the ceiling to 120 s and limits.jsonl has the raise with the reason and the session; the next notice has no held line', envCeilingLimitResult?.outcome === 'raised' && envCeilingLimitResult.capS === 120 && envCeilingLimitResult.previousCapS === 60 && envCeilingLimitLines.length === 1 && envCeilingLimitLines[0].action === 'raise' && envCeilingLimitLines[0].check === 'tool-1/full' && envCeilingLimitLines[0].reason === ENV_CEILING_REASON && envCeilingLimitLines[0].session === envCeilingStarted?.parentId && !(envNoticesOf(envCeilingMain.slice(-1)).at(-1) ?? '').includes('held at its ceiling'), `${JSON.stringify(envCeilingLimitResult ?? lastToolResult(envCeilingMain[3])?.text ?? null)}; ${JSON.stringify(envCeilingLimitLines)}`],
   ['env-checks-ceiling: right after check_limit the collector reads env/timeouts at the agent audience: tool-1/full held at 60 s, and under it the raise to 120 s with its reason (status hub batch 9)', envCeilingHub?.error === undefined && envCeilingHub?.agent?.rows.every(row => row.outcome !== 'error') === true && envCeilingTimeouts?.audience === 'agent' && envCeilingTimeouts.text.startsWith('- tool-1/full：超时 60 秒（') && envCeilingTimeouts.text.includes('想要 75 秒，被上限截在 60 秒') && (envCeilingTimeouts.detail ?? []).some(line => line.startsWith('  - 上限已由主 Agent 调高到 120 秒 · ') && line.includes(`：${ENV_CEILING_REASON}；要改回，跟主 Agent 说`)), JSON.stringify(envCeilingHub ?? null).slice(0, 1200)],
+  ['operate-report: the morning kind answers the four questions with the hub rows in front (status hub batch 6)', operateReport.status === 0 && operateMorning?.isError !== true && ['# 晨报 ', '## 现在', '## 一、目标', '## 二、规划', '## 三、理由', '## 四、架构', '## 在等你回话的', '## 检查与审查', '## 花了多少', '## 例外'].every(title => operateMorningText.includes(title)) && !operateMorningText.includes('metrics/load') && !operateMorningText.includes('### '), `exit ${operateReport.status}; ${operateMorningText.slice(0, 400).replace(/\n/g, ' | ')}`],
+  ['operate-report: the weekly kind relays the burden and ends on the metrics-board line; neither kind carries a person entry or a metrics group (status hub batch 6, d-metrics-ratios-person-only)', operateWeekly?.isError !== true && operateWeeklyText.startsWith('# 周报 ') && operateWeeklyText.includes('## 人的负担') && operateWeeklyText.endsWith('其余的数字在面板的指标板上：比率与对照只给人看，不进对话。') && !operateWeeklyText.includes('### ') && operateNoPerson(operateMorningHub) && operateNoPerson(operateWeeklyHub) && (operateWeeklyHub?.agent?.items.find(item => item.id === 'metrics/load') !== undefined || operateWeeklyText.includes('减负数字读不到')), `morning hub items: ${JSON.stringify(operateMorningHub?.agent?.items.map(item => [item.id, item.audience]) ?? null)}; weekly hub items: ${JSON.stringify(operateWeeklyHub?.agent?.items.map(item => [item.id, item.audience]) ?? null)}; weekly: ${operateWeeklyText.slice(0, 300).replace(/\n/g, ' | ')}`],
+  ['operate-report: the morning text relays the usage entry of the hub word for word (the spend section is the entry, not a second computation)', (() => { const usage = operateMorningHub?.agent?.items.find(item => item.id === 'glm/usage'); return usage === undefined ? operateMorningText.includes('无模型调用') : operateMorningText.includes(usage.text) && (usage.detail ?? []).every(line => operateMorningText.includes(line)) })(), `usage entry: ${JSON.stringify(operateMorningHub?.agent?.items.find(item => item.id === 'glm/usage') ?? null).slice(0, 300)}`],
   ['env-checks-ceiling: right after check_limit the env row hands the loop board\'s page one detail line for the check (no timeout in it) and the check with its timeout: 60 s from the estimate of 25 s, held by the cap at 75 s, the raise to 120 s with its reason, a history and no timeouts (panel done condition 8-1)', isDeepStrictEqual(envCeilingPage?.details, ['Full：改了 *.txt 之后跑 · node fast.mjs {files}']) && envCeilingPage.checks.length === 1 && envCeilingCheck?.key === 'tool-1/full' && envCeilingCheck.title === 'Full：full' && envCeilingCheck.timeout?.seconds === 60 && envCeilingCheck.timeout.source?.kind === 'agent-estimate' && envCeilingCheck.timeout.source.estimateS === 25 && isDeepStrictEqual(envCeilingCheck.timeout.held, { by: 'cap', wantedS: 75 }) && envCeilingCheck.timeout.capRaised?.capS === 120 && envCeilingCheck.timeout.capRaised.reason === ENV_CEILING_REASON && Array.isArray(envCeilingCheck.timeout.history) && envCeilingCheck.timeout.history.length >= 1 && isDeepStrictEqual(envCeilingCheck.timeout.timeouts, []) && envCeilingCheck.timeout.timeouts7d === 0, JSON.stringify(envCeilingPage ?? null).slice(0, 1200)],
   ['env-checks-ceiling: a subagent\'s environment notice has the checks line and no held line', envCeilingStarted !== undefined && envCeilingChild.length > 0 && envCeilingChildNotices.length > 0 && envCeilingChildNotices.every(text => text.includes('Checks run after each edit (listed on the loop board): full on *.txt.') && !text.includes('held at its ceiling')), `${envCeilingChild.length} child request(s); ${envCeilingChildNotices.map(text => text.slice(0, 300).replace(/\n/g, ' | ')).join(' || ')}`],
   ['env-notice: the row appended .llm/ to the clone\'s .git/info/exclude and check-ignore verifies it', envIgnored === 0 && envExclude.split('\n').filter(line => line.trim() === '.llm/').length === 1, `check-ignore exit ${envIgnored}; exclude lines: ${envExclude.split('\n').filter(line => line.trim() === '.llm/').length}`],

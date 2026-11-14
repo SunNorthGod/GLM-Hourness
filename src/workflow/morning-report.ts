@@ -420,9 +420,10 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
  * of the session's project the denials. The caller gives no checks for a
  * graph that cannot be read (the section of asks already names why); a
  * journal that cannot be read makes the denial checks unchecked, with the
- * reason.
+ * reason. The four-answers report (src/report/four-answers.ts) reads the
+ * same result (docs/ORCHESTRATION.md §12).
  */
-async function readEffects(loaded: LoadedGraph, metrics: ReportOptions['metrics'], nowMs: number): Promise<EffectCheck[]> {
+export async function readEffects(loaded: LoadedGraph, metrics: ReportOptions['metrics'], nowMs: number): Promise<EffectCheck[]> {
   const journal: JournalRead = metrics === undefined
     ? { unreadable: '这次调用没有给出项目' }
     : !('root' in metrics)

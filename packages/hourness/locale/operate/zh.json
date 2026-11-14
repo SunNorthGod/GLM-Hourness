@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "报告",
+    "description": "主 Agent 的 hourness_report——四答晨报与周报——并把晨报、周报两条时间条目交给循环板。默认关闭，探针与批次 L4 过了再启用。"
+  }
+}

@@ -72,6 +72,8 @@
     "./loops/locale/*.json": "./locale/loops/*.json",
     "./metrics/locale/*.json": "./locale/metrics/*.json",
     "./env/locale/*.json": "./locale/env/*.json",
+    "./operate": "./dist/operate/index.js",
+    "./operate/locale/*.json": "./locale/operate/*.json",
     "./transcript/locale/*.json": "./locale/transcript/*.json",
     "./bootstrap/locale/*.json": "./locale/bootstrap/*.json",
     "./locale/*.json": "./locale/*.json",
