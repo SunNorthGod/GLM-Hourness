@@ -26,6 +26,17 @@
  * main agent itself, an ordinary session — is judged only by
  * worker-message-live-only, whose subject is the main agent's own calls.
  *
+ * A subagent the main agent started directly (the plain `subagent` tool, the
+ * takeover, the probe's own starts) is not the dispatched chain: the design
+ * row owns it (m7 design 0.6 §3.2.2's coexistence — its relay quote, its
+ * stage move and its delegations write are refused by the design row's own
+ * rules, with the bypass notice, before the read-only rule is even asked).
+ * The graph refusal below therefore asks the inner chain first for such a
+ * caller: what the design row refuses stands with its own rule, and what it
+ * lets through is still refused read-only here — whichever row installed
+ * first, since the rows' prepended listeners shadow each other by install
+ * order and the loader applies the rows concurrently.
+ *
  * Judging is fail-open where the role cannot be read (the row health says
  * so); the write-scope check of a registered worker fails closed when the
  * project graph has never been read (§3.2.1: refuse rather than guess).
@@ -480,8 +491,22 @@ export function installExecuteRules(ctx: PreExecuteHost, deps: ExecuteRulesDeps)
     }
 
     // worker-graph-readonly (§3.2.3): a dispatched chain's graph write by name.
+    // A delegated caller no dispatch roots (a plain subagent of the main
+    // agent) is the design row's subject, not the chain (m7 design 0.6 §3.2.2's
+    // coexistence): the inner chain runs first here, so a relay quote, a stage
+    // move or a delegations write comes back refused with the design row's own
+    // rule, its journal shape and the bypass notice, whichever row installed
+    // first. What the design row lets through is still read-only here — the
+    // graph is written by the main agent and the harness alone.
     const graph = graphVerdict(call)
-    if (graph !== undefined) { await record('refused'); return refuse('worker-graph-readonly', graph, payload, agent.id, session.id, deps) }
+    if (graph !== undefined) {
+      if (owner === undefined) {
+        const inner = await next()
+        return inner.kind === 'allow' ? refuse('worker-graph-readonly', graph, payload, agent.id, session.id, deps) : inner
+      }
+      await record('refused')
+      return refuse('worker-graph-readonly', graph, payload, agent.id, session.id, deps)
+    }
 
     // worker-scope (§3.2.1): a registered caller's file write.
     if (attempt !== undefined && isFileWrite(call)) {
