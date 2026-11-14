@@ -282,7 +282,7 @@ test('a registered worker writes inside its file scope and its .hourness/; outsi
   }
 })
 
-test('worker-git keeps the index writes to the worker\u2019s own worktree: read-tree and update-index run there, read-tree --index-output at the main checkout\u2019s index is refused, and a dispatch without a worktree cannot write the main checkout\u2019s index', async () => {
+test('worker-git keeps the index writes to the worker\u2019s own worktree: read-tree and update-index run there, read-tree --index-output at the main checkout\u2019s index is refused, a dispatch without a worktree cannot write the main checkout\u2019s index, a reviewer\u2019s read-tree is not a read, and a session outside the dispatched chain is not the rule\u2019s subject', async () => {
   const seam = await dispatchedWorker(['pwsh'])
   const { project, cleanup, childId, child, exec } = seam
   try {
@@ -304,6 +304,16 @@ test('worker-git keeps the index writes to the worker\u2019s own worktree: read-
     const applyCached = await exec('pwsh', { command: 'git apply --cached change.patch' }, { agent: bare }) as { isError: boolean, content: { text?: string }[] }
     assert.ok(applyCached.isError && applyCached.content.map(part => part.text ?? '').join('').includes('it writes the index of the main checkout'), `git apply --cached without a worktree ran: ${applyCached.content.map(part => part.text ?? '').join('')}`)
     forgetAttempt('hz-bare-1')
+    // A reviewer's read-tree is a write of the index: only reads are hers (§3.2.4 step 1).
+    registerAttempt({ childId: 'hz-rev-1', role: 'review', node: 'task-1', attempt: 1, graphDir: join(project.root, 'docs', 'graph'), provider: 'probe', model: 'probe-model', why: 'review read', plan: 'skipped', pins: '' })
+    const reviewer = childAgent('hz-rev-1', project.root, 'main-1')
+    const reviewTree = await exec('pwsh', { command: 'git read-tree HEAD' }, { agent: reviewer }) as { isError: boolean, content: { text?: string }[] }
+    assert.ok(reviewTree.isError && reviewTree.content.map(part => part.text ?? '').join('').includes('it is not a read'), `the reviewer's git read-tree ran: ${reviewTree.content.map(part => part.text ?? '').join('')}`)
+    forgetAttempt('hz-rev-1')
+    // A session outside the dispatched chain (no origin, not registered) is not §3.2.4's subject: the row passes its git through — the main agent's git is M3's snapshot rule, an ordinary session's is nobody's here.
+    const outside: AgentLike = { id: 'walk-1', ctx: {} as never, session: { id: 'walk-1', header: { id: 'walk-1', cwd: project.root }, deriveMessages: () => [] } }
+    const outOfChain = await exec('pwsh', { command: 'git read-tree HEAD' }, { agent: outside }) as { isError: boolean, content: { text?: string }[] }
+    assert.ok(!outOfChain.isError, `git read-tree outside the dispatched chain was refused: ${outOfChain.content.map(part => part.text ?? '').join('')}`)
     // The denials are in the violation journal.
     const violations = readFileSync(join(project.root, '.llm', 'audit', 'violations.jsonl'), 'utf8')
     assert.ok(violations.includes('worker-git'), 'the worker-git denial is not in the violation journal')
