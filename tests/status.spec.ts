@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
+import { fourAnswers } from '../src/report/four-answers.ts'
+import { weeklyReport } from '../src/report/weekly.ts'
+import { guardStatusItems } from '../src/guard/status.ts'
 import { collectStatus, STATUS_ROWS, statusPlaceholders } from '../src/report/status.ts'
 import { NO_PRICING_LINE, PEAK_SOURCE, peakStatusItems, QUOTA_SOURCE, quotaStatusItems, usagePanel, usagePanelLines, usagePanelOf, usageStatusItems, usageTotals } from '../src/report/panel.ts'
 import type { ServiceLookup } from '../src/shared/dsh-min.ts'
@@ -191,6 +194,7 @@ test('collectStatus: agent keeps only agent entries, all keeps both, and the abs
     { row: 'loops', outcome: 'absent' },
     { row: 'metrics', outcome: 'absent' },
     { row: 'env', outcome: 'absent' },
+    { row: 'operate', outcome: 'absent' },
     { row: 'transcript', outcome: 'absent' },
     { row: 'bootstrap', outcome: 'absent' },
   ])
@@ -332,4 +336,42 @@ test('the glm/quota entry mirrors the section\'s lines: the first is the text, t
   const [one] = quotaStatusItems(['额度：正在读取，稍后再看'], 0)
   assert.equal(one?.detail, undefined)
   assert.deepEqual(quotaStatusItems([], 0), [])
+})
+
+// --- the reports are views of the same entries (status hub design 0.3 §12 M7 row, batch 6) ---
+
+test('the four-answers report relays the collector’s entries word for word: the spend and the exception rows are the same items, not a second computation', () => {
+  const [usage] = usageStatusItems(usagePanel(journal, creditPricing), SOURCE, Date.parse('2026-10-31T20:00:00+08:00'))
+  const [peak] = peakStatusItems(creditPricing, Date.parse('2026-10-28T15:00:00+08:00'), ZONE)
+  const [quota] = quotaStatusItems(['额度（服务端读数，含 ZCode 等其他客户端，读于 19:40）：max', '- 5 小时：已用 41% · 21:30 重置 · 不预估：读数不足'], 0)
+  const lookup = serviceStore()
+  lookup.provide(statusServiceName('hourness'), { row: 'hourness', items: () => [usage, peak, quota] })
+  const collected = collectStatus(lookup, 's1', 'agent', 0)
+  const text = fourAnswers({ period: '2026-10-30', nowMs: 0, status: collected.items, graph: { nodes: new Map(), revisions: new Map(), revision: 'r', issues: [] } })
+  const lines = text.split('\n')
+  const spendStart = lines.indexOf('## 花了多少') + 1
+  assert.deepEqual(lines.slice(spendStart, spendStart + 1 + (usage.detail ?? []).length), [usage.text, ...(usage.detail ?? [])])
+  assert.equal(lines[lines.indexOf('## 现在') + 1], peak.text)
+  assert.equal(lines[lines.indexOf('## 现在') + 2], quota.text)
+})
+
+test('the weekly report relays the collector’s metrics/load and operations entries word for word, and computes nothing of them', () => {
+  const load: StatusItem = {
+    id: 'metrics/load',
+    owner: 'metrics',
+    audience: 'agent',
+    asOf: '2026-10-31T12:00:00.000Z',
+    source: 'test/fixture',
+    text: '最近 7 天：每周被问几次 3；每次要读多少字 220；回话等多久 40 分',
+  }
+  const guardItems = guardStatusItems({ violations: [], lifts: { records: [] }, source: 'audit/violations.jsonl', liftsSource: 'docs/guard/lifts.jsonl' }, 0)
+  const lookup = serviceStore()
+  lookup.provide(statusServiceName('guard'), { row: 'guard', items: () => guardItems })
+  lookup.provide(statusServiceName('metrics'), { row: 'metrics', items: () => [load] })
+  const collected = collectStatus(lookup, 's1', 'agent', 0)
+  const text = weeklyReport({ period: '2026-10-30', nowMs: 0, status: collected.items, graph: { nodes: new Map(), revisions: new Map(), revision: 'r', issues: [] } })
+  const lines = text.split('\n')
+  assert.equal(lines[lines.indexOf('## 人的负担') + 1], load.text)
+  const operations = lines.indexOf('## 拦下与撤下') + 1
+  assert.deepEqual(lines.slice(operations, operations + 1 + (guardItems[0]?.detail ?? []).length), [guardItems[0]?.text, ...(guardItems[0]?.detail ?? [])])
 })
