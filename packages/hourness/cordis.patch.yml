@@ -209,6 +209,19 @@
       name: dsh-hourness/env
       inject: [tools]
       config: {}
+    - id: glm-hourness/operate
+      # The reports row (M7 design 0.6 §3.10, §3.11.1, P3): hourness_report for
+      # the main agent — kind morning is the four-answers morning report, kind
+      # weekly the weekly one — and the two time entries (operate.morning,
+      # operate.weekly) handed to the loop board, whose DSH timers deliver
+      # their tell to the holder session. The reports read the status hub's
+      # agent entries through the collector (status hub design 0.3 §12 M7 row,
+      # batch 6). Ships disabled: enabled with its L3 probe (hourness_report
+      # without a person entry or a ratio) and the batch L4.
+      name: dsh-hourness/operate
+      inject: [tools]
+      disabled: true
+      config: {}
     - id: glm-hourness/transcript
       # Session transcript (docs/DESIGN.md §2.4, §5.6): when a GLM compaction
       # summary is done, the glm-compact row asks this row's service

@@ -1803,6 +1803,20 @@ git 在 L2 用临时目录里的真实 git 仓库测：建工作树与分支、�
 
 这两处你看行吗？
 
+这两处你看行吗？
+
+③ 晨报「用量（今天）」的两扇窗
+
+背景：状态板块第 6 批落了四答晨报，「用量（今天）」一节还是本期切片；面板的用量清单是整本流水的账，两处并列时数会**对不上**
+
+推荐：晨报里两扇窗并排——本期一扇（怎么花的不变），整本一扇照面板的口径；要哪种、要不要都放，你定
+
+疑问：两扇都放的话晨报会**长几行**；只放整本的话当天的花费要自己数
+
+不做：不让两处**各算各的**，数字必须同源
+
+这一处不挡开工：你回答之前晨报保持本期切片。
+
 记图时的具体内容（给编排者，人同意之后带人的原话写进验收）：
 
 - ① `norm-review-floor` 四条验收的末尾各加：第 1 条 `` `files src/guard/, src/execute/scope.ts, src/execute/faces.ts, src/execute/advance.ts, src/execute/floor.ts, src/execute/gate-norm.ts, src/rules/, src/design/index.ts, src/shared/tool-names.ts, src/shared/dialect.ts` ``（0.4 加了主干前进的核对、底线清单的判定与规则板，它们同样是拦截与权限）；第 2 条 `` `files src/graph/engine.ts, src/graph/format.ts, src/graph/schema.ts, src/graph/parse.ts, src/graph/mutation.ts, src/graph/store.ts` ``；第 3 条 `` `deletes` `` 与 `` `commands git push, git branch -d, git branch -D, git update-ref -d, git filter-branch, git filter-repo` ``；第 4 条 `` `outside` ``。人话部分不改。
@@ -2035,3 +2049,8 @@ R5-N3（放行稿与验收字句的草稿）由编排方在设计之外同批做
 - 0.6 修订（2026-10-31）：答复 E3 的独立评审（`review-e3.md`，发现 E3-9）。§3.8.4 的执行前判定表补五条能把本地主干挪到没检查的提交的写法（`push .`、`branch -M`、`worktree add -B`、`pull .`、`symbolic-ref`）和一条改远端跟踪引用的写法（`push .` 到 `refs/remotes/`），每条的判定写在表里，表后一段说明来由；E1b 与 E7 两行、§6.6 的上游用例各加一句指向它们。写法分类的代码与用例落在 E1b，执行前监听器、拒绝用例和「今天必败」断言落在 E7，现在都还没有代码。版本号不变，没有别的地方改动；评审里 E3-10 的三点（默认分支与 `remote get-url` 两个读法、读不出的 reflog 与 `unknown` 按推送一类处理、`fetch` 字样要这次调用自己的命令佐证）是 E7 的实现细节，设计文字已经覆盖，不改。
 - 0.6 修订（2026-10-31，第二次）：答复 E3 后续评审（`review-e3-followup.md`，发现 FU-1）与 E3 评审的 E3-6。§6.5 加一行：harness 自己的 git 调用不运行仓库配置里的钩子与 fsmonitor 命令（`-c core.hooksPath=<空设备>`、`-c core.fsmonitor=false`），写明原因、这是人定的、不受影响的主 Agent 与子 agent 的 shell 调用，以及没有关的过滤器与 `ls-remote` 的传输程序；门禁工作树那一行补上 E3-1、E3-2 的守卫和 `refs/hourness/gate-head`（E3 里写、设计里没提的那个引用）。代码与用例已在 `m7` 分支的 `src/execute/git.ts`、`tests/execute-git.spec.ts`。版本号不变，没有别的地方改动。
 - 0.6 修订（2026-10-31，第三次）：答复 E3 后续评审第二轮（`review-e3-followup.md`，发现 FU-4、FU-5）。§6.5 的钩子一行改为钩子目录里的与配置里定义的钩子都不运行：`git.ts` 再加 `-c hook.<事件>.enabled=false`（`post-checkout`、`reference-transaction`、`post-index-change`，评审在 git 2.55.0 上逐事件实测这三个会被这些调用触发），因为配置里的钩子与钩子目录里的叠加着跑，`core.hooksPath` 管不到；一行里写明版本边界（`hook.<事件>.enabled` 从 git 2.55 起有，2.54.x 上按文档推断关不住，落在 §3.8.4 保守的一侧）。门禁工作树一行里 `refs/hourness/gate-head` 改为「执行器用 `update-ref` 写的唯一一个引用」，并写明 `ensureWorktree` 另外建、改名 `hz/<任务>` 分支。代码与用例在 `m7` 分支的 `src/execute/git.ts`、`tests/execute-git.spec.ts`。版本号不变，没有别的地方改动。
+- 0.6 修订（2026-11-14，第四次）：状态板块第 6 批（m7-6 运维 P3 的晨报一半，分支 `m7-p3`）的实施记录。设计文字不改；与 0.6 的出入逐条记在这里。
+  - **落了什么**。`src/report/four-answers.ts` 的 `fourAnswers`（§3.10 的四答晨报：现在、一至四、在等你回话的、检查与审查、花了多少、例外；高峰/额度/用量/超时/撤下/压制/推进停住/汇报各节读 `collectStatus(..., 'agent')` 的条目，同源规则照状态板块 0.3 §12 M7 行；图、`<exec>` 的 checks/advances/drive 三本账由报告自算）、`src/report/weekly.ts` 的 `weeklyReport`（四个减负数字：三个来自 `metrics/load` 条目逐字转述，第四个按 §3.12.3 从图算；拦下与撤下两行也是条目；循环板两张单子按 `loops/*` 条目渲染、条目 absent 就整节省略；末尾一行指人去面板指标板，照 `d-metrics-ratios-person-only`）、`src/operate/` 的运维行（`hourness_report` 工具 kind `morning`/`weekly`，主 Agent 限定，结果就是报告文本；`operate.morning`/`operate.weekly` 两条时间条目照 §3.11.1 交给循环板；每次调用记 `operate.report`）。行出厂 `disabled: true`。L2：`tests/four-answers.spec.ts`、`tests/weekly.spec.ts`、`tests/operate-row.spec.ts`、`tests/status.spec.ts` 的两条同源断言（真实条目函数 → 收集器 → 报告逐字）；L3：探针场景 `operate-report`（两种 kind 的结果无人条目、无指标组、晨报的花费一节逐字等于收集器的用量条目）。晨报的「用量（今天）」保持本期切片，两扇窗口径记进 §13 ③。
+  - **与 0.6 的出入（都按严的一侧或按后来的定案）**。① §3.10 的「`/hourness` 也调它，文字相同」本批没做：`/hourness` 保持 M6 S5 的文本（其输出被既有 L2 与探针逐字钉住，状态板块批 8 的 L3 也钉着面板一节的同源），切文本等 §13 ③ 的口径定了随批做。② §3.12.4 周报的质量对照、降档后的返工明细、复盘与候选等比率节没进周报文本：`d-metrics-ratios-person-only`（2026-11-01，晚于本节的验收措辞）定了周报只转述四个减负数字，其余比率在面板指标板。③ §3.10 的「用了哪些模型」「审查轮数分布、挡路发现数」与 §3.10 二、三里「过期的派发」「等主 Agent 回应超 1 小时的请求」「计划批准次数」「worker 问了几次、超时几次」几行没有写：它们的耐久来源（指标流水的 `execute.*` 事件、计划与 ask 的流水）还没接，`attempts` 登记表只在进程内；数字由 harness 算的铁律不许发明，来源接上的那批补行。④ §3.10 例外节的「违规按规则计」等行读整本口径的条目（guard/env 行的 `statusItemsOf` 就是整本账），不是 §3.10 写的本期切片；同源的代价，状态板块 0.3 §12 M4 行定的是「晨报读同一条条目」。⑤ 巡检（§3.11.2）、`operate.patrol` 条目与 `hourness_report {kind:'patrol'}` 属 m7-7，不在本批，schema 里没有 patrol 档。⑥ 晨报口径定为本期=本地日切片、周报=近 7 天（设计没钉；与 `/hourness` 的本期切片和指标板 relayed 组的「最近 7 天」一致）。
+  - ⑦ 运维行的调用者判定取 `isMainAgentFor` 的 main 位，note 不挡（设计行缺席、没有持有者记录时每个根 agent 都算，M5 设计 §4.2.1 的同一回退）；执行行的 `check_commit` 等比它严是因为那些门派发工作，报告只读。
+  - **接缝（都在等别的线）**。循环板两张单子等循环板服务的 `staleEntries`/`timeoutEntries`（impl-plan-3 §1：没有分支在做）；`execute/stopped-quota`、`execute/progress` 条目随 M7 余批，收集器对缺席行照 §7 跳过；`lessons` 条目随 M5 下一稿（状态板块 §12 M5 行）。

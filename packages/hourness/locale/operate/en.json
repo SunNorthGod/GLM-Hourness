@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Reports",
+    "description": "hourness_report for the main agent — the four-answers morning report and the weekly one — with the two time entries handed to the loop board. Off by default until its probe and the batch L4 pass."
+  }
+}
