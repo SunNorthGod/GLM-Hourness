@@ -223,3 +223,39 @@ tiers (credits pre-authorized, norm-decision-tiers).
   main-checkout build (merge-step duty, build-info commit = HEAD) → push
   origin/main then github main → m7-10 comment + render + this file's
   landing record → push again → release the lock.
+
+## Stage 9 — landed (2026-11-16)
+
+- Rebase onto a5296ba0 clean (no conflicts). Final branch commits, content
+  identical to the pre-rebase tree the §13 acceptance ran on (66f38c96):
+  45b4cc94 (feat), 728e4513 (test), 4104b657 (docs record), f128edb4
+  (landing plan).
+- Gates on the rebased tree: build OK (build-info f128edb), preflight OK
+  (2 packages, 18 source dirs, 5+18 rows, 23 rows composed), npm test
+  exit 0 — eslint 73 / knip 18 / jscpd 1, ratchets flat, 231 spec files
+  every "# fail 0".
+- Probe: 608/608 passed, exit 0, ~22 min, log copied to the main checkout
+  .llm/logs/ms8land-probe.log, run dir auto-cleaned on the full pass.
+- First launch mistake, fixed and recorded: the launcher one-liner
+  backgrounded the whole `cd && nohup` chain, so probe #1 ran in the MAIN
+  checkout (wrong tree — its run dir junctions pointed at main's
+  packages). Killed by PID with the process tree (both probe-lock slots
+  were this lane's to use; slot 1 free, slot 2 mine), the run dir deleted
+  junction-first with target verification, and the dead instance's aborted
+  run dir (2026-11-15T16-12Z, worktree junctions) cleaned the same way.
+  The relaunch runs from a launcher script that asserts the checkout path
+  and the junction targets before the result counts.
+- Lock: probe-lock-2 adopted from the dead instance, renewed every 30 s
+  while probing, stop file set by the launcher on exit; owner frozen at
+  17:42:23Z before the release, dir deleted after landing.
+- Landing: ff-merge a5296ba0 → f128edb4 in the main checkout (strict
+  superset, no merge commit), main-checkout build OK, build-info commit =
+  f128edb = HEAD, tracked porcelain clean. Pushed origin (Gitee)
+  a5296ba0..f128edb4 and the github mirror, same range.
+- Wrap-up: m7-10 landing comment through the graph CLI + graph:render
+  (commit ba078d7a), this record next, second push of both remotes, then
+  worktree .worktrees/metrics-s8 and branch metrics-s8 deleted (house
+  pattern; probe log kept in the main checkout).
+- Nothing left for the person from this lane. The metrics section is L2/L3
+  verified; its desktop pickup rides the next batch L4 per DEVELOPMENT
+  §1.1 (no new rows, no bundle-layout change, the score table untouched).
