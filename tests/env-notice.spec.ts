@@ -3,13 +3,18 @@
  * no branch, the first/changed/compaction reasons over a derived history,
  * and the installed step notice on the fake runtime — first step carries it,
  * the next does not, a changed branch re-injects, and a graph the env row
- * cannot read leaves the scratch line alone.
+ * cannot read leaves the scratch line alone. The daily suppression count
+ * event (src/env/metrics.ts) is here too: the marker names travel as
+ * id-shaped `byKey` keys, the journal takes the event as handed in, and the
+ * verbatim marker map stays rejected.
  */
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { emitSuppressionCount, markerKey } from '../src/env/metrics.ts'
+import type { SuppressionRecord } from '../src/env/suppressions.ts'
 import { apply as envApply } from '../src/env/index.ts'
 import { envNotice, envNoticeBody, ENV_NOTICE_SOURCE, NO_BOARD_LINE, NO_CHECKS_LINE, SCRATCH_LINE } from '../src/env/notice.ts'
 import { openEngine } from '../src/graph/engine.ts'
@@ -17,8 +22,11 @@ import { serializeNode } from '../src/graph/format.ts'
 import { LOOPS_SERVICE } from '../src/loops/service.ts'
 import { GRAPH_SERVICE } from '../src/graph/service.ts'
 import { loadGraph } from '../src/graph/store.ts'
+import { METRICS_KINDS } from '../src/metrics/kinds/index.ts'
+import { checkEvent, FORMAT_VERSION } from '../src/metrics/schema.ts'
 import type { DerivedMessage, ServiceLookup, SessionLike, UserNotice } from '../src/shared/dsh-min.ts'
-import { METRICS_SERVICE, type EmittedEvent } from '../src/shared/metrics.ts'
+import { METRICS_ID_PATTERN, METRICS_SERVICE, type EmittedEvent } from '../src/shared/metrics.ts'
+import { SUPPRESSION_MARKERS } from '../src/shared/suppression-markers.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { seedAsHuman } from './graph-helpers.ts'
 
@@ -241,4 +249,41 @@ test('the daily suppression count hands the metrics service one count event for 
   finally {
     await rm(workspace, { recursive: true, force: true })
   }
+})
+
+/** The stored line the journal's validator sees: the envelope the writer adds around the handed-in body. */
+function storedCount(body: Extract<EmittedEvent, { k: 'count' }>['body']): Record<string, unknown> {
+  return { s: FORMAT_VERSION, k: 'count', at: '2026-11-16T08:00:00.000Z', w: '0123abcd', n: 1, h: '000000000000', v: 'spec', by: 'env', body }
+}
+
+test('markers travel as id-shaped byKey keys: the whole marker table shapes, distinct markers stay distinct', () => {
+  const keys = SUPPRESSION_MARKERS.map(markerKey)
+  assert.ok(keys.every(key => METRICS_ID_PATTERN.test(key)), keys.join(' '))
+  assert.equal(new Set(keys).size, keys.length)
+  // The real-shaped markers — `#`, spaces, brackets, `=` — are the ones the verbatim map always tripped on.
+  assert.deepEqual(
+    ['# noqa', '# type: ignore', '# pyright: ignore', '#[allow(', '# shellcheck disable=', 'eslint-disable-next-line'].map(markerKey),
+    ['__noqa', '__type:_ignore', '__pyright:_ignore', '__allow_', '__shellcheck_disable_', 'eslint-disable-next-line'],
+  )
+})
+
+test('a count over real-shaped markers passes the journal validator as handed in, counts queryable under the shaped keys', () => {
+  const events: EmittedEvent[] = []
+  const ctx = { get: (name: string): unknown => (name === METRICS_SERVICE ? { emit: (event: EmittedEvent): void => { events.push(event) } } : undefined) } as unknown as ServiceLookup
+  const record: SuppressionRecord = { at: '2026-11-16T08:00:00.000Z', repo: 'C:/repo', total: 7, byMarker: { 'eslint-disable-next-line': 2, '# noqa': 3, '# type: ignore': 1, '#[allow(': 1 } }
+  emitSuppressionCount(ctx, record)
+  const count = events[0] as Extract<EmittedEvent, { k: 'count' }> | undefined
+  assert.ok(count !== undefined)
+  assert.equal(count.by, 'env')
+  assert.deepEqual(count.body.byKey, { 'eslint-disable-next-line': 2, __noqa: 3, '__type:_ignore': 1, __allow_: 1 })
+  const check = checkEvent(storedCount(count.body), METRICS_KINDS)
+  assert.ok(check.ok, check.ok ? '' : `${check.field} ${check.reason}`)
+  // The readable marker names stay in the audit record, which the status entry and the morning report read.
+  assert.ok('# noqa' in record.byMarker)
+})
+
+test('the verbatim marker map the emitter used to hand in stays rejected at byKey (the id pattern is the contract)', () => {
+  const check = checkEvent(storedCount({ what: 'suppression-comments', value: 3, byKey: { '# noqa': 3 } }), METRICS_KINDS)
+  assert.equal(check.ok, false)
+  assert.ok(!check.ok && check.field === 'byKey', !check.ok ? check.field : 'ok')
 })
