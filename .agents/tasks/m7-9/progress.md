@@ -95,3 +95,10 @@ L2 直测的纯函数。部署在本项目里指「主干经核对前进一次�
   git 外的 `.agents/tasks/m5/lessons-seed.json`，从主检出拷入——m7-p3 同款）、重跑全绿 0 败；
   lint 棘轮持平 eslint 73 / knip 18 / jscpd 1。tsc 净。
   探针锁 `.llm/probe-lock` 被 m7-7 车道持有（2026-11-15T18:10:25Z 起，批 1 探针），probe 按纪律等锁。
+- [2026-11-16] 探针锁到手（m7-7 的批 1 探针 18:35Z 释放）。批 3 文档提交（47782092：ORCHESTRATION §12
+  DORA 行、HANDOFF §10 M7 行、设计 §19.4 第五次修订）。落地树重跑门禁：build 0（m79-build2）、
+  preflight 0（m79-preflight2）、test 0（m79-test3，日志里两处「not ok」是测试名用词，非失败）、
+  lint 持平（m79-lint2）。FF 合入 main（0490e3a9 → 47782092），主检出重建 dist（m79-build-main），
+  全量探针 608/608 exit 0（.llm/logs/m79-probe-main.log，本车道无新场景——设计只要求 L2，
+  周报文本零改动故既有 operate-report 检查照旧）。图批注 m7-9 落格 + graph:render +
+  graph:smoke ok。锁释放随推送。
