@@ -4,11 +4,11 @@
  * event to the metrics journal at the same moment — the run pairs and the
  * things that happen beside a run. The board wrote its own
  * `.llm/loops/runs.jsonl` until the stream landed; the journal is the record
- * now, and the readers of run history (the page's last-run cache, the
- * `state.json` rebuild, `staleEntries`, `timeoutEntries`) will read it back
- * with `readLog(root, {from, to})` over a 28-day window when that path is
- * built. A failing write never reaches the run: the metrics row counts its
- * own losses (§5.1), the run goes on.
+ * now, and the readers of run history read it back with
+ * `readLog(root, {from, to})`: `recentRecords` for the page's last runs,
+ * the two weekly lists' facts (records.ts `runEvents`). A `state.json`
+ * rebuild path stays unbuilt. A failing write never reaches the run: the
+ * metrics row counts its own losses (§5.1), the run goes on.
  */
 import type { EmittedEvent } from '../shared/metrics.ts'
 import type { LoopRecord } from './records.ts'

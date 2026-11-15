@@ -9,9 +9,8 @@
  * the project graph (§3.12.3). The operations state the reports relay beside
  * it — the denials, the lifts, the suppression count, the check timeouts —
  * are the hub's entries again, never recomputed; the loop board's two weekly
- * lists arrive as its `loops/*` entries once the board's service grows the
- * readers for them (staleEntries, timeoutEntries) and are rendered from
- * whatever entries that owner holds. Every other number is a ratio and stays
+ * lists are its `loops/*` entries (the board computes and words them) and
+ * are rendered from whatever entries that owner holds. Every other number is a ratio and stays
  * on the panel's metrics board: the last line says so.
  *
  * Pure and reproducible like the four-answers report (src/report/
