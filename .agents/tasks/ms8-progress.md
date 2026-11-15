@@ -198,3 +198,28 @@ tiers (credits pre-authorized, norm-decision-tiers).
   (11.6901 vs 11.69, 4.8065 vs 4.81, 58.3801 vs 58.38, 15.7386 vs 15.74
   — journal 4dp vs runner 2dp rounding order, the known half-cent).
   strayFiles empty in all four (the harness-artifact filter holds).
+
+## Stage 8 — resumed for landing (2026-11-16)
+
+- Restart audit: branch = a8db4928 + 9f23fdf6 + 66f38c96 + 4215ca47, tree
+  clean, stages 0–7 match. origin/main fetched: a5296ba0 (the read-tree
+  lane's 2f314a87 + a5296ba0), so the branch is behind 2 — rebase before
+  the ff merge. The m7-7 lane has not landed yet (main checkout clean).
+- .llm/probe-lock-2 found held with owner.txt "metrics-s8 lane probe gate
+  (L3 floor), 2026-11-15T16:16:08Z" — the dead instance's claim, taken
+  after the stage-7 commit; no probe process or run artifacts exist.
+  Adopted as this lane's own stale claim: owner.txt refreshed
+  (2026-11-15T17:06Z), renewal every 5 min while the probe runs,
+  stop-then-delete on release. probe-lock free.
+- Probe decision: no green full-probe record exists for this tree, so the
+  probe runs at the 608/608 floor (m7-p3's post-merge run proved 608/608
+  reachable at 3c8d425b; the read-tree lane re-met the floor at a5296ba0).
+- m5/impl-plan.md re-checked per the brief: it is the memory lane's plan;
+  stage 4's finding stands, no s8 wrap-up items in it. This lane's
+  remaining wrap-up per stage 0 + DEVELOPMENT §8: the m7-10 landing
+  comment at merge time, graph:render in the same commit.
+- Landing plan: this commit → rebase onto a5296ba0 → build → preflight →
+  npm test (ratchets 73/18/1) → probe → ff-merge in the main checkout →
+  main-checkout build (merge-step duty, build-info commit = HEAD) → push
+  origin/main then github main → m7-10 comment + render + this file's
+  landing record → push again → release the lock.
