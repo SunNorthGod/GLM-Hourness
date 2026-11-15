@@ -5,11 +5,12 @@ import { plainWordsIn } from '../src/graph/plain-question.ts'
 import { askDraft, draftRefusal } from '../src/execute/asks.ts'
 import type { Draft } from '../src/execute/asks.ts'
 
-/** Every line but the title carries exactly one bold phrase (d-chat-not-cards). */
+/** Every line but the title carries exactly one non-empty bold phrase (d-chat-not-cards). */
 function assertOneBold(draft: Draft): void {
   for (const [name, line] of [['ask', draft.ask], ['background', draft.background], ['proposal', draft.proposal], ['doubt', draft.doubt], ['notTaken', draft.notTaken]] as const) {
-    const marks = line.split('**').length - 1
-    assert.equal(marks, 2, `${name} carries exactly one bold: ${line}`)
+    const parts = line.split('**')
+    assert.equal(parts.length, 3, `${name} carries exactly one bold: ${line}`)
+    assert.ok(parts[1].length > 0, `${name} carries no empty bold: ${line}`)
   }
   assert.equal(codePointCount(draft.title) <= 40, true, 'the title is at most 40 code points')
 }

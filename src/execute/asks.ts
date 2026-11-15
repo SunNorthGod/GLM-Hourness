@@ -170,7 +170,7 @@ export function askDraft(kind: AskKind, facts: ReviewStuckFacts | CheckStuckFact
           title: clip(`「${input.title}」要不要${move}`, PLAIN_LIMITS.title),
           ask: `这条规矩${bold(move)}，可以吗？`,
           background: join('这条规矩', move, input.counts === '' ? '' : `：${clip(input.counts, 28)}`),
-          proposal: join(move, '', `：${why}`),
+          proposal: join('', move, `：${why}`),
           doubt: join('要是最近的数据', '还不够说话', '，先放着'),
           notTaken: join('不', '维持不动', '，数据指了方向'),
         },
