@@ -72,7 +72,7 @@ import { emitMetric } from '../shared/metrics.ts'
 import { nextPeakChange, pricingService } from '../shared/pricing.ts'
 import { PEAK_LEVEL_WORDS, PEAK_REDUCE_GLM_WORKERS, peakModeService, type PeakModeState } from '../shared/peak-mode.ts'
 import { scheduleOf } from './bind.ts'
-import { createBoards, realDelay, type Delay } from './boards.ts'
+import { createBoards, realDelay, type BoardLists, type Delay } from './boards.ts'
 import { CHANNEL_EVENTS, CHANNEL_PEAK_CHANGED, channelEntries } from './channel.ts'
 import { LOOPS_HINT, NOT_A_PROJECT, runLoopsCommand } from './commands.ts'
 import { LOOP_ACTIONS, LOOP_DEFAULTS } from './defaults.ts'
@@ -371,6 +371,17 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
   function bindingsOf(root: string): ReadonlySet<string> {
     const runtime = running.get(root)?.runtime
     return runtime === undefined ? new Set() : runtime.bindings()
+  }
+
+  /**
+   * The project's two weekly lists (design §6.11), while this process runs
+   * the project: undefined when it does not; empty before the first settle
+   * or beat has read the facts, since the lists ride the beat.
+   */
+  function weeklyLists(project: string): BoardLists | undefined {
+    const root = projectOf(project)?.root ?? project
+    if (!running.has(root)) return undefined
+    return boards.listsOf(root) ?? { stale: [], timeouts: [] }
   }
 
   /**
@@ -683,6 +694,8 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
               const project = typeof run.cwd === 'string' && run.cwd !== '' ? projectOf(run.cwd) : undefined
               if (project !== undefined) running.get(project.root)?.runtime.recordRun(run)
             },
+            staleEntries: (project, _now) => weeklyLists(project)?.stale,
+            timeoutEntries: (project, _now) => weeklyLists(project)?.timeouts,
           }
           withdrawService = sub.provide(LOOPS_SERVICE, service)
         }

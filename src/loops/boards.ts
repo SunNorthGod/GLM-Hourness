@@ -23,14 +23,17 @@ import { unlink } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { LockEnvironment } from '../data/lock.ts'
 import { projectKey } from '../graph/main-agent-holder.ts'
-import { writeAtomic, type StoreIo } from '../rules/store.ts'
+import { readText, writeAtomic, type StoreIo } from '../rules/store.ts'
 import { SCRIPT_MAX_BYTES } from './command-text.ts'
 import { holderLine, WRITER_HELD_MS, type HolderReason, type HolderStateKind } from './holder.ts'
+import { parseJournal, type JournalLine } from './journal.ts'
 import { readState, type RuntimeState } from './inbox.ts'
 import type { PersonEntry } from './model.ts'
-import { recentRecords } from './records.ts'
+import { recentRecords, runEvents } from './records.ts'
 import type { LoopsRegistry } from './registry.ts'
 import { ensureRuntimeDir, openLoopStore, type BoardRead, type LoopStore } from './store.ts'
+import { staleEntriesOf, timeoutEntriesOf, type StaleCandidate, type TimeoutCandidate } from './status.ts'
+import type { StaleEntry, TimeoutEntry } from './service.ts'
 import { attentionOf, buildView, type HolderView, type LoopsView, type PeakView, type ScriptStanding, type ViewRuntime } from './view.ts'
 
 /** How often `view.json` of one project is written at most. */
@@ -38,6 +41,31 @@ const VIEW_EVERY_MS = 2_000
 
 /** How many runs the page lists (design §8.2 item 7). */
 const RECENT_RUNS = 20
+
+/** How far back the weekly lists' facts reach at least (metrics F33: a 28-day window; an entry older than that is read from its own beginning). */
+const FACTS_WINDOW_MS = 28 * 86_400_000
+
+/** The two weekly lists of one project (design §6.11), as the service's readers and the row's status entries hand them out. */
+export interface BoardLists {
+  readonly stale: readonly StaleEntry[]
+  readonly timeouts: readonly TimeoutEntry[]
+}
+
+/** When each entry the change record names was added: the earliest add, else the earliest record naming it (an entry the record never names has none). */
+function addedAtOf(lines: readonly JournalLine[]): ReadonlyMap<string, string> {
+  const added = new Map<string, string>()
+  const named = new Map<string, string>()
+  for (const line of lines) {
+    const record = line.record
+    if (record?.id === undefined) continue
+    const at = added.get(record.id)
+    if (record.op === 'add' && (at === undefined || record.at < at)) added.set(record.id, record.at)
+    const seen = named.get(record.id)
+    if (seen === undefined || record.at < seen) named.set(record.id, record.at)
+  }
+  for (const [id, at] of named) if (!added.has(id)) added.set(id, at)
+  return added
+}
 
 /**
  * The main agent's line of the page head (design §8.2 item 1), from what the
@@ -119,6 +147,8 @@ export interface Boards {
   refresh(root: string): Promise<LoopsView | undefined>
   /** Write `view.json` again from the files as they read now and from what the runtime kept, without settling: a beat's change of the runtime (design §8.4). Never throws. */
   rewrite(root: string): Promise<void>
+  /** The two weekly lists the last settle or rewrite computed for the project (design §6.11); undefined before the first one. */
+  listsOf(root: string): BoardLists | undefined
   /** What is wrong with the projects now, one sentence each, naming the project. */
   problems(): readonly string[]
   /** Cancel the writes still waiting. */
@@ -139,6 +169,7 @@ export function createBoards(deps: BoardsDeps): Boards {
   const stores = new Map<string, LoopStore>()
   const problems = new Map<string, readonly string[]>()
   const written = new Map<string, Written>()
+  const listsByRoot = new Map<string, BoardLists>()
   const signatureOf = (view: LoopsView): string => JSON.stringify({ ...view, at: undefined })
 
   function storeOf(root: string): LoopStore {
@@ -197,6 +228,25 @@ export function createBoards(deps: BoardsDeps): Boards {
     }, wait) }
   }
 
+  /** The two weekly lists (design §6.11): the person's entries and the plugins' against the run facts of the metrics journal. Never throws. */
+  async function computeLists(root: string, store: LoopStore, board: BoardRead, nowMs: number): Promise<BoardLists> {
+    const person = board.entries.filter(entry => entry.status.kind !== 'deleted')
+    // A change record that is not there yet names no entry, so none has a provable age: none is stale.
+    const added = addedAtOf(parseJournal(readText(store.paths.journal) ?? '').lines)
+    const staleCandidates: readonly StaleCandidate[] = person.map(entry => ({ id: entry.id, title: entry.title, addedAt: added.get(entry.id) }))
+    const timeoutCandidates: readonly TimeoutCandidate[] = [
+      ...deps.registry.entries().map(item => ({ id: item.entry.id, title: item.entry.title })),
+      ...person.map(entry => ({ id: entry.id, title: entry.title })),
+    ]
+    const first = staleCandidates.flatMap(candidate => candidate.addedAt === undefined ? [] : [Date.parse(candidate.addedAt)])
+    const fromMs = Math.min(nowMs - FACTS_WINDOW_MS, ...(first.length === 0 ? [nowMs] : first))
+    const runs = await runEvents(root, new Date(fromMs).toISOString(), nowMs)
+    return {
+      stale: staleEntriesOf({ entries: staleCandidates, runs, nowMs }),
+      timeouts: timeoutEntriesOf({ entries: timeoutCandidates, runs, nowMs }),
+    }
+  }
+
   /** Make the view from a read of the files and write it; note what is wrong with the files. */
   async function show(root: string, store: LoopStore, board: BoardRead): Promise<LoopsView> {
     const nowMs = deps.io.now()
@@ -205,6 +255,7 @@ export function createBoards(deps: BoardsDeps): Boards {
     const read = deps.registry.entries().map(item => ({ item, details: deps.registry.detailsOf(item.entry.id, root) }))
     note(root, 'details', read.flatMap(({ item, details }) => details?.ok === false ? [`「${item.entry.title}」的明细读不到：${details.reason}`] : []))
     const plugin = read.map(({ item, details }) => details === undefined ? item : { ...item, details })
+    listsByRoot.set(root, await computeLists(root, store, board, nowMs))
     const view = buildView({
       at: new Date(nowMs).toISOString(),
       project: projectKey(root),
@@ -248,6 +299,7 @@ export function createBoards(deps: BoardsDeps): Boards {
     storeOf,
     refresh,
     rewrite,
+    listsOf: root => listsByRoot.get(root),
     problems: () => [...problems.values()].flat(),
     dispose() {
       for (const item of written.values()) item.waiting?.cancel()

@@ -283,3 +283,44 @@ export async function recentRecords(root: string, nowMs: number, limit: number):
   }
   return found.slice(-limit)
 }
+
+/** One run of one entry, as the weekly lists' facts read it (design §6.11, metrics F33). */
+export interface EntryRunEvent {
+  readonly kind: 'fired' | 'done'
+  /** ISO instant the run fired or ended. */
+  readonly at: string
+  /** A done's outcome; a fired has none. */
+  readonly outcome?: string
+}
+
+/**
+ * Every run the project's metrics journal holds from `fromIso` to `toMs`, by
+ * entry id, in journal order (`readLog` over the whole window: the facts the
+ * two weekly lists need, metrics F33 — the board's readers take their kind
+ * from the journal). Never throws: a journal that is not there or cannot be
+ * read has no run events.
+ */
+export async function runEvents(root: string, fromIso: string, toMs: number): Promise<ReadonlyMap<string, readonly EntryRunEvent[]>> {
+  const journal = projectOf(root)?.root ?? root
+  const byEntry = new Map<string, Array<EntryRunEvent>>()
+  try {
+    const { events } = await readLog(journal, { from: fromIso, to: new Date(toMs).toISOString() })
+    for (const event of events) {
+      const entry = event.body['entry']
+      if (typeof entry !== 'string') continue
+      const runs = byEntry.get(entry) ?? []
+      if (event.k === 'loop-fired') {
+        runs.push({ kind: 'fired', at: event.at })
+      }
+      else if (event.k === 'loop-done' && typeof event.body['outcome'] === 'string') {
+        runs.push({ kind: 'done', at: event.at, outcome: event.body['outcome'] })
+      }
+      else continue
+      byEntry.set(entry, runs)
+    }
+  }
+  catch {
+    // A journal that cannot be read ends the look back; what was found stands.
+  }
+  return byEntry
+}

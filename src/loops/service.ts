@@ -7,12 +7,13 @@
  * them.
  *
  * `LoopsService` has the members that exist: `contribute`, the events and runs
- * of the runtime (`emit`, `listens`, `recordRun`), and the line the guard adds
- * to its prompt section while this row is on (`declaration`, as the rules
- * service has it). The members of the path of a person's agreement
- * (`attachable`, `acceptProposal`, `staleEntries`, `timeoutEntries`) arrive
- * with that path, which is not built yet. The reader checks the members that
- * exist and takes a service that has more.
+ * of the runtime (`emit`, `listens`, `recordRun`), and the two weekly lists
+ * the status hub's batch 6 and the weekly report asked for (`staleEntries`,
+ * `timeoutEntries`, design §6.11 — the board computes them beside its view,
+ * from the metrics journal and the change record, and holds them for the
+ * readers). The members of the path of a person's agreement (`attachable`,
+ * `acceptProposal`) arrive with that path, which is not built yet. The reader
+ * checks the members that exist and takes a service that has more.
  *
  * The service is handed out only in a process that has a session controller,
  * which is the one process that can reach a session and deliver (design §3.1,
@@ -105,6 +106,31 @@ export type ContributeResult =
   | { readonly ok: true, readonly dispose: () => void, readonly accepted: readonly string[], readonly dropped: readonly { readonly id: string, readonly reason: string }[] }
   | { readonly ok: false, readonly reason: string }
 
+/** One of the person's entries the weekly report's first list names (design §3.1, §6.11). */
+export interface StaleEntry {
+  /** `u-<8 hex digits>`: the id of a person's entry. */
+  readonly id: string
+  readonly title: string
+  /** When the person added it (the change record's earliest add), ISO. */
+  readonly addedAt: string
+  /** The latest run that ended `delivered`, `ran` or `reported`; absent when no run ever did. */
+  readonly lastResultAt?: string
+  /** How many runs the last four weeks had, of every outcome. */
+  readonly runs28d: number
+  /** No run triggered in the four weeks; or runs there were, but none reached a result. */
+  readonly why: 'never-triggered' | 'no-result'
+}
+
+/** One entry the weekly report's second list names (design §3.1, §6.11, `d-script-timeout`). */
+export interface TimeoutEntry {
+  readonly id: string
+  readonly title: string
+  /** How many runs ended `unfinished` in the last seven days. */
+  readonly timeouts7d: number
+  /** The latest such run, ISO. */
+  readonly lastTimeoutAt: string
+}
+
 export interface LoopsService {
   /**
    * Hand over entries, events and actions at activation. The same source handing over again replaces its earlier
@@ -130,6 +156,21 @@ export interface LoopsService {
   listens(event: string, cwd: string): boolean
   /** One run of a `self` entry, reported by the row that ran it; the id of an entry that is not a listed one is dropped. Does not throw. */
   recordRun(run: ListedRun): void
+  /**
+   * The weekly report's first list (design §6.11): the person's entries of
+   * this project that are four weeks old and whose last four weeks hold no
+   * run that reached a result, at most three, the stalest first. Memory
+   * only, does not throw; undefined when this process does not run the
+   * project (the report then says the board is not in this DSH process).
+   */
+  staleEntries(project: string, now: Date): readonly StaleEntry[] | undefined
+  /**
+   * The weekly report's second list (design §6.11, `d-script-timeout`): the
+   * entries of this project with three or more `unfinished` runs in the last
+   * seven days, a person's and a plugin's alike, at most three, the most
+   * timeouts first. Undefined as `staleEntries` is.
+   */
+  timeoutEntries(project: string, now: Date): readonly TimeoutEntry[] | undefined
 }
 
 /** What a contributing row's context needs for `installContribution`. */
