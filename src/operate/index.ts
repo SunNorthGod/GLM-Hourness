@@ -38,6 +38,7 @@ import type { StatusItem } from '../shared/status.ts'
 import { errorText, isRecord, mainAgentCall, refuse, toolShell } from '../design/tool-support.ts'
 import { collectStatus, statusPlaceholders } from '../report/status.ts'
 import { fourAnswers } from '../report/four-answers.ts'
+import { dora, doraBody } from '../report/metrics.ts'
 import { weeklyReport } from '../report/weekly.ts'
 import { askSummary, localDay, readEffects } from '../workflow/morning-report.ts'
 import { OPERATE_ENTRIES, OPERATE_ROW_SOURCE } from './entries.ts'
@@ -155,6 +156,13 @@ export function hournessReportTool(deps: OperateDeps): ToolDefinitionLike {
             ...(placeholders.length > 0 ? { placeholders } : {}),
           })
       metricsOf(deps.lookup)?.emit({ k: 'operate.report', by: 'operate', body: { kind, lines: text.split('\n').length, units: [...text].length } }, where)
+      // The four delivery numbers ride the weekly call (M7 design 0.6 §3.13, m7-9): computed from the
+      // same records the report read, emitted into the metrics journal, never into the report text
+      // (`d-metrics-ratios-person-only` — ratios stay off the model context).
+      if (kind === 'weekly') {
+        const numbers = dora({ nowMs, sinceMs: Date.parse(since), advances, checks, graph: 'nodes' in graph ? graph : undefined })
+        metricsOf(deps.lookup)?.emit({ k: 'operate.dora', by: 'operate', body: doraBody(numbers) }, where)
+      }
       return { text }
     },
   }
