@@ -69,6 +69,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "对账（2026-11-13）：夜间巡检未开工（E 系列未含），保持 approved；设计见 M7 设计 0.6。"
+    },
+    {
+      "at": "2026-11-15T20:57:09.048Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "巡检落地：hourness_report {kind: patrol}、条目 operate.patrol（每日 02:30）、记录 <proj>/.llm/operate/patrol.jsonl；提交 c0af42fd/a5a2b304，随 cfbed849 进 main（2026-11-16）。"
     }
   ]
 }
