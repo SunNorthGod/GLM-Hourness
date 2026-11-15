@@ -13,14 +13,28 @@
  * are rendered from whatever entries that owner holds. Every other number is a ratio and stays
  * on the panel's metrics board: the last line says so.
  *
+ * The matters that wait for the person's word ride the same text
+ * (§3.12.2, §3.12.3): the rules ladder and the must-review floor proposals,
+ * at most three together with their four-line drafts, the floor additions
+ * first. Proposals are not ratios — they are the person's own decisions
+ * waiting (`d-rules-human-only`), which is why they stay in the text while
+ * the ratios do not (`d-metrics-ratios-person-only`); their data are raw
+ * counts. The counts read the violation journal the caller passes in; the
+ * norms, the rejections and the demoted cohort come from the graph.
+ *
  * Pure and reproducible like the four-answers report (src/report/
  * four-answers.ts): the clock and the period come in with the input.
  */
+import { parseFloor } from '../execute/floor.ts'
+import type { GuardRecord } from '../guard/records.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { reopensAfter } from '../graph/reopen.ts'
 import type { GraphNode, HistoryEntry } from '../graph/schema.ts'
 import type { StatusItem } from '../shared/status.ts'
 import { hubEntryLines } from './four-answers.ts'
+import { floorProposals, floorTasks } from './floor-proposals.ts'
+import { ladderEntry, ladderProposals, rejectedNorms } from './ladder.ts'
+import type { Ask } from '../execute/asks.ts'
 
 /** Why the project graph could not be read; the report names it in place of the numbers. */
 interface GraphUnreadable {
@@ -38,6 +52,8 @@ export interface WeeklyReportInput {
   readonly status: readonly StatusItem[]
   /** The project graph, or why it could not be read. */
   readonly graph: LoadedGraph | GraphUnreadable
+  /** The project's violation journal records, the ladder proposals' counts (§3.12.2); undefined reads no journal, so no ladder proposal is made. */
+  readonly violations?: readonly GuardRecord[] | undefined
   /** The rows whose status could not be read (`statusPlaceholders` of the collector's `rows`), said before the closing line. */
   readonly placeholders?: readonly string[] | undefined
 }
@@ -104,6 +120,33 @@ function loopsLines(items: readonly StatusItem[]): string[] {
   return items.filter(item => item.owner === 'loops').flatMap(item => [item.text, ...(item.detail ?? [])])
 }
 
+/** One matter for the person, as the section renders it: the title with the parent node, the facts, then the four-line draft. */
+function proposalLines(ask: Ask, parent: string): string[] {
+  return [
+    `- ${ask.draft.title}（${parent}）`,
+    ...ask.facts.map(fact => `  - ${fact}`),
+    `  - 背景：${ask.draft.background}`,
+    `  - 提议：${ask.draft.proposal}`,
+    `  - 疑问：${ask.draft.doubt}`,
+    `  - 不做：${ask.draft.notTaken}`,
+  ]
+}
+
+/** The proposals section (§3.12.2, §3.12.3): floor additions before ladder moves, three at most, plus the count of the norms the ladder cannot read. */
+function proposalsLines(graph: LoadedGraph, nowMs: number, violations: readonly GuardRecord[] | undefined): string[] {
+  const norms = [...graph.nodes.values()].filter(node => node.type === 'norm')
+  const floor = parseFloor(graph.nodes.get('norm-review-floor'))
+  const ladder = violations === undefined ? [] : ladderProposals({ nowMs, norms, violations, rejected: [...rejectedNorms(graph, nowMs)] })
+  const matters: readonly (readonly [parent: string, ask: Ask])[] = [
+    ...floorProposals({ nowMs, tasks: floorTasks(graph), floor }).map(proposal => ['norm-review-floor', proposal.ask] as const),
+    ...ladder.map(proposal => [proposal.norm, proposal.ask] as const),
+  ].slice(0, 3)
+  if (matters.length === 0 && norms.length === 0) return []
+  const lines = norms.length === 0 ? [] : [`- 规范 ${norms.length} 条，其中带规则标签的 ${norms.filter(norm => ladderEntry(norm) !== undefined).length} 条`]
+  for (const [parent, ask] of matters) lines.push(...proposalLines(ask, parent))
+  return lines
+}
+
 /** Render the weekly report for one week. */
 export function weeklyReport(input: WeeklyReportInput): string {
   const parsed = input.since === undefined ? Number.NaN : Date.parse(input.since)
@@ -123,6 +166,11 @@ export function weeklyReport(input: WeeklyReportInput): string {
 
   const loops = loopsLines(input.status)
   if (loops.length > 0) lines.push('', '## 两张单子', ...loops)
+
+  if (graph !== undefined) {
+    const proposals = proposalsLines(graph, input.nowMs, input.violations)
+    if (proposals.length > 0) lines.push('', '## 规矩的提议', ...proposals)
+  }
 
   for (const placeholder of input.placeholders ?? []) lines.push('', placeholder)
   lines.push('', '其余的数字在面板的指标板上：比率与对照只给人看，不进对话。')

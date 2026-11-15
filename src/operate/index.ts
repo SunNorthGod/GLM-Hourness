@@ -20,7 +20,7 @@
  * warns and says why in the row health. Ships disabled
  * (packages/hourness/cordis.patch.yml).
  */
-import { stat } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { projectOf } from '../data/project-root.ts'
 import { isMainAgentFor } from '../data/main-agent.ts'
@@ -29,10 +29,13 @@ import { readDrive } from '../execute/drive-log.ts'
 import { graphService } from '../graph/service.ts'
 import { loadGraph } from '../graph/store.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
+import { journalRecords, type GuardRecord } from '../guard/records.ts'
+import { auditPaths } from '../memory/audit.ts'
 import { LOOPS_SERVICE, loopsService, type Contribution, type LoopsService } from '../loops/service.ts'
 import { metricsOf } from '../shared/metrics.ts'
 import { provideRowHealth, sessionIdOf } from '../shared/health.ts'
 import { disposerList } from '../shared/row-support.ts'
+import { dataHomes } from '../shared/data-home.ts'
 import type { AgentLike, InjectHost, ProvideHost, ServiceLookup, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
 import type { StatusItem } from '../shared/status.ts'
 import { errorText, isRecord, mainAgentCall, refuse, toolShell } from '../design/tool-support.ts'
@@ -93,6 +96,23 @@ async function readGraph(dir: string | undefined): Promise<LoadedGraph | { reado
 const WEEK_MS = 7 * 86_400_000
 
 /**
+ * The project's violation journal, the ladder proposals' counts
+ * (§3.12.2): the records under the project directory's audit path. A
+ * missing or unreadable journal is no journal — the weekly report makes no
+ * ladder proposal, and nothing throws.
+ */
+async function readViolations(lookup: ServiceLookup): Promise<readonly GuardRecord[] | undefined> {
+  const path = auditPaths(dataHomes(lookup, undefined)).violations
+  if (path === undefined) return undefined
+  try {
+    return journalRecords(await readFile(path, 'utf8'))
+  }
+  catch {
+    return undefined
+  }
+}
+
+/**
  * `hourness_report {kind}` (M7 design 0.6 §3.10, §3.12.4): the main agent's
  * report tool. The status hub's agent entries come through the collector at
  * the `agent` audience; the graph, the checks, the advances and the drive
@@ -133,6 +153,8 @@ export function hournessReportTool(deps: OperateDeps): ToolDefinitionLike {
         ? { reason: '这个会话没有可归的项目' }
         : { root }
       const effects = 'nodes' in graph ? await readEffects(graph, metrics, nowMs) : []
+      // The violation journal rides the weekly call only (§3.12.2): the ladder proposals' counts read it.
+      const violations = kind === 'weekly' ? await readViolations(deps.lookup) : undefined
       const text = kind === 'morning'
         ? fourAnswers({
             period,
@@ -153,6 +175,7 @@ export function hournessReportTool(deps: OperateDeps): ToolDefinitionLike {
             since,
             status,
             graph,
+            ...(violations === undefined ? {} : { violations }),
             ...(placeholders.length > 0 ? { placeholders } : {}),
           })
       metricsOf(deps.lookup)?.emit({ k: 'operate.report', by: 'operate', body: { kind, lines: text.split('\n').length, units: [...text].length } }, where)

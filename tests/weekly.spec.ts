@@ -99,3 +99,52 @@ test('the closing line points the person to the metrics board, and no ratio ente
   assert.deepEqual(plainWordsIn(text), [])
   assert.equal(text, weeklyReport(input(graphOf([]), { status: [hubEntry('metrics/load', '最近 7 天：每周被问几次 3')] })))
 })
+
+const denial = (rule: string, second: number): { readonly at: string, readonly rule: string, readonly tool: string } =>
+  ({ at: at(second), rule, tool: 'Bash' })
+
+const norm = (id: string, title: string): ReturnType<typeof node> =>
+  node({ id, type: 'norm', title, status: 'approved', body: `为什么有这条\n级别：提示词\n规则：rules:${id}` })
+
+test('the proposals section counts the norms and carries the ladder proposal with its facts and draft', () => {
+  const graph = graphOf([
+    norm('norm-a', '写文件先问'),
+    node({ id: 'norm-plain', type: 'norm', title: '没有标签的规范', status: 'approved', body: '只有正文' }),
+  ])
+  const text = weeklyReport(input(graph, {
+    violations: [denial('rules:norm-a', 70), denial('rules:norm-a', 71), denial('rules:norm-a', 72)],
+  }))
+  assert.deepEqual(section(text, '## 规矩的提议'), [
+    '- 规范 2 条，其中带规则标签的 1 条',
+    '- 「写文件先问」要不要升一级（norm-a）',
+    '  - 规矩「写文件先问」按数据该升一级',
+    '  - 近 7 天拦截 3 条',
+    '  - 背景：这条规矩**升一级**：近 7 天拦截 3 条',
+    '  - 提议：升一级****：拦下更早',
+    '  - 疑问：要是最近的数据**还不够说话**，先放着',
+    '  - 不做：不**维持不动**，数据指了方向',
+  ])
+})
+
+test('without the journal or the graph there are only counts, and norms the person rejected stay off', () => {
+  const graph = graphOf([norm('norm-a', '写文件先问')])
+  const noJournal = weeklyReport(input(graph))
+  assert.deepEqual(section(noJournal, '## 规矩的提议'), ['- 规范 1 条，其中带规则标签的 1 条'])
+  const broken = weeklyReport(input({ unreadable: '图目录不存在' }, { violations: [denial('rules:norm-a', 70)] }))
+  assert.ok(!broken.includes('## 规矩的提议'))
+  const question = node({ id: 'q-1', type: 'question', title: '要不要升', status: 'approved', parent: 'norm-a' }, 10, 'llm', [
+    { at: at(60), actor: 'llm', op: 'comment', text: '人在对话里否掉：先不升' },
+  ])
+  const rejected = weeklyReport(input(graphOf([norm('norm-a', '写文件先问'), question]), {
+    violations: [denial('rules:norm-a', 70), denial('rules:norm-a', 71), denial('rules:norm-a', 72)],
+  }))
+  assert.deepEqual(section(rejected, '## 规矩的提议'), ['- 规范 1 条，其中带规则标签的 1 条'])
+})
+
+test('three matters at most ride the section even when more norms point somewhere', () => {
+  const graph = graphOf([norm('norm-a', '一'), norm('norm-b', '二'), norm('norm-c', '三'), norm('norm-d', '四')])
+  const violations = ['norm-a', 'norm-b', 'norm-c', 'norm-d'].flatMap(id => [denial(`rules:${id}`, 70), denial(`rules:${id}`, 71), denial(`rules:${id}`, 72)])
+  const text = weeklyReport(input(graph, { violations }))
+  const lines = section(text, '## 规矩的提议')
+  assert.equal(lines.filter(line => line.startsWith('- 「')).length, 3, 'four pointing norms still propose three at most')
+})
