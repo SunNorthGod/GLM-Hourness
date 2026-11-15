@@ -1,16 +1,16 @@
 /**
  * The loop board's page of the panel (loop board design 0.6 §8.1, §8.2,
  * plain-ui 0.7 §4.7): from the top, the head with the main agent's line,
- * what the person is to look at, the plugins' entries something starts, the
- * ones the clock starts, the project's own entries (the deleted ones
- * folded), and the last runs. Only reading: no button, toggle or form, and
- * no command call — what the person can change is written under the item as
- * what to tell the main agent or which command to type, and the only thing
- * to open is 讲细点 (a script entry's text is read only when it opens,
- * ../graph/ScriptDetails.tsx). The data comes from the page source (./source.ts) over
- * the loop row's session projection hournessLoops; this file registers the
- * board in the panel's table (ui/src/graph/boards.ts). The board hands over
- * no status entries and no home line yet (docs/ORCHESTRATION.md §18.7).
+ * what the person is to look at, the board's status entries (the two weekly
+ * lists), the plugins' entries something starts, the ones the clock starts,
+ * the project's own entries (the deleted ones folded), and the last runs.
+ * Only reading: no button, toggle or form, and no command call — what the
+ * person can change is written under the item as what to tell the main
+ * agent or which command to type, and the only thing to open is 讲细点 (a
+ * script entry's text is read only when it opens,
+ * ../graph/ScriptDetails.tsx). The data comes from the page source
+ * (./source.ts) over the loop row's session projection hournessLoops; this
+ * file registers the board in the panel's table (ui/src/graph/boards.ts).
  */
 import { TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactElement } from 'react'
@@ -18,7 +18,7 @@ import type { ClientContext, RemoteRoot, SessionsClient } from '../dsh.ts'
 import { registerBoard } from '../graph/boards.ts'
 import { ScriptDetails, ScriptReadContext } from '../graph/ScriptDetails.tsx'
 import { loopsBoard } from './board.ts'
-import type { LoopItem, LoopsPageModel } from './model.ts'
+import { buildLoopsPage, type LoopItem, type LoopsPageModel } from './model.ts'
 import { holdLoopsSource, type LoopsSnapshot, type LoopsSource } from './source.ts'
 
 /**
@@ -35,6 +35,8 @@ const LOOPS_CSS = `
 .glmo-notice{margin:0 0 10px;padding:8px 10px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-md,12px);color:var(--g-ink2);font-size:12px}
 .glmo-look{margin:0 0 10px;padding:8px 10px;border-radius:var(--dsw-radius-md,12px);background:var(--g-layer);font-size:12px}
 .glmo-look div+div{margin-top:4px}
+.glmo-look details{margin-top:4px;color:var(--g-ink3);font-size:11px}
+.glmo-look summary{cursor:pointer}
 .glmo-section{margin:12px 2px 6px;color:var(--g-ink3);font-size:11px;font-weight:600;letter-spacing:.02em}
 .glmo-entry{margin:0 0 10px;padding:10px 12px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-lg,16px);background:var(--g-layer)}
 .glmo-entry.is-grey{opacity:.62}
@@ -88,6 +90,22 @@ function Body({ model }: { readonly model: LoopsPageModel }): ReactElement {
           {model.attention.map(line => <div key={line}>{line}</div>)}
         </div>
       )}
+      {model.items.length === 0 ? null : (
+        <div className="glmo-look" role="status">
+          <div className="glmo-small">两张单子</div>
+          {model.items.map(item => (
+            <div key={item.id}>
+              {item.text}
+              {item.detail.length === 0 ? null : (
+                <details>
+                  <summary>讲细点</summary>
+                  {item.detail.map(line => <div key={line}>{line}</div>)}
+                </details>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {model.peakLine === null ? null : <div className="glmo-holder">{model.peakLine}</div>}
       <Section title={model.events.title} rows={model.events.rows} />
       <Section title={model.timed.title} rows={model.timed.rows} />
@@ -108,7 +126,7 @@ function Body({ model }: { readonly model: LoopsPageModel }): ReactElement {
 
 function LoopsContent({ source }: { readonly source: LoopsSource }): ReactElement {
   const snapshot: LoopsSnapshot = useSyncExternalStore(source.subscribe, source.getSnapshot)
-  const { model } = snapshot
+  const model: LoopsPageModel = buildLoopsPage(snapshot.model)
   return (
     <div className="glmo">
       <style>{LOOPS_CSS}</style>
@@ -158,9 +176,9 @@ function makeLoopsPage(remote: RemoteRoot, sessions: SessionsClient): (props: { 
   }
 }
 
-/** Register the board in the panel's table (design §8.1); the disposer stops following the session list. */
+/** Register the board in the panel's table (design §8.1); the disposer stops following the session list and lets the readers go. */
 export function installLoopsBoard(ctx: ClientContext): () => void {
-  const { board, dispose } = loopsBoard(makeLoopsPage(ctx.remote, ctx.sessions), ctx.sessions)
+  const { board, dispose } = loopsBoard(makeLoopsPage(ctx.remote, ctx.sessions), { remote: ctx.remote, sessions: ctx.sessions })
   registerBoard(board)
   return dispose
 }

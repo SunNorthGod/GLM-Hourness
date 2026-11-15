@@ -16,6 +16,7 @@
  * which boards.ts reads; a view without it lists the entries alone.
  */
 import { pluginLabel } from '../shared/plugin-labels.ts'
+import type { StatusItem } from '../shared/status.ts'
 import { commandText, WORK_TIMEOUT_MS } from './command-text.ts'
 import type { Action, LoopEntry, PersonEntry } from './model.ts'
 import { nextOccurrence, type LoopEventDeclaration, type Trigger } from './trigger.ts'
@@ -159,6 +160,8 @@ export interface LoopsView {
   readonly entries: readonly ViewEntry[]
   /** What the person is to look at, one sentence each. */
   readonly attention: readonly string[]
+  /** The board's status entries (status hub 0.3 §3.4, §12 loops row): the two weekly lists, the same items the row's status view serves the collector. */
+  readonly items: readonly StatusItem[]
   /** The GLM peak as it stands; absent while this host has no pricing service at all (no peak to show, design §5.2). */
   readonly peak?: PeakView
   /** The main agent's line; absent while the runtime of this project has not read the holder yet. */
@@ -487,6 +490,8 @@ export function buildView(input: {
   readonly events: ReadonlyMap<string, LoopEventDeclaration>
   readonly peak?: PeakView
   readonly runtime?: ViewRuntime
+  /** The board's status entries for the view, from the row's status source (boards.ts `itemsOf`); absent: none yet. */
+  readonly items?: readonly StatusItem[] | undefined
   /** The checks a plugin entry's hand-over gives the page for this project, with their timeouts (registry.ts `checksOf`). */
   readonly checks?: (entry: string) => readonly ViewCheck[] | undefined
   /** Whether a person's script file is the one agreed to, as the host reads it now (boards.ts); absent: taken as agreed. */
@@ -559,6 +564,7 @@ export function buildView(input: {
     project: input.project,
     entries,
     attention: input.board === undefined ? [] : attentionOf(input.board).map(item => item.text),
+    items: input.items ?? [],
     ...(input.peak === undefined ? {} : { peak: input.peak }),
     ...(runtime.holder === undefined ? {} : { holder: runtime.holder }),
     waiting: runtime.waiting,

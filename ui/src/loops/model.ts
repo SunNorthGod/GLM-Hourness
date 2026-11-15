@@ -2,9 +2,10 @@
  * The view model of the loop board's page (loop board design 0.6 §8.2,
  * §8.5): what the project's view.json (src/loops/view.ts) becomes as the
  * page's sections — the head with the main agent's line, what the person
- * is to look at, the plugins' entries that something starts and the ones
- * the clock starts, the person's own (the deleted ones folded), and the last
- * runs. Every line is in the page's words; the runs line is the one `/loops`
+ * is to look at, the board's status entries (the two weekly lists), the
+ * plugins' entries that something starts and the ones the clock starts, the
+ * person's own (the deleted ones folded), and the last runs. Every line is
+ * in the page's words; the runs line is the one `/loops`
  * prints too (`runLine`). Pure functions, no React, no DOM, no Node
  * built-ins, so the spec runs them directly. The page carries no write path:
  * what the person can change is said as what to tell the main agent or which
@@ -54,6 +55,8 @@ export interface LoopsPageModel {
   readonly waitingLine: string | null
   /** 要你看一眼的. */
   readonly attention: readonly string[]
+  /** The board's status entries (status hub 0.3 §3.4): the text line, the detail under 讲细点. */
+  readonly items: ReadonlyArray<{ readonly id: string, readonly text: string, readonly detail: readonly string[] }>
   /** 碰到某件事就做的: the plugins' entries that an event starts. */
   readonly events: ItemGroup
   /** 到点做的: the plugins' entries the clock starts. */
@@ -155,6 +158,7 @@ export function buildLoopsPage(view: LoopsView | null, tell: PageTell = CONSOLE_
     peakLine: view?.peak === undefined ? null : peakLineOf(view.peak),
     waitingLine: view === null || view.waiting === 0 ? null : `在等的 ${view.waiting} 件`,
     attention: view?.attention ?? [],
+    items: (Array.isArray(view?.items) ? view.items : []).map(item => ({ id: item.id, text: item.text, detail: item.detail ?? [] })),
     events: { title: '碰到某件事就做的', rows: plugin.filter(entry => entry.trigger === 'event').map(item) },
     timed: { title: '到点做的', rows: plugin.filter(entry => entry.trigger === 'time').map(item) },
     mine: { title: '本项目加的', rows: mine },

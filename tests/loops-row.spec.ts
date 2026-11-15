@@ -23,6 +23,7 @@ import { openLoopStore } from '../src/loops/store.ts'
 import { nextOccurrence } from '../src/loops/trigger.ts'
 import { momentText, type LoopsView } from '../src/loops/view.ts'
 import { appendEvents } from '../src/metrics/library.ts'
+import { statusViewOf } from '../src/report/status.ts'
 import type { EmittedEvent } from '../src/shared/metrics.ts'
 import { entryFileOf, NOW, quickIo, recordsOf, scriptEntry, SCRIPT_TEXT, seedAgreed, tellEntry, writeFiles } from './loops-helpers.ts'
 import { withLoopsRow, type LoopsFixture } from './loops-host.ts'
@@ -260,6 +261,19 @@ rowTest('view.json carries what the runtime kept: each entry\'s last run in the 
     { at: '2026-11-01T09:30:00.000Z', title: 'DSH 重新启动了', text: '同一件事又报了一次，没再跑' },
     { at: '2026-11-01T09:00:00.000Z', title: '每周五看一眼没合入的分支', text: '先存着' },
   ])
+})
+
+rowTest('view.json carries the row\'s status entries, the same ones its status view serves the collector', async (fixture) => {
+  // A person's entry 30 days old that never ran: the first list names it, the second has nothing.
+  const store = openLoopStore(fixture.root, { io: quickIo() })
+  await seedAgreed({ root: fixture.root, store }, tellEntry(A), { at: new Date(NOW - 30 * 86_400_000).toISOString() })
+  await fixture.runtime.create()
+  const view = await viewOf(fixture.root)
+  const served = statusViewOf(fixture.runtime.ctx, 'loops')?.items('agent-1') ?? []
+  assert.deepEqual(view.items, served, 'one computation: the view and the collector read the same entries')
+  assert.equal(view.items.length, 1)
+  assert.equal(view.items[0]?.id, 'loops/stale')
+  assert.match(view.items[0]?.text ?? '', /4 周没跑出过结果的、你加的循环板条目 1 件/)
 })
 
 rowTest('after every beat of a project it runs the row writes view.json again, so a run recorded since shows among the last runs', async (fixture) => {

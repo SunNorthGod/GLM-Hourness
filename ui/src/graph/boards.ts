@@ -11,13 +11,15 @@
  * the home page derives the line through homeLineFromItem, so both faces
  * show one value. plain-ui owns the full home page and footer; until then
  * this is the one table and the panel's temporary entry reads it. The
- * boards whose availability follows a session projection (lessons, loops)
- * share projectionBoard. No React here: the specs run the table under Node,
- * so the panel-side hook lives with the panel.
+ * factories the boards share live here too: projectionBoard for one that
+ * hands over nothing but its presence (the lessons board), viewBoard for
+ * one that holds a view file reader and hands what it reads over (the
+ * rules board, the loop board). No React here: the specs run the table
+ * under Node, so the panel-side hook lives with the panel.
  */
 import type { ComponentType } from 'react'
 import { validateStatusItem, type StatusItem } from '../../../src/shared/status.ts'
-import type { ProjectionValues, SessionsClient } from '../dsh.ts'
+import type { ProjectionValues, RemoteRoot, SessionsClient } from '../dsh.ts'
 
 /** What one board tells the panel about itself right now. */
 export interface BoardState {
@@ -141,6 +143,125 @@ export function projectionBoard(spec: {
       Page: spec.page,
     },
     dispose: unsubscribeList,
+  }
+}
+
+/** The projection values of a board that mirrors a view file (both hourness projections share the shape). */
+interface ViewProjection {
+  readonly projectKey: string | null
+  readonly viewFile: string | null
+}
+
+/** The shared reader a holder hands out: the view source and the release of the hold. */
+interface HeldSource<V> {
+  readonly source: { readonly getSnapshot: () => { readonly model: V | null }, readonly subscribe: (listener: () => void) => () => void }
+  readonly release: () => void
+}
+
+const VIEW_UNAVAILABLE: BoardState = { available: false, homeLine: null, guideLine: null, peakApplies: false }
+/** There, with nothing to hand over yet: no project, or no view.json read. */
+const VIEW_NOTHING_YET: BoardState = { available: true, homeLine: null, guideLine: null, peakApplies: false }
+
+/**
+ * A board that mirrors a view file (the rules board, the loop board): it
+ * follows one session projection, asks once for a cold session's values,
+ * and holds the session's view.json reader (a `hold…Source` share) while
+ * the projection names one. The same state object stays while nothing the
+ * board hands over moved; a session nobody listens to any more lets its
+ * reader go. No React here: the page component is handed in, the specs run
+ * this file under Node.
+ */
+export function viewBoard<V>(spec: {
+  readonly id: string
+  readonly label: string
+  readonly page: ComponentType<{ readonly sessionId: string }>
+  readonly remote: RemoteRoot
+  readonly sessions: SessionsClient
+  /** The projection the board follows. */
+  readonly key: 'hournessLoops' | 'hournessRules'
+  /** Whether the board is there for a session with these values (a projection without its project is no board). */
+  readonly available: (values: ViewProjection) => boolean
+  /** The view file the session's reader holds; null when the values name none. */
+  readonly viewFile: (values: ViewProjection) => string | null
+  /** The shared reader of one session's view file. */
+  readonly hold: (remote: RemoteRoot, sessionId: string, viewFile: string) => HeldSource<V>
+  /** What the board hands over for a view; null: there, with nothing read yet. */
+  readonly stateOf: (view: V | null) => BoardState
+}): { readonly board: Board, readonly dispose: () => void } {
+  const sessions = boardSessions()
+  interface Held {
+    readonly viewFile: string
+    release: () => void
+    unsubscribe: () => void
+    read(): V | null
+  }
+  const held = new Map<string, Held>()
+
+  const letGo = (sessionId: string): void => {
+    const hold = held.get(sessionId)
+    if (hold === undefined) return
+    held.delete(sessionId)
+    hold.unsubscribe()
+    hold.release()
+  }
+
+  const readerOf = (sessionId: string, viewFile: string): V | null => {
+    const known = held.get(sessionId)
+    if (known !== undefined && known.viewFile === viewFile) return known.read()
+    letGo(sessionId)
+    const shared = spec.hold(spec.remote, sessionId, viewFile)
+    held.set(sessionId, {
+      viewFile,
+      release: shared.release,
+      unsubscribe: shared.source.subscribe(recompute),
+      read: () => shared.source.getSnapshot().model,
+    })
+    return shared.source.getSnapshot().model
+  }
+
+  const recompute = (): void => {
+    const projections = spec.sessions.list.getSnapshot().projectionsBySession
+    for (const { sessionId, values } of sessions.listenedWith(projections, id => { void spec.sessions.refreshProjections(id).catch(() => {}) })) {
+      const projected = values[spec.key]
+      const available = projected !== undefined && spec.available(projected)
+      let next = VIEW_UNAVAILABLE
+      if (!available) letGo(sessionId)
+      else {
+        const viewFile = spec.viewFile(projected)
+        next = viewFile === null ? VIEW_NOTHING_YET : spec.stateOf(readerOf(sessionId, viewFile))
+      }
+      const current = sessions.state(sessionId)
+      if (current === undefined || !sameState(current, next)) sessions.remember(sessionId, next)
+    }
+    // A session nobody listens to any more lets its reader go.
+    const listened = new Set(sessions.listened())
+    for (const sessionId of [...held.keys()].filter(id => !listened.has(id))) letGo(sessionId)
+  }
+
+  const sameState = (a: BoardState, b: BoardState): boolean =>
+    a.available === b.available && a.homeLine === b.homeLine && a.guideLine === b.guideLine && a.peakApplies === b.peakApplies && JSON.stringify(a.items) === JSON.stringify(b.items)
+
+  const unsubscribeList = spec.sessions.list.subscribe(recompute)
+
+  return {
+    board: {
+      id: spec.id,
+      label: spec.label,
+      subscribe: (sessionId, listener) => {
+        const off = sessions.subscribe(sessionId, listener)
+        recompute()
+        return () => {
+          off()
+          recompute()
+        }
+      },
+      snapshot: sessionId => sessions.state(sessionId) ?? VIEW_UNAVAILABLE,
+      Page: spec.page,
+    },
+    dispose: () => {
+      unsubscribeList()
+      for (const sessionId of [...held.keys()]) letGo(sessionId)
+    },
   }
 }
 

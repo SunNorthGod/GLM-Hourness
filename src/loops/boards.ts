@@ -23,6 +23,7 @@ import { unlink } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { LockEnvironment } from '../data/lock.ts'
 import { projectKey } from '../graph/main-agent-holder.ts'
+import type { StatusItem } from '../shared/status.ts'
 import { readText, writeAtomic, type StoreIo } from '../rules/store.ts'
 import { SCRIPT_MAX_BYTES } from './command-text.ts'
 import { holderLine, WRITER_HELD_MS, type HolderReason, type HolderStateKind } from './holder.ts'
@@ -138,6 +139,13 @@ interface BoardsDeps {
    * from the rules board's service, the clock from the pricing service.
    */
   readonly peakOf?: (projectRoot: string) => PeakView | undefined
+  /**
+   * The board's status entries for one project (status hub 0.3 §3.4, §12
+   * loops row): the two weekly lists worded, from the row's own status
+   * source, so the view and the collector read one computation. Absent in a
+   * host without the row status: the view carries none.
+   */
+  readonly itemsOf?: (projectRoot: string) => readonly StatusItem[]
 }
 
 export interface Boards {
@@ -170,7 +178,8 @@ export function createBoards(deps: BoardsDeps): Boards {
   const problems = new Map<string, readonly string[]>()
   const written = new Map<string, Written>()
   const listsByRoot = new Map<string, BoardLists>()
-  const signatureOf = (view: LoopsView): string => JSON.stringify({ ...view, at: undefined })
+  // What decides whether the view changed: everything but the moments — the view's `at` and the items' `asOf`, as the rules page's writer zeroes them.
+  const signatureOf = (view: LoopsView): string => JSON.stringify({ ...view, at: undefined, items: view.items.map(item => ({ ...item, asOf: '' })) })
 
   function storeOf(root: string): LoopStore {
     let store = stores.get(root)
@@ -264,6 +273,7 @@ export function createBoards(deps: BoardsDeps): Boards {
       events: deps.registry.events(),
       runtime: await runtimeOf(store, nowMs),
       ...(peak === undefined ? {} : { peak }),
+      ...(deps.itemsOf === undefined ? {} : { items: deps.itemsOf(root) }),
       checks: entry => deps.registry.checksOf(entry, root),
       scriptStanding: entry => scriptStandingOf(root, entry),
     })

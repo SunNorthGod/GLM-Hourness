@@ -92,6 +92,7 @@ import { ensureRuntimeDir } from './store.ts'
 import { LOOPS_SERVICE, type Contribution, type LoopEventInput, type LoopsService } from './service.ts'
 import { staleItems, timeoutItems } from './status.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
+import type { StatusItem } from '../shared/status.ts'
 import type { PeakView } from './view.ts'
 
 /** cordis plugin identity: needs the commands service. */
@@ -327,29 +328,32 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
     }
   }
 
-  const boards = createBoards({ registry, io, delay, changed: () => { health.reactivate(...activation()) }, peakOf, ...(config.lock === undefined ? {} : { lock: config.lock }) })
-  let pricing = hasPricing()
-  let own = registry.contribute(LOOPS_SOURCE, ownContribution(pricing, ownRun))
-  const disposers: Array<() => void> = []
-
   /**
-   * The row's status entries (status hub design 0.3 §3.2, §12 loops row): the
-   * two weekly lists worded as `loops/stale` and `loops/timeouts`, from the
-   * same computed lists the service's readers hand out. The session's project
-   * is read on demand (the env row's pattern); a session this row has not
-   * heard of, or one whose project the board has not read yet, has no
-   * entries, and the weekly report omits its section. Provided at apply,
-   * reading the boards' cache, so it does not wait for the service injection.
+   * The board's status entries of one project (status hub design 0.3 §12
+   * loops row): the two weekly lists worded as `loops/stale` and
+   * `loops/timeouts`, from the same computed lists the service's readers
+   * hand out. A project the board has not read yet has none, and the weekly
+   * report omits its section.
    */
-  const sessions = new Map<string, string>()
-  const status = provideRowStatus(ctx, 'loops', (sessionId) => {
-    const cwd = sessionId === undefined ? undefined : sessions.get(sessionId)
-    const root = typeof cwd === 'string' && cwd.length > 0 ? projectOf(cwd)?.root : undefined
-    const lists = root === undefined ? undefined : boards.listsOf(root)
+  function loopsStatusItemsOf(root: string): readonly StatusItem[] {
+    const lists = boards.listsOf(root)
     if (lists === undefined) return []
     const nowMs = io.now()
     const source = `${root}/.llm/loops`
     return [...staleItems(lists.stale, source, nowMs), ...timeoutItems(lists.timeouts, source, nowMs)]
+  }
+
+  const boards = createBoards({ registry, io, delay, changed: () => { health.reactivate(...activation()) }, peakOf, itemsOf: loopsStatusItemsOf, ...(config.lock === undefined ? {} : { lock: config.lock }) })
+  let pricing = hasPricing()
+  let own = registry.contribute(LOOPS_SOURCE, ownContribution(pricing, ownRun))
+  const disposers: Array<() => void> = []
+
+  /** The row's status view (status hub design 0.3 §3.2): the same entries, for the session the collector asks about. Provided at apply, reading the boards' cache, so it does not wait for the service injection. */
+  const sessions = new Map<string, string>()
+  const status = provideRowStatus(ctx, 'loops', (sessionId) => {
+    const cwd = sessionId === undefined ? undefined : sessions.get(sessionId)
+    const root = typeof cwd === 'string' && cwd.length > 0 ? projectOf(cwd)?.root : undefined
+    return root === undefined ? [] : loopsStatusItemsOf(root)
   })
   disposers.push(() => { status.dispose() })
 

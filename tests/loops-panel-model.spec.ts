@@ -11,9 +11,10 @@ import { LOOP_EVENT_TABLE } from '../src/loops/events.ts'
 import type { LoopEntry, LoopEntryDefinition, PersonEntry } from '../src/loops/model.ts'
 import { nextOccurrence } from '../src/loops/trigger.ts'
 import { buildView, momentText, runLine, type LoopsView, type ScriptStanding, type ViewRuntime } from '../src/loops/view.ts'
+import type { StatusItem } from '../src/shared/status.ts'
 import { scriptStandingOf } from '../src/loops/boards.ts'
 import { loopsBoard } from '../ui/src/loops/board.ts'
-import { buildLoopsPage, type LoopItem } from '../ui/src/loops/model.ts'
+import { buildLoopsPage, type LoopItem, type LoopsPageModel } from '../ui/src/loops/model.ts'
 import { holdLoopsSource, LoopsSource } from '../ui/src/loops/source.ts'
 import { projectRootOfView, readScriptText, scriptTextHead } from '../ui/src/graph/script-text.ts'
 import { BOARD_ORDER } from '../ui/src/graph/boards.ts'
@@ -521,6 +522,9 @@ test('the loop row\'s own entries read in plain words on the page', () => {
 const VIEW_FILE = 'C:/p/.llm/loops/view.json'
 const viewText = (view: LoopsView): string => `${JSON.stringify(view, null, 2)}\n`
 
+/** The page model of what the source holds: the source keeps the view, the page builds its own model of it. */
+const pageOf = (source: LoopsSource): LoopsPageModel => buildLoopsPage(source.getSnapshot().model)
+
 /** A started source that waits out its first read and always stops. */
 async function withSource(fake: ReturnType<typeof fakeRemote>, run: (source: LoopsSource) => Promise<void> | void, pollMs?: number): Promise<void> {
   const source = new LoopsSource(fake.remote, 'session-1', VIEW_FILE, pollMs)
@@ -538,10 +542,10 @@ test('the source makes the page of view.json and follows a rewrite through the c
   const fake = fakeRemote({ [VIEW_FILE]: viewText(richView()) })
   await withSource(fake, async (source) => {
     assert.deepEqual([source.getSnapshot().problem, source.getSnapshot().missing], [null, false])
-    assert.equal(source.getSnapshot().model.mine.rows.length, 3)
+    assert.equal(pageOf(source).mine.rows.length, 3)
     await fake.write(VIEW_FILE, viewText({ ...richView(), waiting: 4 }))
     fake.push({ kind: 'change', change: { absolutePath: VIEW_FILE } })
-    await until(() => source.getSnapshot().model.waitingLine === '在等的 4 件', 'the rewritten view')
+    await until(() => pageOf(source).waitingLine === '在等的 4 件', 'the rewritten view')
   })
 })
 
@@ -552,18 +556,18 @@ test('a failed read or a file that is not a view keeps the last page and says wh
     fake.push({ kind: 'change', change: { absolutePath: VIEW_FILE } })
     await until(() => source.getSnapshot().problem !== null, 'the failure')
     assert.equal(source.getSnapshot().problem, '循环板读不出：boom')
-    assert.equal(source.getSnapshot().model.mine.rows.length, 3)
+    assert.equal(pageOf(source).mine.rows.length, 3)
     fake.fail(VIEW_FILE, undefined)
     await fake.write(VIEW_FILE, '{"version": 2}\n')
     fake.push({ kind: 'change', change: { absolutePath: VIEW_FILE } })
     await until(() => source.getSnapshot().problem?.includes('读不懂') === true, 'the file that is not a view')
-    assert.equal(source.getSnapshot().model.mine.rows.length, 3)
+    assert.equal(pageOf(source).mine.rows.length, 3)
     await fake.write(VIEW_FILE, viewText(richView()))
     fake.push({ kind: 'change', change: { absolutePath: VIEW_FILE } })
     await until(() => source.getSnapshot().problem === null, 'the recovery')
   })
   await withSource(fakeRemote({}), (source) => {
-    assert.deepEqual([source.getSnapshot().missing, source.getSnapshot().problem, source.getSnapshot().model.mine.rows], [true, null, []])
+    assert.deepEqual([source.getSnapshot().missing, source.getSnapshot().problem, pageOf(source).mine.rows], [true, null, []])
   })
 })
 
@@ -574,7 +578,7 @@ test('the poll re-reads view.json when its size moved, without a change feed', a
     await new Promise(resolve => { setTimeout(resolve, 100) })
     assert.equal(fake.readsOf(VIEW_FILE), reads, 'an unchanged stat does not re-read')
     await fake.write(VIEW_FILE, viewText({ ...richView(), waiting: 12 }))
-    await until(() => source.getSnapshot().model.waitingLine === '在等的 12 件', 'the polled rewrite')
+    await until(() => pageOf(source).waitingLine === '在等的 12 件', 'the polled rewrite')
   }, 25)
 })
 
@@ -595,7 +599,8 @@ test('the held source is one per session and view.json, released with the last h
 test('the loop board registers as 循环板 under its BOARD_ORDER id and is there for a session whose projection names a project', async () => {
   const cold = { hournessLoops: { projectKey: 'C:/p', viewFile: VIEW_FILE } }
   const { sessions, setProjections, refreshCountOf } = fakeSessions({}, cold)
-  const { board, dispose } = loopsBoard(() => null, sessions)
+  const { remote } = fakeRemote({})
+  const { board, dispose } = loopsBoard(() => null, { remote, sessions })
   try {
     assert.deepEqual([board.id, board.label, BOARD_ORDER[1]], ['loops', '循环板', 'loops'])
     const stop = board.subscribe('s1', () => {})
@@ -614,6 +619,49 @@ test('the loop board registers as 循环板 under its BOARD_ORDER id and is ther
   finally {
     dispose()
   }
+})
+
+test('the board hands the view\'s status entries over, and keeps its state while they stand', async () => {
+  const items = [{
+    id: 'loops/stale', owner: 'loops', audience: 'agent' as const, asOf: AT, source: 'p/.llm/loops',
+    text: '4 周没跑出过结果的、你加的循环板条目 1 件', detail: ['- 「旧的」：没跑出过结果'],
+  }]
+  const viewFile = 'C:/q/.llm/loops/view.json'
+  const fake = fakeRemote({ [viewFile]: viewText({ ...richView(), items }) })
+  const { sessions, setProjections } = fakeSessions({}, { hournessLoops: { projectKey: 'C:/q', viewFile } })
+  const { board, dispose } = loopsBoard(() => null, { remote: fake.remote, sessions })
+  try {
+    const stop = board.subscribe('s1', () => {})
+    await until(() => board.snapshot('s1').items !== undefined, 'the view read')
+    assert.deepEqual(board.snapshot('s1').items, items, 'the entries verbatim, as the rules board hands view.items')
+    // A recompute over an unchanged file hands the same state object (useSyncExternalStore keeps it).
+    const stable = board.snapshot('s1')
+    const second = board.subscribe('s1', () => {})
+    assert.equal(board.snapshot('s1'), stable, 'nothing moved: the same state object stands')
+    second()
+    // A changed list hands a new state.
+    const moved = [{ ...items[0], text: '4 周没跑出过结果的、你加的循环板条目 2 件' }]
+    fake.write(viewFile, viewText({ ...richView(), items: moved }))
+    fake.push({ kind: 'change', change: { absolutePath: viewFile } })
+    await until(() => board.snapshot('s1').items?.[0]?.text === moved[0].text, 'the rewritten items')
+    assert.deepEqual(board.snapshot('s1').items, moved)
+    stop()
+  }
+  finally {
+    dispose()
+  }
+})
+
+test('the page lists the board\'s status entries as the 两张单子 group, the text and the detail under 讲细点', () => {
+  const items: StatusItem[] = [{
+    id: 'loops/stale', owner: 'loops', audience: 'agent', asOf: AT, source: 'p/.llm/loops',
+    text: '4 周没跑出过结果的、你加的循环板条目 1 件', detail: ['- 「旧的」：10 月 3 日 加的，最近 28 天跑过 2 次，都没有结果'],
+  }]
+  const model = buildLoopsPage({ ...richView(), items })
+  assert.deepEqual(model.items, [{ id: items[0].id, text: items[0].text, detail: items[0].detail }])
+  assert.deepEqual(plainWordsIn([items[0].text, ...items[0].detail].join('\n')), [])
+  // A view without entries (an older view.json, or nothing stale) makes no group.
+  assert.deepEqual(buildLoopsPage({ ...richView(), items: [] }).items, [])
 })
 
 // --- The page never writes --------------------------------------------------

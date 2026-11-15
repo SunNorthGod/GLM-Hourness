@@ -405,7 +405,7 @@ const BOARD_ITEMS: StatusItem[] = [
 
 test('the rules board registers as 规则板 under BOARD_ORDER[0] and comes first on the footer, before a board registered earlier', () => {
   const { sessions } = fakeSessions({}, {})
-  const loops = loopsBoard(() => null, sessions)
+  const loops = loopsBoard(() => null, { remote: fakeRemote({}).remote, sessions })
   const rules = rulesBoard(() => null, { remote: fakeRemote({}).remote, sessions })
   try {
     registerBoard(loops.board)
