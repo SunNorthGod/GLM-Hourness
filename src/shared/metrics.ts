@@ -250,10 +250,12 @@ export interface ExecuteBodies {
   'execute.peak-cap': { readonly model: string, readonly cap: number, readonly running: number }
 }
 
-/** The operations row's kinds (M7 0.6 §3.16). */
+/** The operations row's kinds (M7 0.6 §3.16; `operate.dora` the four delivery numbers of §3.13, m7-9). */
 export interface OperateBodies {
   'operate.report': { readonly kind: string, readonly lines: number, readonly units: number }
   'operate.patrol': { readonly found: MetricsMap, readonly did: readonly string[], readonly trunk: string }
+  /** The four delivery numbers of one weekly window (§3.13): `deploys` is the delivery frequency and the failure rate's denominator, `failed` the deployments a failure marker names; `leadMs` and `restoreMs` are medians, absent when their cohort is empty or the graph was unreadable. */
+  'operate.dora': { readonly deploys: number, readonly leadTasks: number, readonly leadMs?: number, readonly failed?: number, readonly restoreN: number, readonly restoreMs?: number }
 }
 
 /** The GLM channel's kinds, field names from M6 0.6 §14.2 (§4.5). */
