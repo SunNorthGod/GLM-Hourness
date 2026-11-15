@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
+import { staleItems, timeoutItems } from '../src/loops/status.ts'
 import { fourAnswers } from '../src/report/four-answers.ts'
 import { weeklyReport } from '../src/report/weekly.ts'
 import { guardStatusItems } from '../src/guard/status.ts'
@@ -374,4 +375,26 @@ test('the weekly report relays the collector’s metrics/load and operations ent
   assert.equal(lines[lines.indexOf('## 人的负担') + 1], load.text)
   const operations = lines.indexOf('## 拦下与撤下') + 1
   assert.deepEqual(lines.slice(operations, operations + 1 + (guardItems[0]?.detail ?? []).length), [guardItems[0]?.text, ...(guardItems[0]?.detail ?? [])])
+})
+
+test('the weekly report relays the loop board’s two lists from the collector, word for word, and omits the section when the row has none', () => {
+  const at = Date.parse('2026-10-31T12:00:00.000Z')
+  const stale = staleItems([
+    { id: 'u-0a1b2c3d', title: '每周看一次灰度', addedAt: '2026-09-17T02:00:00.000Z', runs28d: 3, why: 'no-result' },
+  ], 'p/.llm/loops', at)
+  const timeouts = timeoutItems([
+    { id: 'loops.remind-waiting', title: '把在等的事再报一次', timeouts7d: 3, lastTimeoutAt: '2026-10-31T11:00:00.000Z' },
+  ], 'p/.llm/loops', at)
+  const expected = [stale[0].text, ...stale[0].detail, timeouts[0].text, ...timeouts[0].detail]
+  const lookup = serviceStore()
+  lookup.provide(statusServiceName('loops'), { row: 'loops', items: () => [...stale, ...timeouts] })
+  const collected = collectStatus(lookup, 's1', 'agent', at)
+  const text = weeklyReport({ period: '2026-10-30', nowMs: at, status: collected.items, graph: { nodes: new Map(), revisions: new Map(), revision: 'r', issues: [] } })
+  const lines = text.split('\n')
+  const lists = lines.indexOf('## 两张单子') + 1
+  assert.deepEqual(lines.slice(lists, lists + expected.length), expected)
+  // A row that is on but has no lists leaves the section out.
+  const bare = serviceStore()
+  bare.provide(statusServiceName('loops'), { row: 'loops', items: () => [] })
+  assert.ok(!weeklyReport({ period: 'p', nowMs: at, status: collectStatus(bare, 's1', 'agent', at).items, graph: { nodes: new Map(), revisions: new Map(), revision: 'r', issues: [] } }).includes('## 两张单子'))
 })

@@ -14,6 +14,8 @@
  */
 import type { EntryRunEvent } from './records.ts'
 import type { StaleEntry, TimeoutEntry } from './service.ts'
+import { momentText } from './view.ts'
+import { STATUS_TEXT_MAX, type StatusItem } from '../shared/status.ts'
 
 /** The outcomes that count as a result (design §6.11): the run did what it was for, or told the main agent it did. */
 const RESULT_OUTCOMES: ReadonlySet<string> = new Set(['delivered', 'ran', 'reported'])
@@ -121,4 +123,65 @@ export function timeoutEntriesOf(input: {
     ? b.timeouts7d - a.timeouts7d
     : Date.parse(a.lastTimeoutAt) - Date.parse(b.lastTimeoutAt),
   ).slice(0, LIST_CAP)
+}
+
+// ------------------------------------------------------------------ the hub entries
+
+/** One line of at most STATUS_TEXT_MAX code points: a line break becomes a space, a longer line ends in an ellipsis. */
+function oneLine(line: string, max: number): string {
+  const points = [...line.replace(/[\r\n]+/g, ' ')]
+  return points.length <= max ? points.join('') : `${points.slice(0, max - 1).join('')}…`
+}
+
+/** The id grammar of a person's entry (journal.ts PERSON_ID): the one tell between the person's entries and a plugin's. */
+const PERSON_ID = /^u-[0-9a-f]{8}$/
+
+/**
+ * The weekly report's first list as the hub's `loops/stale` entry (status hub
+ * design 0.3 §12 loops row; the section title of loops §17 M7 item 8): the
+ * headline as the text, one line per entry as the detail. No entry when the
+ * list is empty, so the report omits the section.
+ */
+export function staleItems(entries: readonly StaleEntry[], source: string, nowMs: number): readonly StatusItem[] {
+  if (entries.length === 0) return []
+  const detail = entries.map((entry) => {
+    const runs = entry.why === 'never-triggered'
+      ? '最近 28 天一次都没触发过'
+      : `最近 28 天跑过 ${entry.runs28d} 次，都没有结果`
+    const last = entry.lastResultAt === undefined ? '' : `；上一次有结果是 ${momentText(entry.lastResultAt)}`
+    return oneLine(`- 「${entry.title}」：${momentText(entry.addedAt)} 加的，${runs}${last}`, STATUS_TEXT_MAX)
+  })
+  return [{
+    id: 'loops/stale',
+    owner: 'loops',
+    audience: 'agent',
+    asOf: new Date(nowMs).toISOString(),
+    source,
+    text: `4 周没跑出过结果的、你加的循环板条目 ${entries.length} 件`,
+    detail,
+    fields: { entries: entries.length },
+  }]
+}
+
+/**
+ * The weekly report's second list as the hub's `loops/timeouts` entry: a
+ * plugin's entry says who is to fix it, and no proposal is named yet (the
+ * `loop_propose` lines of §17 M7 item 8 join when that path lands).
+ */
+export function timeoutItems(entries: readonly TimeoutEntry[], source: string, nowMs: number): readonly StatusItem[] {
+  if (entries.length === 0) return []
+  const detail = entries.map((entry) => {
+    const who = PERSON_ID.test(entry.id) ? '' : '；请插件的作者修'
+    return oneLine(`- 「${entry.title}」：最近 7 天没跑完 ${entry.timeouts7d} 次，最近一次 ${momentText(entry.lastTimeoutAt)}${who}`, STATUS_TEXT_MAX)
+  })
+  return [{
+    id: 'loops/timeouts',
+    owner: 'loops',
+    audience: 'agent',
+    asOf: new Date(nowMs).toISOString(),
+    source,
+    text: `最近 7 天反复超时的循环板条目 ${entries.length} 件`,
+    detail,
+    fields: { entries: entries.length, timeouts: entries.reduce((sum, entry) => sum + entry.timeouts7d, 0) },
+  }]
 }

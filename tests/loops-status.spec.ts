@@ -16,7 +16,8 @@ import test from 'node:test'
 import { appendEvents } from '../src/metrics/library.ts'
 import { runEvents, type EntryRunEvent } from '../src/loops/records.ts'
 import { loopsService } from '../src/loops/service.ts'
-import { LIST_CAP, staleEntriesOf, TIMEOUT_FLOOR, timeoutEntriesOf, type StaleCandidate } from '../src/loops/status.ts'
+import { LIST_CAP, staleEntriesOf, staleItems, TIMEOUT_FLOOR, timeoutEntriesOf, timeoutItems, type StaleCandidate } from '../src/loops/status.ts'
+import { momentText } from '../src/loops/view.ts'
 import { openLoopStore } from '../src/loops/store.ts'
 import type { EmittedEvent } from '../src/shared/metrics.ts'
 import { NOW, quickIo, seedAgreed, tellEntry } from './loops-helpers.ts'
@@ -129,6 +130,44 @@ test(`timeoutEntriesOf: ${TIMEOUT_FLOOR} unfinished in seven days lists, person 
   })
   assert.deepEqual(both.map(entry => [entry.id, entry.timeouts7d]), [[A, 4], [PLUGIN, 3]])
   assert.equal(both.length <= LIST_CAP, true)
+})
+
+// ------------------------------------------------------------------ the hub entries
+
+test('staleItems and timeoutItems word the lists into the hub entries: one text line, the entries as detail, a plugin says who fixes it', () => {
+  const stale = staleItems([
+    { id: A, title: '旧的', addedAt: ago(40), runs28d: 2, why: 'no-result' },
+    { id: B, title: '从没跑过的', addedAt: ago(35), runs28d: 0, why: 'never-triggered' },
+  ], 'p/.llm/loops', NOW)
+  assert.deepEqual(stale.map(item => item.id), ['loops/stale'])
+  assert.equal(stale[0]?.owner, 'loops')
+  assert.equal(stale[0]?.audience, 'agent')
+  assert.equal(stale[0]?.asOf, iso(NOW))
+  assert.equal(stale[0]?.source, 'p/.llm/loops')
+  assert.deepEqual(stale[0]?.fields, { entries: 2 })
+  assert.equal(stale[0]?.text, '4 周没跑出过结果的、你加的循环板条目 2 件')
+  assert.deepEqual(stale[0]?.detail, [
+    `- 「旧的」：${momentText(ago(40))} 加的，最近 28 天跑过 2 次，都没有结果`,
+    `- 「从没跑过的」：${momentText(ago(35))} 加的，最近 28 天一次都没触发过`,
+  ])
+  // An entry whose result is outside the window names it.
+  const withOld = staleItems([{ id: A, title: '旧的', addedAt: ago(40), runs28d: 1, why: 'no-result', lastResultAt: ago(39) }], 's', NOW)
+  assert.deepEqual(withOld[0]?.detail, [`- 「旧的」：${momentText(ago(40))} 加的，最近 28 天跑过 1 次，都没有结果；上一次有结果是 ${momentText(ago(39))}`])
+
+  const timeouts = timeoutItems([
+    { id: A, title: '人的', timeouts7d: 3, lastTimeoutAt: ago(1) },
+    { id: PLUGIN, title: '插件的', timeouts7d: 4, lastTimeoutAt: ago(2) },
+  ], 's', NOW)
+  assert.deepEqual(timeouts.map(item => item.id), ['loops/timeouts'])
+  assert.equal(timeouts[0]?.text, '最近 7 天反复超时的循环板条目 2 件')
+  assert.deepEqual(timeouts[0]?.fields, { entries: 2, timeouts: 7 })
+  assert.deepEqual(timeouts[0]?.detail, [
+    `- 「人的」：最近 7 天没跑完 3 次，最近一次 ${momentText(ago(1))}`,
+    `- 「插件的」：最近 7 天没跑完 4 次，最近一次 ${momentText(ago(2))}；请插件的作者修`,
+  ])
+  // Empty lists make no entry, so the weekly report omits its section.
+  assert.deepEqual(staleItems([], 's', NOW), [])
+  assert.deepEqual(timeoutItems([], 's', NOW), [])
 })
 
 // ------------------------------------------------------------------ run facts

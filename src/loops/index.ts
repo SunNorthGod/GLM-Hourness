@@ -47,6 +47,9 @@
  *   from the day the row is enabled;
  * - the session projection `hournessLoops` (projection.ts), where the page finds
  *   the project's `view.json`;
+ * - serves the status hub its two weekly-list entries (`loops/stale`,
+ *   `loops/timeouts`, status hub design 0.3 §12 loops row), worded from the
+ *   same lists the service's readers hand out;
  * - reports its health: ready, or degraded with each thing that is wrong.
  *
  * It registers no tool yet (`loop_show`, `loop_propose` and `loop_note` come
@@ -63,7 +66,7 @@ import { projectKey } from '../graph/main-agent-holder.ts'
 import { projectJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
 import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventHost, SessionEventOn, WorkspaceRegistryService } from '../shared/dsh-min.ts'
-import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
+import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import type { StoreIo } from '../rules/store.ts'
 import { realStoreIo } from '../rules/store.ts'
 import { statSync } from 'node:fs'
@@ -87,6 +90,8 @@ import { BEAT_MS, createProjectRuntime, type LoopChecks, type ProjectRuntime } f
 import { envService, fillCheckArgv, formatCheckOutput, isCheckFormat } from '../env/env-service.ts'
 import { ensureRuntimeDir } from './store.ts'
 import { LOOPS_SERVICE, type Contribution, type LoopEventInput, type LoopsService } from './service.ts'
+import { staleItems, timeoutItems } from './status.ts'
+import { provideRowStatus } from '../shared/status-host.ts'
 import type { PeakView } from './view.ts'
 
 /** cordis plugin identity: needs the commands service. */
@@ -327,6 +332,27 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
   let own = registry.contribute(LOOPS_SOURCE, ownContribution(pricing, ownRun))
   const disposers: Array<() => void> = []
 
+  /**
+   * The row's status entries (status hub design 0.3 §3.2, §12 loops row): the
+   * two weekly lists worded as `loops/stale` and `loops/timeouts`, from the
+   * same computed lists the service's readers hand out. The session's project
+   * is read on demand (the env row's pattern); a session this row has not
+   * heard of, or one whose project the board has not read yet, has no
+   * entries, and the weekly report omits its section. Provided at apply,
+   * reading the boards' cache, so it does not wait for the service injection.
+   */
+  const sessions = new Map<string, string>()
+  const status = provideRowStatus(ctx, 'loops', (sessionId) => {
+    const cwd = sessionId === undefined ? undefined : sessions.get(sessionId)
+    const root = typeof cwd === 'string' && cwd.length > 0 ? projectOf(cwd)?.root : undefined
+    const lists = root === undefined ? undefined : boards.listsOf(root)
+    if (lists === undefined) return []
+    const nowMs = io.now()
+    const source = `${root}/.llm/loops`
+    return [...staleItems(lists.stale, source, nowMs), ...timeoutItems(lists.timeouts, source, nowMs)]
+  })
+  disposers.push(() => { status.dispose() })
+
   function runtimeOf(root: string): ProjectRuntime | undefined {
     if (!runs) return undefined
     const known = running.get(root)
@@ -561,6 +587,8 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
       // A session that starts in a project is the host meeting that project: its files are settled, its view written, and this process starts running it.
       disposers.push(ctx.on('agent/created', async ({ agent }) => {
         const cwd = agent.session?.header.cwd
+        const session = sessionIdOf(agent)
+        if (session !== undefined && typeof cwd === 'string' && cwd !== '') sessions.set(session, cwd)
         const project = typeof cwd === 'string' && cwd !== '' ? projectOf(cwd) : undefined
         if (project === undefined) return
         await boards.refresh(project.root)
