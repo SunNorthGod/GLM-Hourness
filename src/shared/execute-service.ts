@@ -5,13 +5,15 @@
  * arrangement as src/shared/peak-mode.ts, whose reader serves the rows that
  * read the rules board.
  *
- * Four members: the one M3's rules judge with; the one the guard row's
- * scratch-only rule asks for a registered worker's planned files; the trunk advance a running
- * call was allowed to make, which the rules board's gate reads for
- * `gate.trunk-advance` (R4-F4, §18.2; src/rules/gate.ts, after `next()`);
- * and `runAction`, the loop board's `run` for the row's harness
+ * Four required members: the one M3's rules judge with; the one the guard
+ * row's scratch-only rule asks for a registered worker's planned files; the
+ * trunk advance a running call was allowed to make, which the rules board's
+ * gate reads for `gate.trunk-advance` (R4-F4, §18.2; src/rules/gate.ts, after
+ * `next()`); and `runAction`, the loop board's `run` for the row's harness
  * actions (§2.5 point 2, src/execute/loop-link.ts), with the loop board's
- * record and result types (src/shared/loop-records.ts).
+ * record and result types (src/shared/loop-records.ts). One optional member:
+ * `reconcileTrunk`, the trunk step of the reconcile, which the patrol's
+ * evidence row calls (M7 design 0.6 §3.11.2).
  */
 import type { ServiceLookup } from './dsh-min.ts'
 import type { HarnessResult, LoopEventRecord } from './loop-records.ts'
@@ -51,6 +53,15 @@ export interface ExecuteService {
    * load are `failed` with the reason; an action already done is `skipped`.
    */
   runAction(action: string, record: LoopEventRecord): Promise<HarnessResult>
+  /**
+   * The reconcile's trunk step (§3.9.6 step 5), the patrol's evidence row
+   * (M7 design 0.6 §3.11.2): the trunk-advance evidence the ok local lines
+   * of `advances.jsonl` carry but the graph misses gets written back; the
+   * count of tasks completed with their trunk evidence. Never throws and
+   * never rejects; `0` while the row has no trunk-advance gate installed.
+   * Optional: a service of an older shape still reads.
+   */
+  reconcileTrunk?(project: string, sessionId?: string): Promise<number>
 }
 
 /** The reader: undefined while the execute row is off; undefined with a `problem` report when a member has the wrong type. */

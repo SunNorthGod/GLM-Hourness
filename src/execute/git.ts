@@ -175,6 +175,48 @@ export interface TrailerCommit {
   readonly tasks: readonly string[]
 }
 
+/** One entry of the newest commits of a branch, what the patrol's windows walk. */
+export interface RecentCommit {
+  readonly commit: string
+  /** The committer date, ISO 8601 (`%cI`). */
+  readonly at: string
+  /** The parents as git prints them, first parent first; empty for the root. */
+  readonly parents: readonly string[]
+}
+
+/** The format the recent-commit walk reads: the commit, a NUL, the committer date, a NUL, the parents joined by spaces. */
+const RECENT_FORMAT = '--format=%H%x00%cI%x00%P'
+
+/** Commits of one branch, newest first, from `git log` in `RECENT_FORMAT`. */
+function parseRecentCommits(text: string): RecentCommit[] {
+  const found: RecentCommit[] = []
+  for (const line of text.split('\n')) {
+    const [commit = '', at = '', parents = ''] = line.replace(/\r$/, '').split('\0')
+    if (/^[0-9a-f]{40,64}$/.test(commit) && !Number.isNaN(Date.parse(at))) {
+      found.push({ commit, at, parents: parents.split(' ').filter(parent => parent !== '') })
+    }
+  }
+  return found
+}
+
+/** One branch of a prefix walk (`git for-each-ref`): the short name and its tip. */
+export interface BranchEntry {
+  /** Without `refs/heads/`: `hz/task-1`. */
+  readonly branch: string
+  readonly tip: string
+}
+
+/** Branches from `git for-each-ref --format=%(refname)%00%(objectname)` over one prefix. */
+function parseBranches(prefix: string, text: string): BranchEntry[] {
+  const found: BranchEntry[] = []
+  const head = `refs/heads/${prefix}`
+  for (const line of text.split('\n')) {
+    const [ref = '', tip = ''] = line.replace(/\r$/, '').split('\0')
+    if (ref.startsWith(`${head}/`) && /^[0-9a-f]{40,64}$/.test(tip)) found.push({ branch: ref.slice('refs/heads/'.length), tip })
+  }
+  return found
+}
+
 /** The format that `parseTaskTrailers` reads: the commit, a NUL, the task values joined by commas. */
 const TRAILER_FORMAT = '--format=%H%x00%(trailers:key=Hourness-Task,valueonly,unfold,separator=%x2C)'
 
@@ -456,6 +498,32 @@ export function createGit(runner: GitRunner = realGitRunner) {
     // The grep only narrows the walk; the trailers decide, so `m7-1` does not match a commit of `m7-10`.
     const result = await read(cwd, ['log', TRAILER_FORMAT, '--fixed-strings', `--grep=${task}`, base, '--'])
     return result.ok ? succeeded(parseTaskTrailers(result.value).find(entry => entry.tasks.includes(task))?.commit) : result
+  }
+
+  /** The committer date of one commit, ISO 8601; undefined when the revision names no commit. The patrol's 14-day branch rule reads it. */
+  async function commitDate(cwd: string, rev: string): Promise<string | undefined> {
+    return isRev(rev) ? firstLine(cwd, ['show', '-s', '--format=%cI', `${rev}^{commit}`]) : undefined
+  }
+
+  /** The newest commits of one branch, newest first, bounded by `limit`; the patrol's seven-day windows walk it. */
+  async function recentCommits(cwd: string, rev: string, limit: number): Promise<Outcome<RecentCommit[]>> {
+    if (!isRev(rev) || !Number.isInteger(limit) || limit <= 0 || limit > 1000) return failed('not a revision or not a count')
+    const result = await read(cwd, ['log', RECENT_FORMAT, '-n', String(limit), rev, '--'])
+    return result.ok ? succeeded(parseRecentCommits(result.value)) : result
+  }
+
+  /** The commits reachable from `rev` that carry `Hourness-Task` trailers, newest first, whole history; the patrol's coverage row walks it. */
+  async function trailerCommits(cwd: string, rev: string): Promise<Outcome<TrailerCommit[]>> {
+    if (!isRev(rev)) return failed('not a revision')
+    const result = await read(cwd, ['log', TRAILER_FORMAT, rev, '--'])
+    return result.ok ? succeeded(parseTaskTrailers(result.value)) : result
+  }
+
+  /** The branches under `refs/heads/<prefix>` with their tips; the patrol's branch row walks them. */
+  async function listBranches(cwd: string, prefix: string): Promise<Outcome<BranchEntry[]>> {
+    if (!isRefPart(prefix) || prefix === '') return failed('not a branch prefix')
+    const result = await read(cwd, ['for-each-ref', '--format=%(refname)%00%(objectname)', `refs/heads/${prefix}`])
+    return result.ok ? succeeded(parseBranches(prefix, result.value)) : result
   }
 
   /** The commits in `from..to`, newest first: what an advance from `from` to `to` brings in. */
@@ -826,8 +894,9 @@ export function createGit(runner: GitRunner = realGitRunner) {
   return {
     toplevel, currentBranch, resolveCommit, treeOf, branchTip, mergeBase, isAncestor,
     changedFiles, entryAt, sameContent, taskTrailers, lastTaskCommit, commitsBetween, stagedPaths,
-    listWorktrees, ensureWorktree, removeWorktree, discardWorktree, prepareGateWorktree,
+    listWorktrees, uncleanFiles, ensureWorktree, removeWorktree, discardWorktree, prepareGateWorktree,
     trunkUpstream, trunkRefs, remoteUrl, remoteHeadBranch, reflogSubject, lsRemote, diffPatch, treePaths,
+    commitDate, recentCommits, listBranches, trailerCommits,
   }
 }
 

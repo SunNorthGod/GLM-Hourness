@@ -231,6 +231,8 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     },
     trunkAdvanceFor: callId => trunkGate?.trunkAdvanceFor(callId),
     runAction: (action, record) => loopLink.runAction(action, record),
+    // The patrol's evidence row (M7 design 0.6 §3.11.2) rides the same gate the drive's reconcile uses.
+    reconcileTrunk: (project, sessionId) => trunkGate?.reconcileTrunk(project, sessionId) ?? Promise.resolve(0),
   }
   try {
     ctx.provide?.(EXECUTE_SERVICE, service)

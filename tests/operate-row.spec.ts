@@ -53,11 +53,11 @@ function tool(lookup: ServiceLookup, isMain: (agent: { readonly id: string }) =>
   }
 }
 
-test('hourness_report: the kind schema has morning and weekly, and the patrol kind is not there yet (m7-7 seam)', () => {
+test('hourness_report: the kind schema has morning, weekly and patrol (m7-7)', () => {
   const { tool: report } = tool(hostWith([]).lookup)
   assert.equal(report.name, 'hourness_report')
   const parameters = report.parameters as { properties: { kind: { enum: readonly string[] } }, required: readonly string[] }
-  assert.deepEqual(parameters.properties.kind.enum, ['morning', 'weekly'])
+  assert.deepEqual(parameters.properties.kind.enum, ['morning', 'weekly', 'patrol'])
   assert.deepEqual(parameters.required, ['kind'])
 })
 
@@ -67,7 +67,6 @@ test('the caller must be the main agent, and the kind is required', async () => 
   await assert.rejects(() => Promise.resolve(notMain.tool.execute({ kind: 'morning' }, notMain.exec)), /forbidden/)
   const { tool: report, exec } = tool(host.lookup)
   await assert.rejects(() => Promise.resolve(report.execute({}, exec)), /kind/)
-  await assert.rejects(() => Promise.resolve(report.execute({ kind: 'patrol' }, exec)), /kind/)
 })
 
 test('the morning report carries the hub entries word for word — the usage list read through the collector, not recomputed', async () => {
@@ -157,13 +156,13 @@ function hostCtx(board: LoopsService | undefined): { readonly ctx: Parameters<ty
   return { ctx: ctx as unknown as Parameters<typeof operateApply>[0], registered, store }
 }
 
-test('apply hands the two entries to the loop board and registers the tool', () => {
+test('apply hands the three entries to the loop board and registers the tool', () => {
   const board = fakeBoard()
   const { ctx, registered, store } = hostCtx(board.service)
   const dispose = operateApply(ctx)
   assert.deepEqual(registered.map(definition => (definition as { name: string }).name), ['hourness_report'])
   assert.equal(board.handed.length, 1)
-  assert.deepEqual(board.handed[0]?.entries.map(entry => (entry as { id: string }).id), ['operate.morning', 'operate.weekly'])
+  assert.deepEqual(board.handed[0]?.entries.map(entry => (entry as { id: string }).id), ['operate.morning', 'operate.weekly', 'operate.patrol'])
   const health = store.get('glmHournessHealth/operate') as { activation(): { state: string } }
   assert.equal(health.activation().state, 'active')
   dispose()

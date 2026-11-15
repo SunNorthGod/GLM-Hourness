@@ -1,12 +1,12 @@
 /**
- * glm-hourness/operate row (M7 design 0.6 §3.10, §3.11.1, P3): the reports
- * row. It registers `hourness_report` for the main agent — kind `morning`
- * renders the four-answers report (src/report/four-answers.ts), kind
- * `weekly` the weekly one (src/report/weekly.ts) — and hands the two time
- * entries (src/operate/entries.ts) to the loop board (`glmHournessLoops`),
- * whose DSH timers deliver their tell to the holder session; the row runs
- * nothing itself. The patrol entry and `hourness_report {kind: 'patrol'}`
- * arrive with the patrol lane (m7-7) and are not in the schema yet.
+ * glm-hourness/operate row (M7 design 0.6 §3.10, §3.11.1, §3.11.2): the
+ * reports row. It registers `hourness_report` for the main agent — kind
+ * `morning` renders the four-answers report (src/report/four-answers.ts),
+ * kind `weekly` the weekly one (src/report/weekly.ts), kind `patrol` the
+ * nightly patrol (src/operate/patrol.ts) — and hands the three time entries
+ * (src/operate/entries.ts) to the loop board (`glmHournessLoops`), whose DSH
+ * timers deliver their tell to the holder session; the row runs nothing
+ * itself.
  *
  * The reports read the status hub's agent entries through the collector
  * (src/report/status.ts) — the rows other modules own are never recomputed
@@ -24,7 +24,8 @@ import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { projectOf } from '../data/project-root.ts'
 import { isMainAgentFor } from '../data/main-agent.ts'
-import { readAdvances, readChecks } from '../execute/check.ts'
+import { readAdvances, readChecks, runLine } from '../execute/check.ts'
+import { createGit, type Git } from '../execute/git.ts'
 import { readDrive } from '../execute/drive-log.ts'
 import { graphService } from '../graph/service.ts'
 import { loadGraph } from '../graph/store.ts'
@@ -44,6 +45,7 @@ import { fourAnswers } from '../report/four-answers.ts'
 import { dora, doraBody } from '../report/metrics.ts'
 import { weeklyReport } from '../report/weekly.ts'
 import { askSummary, localDay, readEffects } from '../workflow/morning-report.ts'
+import { patrolRun } from './patrol.ts'
 import { OPERATE_ENTRIES, OPERATE_ROW_SOURCE } from './entries.ts'
 
 /** cordis plugin identity. */
@@ -54,12 +56,12 @@ export interface OperateContext extends ServiceLookup, Partial<InjectHost>, Part
   on?(event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
 }
 
-const DESCRIPTION = 'The scheduled reports (hourness): kind "morning" is the four-answers morning report, kind "weekly" the weekly one. Reply with the returned text unchanged.'
+const DESCRIPTION = 'The scheduled reports (hourness): kind "morning" is the four-answers morning report, kind "weekly" the weekly one, kind "patrol" the nightly patrol. Reply with the returned text unchanged.'
 
 const PARAMETERS = {
   type: 'object',
   properties: {
-    kind: { type: 'string', enum: ['morning', 'weekly'], description: 'morning: the four-answers morning report. weekly: the weekly report.' },
+    kind: { type: 'string', enum: ['morning', 'weekly', 'patrol'], description: 'morning: the four-answers morning report. weekly: the weekly report. patrol: the nightly patrol.' },
   },
   required: ['kind'],
 }
@@ -73,12 +75,26 @@ const OUTPUT = {
 /** The result is the report text itself: the model relays it verbatim, so no JSON wrapper stands between. */
 const render: ToolDefinitionLike['output']['render'] = (_args, value) => [{ type: 'text', text: (value as { text: string }).text }]
 
-/** What the tool reads through: injectable for the L2 specs, wired from the context in `apply`. */
+/** What the tool reads through: injectable for the L2 specs, wired from the context in `apply`. The git and command layers feed the patrol. */
 export interface OperateDeps {
   readonly lookup: ServiceLookup
   readonly isMain: (agent: AgentLike) => boolean
   readonly graphDirOf: (cwd: string | undefined) => string | undefined
   readonly now?: () => number
+  readonly git?: Git
+  readonly runLine?: (command: string, cwd: string, logFile: string, timeoutMs: number, signal: AbortSignal) => Promise<{ readonly exit: number, readonly ms: number, readonly problem?: string }>
+}
+
+/** The patrol's deps from the tool's: the git and command layers default to the real ones. */
+function patrolDepsFrom(deps: OperateDeps): Parameters<typeof patrolRun>[0] {
+  const now = deps.now
+  return {
+    lookup: deps.lookup,
+    graphDirOf: deps.graphDirOf,
+    git: deps.git ?? createGit(),
+    runLine: deps.runLine ?? runLine,
+    ...(now === undefined ? {} : { now: (): Date => new Date(now()) }),
+  }
 }
 
 /** The project graph, or why it could not be read — the wording the reports carry. */
@@ -113,21 +129,23 @@ async function readViolations(lookup: ServiceLookup): Promise<readonly GuardReco
 }
 
 /**
- * `hourness_report {kind}` (M7 design 0.6 §3.10, §3.12.4): the main agent's
- * report tool. The status hub's agent entries come through the collector at
- * the `agent` audience; the graph, the checks, the advances and the drive
- * are the project's own records. The morning report covers the local
- * calendar day, the weekly one the trailing seven days — the same windows
- * the /hourness report and the metrics board's relayed group use.
+ * `hourness_report {kind}` (M7 design 0.6 §3.10, §3.11.2, §3.12.4): the main
+ * agent's report tool. The status hub's agent entries come through the
+ * collector at the `agent` audience; the graph, the checks, the advances and
+ * the drive are the project's own records. The morning report covers the
+ * local calendar day, the weekly one the trailing seven days — the same
+ * windows the /hourness report and the metrics board's relayed group use.
+ * The patrol kind runs the nightly patrol (src/operate/patrol.ts).
  */
 export function hournessReportTool(deps: OperateDeps): ToolDefinitionLike {
   return {
     ...toolShell('hourness_report', DESCRIPTION, PARAMETERS, OUTPUT),
     output: { schema: OUTPUT, render },
     async execute(args: unknown, exec: ToolExecutionContext): Promise<{ text: string }> {
-      const { agent } = mainAgentCall(deps.isMain, exec, { message: 'only the main agent reads the reports', hint: 'the reports are yours to relay: pass kind "morning" or "weekly"' })
-      const kind = isRecord(args) && args.kind === 'morning' ? 'morning' : isRecord(args) && args.kind === 'weekly' ? 'weekly' : undefined
-      if (kind === undefined) refuse('invalid', 'kind must be "morning" or "weekly"', 'pass kind "morning" for the four-answers morning report, "weekly" for the weekly report')
+      const { agent } = mainAgentCall(deps.isMain, exec, { message: 'only the main agent reads the reports', hint: 'the reports are yours to relay: pass kind "morning", "weekly" or "patrol"' })
+      const kind = isRecord(args) && (args.kind === 'morning' || args.kind === 'weekly' || args.kind === 'patrol') ? args.kind : undefined
+      if (kind === undefined) refuse('invalid', 'kind must be "morning", "weekly" or "patrol"', 'pass kind "morning" for the four-answers morning report, "weekly" for the weekly report, "patrol" for the nightly patrol')
+      if (kind === 'patrol') return patrolRun(patrolDepsFrom(deps), agent)
       const cwd = agent.session?.header.cwd
       const sessionId = sessionIdOf(agent)
       const nowMs = (deps.now ?? Date.now)()
@@ -194,13 +212,13 @@ export function hournessReportTool(deps: OperateDeps): ToolDefinitionLike {
 /** cordis plugin entry: register the tool and hand the time entries to the loop board. */
 export function apply(ctx: OperateContext, _config = {}): () => void {
   const { list: disposers, drain: dispose } = disposerList()
-  const health = provideRowHealth(ctx, 'operate', 'active', '已加载；hourness_report 在本行，晨报与周报两条时间条目交给循环板')
+  const health = provideRowHealth(ctx, 'operate', 'active', '已加载；hourness_report 在本行，晨报、周报与巡检三条时间条目交给循环板')
   disposers.push(() => { health.dispose() })
   let toolsNote: string | undefined = '报告行的工具要工具服务（tools）'
-  let boardNote: string | undefined = '循环板不在：晨报与周报不会到点出现'
+  let boardNote: string | undefined = '循环板不在：晨报、周报与巡检不会到点出现'
   const reactivate = (): void => {
     const notes = [toolsNote, boardNote].filter(note => note !== undefined)
-    health.reactivate(notes.length > 0 ? 'degraded' : 'active', notes.length > 0 ? notes.join('；') : '已加载；hourness_report 在本行，晨报与周报两条时间条目交给循环板')
+    health.reactivate(notes.length > 0 ? 'degraded' : 'active', notes.length > 0 ? notes.join('；') : '已加载；hourness_report 在本行，晨报、周报与巡检三条时间条目交给循环板')
   }
   const isMain = (agent: AgentLike): boolean => {
     // The main flag alone: a read that came back with a note still names the
@@ -234,7 +252,7 @@ export function apply(ctx: OperateContext, _config = {}): () => void {
   /** Hand the two time entries over; `problem` names a service whose shape is wrong. The same source replaces its own hand-over whole. */
   const handOver = (found: LoopsService | undefined, problem?: string): void => {
     if (found === undefined) {
-      boardNote = problem === undefined ? '循环板不在：晨报与周报不会到点出现' : `循环板接口与报告行不符：${problem}`
+      boardNote = problem === undefined ? '循环板不在：晨报、周报与巡检不会到点出现' : `循环板接口与报告行不符：${problem}`
       reactivate()
       return
     }
@@ -259,7 +277,7 @@ export function apply(ctx: OperateContext, _config = {}): () => void {
       })
     }
     catch (error) {
-      boardNote = `循环板没有等到：晨报与周报不会到点出现（${error instanceof Error ? error.message : String(error)}）`
+      boardNote = `循环板没有等到：晨报、周报与巡检不会到点出现（${error instanceof Error ? error.message : String(error)}）`
     }
   }
   else boardNote = '宿主没有 inject，报告行的时间条目交不到循环板'
