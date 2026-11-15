@@ -1371,8 +1371,7 @@ const envCeilingCheck = Array.isArray(envCeilingPage?.checks) ? envCeilingPage.c
 // the agent audience holds no person entry and neither kind carries a
 // metrics group; the morning kind answers the four questions, the weekly
 // kind relays the burden numbers and ends on the metrics-board line. The
-// operate row ships disabled; the scenario turns it on (the patrol kind and
-// entry arrive with m7-7 and are not in the schema yet).
+// operate row ships disabled; the scenario turns it on.
 const operateReportDir = join(runDir, 'operate-report')
 const operateReportWs = join(operateReportDir, 'ws')
 mkdirSync(operateReportWs, { recursive: true })
@@ -1396,6 +1395,24 @@ const operateWeeklyHub = operateReport.steps[2]?.hub
 const operateMorningText = operateMorning?.text ?? ''
 const operateWeeklyText = operateWeekly?.text ?? ''
 const operateNoPerson = hub => hub?.error === undefined && hub?.agent?.items.every(item => item.audience === 'agent') === true && (hub?.agent?.items.length ?? 0) > 0
+
+// The nightly patrol (m7-7): hourness_report kind "patrol" runs the reads,
+// the findings and the journal on the real host. The scenario enables the
+// operate row alone and turns the execute and graph rows off — the shape a
+// fresh profile ships — so the findings name the absent trunk check and the
+// unreadable graph, the journal's trunk state is skipped, and the run's
+// line lands beside its .gitignore in the project; the row stays read-only
+// about everything else.
+const operatePatrolDir = join(runDir, 'operate-patrol')
+const operatePatrolWs = join(operatePatrolDir, 'ws')
+mkdirSync(operatePatrolWs, { recursive: true })
+writeFileSync(join(operatePatrolWs, 'README.md'), 'probe workspace\n')
+if (!initRepo(operatePatrolWs)) throw new Error('probe: git init for operate-patrol failed')
+const operatePatrol = runScenario('operate-patrol', 'glm-5.3', [
+  { tool: { name: 'hourness_report', arguments: { kind: 'patrol' } } },
+  { text: 'done' },
+], 'Call hourness_report with kind "patrol", then reply done.', ['- id: glm-hourness/operate', '  disabled: false', '- id: glm-hourness/execute', '  disabled: true', '- id: glm-hourness/graph', '  disabled: true'], operatePatrolWs)
+const operatePatrolText = lastToolResult(operatePatrol.steps[1])?.text ?? ''
 
 // Rules board, a rule of the person across the end of a peak (M6 S3, M6
 // design §16 S3, §7.3, docs/ORCHESTRATION.md §16.12). The clone's rules file
@@ -5383,6 +5400,9 @@ const checks = [
   ['operate-report: the morning kind answers the four questions with the hub rows in front (status hub batch 6)', operateReport.status === 0 && operateMorning?.isError !== true && ['# 晨报 ', '## 现在', '## 一、目标', '## 二、规划', '## 三、理由', '## 四、架构', '## 在等你回话的', '## 检查与审查', '## 花了多少', '## 例外'].every(title => operateMorningText.includes(title)) && !operateMorningText.includes('metrics/load') && !operateMorningText.includes('### '), `exit ${operateReport.status}; ${operateMorningText.slice(0, 400).replace(/\n/g, ' | ')}`],
   ['operate-report: the weekly kind relays the burden and ends on the metrics-board line; neither kind carries a person entry or a metrics group (status hub batch 6, d-metrics-ratios-person-only)', operateWeekly?.isError !== true && operateWeeklyText.startsWith('# 周报 ') && operateWeeklyText.includes('## 人的负担') && operateWeeklyText.endsWith('其余的数字在面板的指标板上：比率与对照只给人看，不进对话。') && !operateWeeklyText.includes('### ') && operateNoPerson(operateMorningHub) && operateNoPerson(operateWeeklyHub) && (operateWeeklyHub?.agent?.items.find(item => item.id === 'metrics/load') !== undefined || operateWeeklyText.includes('减负数字读不到')), `morning hub items: ${JSON.stringify(operateMorningHub?.agent?.items.map(item => [item.id, item.audience]) ?? null)}; weekly hub items: ${JSON.stringify(operateWeeklyHub?.agent?.items.map(item => [item.id, item.audience]) ?? null)}; weekly: ${operateWeeklyText.slice(0, 300).replace(/\n/g, ' | ')}`],
   ['operate-report: the morning text relays the usage entry of the hub word for word (the spend section is the entry, not a second computation)', (() => { const usage = operateMorningHub?.agent?.items.find(item => item.id === 'glm/usage'); return usage === undefined ? operateMorningText.includes('无模型调用') : operateMorningText.includes(usage.text) && (usage.detail ?? []).every(line => operateMorningText.includes(line)) })(), `usage entry: ${JSON.stringify(operateMorningHub?.agent?.items.find(item => item.id === 'glm/usage') ?? null).slice(0, 300)}`],
+  ['operate-patrol: the patrol kind answers on the real host with the patrol text and its sections (m7-7)', operatePatrol.status === 0 && lastToolResult(operatePatrol.steps[1])?.isError !== true && operatePatrolText.startsWith('# 巡检 ') && ['## 主干', '## 已在后台'].every(title => operatePatrolText.includes(title)) && operatePatrolText.includes('- 无') && !operatePatrolText.includes('### '), `exit ${operatePatrol.status}; ${operatePatrolText.slice(0, 400).replace(/\n/g, ' | ')}`],
+  ['operate-patrol: with the execute row and the graph off, the findings name the absent trunk check and the unreadable graph (m7-7)', operatePatrolText.includes('执行行不在，这次的主干检查没有跑') && operatePatrolText.includes('项目图读不到'), operatePatrolText.slice(0, 500).replace(/\n/g, ' | ')],
+  ['operate-patrol: the run journals itself beside its gitignore in the project (m7-7)', (() => { try { const lines = readFileSync(join(operatePatrolWs, '.llm', 'operate', 'patrol.jsonl'), 'utf8').split('\n').filter(line => line.trim() !== '').map(line => JSON.parse(line)); return lines.length === 1 && lines[0]?.kind === 'run' && lines[0]?.trunk === 'skipped' && readFileSync(join(operatePatrolWs, '.llm', 'operate', '.gitignore'), 'utf8') === '*\n' } catch { return false } })(), ''],
   ['env-checks-ceiling: right after check_limit the env row hands the loop board\'s page one detail line for the check (no timeout in it) and the check with its timeout: 60 s from the estimate of 25 s, held by the cap at 75 s, the raise to 120 s with its reason, a history and no timeouts (panel done condition 8-1)', isDeepStrictEqual(envCeilingPage?.details, ['Full：改了 *.txt 之后跑 · node fast.mjs {files}']) && envCeilingPage.checks.length === 1 && envCeilingCheck?.key === 'tool-1/full' && envCeilingCheck.title === 'Full：full' && envCeilingCheck.timeout?.seconds === 60 && envCeilingCheck.timeout.source?.kind === 'agent-estimate' && envCeilingCheck.timeout.source.estimateS === 25 && isDeepStrictEqual(envCeilingCheck.timeout.held, { by: 'cap', wantedS: 75 }) && envCeilingCheck.timeout.capRaised?.capS === 120 && envCeilingCheck.timeout.capRaised.reason === ENV_CEILING_REASON && Array.isArray(envCeilingCheck.timeout.history) && envCeilingCheck.timeout.history.length >= 1 && isDeepStrictEqual(envCeilingCheck.timeout.timeouts, []) && envCeilingCheck.timeout.timeouts7d === 0, JSON.stringify(envCeilingPage ?? null).slice(0, 1200)],
   ['env-checks-ceiling: a subagent\'s environment notice has the checks line and no held line', envCeilingStarted !== undefined && envCeilingChild.length > 0 && envCeilingChildNotices.length > 0 && envCeilingChildNotices.every(text => text.includes('Checks run after each edit (listed on the loop board): full on *.txt.') && !text.includes('held at its ceiling')), `${envCeilingChild.length} child request(s); ${envCeilingChildNotices.map(text => text.slice(0, 300).replace(/\n/g, ' | ')).join(' || ')}`],
   ['env-notice: the row appended .llm/ to the clone\'s .git/info/exclude and check-ignore verifies it', envIgnored === 0 && envExclude.split('\n').filter(line => line.trim() === '.llm/').length === 1, `check-ignore exit ${envIgnored}; exclude lines: ${envExclude.split('\n').filter(line => line.trim() === '.llm/').length}`],
