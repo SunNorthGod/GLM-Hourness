@@ -628,7 +628,7 @@ test('the board hands the view\'s status entries over, and keeps its state while
   }]
   const viewFile = 'C:/q/.llm/loops/view.json'
   const fake = fakeRemote({ [viewFile]: viewText({ ...richView(), items }) })
-  const { sessions, setProjections } = fakeSessions({}, { hournessLoops: { projectKey: 'C:/q', viewFile } })
+  const { sessions } = fakeSessions({}, { hournessLoops: { projectKey: 'C:/q', viewFile } })
   const { board, dispose } = loopsBoard(() => null, { remote: fake.remote, sessions })
   try {
     const stop = board.subscribe('s1', () => {})
@@ -641,7 +641,7 @@ test('the board hands the view\'s status entries over, and keeps its state while
     second()
     // A changed list hands a new state.
     const moved = [{ ...items[0], text: '4 周没跑出过结果的、你加的循环板条目 2 件' }]
-    fake.write(viewFile, viewText({ ...richView(), items: moved }))
+    await fake.write(viewFile, viewText({ ...richView(), items: moved }))
     fake.push({ kind: 'change', change: { absolutePath: viewFile } })
     await until(() => board.snapshot('s1').items?.[0]?.text === moved[0].text, 'the rewritten items')
     assert.deepEqual(board.snapshot('s1').items, moved)

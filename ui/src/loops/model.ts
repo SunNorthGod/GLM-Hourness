@@ -158,7 +158,7 @@ export function buildLoopsPage(view: LoopsView | null, tell: PageTell = CONSOLE_
     peakLine: view?.peak === undefined ? null : peakLineOf(view.peak),
     waitingLine: view === null || view.waiting === 0 ? null : `在等的 ${view.waiting} 件`,
     attention: view?.attention ?? [],
-    items: (Array.isArray(view?.items) ? view.items : []).map(item => ({ id: item.id, text: item.text, detail: item.detail ?? [] })),
+    items: (view?.items ?? []).map(item => ({ id: item.id, text: item.text, detail: item.detail ?? [] })),
     events: { title: '碰到某件事就做的', rows: plugin.filter(entry => entry.trigger === 'event').map(item) },
     timed: { title: '到点做的', rows: plugin.filter(entry => entry.trigger === 'time').map(item) },
     mine: { title: '本项目加的', rows: mine },
