@@ -87,8 +87,8 @@ function reopenMoments(node: GraphNode): number[] {
     .filter(moment => !Number.isNaN(moment))
 }
 
-/** The moments the tasks appeared that name `task` as their source (`source` edge to it). */
-function sourcedMoments(graph: LoadedGraph, task: string): number[] {
+/** The moments the tasks appeared that name `task` as their source (`source` edge to it), unsorted; shared with the floor proposals' rework look (m7-8). */
+export function sourcedMoments(graph: LoadedGraph, task: string): number[] {
   const moments: number[] = []
   for (const node of graph.nodes.values()) {
     if (!(node.edges ?? []).some(edge => edge.type === 'source' && edge.to === task)) continue
