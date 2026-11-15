@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
-import { CALC_VERSION, compare, factsFor, median, pct, scoresFor, type CalcGroup } from '../src/metrics/calc.ts'
+import { CALC_VERSION, compare, factsFor, median, pct, runTotals, scoresFor, type CalcGroup } from '../src/metrics/calc.ts'
 import { runCli } from '../src/metrics/cli.ts'
 import { appendEvents } from '../src/metrics/library.ts'
 import { readLog } from '../src/metrics/read.ts'
@@ -458,4 +458,39 @@ test('pct keeps one decimal and reads — on a zero denominator; median rounds t
   assert.equal(pct(1, 0), '—')
   assert.equal(median([1, 2]), 2)
   assert.equal(median([1, 2, 5]), 2)
+})
+
+test('runTotals gives the practice section (§12 step 8): the fixture counted independently, a purpose call is no step but its credits count, the basis line names the inputs (F8)', () => {
+  const events = summaryFixture()
+  // The independent counter the runner's own scoring stands for: steps are the llm events with a step and no purpose; credits are every llm event's (§13 — the runner's own credits count every call).
+  const expectedSteps = events.filter(event => event.k === 'llm' && typeof event.body.step === 'number' && event.body.purpose === undefined)
+  const expectedCredits = Number(events.reduce((total, event) => {
+    if (event.k !== 'llm') return total
+    const credits = event.body.credits
+    return total + (typeof credits === 'number' ? credits : 0)
+  }, 0).toFixed(4))
+  const expectedCalls = events.filter(event => event.k === 'tool').length
+  const computed = runTotals(inputOf(events))
+  assert.equal(computed.steps, expectedSteps.length)
+  assert.equal(computed.toolCalls, expectedCalls)
+  assert.equal(computed.credits, expectedCredits)
+  assert.ok(computed.steps > 0 && computed.toolCalls > 0, 'the fixture has both')
+  // A call with a purpose (compaction, session title) belongs to no step, but its credits are money the run spent.
+  const stepEvent = expectedSteps[0]
+  const purposeCall: MetricsEvent = { ...stepEvent, at: '2026-11-04T02:00:00.000Z', n: 999, body: { ...stepEvent.body, purpose: 'summarize' } }
+  const withPurpose = runTotals(inputOf([...events, purposeCall]))
+  assert.equal(withPurpose.steps, computed.steps)
+  const purposeCredits = typeof purposeCall.body.credits === 'number' ? purposeCall.body.credits : 0
+  assert.equal(withPurpose.credits, Number((computed.credits + purposeCredits).toFixed(4)))
+  // Deterministic: the same input twice, the same section.
+  assert.deepEqual(runTotals(inputOf(events)), computed)
+  // The basis line names the files, the window and the version, like every output's first line.
+  assert.ok(computed.basis.startsWith('依据：events-2026-11-04.jsonl 1–'))
+  assert.ok(computed.basis.includes(`窗口 ${FROM}–${TO}（+08:00）`))
+  assert.ok(computed.basis.includes(`计算版本 ${CALC_VERSION}`))
+  // Out-of-window events count nothing.
+  const outside = runTotals(inputOf(events, { from: '2026-11-05T00:00:00.000Z', to: '2026-11-06T00:00:00.000Z' }))
+  assert.equal(outside.steps, 0)
+  assert.equal(outside.toolCalls, 0)
+  assert.equal(outside.credits, 0)
 })

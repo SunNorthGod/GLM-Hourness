@@ -34,7 +34,13 @@
  * directories (usage journal, guard journal; for an interview task also
  * human.jsonl, what the simulated human said, and in result.json the
  * `interview` numbers of tests/calibration/interview-metrics.mjs; event-times.json
- * holds the arrival time of each line of events.jsonl). A copy that did not finish
+ * holds the arrival time of each line of events.jsonl). The metrics row of
+ * the bundle writes the run's journal into the workspace's .llm/metrics/
+ * (a fresh repository holds exactly this run's events); result.json's
+ * `metrics` section is that journal read with the pipeline's reader and
+ * computed with its formulas (scripts/calibrate/metrics.mjs), and a
+ * mismatch against the runner's own counting is a stderr warning, not a
+ * run failure. A copy that did not finish
  * leaves everything where it was; --collect <timestamp> finishes it, and
  * does the same for a batch the runner did not get to close. Nothing is
  * written to the real user-level directory.
@@ -50,6 +56,7 @@ import { gateOnRules } from '../rules-gate.mjs'
 import { ablationRow, attachmentsIn, dataRows, designRows, fenceRow, initRepo, limitsRow, repo, requireDesktop, sandboxCommand, slash, workspaceChangesRow } from '../sandbox.mjs'
 import { ARMS } from './ablation.mjs'
 import { fencedPathOf } from './fence.mjs'
+import { compareMetrics, metricsSection } from './metrics.mjs'
 import { closeBatch, collectBatch, openBatch, openRun } from './run-dir.mjs'
 
 const TASKS_DIR = join(repo, 'tests', 'calibration')
@@ -314,7 +321,14 @@ async function calibrate(task, model, index) {
   const stop = run.killed ? 'killed' : limits.some(entry => entry.kind === 'time-limit') ? 'time-limit' : limits.some(entry => entry.kind === 'step-limit') ? 'step-limit' : turnEnd?.kind ?? 'no-turn-end'
   // An interview task's checker also prints the numbers step 12(a) counts (tests/calibration/interview-metrics.mjs): they go to result.json as `interview`, apart from the verdict.
   const { metrics, ...acceptance } = runChecker(task, dir, ws)
-  const changed = changedFiles(ws)
+  // The metrics row's own files in the workspace (the journal and the path-hash key) are harness artifacts, not the model's strays.
+  const harnessArtifact = path => path === '.llm/metrics-key' || path.startsWith('.llm/metrics/')
+  const changed = changedFiles(ws).filter(path => !harnessArtifact(path))
+  // The pipeline's accounting of this run (metrics design §12 step 8), checked against the runner's own scoring above (§13): loud on stderr, never a failed run.
+  const runCredits = creditsOf(usage)
+  const pipeline = await metricsSection(ws)
+  const metricDiffs = compareMetrics(pipeline, { steps: phases('step_start').length, toolCalls: calls.length, credits: runCredits.charged })
+  if (metricDiffs.length > 0) console.warn(`calibrate: metrics cross-check (${task.id} on ${model}): ${metricDiffs.join('; ')}`)
   const result = {
     task: task.id,
     kind: task.kind,
@@ -346,8 +360,9 @@ async function calibrate(task, model, index) {
     changedFiles: changed,
     strayFiles: changed.filter(path => !task.touches.some(touch => touch.endsWith('/') ? path.startsWith(touch) : path === touch)),
     tokens: tokensOf(usage),
-    credits: creditsOf(usage),
+    credits: runCredits,
     peakCalls: usage.filter(record => isPeak(record.at)).length,
+    metrics: pipeline,
     // Calls the read fence denied.
     fence: fenced.filter(entry => entry.kind === 'denied').length,
     // The scan of the event stream after the run: calls whose arguments name a path outside the fence, and those of them that ran (should be none).

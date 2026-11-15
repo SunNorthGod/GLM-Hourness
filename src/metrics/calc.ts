@@ -513,6 +513,29 @@ export function scoresFor(input: ScoresInput): { readonly basis: string, readonl
   return { basis: base.basis, groups: [...base.groups, ...scoreGroups] }
 }
 
+/**
+ * The `metrics` section of a practice run's result.json (§12 step 8): the
+ * three totals the acceptance cross-checks against the runner's own
+ * counting (§13) — with the basis line naming the inputs (F8). Steps are
+ * the score table's step filter (a call with a purpose belongs to no
+ * step); tool calls count every `tool` event; credits are every `llm`
+ * event's charged credits in the window (the design's credits row names
+ * `llm`'s credits as its source, and the runner's own credits count every
+ * call the usage journal holds, the session title's included — steps only
+ * would never agree), summed at the journal's four-decimal precision.
+ */
+export function runTotals(input: CalcInput): { readonly basis: string, readonly steps: number, readonly toolCalls: number, readonly credits: number } {
+  const windowed = inWindow(ordered(input.events), input.from, input.to)
+  const llm = windowed.filter(event => event.k === 'llm')
+  const steps = llm.filter(event => num(event.body, 'step') !== undefined && str(event.body, 'purpose') === undefined)
+  return {
+    basis: basisLine(input.basis, input.from, input.to, input.tz, input.findings.unreadable.length),
+    steps: steps.length,
+    toolCalls: countOf(windowed, 'tool').length,
+    credits: Number(sumOf(llm.map(event => num(event.body, 'credits') ?? 0)).toFixed(4)),
+  }
+}
+
 function finCounts(list: readonly MetricsEvent[]): Array<{ readonly id: string, readonly count: number }> {
   const counts = new Map<string, number>()
   for (const event of list) {
