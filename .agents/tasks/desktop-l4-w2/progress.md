@@ -169,3 +169,11 @@ person's inputs or instance; own instance closes via CDP Browser.close only.
   visible in the conversation DOM/screenshot (evidence taken from the log;
   wave-1 did the same); (b) 例外's `lifts.jsonl 读不出（ENOENT）` note is
   honest but noisy on a fresh project with no lifts file.
+
+## cold-fire morning observation (orchestrator, 2026-11-16 08:36)
+
+**Fired.** Evidence chain, all times local (UTC+8):
+- runner stepped at 08:30:00.129 (`dsh-home/glm-hourness/loops/machine/last-step.json`, session-2ba25999, project ws-report)
+- usage entries 08:30:08 / 08:30:19 (`dsh-home/glm-hourness/audit/usage.jsonl`, at 2026-11-16T00:30:08Z / 00:30:19Z, glm-5.3-flash, 117553+466 in / 14+480 out / 117504 cacheRead)
+- assistant reply at 08:30:19 in session-2ba25999 journal opens verbatim: 「# 晨报 2026-11-16 ¶ ## 现在 ¶ - 高峰：不是高峰；下一个高峰 14:00（GLM 积分套餐）」; 花了多少 = 积分 334.13 · 缓存命中 97%; 例外节记 `拦下 main-agent-graph-relay × 3`(根修规则在真桌面流水中工作)
+- render matches the wave-2 lane's manual hourness_report render (same section order, same sources)
