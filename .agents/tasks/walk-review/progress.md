@@ -51,8 +51,10 @@ Facts gathered:
 
 ## Disposition
 
-- One commit on `walk-review` → merged to main (see the merge for the hash): walk.ts root fix + schema back to the design contract, dispatch.ts/dsh-min.ts type tightening, L2 doubles on the receipt shape + 3 new cases, probe repinned, ROADMAP 19 / ORCHESTRATION §17.15 / HANDOFF §8 row + §10 item 10.
+- Committed on `walk-review` as `cf80ff5f`, rebased onto main `943f5559` (→ `93873eda`), all gates re-run on the rebased base (build/preflight/test green, ratchet 73/18/1, probe 611/611 — `wkr-*.log`), fast-forward merged into main and pushed to both remotes (origin + github, `943f5559..93873eda`).
+- The change: walk.ts root fix (reviewFlow settles `activation.result`) + schema back to the design contract, dispatch.ts/dsh-min.ts type tightening, L2 doubles on the receipt shape + 3 new cases, probe repinned, ROADMAP 19 / ORCHESTRATION §17.15 / HANDOFF §8 row + §10 item 10.
 - Remaining: desktop L4 (real-image judgment, U6/U7 batch) — unchanged; the runtime's own end-of-turn teardown behavior (HANDOFF 已知问题 23/29) is a separate, real upstream fact unrelated to this path.
+
 
 
 
