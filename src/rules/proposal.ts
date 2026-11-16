@@ -175,7 +175,7 @@ function scriptCautions(rule: Pick<Rule, 'when' | 'filter' | 'condition' | 'acti
     cautions.push(rolesOrModels ? '符合筛选的会话的每一次工具调用之前都会跑它' : '这个项目每个会话（含主 Agent）的每一次工具调用之前都会跑它')
   }
   if (rule.onUnknown === 'apply') cautions.push('读不到信号时这条规则一直按成立处理')
-  cautions.push('现在只有命令行和仓库脚本的自查会跑它，会话里的工具调用还不跑脚本，按没批准处理')
+  cautions.push('命令行、仓库脚本的自查与会话里的工具调用门都会跑它；脚本没批准（本机没有看过原文的同意记录）时不起进程，按条目的失败做法判')
   return cautions
 }
 

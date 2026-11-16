@@ -24,7 +24,6 @@
 import { resolve } from 'node:path'
 import { projectOf } from '../data/project-root.ts'
 import { STAGES } from '../graph/schema.ts'
-import { runScript } from '../loops/script.ts'
 import { describeCall } from './call.ts'
 import { denialText, type PeakSetting } from './denial.ts'
 import { gateEvents } from './events.ts'
@@ -34,7 +33,7 @@ import { openTickets, projectSignals, rulesInForce, stateNotes } from './listing
 import { emitMetric, type MetricExit, type RulesCheckEvent } from './metrics.ts'
 import { approvedScriptRules, effectivePeakMode, effectOf, type Effect, type PeakLevel, type ProjectState } from './model.ts'
 import { readProject } from './repo.ts'
-import { runPendingScripts, type RunScript } from './script-run.ts'
+import { runJudgedScripts, type RunScript } from './script-run.ts'
 import { showText } from './show.ts'
 import { GLM_PEAK, effectiveSignal, type SignalReading } from './signals.ts'
 import { rulesPaths } from './store.ts'
@@ -237,19 +236,14 @@ export async function checkCall(call: { readonly tool: string, readonly args: un
   const byId = new Map(table.map(rule => [rule.id, rule]))
   // A script that calls `checkCall` again (it runs `npm run -s rules -- check`) is told what the rules say of their own actions and runs no script: otherwise a script could call itself without end.
   const insideScript = process.env.HOURNESS_BOARD === 'rules'
-  const ran = judged.pending.length === 0 || insideScript
+  const ran = insideScript
     ? []
-    : await runPendingScripts({
-      pending: judged.pending,
-      info: (id) => {
-        const rule = byId.get(id)
-        return { title: rule?.title ?? id, filtersWrites: rule?.filter?.writes !== undefined }
-      },
+    : await runJudgedScripts(table, judged, {
       root: view.root,
       events: input.events,
       now,
       ...(options.session === undefined ? {} : { session: options.session }),
-      run: options.runScript ?? runScript,
+      ...(options.runScript === undefined ? {} : { run: options.runScript }),
     })
   const verdict: JudgeResult = ran.length === 0 ? judged : { ...judged, ...combine([...judged.hits, ...ran.flatMap(outcome => outcome.hit ?? [])]) }
   const hitOf = new Map(verdict.hits.map(hit => [hit.rule, hit]))

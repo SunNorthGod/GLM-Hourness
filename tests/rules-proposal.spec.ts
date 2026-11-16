@@ -83,7 +83,7 @@ clockedTest('a script rule is made ready with its file, its hash and the caution
   assert.equal(stored.reason, 'zh.json lost keys last week', 'a rule with no reason of its own takes the proposal\'s')
   assert.match(proposal.describe, /写 locales\/ 下的文件之前，跑脚本 r-locale-keys\.mjs：它退出 2 就拦下、3 就排队；10 秒没答或出错时放行/)
   assert.deepEqual(proposal.cautions.slice(0, 3), ['脚本在 docs/rules/scripts/r-locale-keys.mjs', '超过 10 秒算没答，按放行处理（默认）', '出错时也放行'])
-  assert.ok(proposal.cautions.some(caution => caution.includes('还不跑脚本')), proposal.cautions.join(' | '))
+  assert.ok(proposal.cautions.some(caution => caution.includes('工具调用门都会跑它')), proposal.cautions.join(' | '))
   const detail = proposalDetail(proposal)
   assert.ok(detail?.markdown.includes(SCRIPT.trimEnd()))
   assert.deepEqual(detail?.mustShow, [SCRIPT, ...proposal.cautions])

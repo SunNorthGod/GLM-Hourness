@@ -13,10 +13,16 @@
  *
  * Rules reach a project through the rules file in its repository, the way a
  * clone has them. The clock is the test's: the row, the board and the
- * heartbeat read the same one.
+ * heartbeat read the same one. A rule whose script a person approved can
+ * queue a call (docs/ORCHESTRATION.md §16.16): its ticket is judged again
+ * like any other, but the script is asked again at most every 60 seconds
+ * with the same envelope, and the desk ends the ticket when the script
+ * allows the call, blocks it, or the rule stops applying; a retry that the
+ * script lets through answers the ticket itself.
  */
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
 import { openRulesBoard } from '../src/rules/engine.ts'
 import type { RepoRules } from '../src/rules/model.ts'
@@ -25,7 +31,7 @@ import type { AgentLike } from '../src/shared/dsh-min.ts'
 import { collectHealth } from '../src/shared/health.ts'
 import { PRICING_SERVICE } from '../src/shared/pricing.ts'
 import { OFFPEAK_CREDIT_RUNS, ruleOf } from './rules-fixtures.ts'
-import { fakeClock, journalOf, MINUTE, quickIo, type FakeClock } from './rules-helpers.ts'
+import { approveScript, fakeClock, journalOf, MINUTE, nodeScript, quickIo, type FakeClock } from './rules-helpers.ts'
 import { health, rowTest, subagentOf, textOf, type Fixture, type Options } from './rules-host.ts'
 
 const HOUR = 60 * MINUTE
@@ -907,6 +913,63 @@ for (const [title, change, because] of NO_TIME) {
     assert.deepEqual(fixture.live.woken.map(entry => entry.text), [`[rules board] Ticket q-1 cleared: ${because}. ${CALIBRATE_AGAIN}`])
   }, { rules: PEAK_HOLD_FILE })
 }
+
+// ------------------------------------------------- a script that queues a call
+
+/** A script whose bytes never change but whose ending follows files in the project: `block.txt` blocks, `fail.txt` fails, `allow.txt` lets through, otherwise it defers. The pin stays good while the test moves the ending around. */
+const FLIP = nodeScript(`import { existsSync } from 'node:fs'\nif (existsSync('block.txt')) process.exit(2)\nif (existsSync('fail.txt')) process.exit(1)\nprocess.exit(existsSync('allow.txt') ? 0 : 3)\n`)
+const WORD = 'case-script'
+
+ticketTest('a script that defers the call opens the ticket; the desk asks the script again 60 seconds later, and exit 0 clears the ticket with the wake', async (fixture, clock) => {
+  await approveScript(fixture.root, 'r-script', WORD, FLIP)
+  const reason = reasonOf(await fixture.exec('pwsh', shell(`run ${WORD}`)))
+  assert.match(reason, /ran its script docs\/rules\/scripts\/r-script\.mjs, which deferred the call: "the script gave no reason"\./)
+  assert.equal(ticketOf(fixture, 'q-1').state, 'deferred')
+  await fixture.pass()
+  assert.equal(ticketOf(fixture, 'q-1').state, 'deferred', 'within the 60 seconds the last verdict stands, and the 5-second pass starts no process')
+  assert.equal(fixture.live.woken.length, 0)
+  await writeFile(join(fixture.root, 'allow.txt'), 'go')
+  clock.advance(61_000)
+  await fixture.pass()
+  assert.equal(ticketOf(fixture, 'q-1').state, 'cleared')
+  assert.match(fixture.live.woken[0]?.text ?? '', /^\[rules board\] Ticket q-1 cleared: the script of rule r-script allows the call now\. You may run the deferred call again: pwsh "run case-script"\.$/)
+})
+
+ticketTest('the re-fed script saying exit 2 clears the ticket with the reason that the rule blocks the call now', async (fixture, clock) => {
+  await approveScript(fixture.root, 'r-blocker', WORD, FLIP)
+  await fixture.exec('pwsh', shell(`run ${WORD}`))
+  await writeFile(join(fixture.root, 'block.txt'), 'stop')
+  clock.advance(61_000)
+  await fixture.pass()
+  assert.equal(ticketOf(fixture, 'q-1').state, 'cleared')
+  assert.match(fixture.live.woken[0]?.text ?? '', /^\[rules board\] Ticket q-1 cleared: rule r-blocker blocks the call now\. /)
+})
+
+ticketTest('the re-fed script saying exit 3 again, or failing, keeps the ticket: a deferral the script gave is not withdrawn by one more bad run', async (fixture, clock) => {
+  await approveScript(fixture.root, 'r-script', WORD, FLIP)
+  await fixture.exec('pwsh', shell(`run ${WORD}`))
+  clock.advance(61_000)
+  await fixture.pass()
+  assert.equal(ticketOf(fixture, 'q-1').state, 'deferred', 'the script still says to defer')
+  assert.equal(fixture.live.woken.length, 0)
+  await writeFile(join(fixture.root, 'fail.txt'), 'no')
+  clock.advance(61_000)
+  await fixture.pass()
+  assert.equal(ticketOf(fixture, 'q-1').state, 'deferred', 'a failure goes by the failure setting, which lets the deferral stand')
+  assert.equal(fixture.live.woken.length, 0)
+})
+
+ticketTest('the agent retrying the call the script now lets through runs the call and answers the ticket itself, with no wake', async (fixture) => {
+  await approveScript(fixture.root, 'r-script', WORD, FLIP)
+  await fixture.exec('pwsh', shell(`run ${WORD}`))
+  assert.equal(ticketOf(fixture, 'q-1').state, 'deferred')
+  await writeFile(join(fixture.root, 'allow.txt'), 'go')
+  const ran = await fixture.exec('pwsh', shell(`run ${WORD}`))
+  assert.equal(ran.isError, false)
+  assert.deepEqual(fixture.calls.map(call => call.name), ['pwsh'])
+  assert.equal(ticketOf(fixture, 'q-1').state, 'done', 'the wait was answered by the same script\'s fresh word')
+  assert.equal(fixture.live.woken.length, 0, 'no wake: the agent is the one that ran it')
+})
 
 // ------------------------------------------------------------- teardown
 

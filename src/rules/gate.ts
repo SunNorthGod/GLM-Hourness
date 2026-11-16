@@ -25,18 +25,29 @@
  *    at src/execute/advance.ts:1429). No service, no callId, or no recorded
  *    advance pushes no `gate.trunk-advance`: rules listening to it then do
  *    not fire, as the rules page says (「要等派活与合入那一块装上」). A script
- *    rule on the event is still not run here (`NOT_RUN_BY_THE_GATE`), but
- *    the event's declared `gateOnErrorDefault: 'block'` now decides how the
- *    not-run refusal judges (src/rules/events.ts).
+ *    rule of an entry the person approved (the pin, the machine's approval time)
+ *    is run here through the shared executor's gate queue (`runJudgedScripts`,
+ *    src/rules/script-run.ts; the process, the private copy, the timeout and
+ *    the end of the tree are src/loops/script.ts's), the call held while they
+ *    run; a script that is not approved, or whose timing is out of range, is
+ *    not started and judged by its failure setting, the event's declared
+ *    `gateOnErrorDefault` deciding the default (src/rules/events.ts).
  * 4. A rule that blocks refuses the call with the four-part text; a rule that
- *    records lets it run and leaves a line; informing rules change nothing. A
- *    rule of the person that queues refuses the call once with a ticket, and
- *    the same call again with the same ticket (tickets.ts); a call that ran
- *    answers the cleared ticket it waited on. The entries of the stop level
- *    queue the same way: a GLM subagent's tool calls are one ticket for the
- *    session and its active goal is paused with it, the dispatch of a GLM
- *    subagent is an ordinary ticket on the agent that dispatches, and
- *    nothing is ever queued for the main agent's own calls (tickets.ts).
+ *    records lets it run and leaves a line; informing rules change nothing.
+ *    What a script made of the call joins the rules' own hits the same way
+ *    (block over queue, docs/ORCHESTRATION.md §16.16): an exit of 2 refuses
+ *    with the script's reason in the rule's clause, an exit of 3 queues, a
+ *    failure goes by the rule's failure setting. A rule of the person that
+ *    queues — and a script that defers — refuses the call once with a ticket,
+ *    and the same call again with the same ticket (tickets.ts); the desk asks
+ *    a script that queued again at most every 60 seconds and clears the ticket
+ *    when the script allows or the rule stops applying, and a call that ran
+ *    closes the ticket a script opened when that script let it through now.
+ *    The entries of the stop level queue the same way: a GLM subagent's tool
+ *    calls are one ticket for the session and its active goal is paused with
+ *    it, the dispatch of a GLM subagent is an ordinary ticket on the agent
+ *    that dispatches, and nothing is ever queued for the main agent's own
+ *    calls (tickets.ts).
  *
  * The listener never throws. Reading or judging that fails lets the call run
  * and degrades the row's health with the reason; the board's own faults never
@@ -69,12 +80,13 @@ import { callerOf } from './caller.ts'
 import { describeCall } from './call.ts'
 import { denialText } from './denial.ts'
 import { gateEvents, type GateCall } from './events.ts'
-import { judge, judgeInput, NOT_RUN_BY_THE_GATE, type RuleHit } from './judge.ts'
+import { combine, judge, judgeInput, type RuleHit } from './judge.ts'
 import { emitJudged, type RulesJudgedEvent } from './metrics.ts'
 import { approvedScriptRules, effectivePeakMode, type BuiltinRule, type Rule } from './model.ts'
 import type { PeakReading, ProjectView } from './peak.ts'
 import { gitOperationIn } from './repo.ts'
 import { projectHealth } from './row-health.ts'
+import { runJudgedScripts } from './script-run.ts'
 import { rulesPaths, type RulesPaths } from './store.ts'
 import { clockReadings, signalsRead, tableOf } from './table.ts'
 import type { TicketDesk } from './tickets.ts'
@@ -275,12 +287,24 @@ export function installRulesGate(deps: GateDeps): () => void {
       ...(advance === undefined ? {} : { trunkAdvance: advance }),
     })
     const judgedAt = deps.now()
-    const verdict = judge(judgeInput({ now, project: project.root, events, signals: [...readings.values()], unreadable }), table, { approved: approvedScriptRules(state), notRunHere: NOT_RUN_BY_THE_GATE })
+    const judged = judge(judgeInput({ now, project: project.root, events, signals: [...readings.values()], unreadable }), table, { approved: approvedScriptRules(state) })
     const judgedMs = deps.now() - judgedAt
-    report(sessionId, basename(project.root), view, reading, project.root)
 
     // 4. What the strongest effect makes of the call.
     const byId = new Map<string, Rule | BuiltinRule>(table.map(rule => [rule.id, rule]))
+    // The scripts a person approved run here, through the shared executor's gate queue: the call is held
+    // while they run, and what each ending makes of it joins the rules' own hits, block over queue
+    // (docs/ORCHESTRATION.md §16.16). A script that is not approved was never handed over: judge lists it
+    // as refused and its failure setting made of the call what it makes.
+    const ran = await runJudgedScripts(table, judged, {
+      root: project.root,
+      events,
+      now,
+      ...(caller.sessionId === undefined ? {} : { session: caller.sessionId }),
+    })
+    const verdict = ran.length === 0 ? judged : { ...judged, ...combine([...judged.hits, ...ran.flatMap(outcome => outcome.hit ?? [])]) }
+    report(sessionId, basename(project.root), view, reading, project.root)
+
     const signalsOf = (hit: RuleHit): SignalValues => {
       const rule = byId.get(hit.rule)
       return Object.fromEntries((rule === undefined ? [] : signalsRead(rule)).map(name => [name, readings.get(name)?.value ?? null]))
@@ -317,7 +341,12 @@ export function installRulesGate(deps: GateDeps): () => void {
         judgeEvent(hit.rule, 'rule-record', signalsOf(hit), judgedMs)
       }
     }
-    if (session !== undefined) await deps.tickets.passed({ session, view, root: project.root, cwd, tool, args: exec.arguments })
+    if (session !== undefined) {
+      // The scripts that let this call through answer the tickets their rules opened: the wait is over by
+      // the same script's own fresh word, and the agent that retried needs no wake (tickets.ts).
+      const allowed = ran.filter(outcome => outcome.outcome === 'allow').map(outcome => outcome.rule)
+      await deps.tickets.passed({ session, view, root: project.root, cwd, tool, args: exec.arguments, ...(allowed.length === 0 ? {} : { scripts: allowed }) })
+    }
     return undefined
   }
 

@@ -6,6 +6,7 @@
  * state the engine does not make by itself (a host's heartbeat, a record
  * an earlier writer left).
  */
+import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
@@ -13,7 +14,9 @@ import test from 'node:test'
 import { realLockEnvironment, type LockEnvironment } from '../src/data/lock.ts'
 import { openRulesBoard, type RulesBoard } from '../src/rules/engine.ts'
 import type { Change, JournalRecord, ProjectState, RulesActor } from '../src/rules/model.ts'
+import { prepareProposal } from '../src/rules/proposal.ts'
 import { appendRecord, applyRecord, ensureRuntimeDir, loadState, realStoreIo, stateDigest, writeSnapshot, type RulesPaths, type StoreIo } from '../src/rules/store.ts'
+import { draftOf } from './rules-fixtures.ts'
 
 export interface Project {
   readonly root: string
@@ -127,4 +130,36 @@ export async function injectRecord(paths: RulesPaths, changes: readonly Change[]
   await appendRecord(paths, { seq, at, actor, op, changes, snapshot: stateDigest(next) })
   await writeSnapshot(paths, next, quickIo())
   return next
+}
+
+// ------------------------------------------------------- approved script rules
+
+let scriptProposals = 0
+
+/** A script of node whose text is the body, ending with a line break. */
+export const nodeScript = (body: string): string => `${body}\n`
+
+/**
+ * A script rule approved the way the human approves (docs/ORCHESTRATION.md
+ * §16.15): proposed by an agent, agreed to with the person's word in the
+ * graph, and the board writes the script file and pins it with this machine's
+ * approval time — so the rule's script is one the gate, `checkCall` and the
+ * desk's re-feed really run. `over` replaces fields of the rule draft (the
+ * draft's own default condition is dropped: these cases are about the
+ * endings, not the clock).
+ */
+export async function approveScript(root: string, id: string, word: string, text: string, over: Record<string, unknown> = {}, board: RulesBoard = openRulesBoard({ projectRoot: root })): Promise<void> {
+  const proposalId = `p-${(++scriptProposals).toString(16).padStart(8, '0')}`
+  const draft = draftOf({
+    id,
+    title: `Script of ${id}`,
+    filter: { command: { matches: word } },
+    action: { kind: 'script', lang: 'node', text, timeoutSeconds: 10 },
+    condition: undefined,
+    ...over,
+  })
+  const made = prepareProposal({ kind: 'rule', body: draft, reason: 'the human asked' }, { state: loadState(board.paths).state, rulesDirFromRoot: 'docs/rules', now: new Date(), via: 'graph', proposedBy: { sessionId: 's-main', agentId: 'agent-main' }, id: proposalId, readScript: () => undefined })
+  assert.ok(made.ok, JSON.stringify(made))
+  assert.ok((await board.apply('llm', { op: 'propose', proposal: made.proposal })).ok)
+  assert.ok((await board.apply('human', { op: 'proposal-accept', id: proposalId, by: 'llm', relay: '可以', question: 'question-1' })).ok)
 }

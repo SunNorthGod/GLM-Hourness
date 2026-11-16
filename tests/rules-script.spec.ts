@@ -1,5 +1,5 @@
 /**
- * The scripts a person approved are run by `checkCall` (docs/ORCHESTRATION.md §16.15; rules
+ * The scripts a person approved are run by `checkCall` (docs/ORCHESTRATION.md §16.16; rules
  * design 0.11 §6.7, §1.4 item 24): real approvals made through the board's own path
  * (propose, then the person's word), the real executor (a process of node per script, the
  * copy of the approved bytes, the end of the process tree), and the real `checkCall`. What an
@@ -11,16 +11,11 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { checkCall, type CheckResult } from '../src/rules/check.ts'
-import { prepareProposal } from '../src/rules/proposal.ts'
 import type { ScriptResult } from '../src/loops/script.ts'
 import type { RunScript } from '../src/rules/script-run.ts'
 import { loadState } from '../src/rules/store.ts'
 import { approvedScriptRules } from '../src/rules/model.ts'
-import { draftOf } from './rules-fixtures.ts'
-import { projectTest, type Project } from './rules-helpers.ts'
-
-const MAIN = { sessionId: 's-main', agentId: 'agent-main' }
-let counter = 0
+import { approveScript, projectTest, type Project } from './rules-helpers.ts'
 
 /** The moment of every judgement, pinned: the fixture draft (tests/rules-fixtures.ts) carries `not clock 09:00–21:00 +08:00`, so with the wall clock inside that window no condition holds and no script would run — the spec was green only at night. 16:30 UTC is 00:30 the next day in +08:00, outside the window. */
 const NOW = Date.parse('2026-11-04T16:30:00.000Z')
@@ -28,26 +23,9 @@ const NOW = Date.parse('2026-11-04T16:30:00.000Z')
 /** A script of node that ends as the case says; it writes what it got on standard input to `seen.json` in the project first when asked. */
 const script = (body: string, options: { readonly seen?: boolean } = {}): string => `${options.seen === true ? 'import { readFileSync, writeFileSync } from \'node:fs\'\nwriteFileSync(\'seen.json\', readFileSync(0, \'utf8\'))\n' : ''}${body}\n`
 
-/** A rule that runs `text` before the calls whose command names `word`, approved the way the human approves: proposed, then agreed to. */
+/** A rule that runs `text` before the calls whose command names `word`, approved the way the human approves: proposed, then agreed to (tests/rules-helpers.ts). */
 async function approve(project: Project, id: string, word: string, text: string, over: Record<string, unknown> = {}): Promise<void> {
-  const proposalId = `p-${(++counter).toString(16).padStart(8, '0')}`
-  const draft = draftOf({
-    id,
-    title: `Script of ${id}`,
-    filter: { command: { matches: word } },
-    action: { kind: 'script', lang: 'node', text, timeoutSeconds: 10 },
-    // draftOf's default condition keeps the rule off between 09:00 and 21:00
-    // (+08:00), which would leave every scripted call unjudged during the
-    // day; these cases are about the endings, so no condition applies.
-    condition: undefined,
-    ...over,
-  })
-  const state = loadState(project.board.paths).state
-  const made = prepareProposal({ kind: 'rule', body: draft, reason: 'the human asked' }, { state, rulesDirFromRoot: 'docs/rules', now: new Date(), via: 'graph', proposedBy: MAIN, id: proposalId, readScript: () => undefined })
-  assert.ok(made.ok, JSON.stringify(made))
-  assert.ok((await project.board.apply('llm', { op: 'propose', proposal: made.proposal })).ok)
-  const agreed = await project.board.apply('human', { op: 'proposal-accept', id: proposalId, by: 'llm', relay: '可以', question: 'question-1' })
-  assert.ok(agreed.ok, JSON.stringify(agreed))
+  await approveScript(project.root, id, word, text, over, project.board)
 }
 
 /** A stand-in executor that records which scripts it was asked to run and ends each as given. */

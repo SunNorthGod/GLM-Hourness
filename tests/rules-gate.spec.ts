@@ -12,6 +12,7 @@
  * for a clone; the gate reads the same state `checkCall` reads.
  */
 import assert from 'node:assert/strict'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -28,7 +29,7 @@ import { EXECUTE_SERVICE, type ExecuteService } from '../src/shared/execute-serv
 import { METRICS_SERVICE, type EmittedEvent, type RulesBodies } from '../src/shared/metrics.ts'
 import { readViolations } from './fake-rc3.ts'
 import { ruleOf, scriptRef } from './rules-fixtures.ts'
-import { injectRecord } from './rules-helpers.ts'
+import { approveScript, injectRecord, nodeScript } from './rules-helpers.ts'
 import { health, PEAK_NOW, rowTest, subagentOf, textOf, type Fixture } from './rules-host.ts'
 
 const GLM_ROUTE = { provider: 'zai', model: 'glm-4.6' }
@@ -217,7 +218,7 @@ rowTest('an execute row whose service has the wrong shape reads as absent: no ga
   assert.deepEqual(await violations(), [])
 }, { rules: file([TRUNK_RULE]), services: { [EXECUTE_SERVICE]: { isWorker: () => false } } })
 
-rowTest('a script rule on gate.trunk-advance is still not run by this gate, and the event\'s declared default blocks the call', async ({ exec, calls, violations }) => {
+rowTest('a script nobody approved is not run by the gate, and the event\'s declared default judges the not-run refusal: the trunk rule blocks', async ({ exec, calls, violations }) => {
   const result = await exec('pwsh', shell('git push origin main'))
   assert.equal(result.isError, true)
   const reason = reasonOf(result)
@@ -234,7 +235,7 @@ rowTest('a script rule on gate.trunk-advance is still not run by this gate, and 
   services: executeRowWith(() => ({ branch: 'main', from: 'aaa', to: 'bbb' })),
 })
 
-rowTest('the same script rule on gate.tool-call alone is judged by the plain default: the call runs', async ({ exec, calls, violations }) => {
+rowTest('the same unapproved script on gate.tool-call alone is judged by the plain default: the call runs', async ({ exec, calls, violations }) => {
   assert.equal((await exec('pwsh', shell('git push origin main'))).isError, false, 'no entry onError and no declaration default means allow')
   assert.deepEqual(calls.map(call => call.name), ['pwsh'])
   assert.deepEqual(await violations(), [])
@@ -247,6 +248,71 @@ rowTest('the same script rule on gate.tool-call alone is judged by the plain def
   })], { scripts: { 'r-call-script': scriptRef('r-call-script') } }),
   services: executeRowWith(() => ({ branch: 'main', from: 'aaa', to: 'bbb' })),
 })
+
+// ----------------------------------------------------- approved scripts run here
+
+rowTest('an approved script runs before the call: exit 0 lets it through, and the script got the event of the call on standard input, with no caller field (the gate has none)', async ({ root, exec, calls, violations }) => {
+  await approveScript(root, 'r-allow', 'case-allow', nodeScript(`import { readFileSync, writeFileSync } from 'node:fs'\nwriteFileSync('seen.json', readFileSync(0, 'utf8'))\nprocess.exit(0)`))
+  const result = await exec('pwsh', shell('run case-allow now'))
+  assert.equal(result.isError, false)
+  assert.deepEqual(calls.map(call => call.name), ['pwsh'])
+  assert.deepEqual(await violations(), [], 'a call that runs leaves no line')
+  const seen = JSON.parse(readFileSync(join(root, 'seen.json'), 'utf8')) as Record<string, unknown> & { payload: Record<string, unknown> }
+  assert.deepEqual([seen.version, seen.board, seen.entry, seen.event, seen.project], [1, 'rules', 'r-allow', 'gate.tool-call', root])
+  assert.match(String(seen.run), /^rr-[0-9a-f]{8}$/)
+  assert.deepEqual([seen.payload.tool, seen.payload.command, seen.payload.role], ['pwsh', 'run case-allow now', 'root'])
+  assert.equal(seen.payload.caller, undefined, 'only checkCall says who asked')
+}, { rules: file([]) })
+
+rowTest('an approved script that exits 2 refuses the call with the script\'s reason in the rule\'s clause, journaled as rules:<id>, and the refusal is the same words checkCall gives', async ({ root, exec, calls, violations }) => {
+  await approveScript(root, 'r-block', 'case-block', nodeScript('process.stderr.write("keys differ\\nin zh.json\\u0007")\nprocess.exit(2)'))
+  const gate = reasonOf(await exec('pwsh', shell('run case-block')))
+  assert.deepEqual(calls, [], 'the call never ran')
+  assert.match(gate, /^You tried to run "run case-block"\.\nBoundary: Rule r-block "Script of r-block" \(set by an agent, with the human's agreement at .*, until lifted\) ran its script docs\/rules\/scripts\/r-block\.mjs, which blocked the call: "keys differ\\nin zh\.json"\.\nRight path: Fix what the script reports and try again; if you think the rule is wrong, tell the human\.\nException: /)
+  assert.ok(!gate.includes('\u0007'), 'control characters are taken out')
+  const library = await checkCall({ tool: 'pwsh', args: shell('run case-block') }, { project: root })
+  assert.equal(library.exitCode, 4)
+  assert.equal(gate, library.text, 'the gate and checkCall give the same refusal for the same approved script')
+  const [line, ...rest] = await violations(1)
+  assert.equal(rest.length, 0)
+  assert.deepEqual([line?.rule, line?.mode, line?.effect], ['rules:r-block', 'enforce', 'block'])
+}, { rules: file([]) })
+
+rowTest('an approved script that exits 3 defers the call: the refusal names a ticket and the ticket waits on the rule', async ({ root, exec, tickets, violations }) => {
+  await approveScript(root, 'r-queue', 'case-queue', nodeScript('process.stderr.write("wait for the build")\nprocess.exit(3)'))
+  const reason = reasonOf(await exec('pwsh', shell('run case-queue')))
+  assert.match(reason, /^You tried to run "run case-queue"\.\nBoundary: Deferred as ticket q-1\. Rule r-queue .+ ran its script docs\/rules\/scripts\/r-queue\.mjs, which deferred the call: "wait for the build"\./)
+  assert.deepEqual([tickets()['q-1']?.state, tickets()['q-1']?.rules], ['deferred', ['r-queue']])
+  const [line] = await violations(1)
+  assert.deepEqual([line?.rule, line?.mode, line?.effect, line?.ticket], ['rules:r-queue', 'enforce', 'queue', 'q-1'])
+}, { rules: file([]) })
+
+rowTest('a failed script goes by the rule\'s failure setting: allow by default, block when the rule says so', async ({ root, exec, calls }) => {
+  await approveScript(root, 'r-fail-allow', 'case-fail-allow', nodeScript('process.exit(1)'))
+  await approveScript(root, 'r-fail-block', 'case-fail-block', nodeScript('process.exit(1)'), { action: { kind: 'script', lang: 'node', text: nodeScript('process.exit(1)'), onError: 'block' } })
+  const allowed = await exec('pwsh', shell('run case-fail-allow'))
+  assert.equal(allowed.isError, false, 'the plain default lets a failed script through')
+  const blocked = reasonOf(await exec('pwsh', shell('run case-fail-block')))
+  assert.match(blocked, /ran its script docs\/rules\/scripts\/r-fail-block\.mjs, which exited with code 1, and the rule says to block when its script fails\./)
+  assert.match(blocked, /Right path: The call did not run\. Try again in a minute; if it fails again, tell the human that this rule's script is failing\./)
+  assert.deepEqual(calls.map(call => call.name), ['pwsh'])
+}, { rules: file([]) })
+
+rowTest('a script that runs past its timeout is ended with its whole tree, and the failure setting decides', async ({ root, exec }) => {
+  await approveScript(root, 'r-long', 'case-long', nodeScript('setTimeout(() => {}, 30_000)'), { action: { kind: 'script', lang: 'node', text: nodeScript('setTimeout(() => {}, 30_000)'), timeoutSeconds: 1, onError: 'block' } })
+  const startedAt = Date.now()
+  const reason = reasonOf(await exec('pwsh', shell('run case-long')))
+  assert.ok(Date.now() - startedAt < 9_000, 'the timeout was 1 second')
+  assert.match(reason, /ran its script docs\/rules\/scripts\/r-long\.mjs, which did not finish within 1 s, and the rule says to block when its script fails\./)
+}, { rules: file([]) })
+
+rowTest('a call a rule\'s own action already blocks starts no script', async ({ root, exec, calls }) => {
+  await approveScript(root, 'r-first', 'case-both', nodeScript(`import { writeFileSync } from 'node:fs'\nwriteFileSync('seen.json', 'started')\nprocess.exit(0)`))
+  const result = await exec('pwsh', shell('run case-both'))
+  assert.equal(result.isError, true)
+  assert.deepEqual(calls, [])
+  assert.equal(existsSync(join(root, 'seen.json')), false, 'no process started: a block that needs no script means the script is not run')
+}, { rules: file([ruleOf({ id: 'r-own', title: 'Own block', filter: { command: { matches: 'case-both' } } })]) })
 
 rowTest('the paths a rule on writes sees are relative to the session workspace', async ({ root, exec }) => {
   assert.equal((await exec('write', { file_path: join(root, 'src', 'payments', 'a.ts'), content: 'x' })).isError, true, 'an absolute target under the workspace')

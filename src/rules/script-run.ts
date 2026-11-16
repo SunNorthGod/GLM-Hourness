@@ -1,9 +1,11 @@
 /**
  * Running the scripts a person approved and what their endings mean (docs/ORCHESTRATION.md
- * §16.15; design §6.7): `judge` hands back the approved scripts of the rules that apply as
+ * §16.16; design §6.7): `judge` hands back the approved scripts of the rules that apply as
  * `pending`; this runs them through the shared executor (`purpose: 'gate'`, the process,
  * the copy of the approved bytes, the timeout and the end of the process tree are the
  * executor's, src/loops/script.ts) and turns each ending into what it makes of the call.
+ * The callers are `checkCall`, the tool-call gate and the desk's re-feed of a script that
+ * queued a call.
  *
  * The meaning is the board's: exit 0 lets the call through, 2 blocks it (the reason is the
  * start of what the script wrote on standard error, with control characters taken out), 3
@@ -15,9 +17,10 @@
  * The output of a script is not kept anywhere but in the reason of a block or deferral.
  */
 import { randomBytes } from 'node:crypto'
-import type { HookEnvelope, ScriptRequest, ScriptResult } from '../loops/script.ts'
+import { runScript, type HookEnvelope, type ScriptRequest, type ScriptResult } from '../loops/script.ts'
 import type { RulesEventRecord } from './events.ts'
 import type { JudgeResult, RuleHit } from './judge.ts'
+import type { BuiltinRule, Rule } from './model.ts'
 
 /** Starts one script; the shared executor's `runScript`, or a stand-in. */
 export type RunScript = (request: ScriptRequest) => Promise<ScriptResult>
@@ -112,7 +115,7 @@ function outcomeOf(pending: Pending, info: RuleInfo, result: ScriptResult): Scri
   }
 }
 
-export interface RunPendingOptions {
+interface RunPendingOptions {
   readonly pending: JudgeResult['pending']
   /** The rule of each pending script: its title and whether it filters on writes. */
   readonly info: (rule: string) => RuleInfo
@@ -130,7 +133,7 @@ export interface RunPendingOptions {
  * The call is not held longer than the longest timeout; the first script that blocks ends the wait and the others
  * are called off (their processes ended, their endings not read). When this returns, no process of it is left.
  */
-export async function runPendingScripts(options: RunPendingOptions): Promise<ScriptOutcome[]> {
+async function runPendingScripts(options: RunPendingOptions): Promise<ScriptOutcome[]> {
   const controller = new AbortController()
   const read = new Map<string, ScriptOutcome | undefined>()
   const runs = options.pending.map(async (pending): Promise<void> => {
@@ -156,4 +159,42 @@ export async function runPendingScripts(options: RunPendingOptions): Promise<Scr
   await Promise.all(runs)
   controller.abort()
   return options.pending.flatMap(pending => read.get(pending.rule) ?? [])
+}
+
+// ------------------------------------------------- the one shape of the callers
+
+/** The info the outcomes need of each rule, from the table that judged the call. */
+function ruleInfoOf(table: readonly (Rule | BuiltinRule)[]): (rule: string) => RuleInfo {
+  const byId = new Map(table.map(rule => [rule.id, rule]))
+  return (id) => {
+    const rule = byId.get(id)
+    return { title: rule?.title ?? id, filtersWrites: rule?.filter?.writes !== undefined }
+  }
+}
+
+/**
+ * Run the pending scripts of one judgement: the rule info comes from the table that
+ * judged, the session is the calling one when there is one, and the executor is the
+ * shared one unless the caller names another. `checkCall`, the tool-call gate and the
+ * desk's re-feed of a script that queued a call all come through here.
+ */
+export async function runJudgedScripts(table: readonly (Rule | BuiltinRule)[], judged: Pick<JudgeResult, 'pending'>, parts: {
+  readonly root: string
+  readonly events: readonly RulesEventRecord[]
+  readonly now: Date
+  readonly session?: string
+  /** Starts a script; default the shared executor's `runScript` (src/loops/script.ts). */
+  readonly run?: RunScript
+}): Promise<ScriptOutcome[]> {
+  return judged.pending.length === 0
+    ? []
+    : runPendingScripts({
+      pending: judged.pending,
+      info: ruleInfoOf(table),
+      root: parts.root,
+      events: parts.events,
+      now: parts.now,
+      ...(parts.session === undefined ? {} : { session: parts.session }),
+      run: parts.run ?? runScript,
+    })
 }

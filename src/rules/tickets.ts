@@ -41,12 +41,13 @@ import { openRulesBoard, type RulesBoard } from './engine.ts'
 import { gateEvents, modelId, type RulesEventRecord } from './events.ts'
 import { pauseGoal, resumeGoal, type Pause, type Resume } from './goal.ts'
 import type { HeartbeatWriter } from './heartbeat.ts'
-import { judge, judgeInput, NOT_RUN_BY_THE_GATE, type JudgeParts, type RuleHit } from './judge.ts'
+import { judge, judgeInput, type JudgeParts, type JudgeResult, type RuleHit } from './judge.ts'
 import { openTickets } from './listing.ts'
 import { approvedScriptRules, canonicalJson, effectivePeakMode, type BuiltinRule, type ProjectState, type Rule, type Ticket } from './model.ts'
 import { peakEndAfter, type PeakReading, type ProjectView } from './peak.ts'
 import type { HostRef } from './request.ts'
 import type { StoreIo } from './store.ts'
+import { runJudgedScripts, type ScriptOutcome } from './script-run.ts'
 import { clockReadings, tableOf } from './table.ts'
 import { agentsOf, clearedBecause, deliver, heartbeatLostText, isStopTicket, stopWakeText, wakeNotice, wakeText } from './wake.ts'
 
@@ -59,6 +60,8 @@ const NOT_RETRIED_MS = 30 * MINUTE_MS
 const UNLOAD_MS = 2_000
 /** The model of a stop ticket whose session is not the one that was held (the ticket went to the agent that dispatched it, or the session has made no request since the restart): the entry that holds it asks for a GLM model, which the ticket was opened for. */
 const HELD_MODEL = 'glm/glm'
+/** The host asks the script of a rule that queued a call again at most this often (design §1.4 item 24: 至多每 60 秒). The run that opened the ticket counts: the first re-feed is 60 seconds after it. */
+const REFED_MS = 60_000
 
 /** A queued call the gate hands over: all that is needed to refuse it with a ticket and to judge it again later. */
 interface DeferredCall {
@@ -85,8 +88,8 @@ interface DeferredCall {
 /** What the gate does with a queued call: refuse it (with the ticket, when one was opened), or let it through because the person let it. */
 type Deferral = { readonly kind: 'deny', readonly reason: string, readonly ticket?: string } | { readonly kind: 'let' }
 
-/** A call the gate let run, for the tickets that wait for it. */
-type PassedCall = Pick<DeferredCall, 'session' | 'view' | 'root' | 'cwd' | 'tool' | 'args'>
+/** A call the gate let run, for the tickets that wait for it. `scripts` names the rules whose approved scripts ran and let it through: the tickets such a rule opened are answered. */
+type PassedCall = Pick<DeferredCall, 'session' | 'view' | 'root' | 'cwd' | 'tool' | 'args'> & { readonly scripts?: readonly string[] }
 
 export interface TicketDesk {
   /** A call a rule queues: refuse it with a ticket, or let it through when the person let it. Never throws. */
@@ -133,13 +136,14 @@ interface Holder {
   readonly parentSession: string | undefined
 }
 
-/** What this host keeps of a ticket in memory only: the call as it was judged, to judge it again, and who has it. A ticket this process did not open has none and is not judged again. */
+/** What this host keeps of a ticket in memory only: the call as it was judged, to judge it again, and who has it. A ticket this process did not open has none and is not judged again. `fedAt` is when a script of its rules last ran (the run that opened the ticket, or the last re-feed): the next one is due `REFED_MS` later. */
 interface Held {
   readonly root: string
   readonly cwd: string
   events: readonly RulesEventRecord[]
   unreadable: NonNullable<JudgeParts['unreadable']>
   holder: Holder
+  fedAt?: number
 }
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error)).slice(0, 80)
@@ -240,15 +244,26 @@ export function createTicketDesk(deps: DeskDeps): TicketDesk {
 
   // ----------------------------------------------------------- the judgement
 
-  /** Judge a held call again against the state as it is now: the rules of the person that still defer it, and why it stopped waiting if none does. */
-  function rejudge(state: ProjectState, ticket: Ticket, hold: Held): { readonly queued: readonly string[], readonly because: string } {
+  /**
+   * Judge a held call again against the state as it is now: the rules of the
+   * person that still defer it, and why it stopped waiting if none does. A
+   * script rule that still applies holds the call too, and is handed back as
+   * `pending`: the re-judgement starts no process, and the last verdict the
+   * script gave was to defer — the desk asks the script again on its own
+   * cadence (`refeed`), not once every five seconds.
+   */
+  function rejudge(state: ProjectState, ticket: Ticket, hold: Held): { readonly queued: readonly string[], readonly because: string, readonly pending: JudgeResult['pending'] } {
     const now = new Date(deps.now())
     const { readings } = clockReadings(state, deps.peak(), now)
     const table = tableOf(state, effectivePeakMode(state).level)
-    const verdict = judge(judgeInput({ now, project: hold.root, events: hold.events, signals: [...readings.values()], unreadable: hold.unreadable }), table, { approved: approvedScriptRules(state), notRunHere: NOT_RUN_BY_THE_GATE })
+    const verdict = judge(judgeInput({ now, project: hold.root, events: hold.events, signals: [...readings.values()], unreadable: hold.unreadable }), table, { approved: approvedScriptRules(state) })
     const queued = verdict.effect === 'queue' ? verdict.strongest.map(hit => hit.rule) : []
     const blocking = verdict.effect === 'block' ? verdict.strongest.map(hit => hit.rule) : []
-    return { queued, because: clearedBecause(ticket, state, readings, now, blocking, peakEndAfter(deps.ctx, Date.parse(ticket.since))) }
+    return {
+      queued: [...new Set([...queued, ...verdict.pending.map(entry => entry.rule)])],
+      because: clearedBecause(ticket, state, readings, now, blocking, peakEndAfter(deps.ctx, Date.parse(ticket.since))),
+      pending: verdict.pending,
+    }
   }
 
   // --------------------------------------------------------------- the gate
@@ -271,6 +286,8 @@ export function createTicketDesk(deps: DeskDeps): TicketDesk {
       hold.holder = holderOf(call.session)
       hold.events = call.events
       hold.unreadable = call.unreadable
+      // The call was judged again just now, its script with it: the next feed of a script rule is 60 seconds out.
+      hold.fedAt = deps.now()
     }
     return moved.state.tickets?.[orphan.id] ?? orphan
   }
@@ -348,6 +365,9 @@ export function createTicketDesk(deps: DeskDeps): TicketDesk {
     }
     if (ticket === undefined && call.session.header.origin === 'subagent') ticket = await takeOver(call, signature, open)
     if (ticket !== undefined) {
+      // The gate judged the call again just now, its scripts with it: the next feed of a script rule is 60 seconds out.
+      const hold = held.get(ticket.id)
+      if (hold !== undefined) hold.fedAt = deps.now()
       if (!letHolds(ticket)) {
         if (stopping) ticket = await pauseLate(call, ticket)
         return { kind: 'deny', reason: text(ticket.id, false, goalWord(ticket)), ticket: ticket.id }
@@ -376,7 +396,7 @@ export function createTicketDesk(deps: DeskDeps): TicketDesk {
       report(sessionId, `等待单没记下：${opened.ok ? '没有拿到单号' : opened.error.message}。这次调用照样拒绝，agent 要等规则不再成立后自己重试`)
       return { kind: 'deny', reason: text(undefined, true) }
     }
-    held.set(opened.target, { root: call.root, cwd: call.cwd, events: call.events, unreadable: call.unreadable, holder: holderOf(call.session) })
+    held.set(opened.target, { root: call.root, cwd: call.cwd, events: call.events, unreadable: call.unreadable, holder: holderOf(call.session), fedAt: deps.now() })
     return { kind: 'deny', reason: text(opened.target, false, goalWord(pauseFields(paused))), ticket: opened.target }
   }
 
@@ -384,14 +404,20 @@ export function createTicketDesk(deps: DeskDeps): TicketDesk {
     const state = (readView(call.cwd) ?? call.view).read.state
     if (state.tickets === undefined) return
     const cleared = openTickets(state).filter(ticket => ticket.state === 'cleared' && sameHost(ticket.host))
-    if (cleared.length === 0) return
+    const scripts = call.scripts ?? []
+    const waiting = scripts.length === 0 ? [] : openTickets(state).filter(ticket => ticket.state === 'deferred' && sameHost(ticket.host) && ticket.rules.some(id => scripts.includes(id)))
+    if (cleared.length === 0 && waiting.length === 0) return
     const signature = signatureOf(call.tool, call.args)
     // A subagent also answers what its predecessor was deferred on, which went to the agent that dispatched it.
     const root = call.session.header.origin === 'subagent' ? dispatchRoot(call.session.header.parentSession) : undefined
+    const answered = (ticket: Ticket): boolean => ticket.signature === signature && (ticket.sessionId === call.session.id || (typeof root === 'object' && ticket.sessionId === root.id && ticket.handedFrom !== undefined))
     for (const ticket of cleared) {
-      if (ticket.signature !== signature) continue
-      const answered = ticket.sessionId === call.session.id || (typeof root === 'object' && ticket.sessionId === root.id && ticket.handedFrom !== undefined)
-      if (answered) await close(call.root, ticket, `等待单 ${ticket.id} 等的调用又做了，单结束`)
+      if (answered(ticket)) await close(call.root, ticket, `等待单 ${ticket.id} 等的调用又做了，单结束`)
+    }
+    // A ticket a script rule opened, whose script just let this same call through: the wait is answered by the
+    // script's own fresh word, and the agent that retried is the one that ran it, so no wake is sent.
+    for (const ticket of waiting) {
+      if (answered(ticket)) await close(call.root, ticket, `等待单 ${ticket.id} 等的调用这次被它的脚本放行，单结束`)
     }
   }
 
@@ -515,6 +541,7 @@ export function createTicketDesk(deps: DeskDeps): TicketDesk {
     const judged = rejudge(state, current, hold)
     if (judged.queued.length > 0) {
       if (judged.queued.join() !== current.rules.join()) await update(hold.root, current, { rules: judged.queued }, `等待单 ${current.id} 现在是规则 ${judged.queued.join('、')} 挡着`)
+      await refeed(state, current, hold, judged)
       return
     }
     if (stopping) {
@@ -523,6 +550,47 @@ export function createTicketDesk(deps: DeskDeps): TicketDesk {
     }
     const cleared = await update(hold.root, current, { state: 'cleared' }, `等待单 ${current.id} 的规则不再挡住这次调用，已解除`)
     if (cleared !== undefined) await tell(hold.root, cleared, hold, judged.because)
+  }
+
+  /**
+   * A ticket a script rule holds: the re-judgement starts no process, so the verdict the script gave when the
+   * ticket opened (to defer) stands until the desk asks the script again, at most every 60 seconds, with the
+   * same envelope as the call that opened the ticket (design §1.4 item 24). Exit 2 clears the ticket: the rule
+   * blocks the call now. Exit 0 clears it when no rule of the person still holds the call: the script allows the
+   * call now, and the agent is told it may run the call again. Anything else keeps the ticket: a deferral the
+   * script gave is not withdrawn because one more run went badly, timed out, or was not run.
+   */
+  async function refeed(state: ProjectState, ticket: Ticket, hold: Held, judged: ReturnType<typeof rejudge>): Promise<void> {
+    if (judged.pending.length === 0) return
+    const at = deps.now()
+    if (at - (hold.fedAt ?? Date.parse(ticket.since)) < REFED_MS) return
+    hold.fedAt = at
+    const now = new Date(at)
+    const { readings } = clockReadings(state, deps.peak(), now)
+    const table = tableOf(state, effectivePeakMode(state).level)
+    let outcomes: readonly ScriptOutcome[]
+    try {
+      outcomes = await runJudgedScripts(table, judged, { root: hold.root, events: hold.events, now, session: ticket.sessionId })
+    }
+    catch (error) {
+      report(ticket.sessionId, `等待单 ${ticket.id} 的脚本重问没有跑成（${message(error)}），单保持`)
+      return
+    }
+    const blocked = outcomes.filter(outcome => outcome.hit?.effect === 'block').map(outcome => outcome.rule)
+    if (blocked.length > 0) {
+      const cleared = await update(hold.root, ticket, { state: 'cleared' }, `等待单 ${ticket.id} 的脚本重问说拦下，已解除`)
+      if (cleared !== undefined) await tell(hold.root, cleared, hold, clearedBecause(ticket, state, readings, now, blocked, peakEndAfter(deps.ctx, Date.parse(ticket.since))))
+      return
+    }
+    const askedAgain = outcomes.some(outcome => outcome.hit?.effect === 'queue')
+    const allowed = outcomes.filter(outcome => outcome.outcome === 'allow').map(outcome => outcome.rule)
+    // A rule of the person, or an entry of the code, that holds the call without a fresh script verdict: the ticket stays while one does.
+    const others = judged.queued.filter(id => !judged.pending.some(entry => entry.rule === id))
+    if (!askedAgain && others.length === 0 && allowed.length === judged.pending.length) {
+      const who = allowed.length === 1 ? `rule ${allowed[0]}` : `rules ${allowed.join(', ')}`
+      const cleared = await update(hold.root, ticket, { state: 'cleared' }, `等待单 ${ticket.id} 的脚本重问说放行，已解除`)
+      if (cleared !== undefined) await tell(hold.root, cleared, hold, `the script of ${who} allows the call now`)
+    }
   }
 
   /** A ticket of this host that other hosts' writes expired because its heartbeat was late, while the host and the session are alive: tell the agent once. */

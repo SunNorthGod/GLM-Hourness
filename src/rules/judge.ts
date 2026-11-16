@@ -176,14 +176,9 @@ export interface JudgeResult extends Verdict {
   readonly subjects: readonly { readonly rule: string, readonly item: SubjectItem, readonly unknown: string }[]
 }
 
-/** What the tool-call gate and the waiting tickets say of an approved script they do not run: the gate of the host does not start scripts yet (docs/ORCHESTRATION.md §16.15). */
-export const NOT_RUN_BY_THE_GATE = 'is not run by the tool-call gate yet'
-
 export interface JudgeOptions {
   /** Ids of the rules whose script a person approved on this machine (the hash pinned at approval). A script of any other rule is not run. */
   readonly approved?: ReadonlySet<string>
-  /** Why a caller that cannot run scripts does not (`is not run by the tool-call gate yet`): an approved script is then judged by its failure setting and listed as `refused`, as one that is not approved. */
-  readonly notRunHere?: string
 }
 
 const SUBJECT_ITEMS: readonly SubjectItem[] = ['role', 'model', 'session', 'targetModel']
@@ -261,8 +256,8 @@ export function judge(input: JudgeInput, rules: readonly (Rule | BuiltinRule)[],
     })
     const unsound = timings.some(entry => !entry.timing.ok)
     const unapproved = options.approved?.has(rule.id) !== true
-    if (unapproved || unsound || options.notRunHere !== undefined) {
-      const result = refusal(rule.id, script, matched, unapproved ? 'is not approved on this machine' : unsound ? 'has timing settings that are out of range' : options.notRunHere ?? '')
+    if (unapproved || unsound) {
+      const result = refusal(rule.id, script, matched, unapproved ? 'is not approved on this machine' : 'has timing settings that are out of range')
       refused.push(result)
       if (result.onError === 'block') hits.push(hitOf(rule, 'block', result.reason))
       continue
