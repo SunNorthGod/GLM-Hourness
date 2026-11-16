@@ -698,7 +698,7 @@ interface SubagentResult {
 }
 
 /** A started activation (rc.3 `SubagentActivation`): the child's session id, the accepted message and the result promise. */
-interface SubagentActivation {
+export interface SubagentActivation {
   readonly childId: string
   readonly messageId?: string
   readonly result: Promise<SubagentResult>

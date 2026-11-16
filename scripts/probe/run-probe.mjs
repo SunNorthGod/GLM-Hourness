@@ -3629,13 +3629,15 @@ const walkSteps = [
 const walkAt = name => walkSteps.findIndex(([step]) => step === name)
 // The review activation runs on the spawn backend: one model round per
 // attempt, each attempt a fresh session claiming the next `others` script in
-// order, and the rc.1 runner tears down at the turn's end (the follow-up
-// round races it and can lose), so the review's verdict must land in the
-// FIRST round: structured_output straight away, in the walk-review schema's
-// shape. What the scenario verifies of A6 is the delivery (the brief carries
-// the copy's artifact path) and the copy on disk; reading the image back is
-// the desktop L4's — the headless composition mounts no attachment store and
-// its preset has no read_image (design 0.4.1 A6, ROADMAP 借用项 19).
+// order, and the review's verdict must land in the FIRST round:
+// structured_output straight away, in the walk-review schema's shape; the
+// harness reads it off the activation's settled result (the receipt
+// startActivation resolves with carries none — the gap this scenario's
+// earlier runs pinned as review_failed, ROADMAP 借用项 19). What the scenario
+// verifies of A6 is the delivery (the brief carries the copy's artifact path)
+// and the copy on disk; reading the image back is the desktop L4's — the
+// headless composition mounts no attachment store and its preset has no
+// read_image (design 0.4.1 A6, ROADMAP 借用项 19).
 const walkReviewRound = [
   { tool: { name: 'structured_output', arguments: { steps: [{ id: 'step-shot', ok: true, why: '截图是红色的图片' }] } } },
 ]
@@ -4899,25 +4901,27 @@ function walkChecks() {
   const exec = join(runDir, EXEC_WALK, 'ws', '.llm', 'execute')
   const walks = jsonl(join(exec, 'walks.jsonl'))
   const limits = jsonl(join(exec, 'walk-limits.jsonl'))
-  // Each review try is one fresh session with one request on this runtime,
-  // so the reviewer's steps are every session whose brief is a walk review.
+  // The verdict lands on the first try: one reviewer session with one request.
   const reviewer = execWalk.steps.filter(step => (step.messages ?? []).some(message => message.role === 'user' && String(message.text ?? '').includes('# Walk review of flow flow-shot')))
   const trunk = gitOut(ws, 'rev-parse', 'main')
   const tells = step => (step?.messages ?? []).filter(message => message.role === 'user' && message.source === 'glm-hourness-loop' && String(message.text ?? '').includes('Walk job walk-goal-1-'))
   const walking = json('walk')
   const again = json('again')
   const walked = (step?.history ?? []).filter(entry => entry.op === 'walk')
+  const evidence = (step?.history ?? []).filter(entry => entry.op === 'walk').flatMap(entry => entry.evidence ?? [])
+  const acceptance = ((goal?.history ?? []).filter(entry => entry.op === 'comment').map(entry => String(entry.text ?? '')).find(line => line.startsWith('验收审查第 1 轮：'))) ?? ''
+  const goalDone = (goal?.history ?? []).filter(entry => entry.op === 'status' && entry.to === 'done').at(-1)
   const copy = existsSync(join(exec, 'walks')) ? readdirSync(join(exec, 'walks')).find(name => name.startsWith('walk-goal-1-')) : undefined
   const artifact = copy === undefined ? undefined : join(exec, 'walks', copy, 'flow-shot', 'shot.png')
   const artifactSize = artifact !== undefined && existsSync(artifact) ? statSync(artifact).size : -1
   return [
     [`exec walk: dispatching the released goal starts the walk job instead of a dispatch: status walking with the job id, flow-shot, nobody waiting, at the trunk head`, !failed('walk') && walking?.status === 'walking' && /^walk-goal-1-[0-9a-z]{6}$/.test(walking?.job ?? '') && isDeepStrictEqual(walking?.flows, ['flow-shot']) && isDeepStrictEqual(walking?.waitingForPerson, []) && walking?.head === trunk.slice(0, 7), text(at('walk')).slice(0, 160)],
-    [`exec walk: the review's tries spawn reviewer children on the image-capable model the dispatch chose, each brief carrying the copy's artifact path`, reviewer.length >= 2 && reviewer.every(step => step.model === 'glm-5.3-flash') && reviewer.some(step => (step.messages ?? []).some(message => /execute[/\\]walks[/\\]/.test(String(message.text ?? '')))), `${reviewer.length} reviewer request(s) on ${[...new Set(reviewer.map(step => step.model))].join(',') || 'no model'}`],
-    [`exec walk: the review never settles on this runtime (the spawn runner's teardown races the array-schema structured_output completion), so both jobs end review_failed with the driver's exit 0 and the 15 s cap from the 5 s estimate`, walks.map(line => line.kind).join(',') === 'start,flow-end,end,start,flow-end,end' && walks.every(line => line.kind !== 'evidence') && walks.filter(line => line.kind === 'flow-end').every(flowEnd => flowEnd.outcome === 'review_failed' && flowEnd.limitMs === 15000 && flowEnd.exit === 0) && walks[0]?.commit === trunk && walks[0]?.goal === 'goal-1' && walks.at(-1)?.trunkMoved === false, `${walks.map(line => line.kind).join(',')} | ${JSON.stringify(walks.find(line => line.kind === 'flow-end') ?? null).slice(0, 160)}`],
+    [`exec walk: the review settles on the first try, one reviewer child on the image-capable model the dispatch chose, its brief carrying the copy's artifact path`, reviewer.length === 1 && reviewer.every(step => step.model === 'glm-5.3-flash') && reviewer.some(step => (step.messages ?? []).some(message => /execute[/\\]walks[/\\]/.test(String(message.text ?? '')))), `${reviewer.length} reviewer request(s) on ${[...new Set(reviewer.map(step => step.model))].join(',') || 'no model'}`],
+    [`exec walk: the review's verdict lands via the settled activation result (ROADMAP borrow item 19): the job journals whole with the flow passed, the driver's exit 0 and the 15 s cap from the 5 s estimate`, walks.map(line => line.kind).join(',') === 'start,evidence,flow-end,end' && walks.filter(line => line.kind === 'flow-end').every(flowEnd => flowEnd.outcome === 'passed' && flowEnd.limitMs === 15000 && flowEnd.exit === 0) && walks.find(line => line.kind === 'evidence')?.flow === 'flow-shot' && isDeepStrictEqual(walks.find(line => line.kind === 'evidence')?.steps, ['step-shot']) && walks[0]?.commit === trunk && walks[0]?.goal === 'goal-1' && walks.at(-1)?.trunkMoved === false, `${walks.map(line => line.kind).join(',')} | ${JSON.stringify(walks.find(line => line.kind === 'flow-end') ?? null).slice(0, 160)}`],
     [`exec walk: the limit journal holds one line for flow-shot, the estimate's three (15 s, over the 10 s floor), sourced from the agent`, limits.length === 1 && limits[0]?.flow === 'flow-shot' && limits[0]?.old === null && limits[0]?.new === 15000 && limits[0]?.source === 'agent', JSON.stringify(limits)],
-    [`exec walk: the artifact's copy exists at the pinned trunk, and the graph carries no walk on step-shot yet (the evidence waits for a verdict that this runtime cannot settle)`, artifactSize > 0 && walked.length === 0, `${walked.length} walk op(s); artifact ${artifactSize} byte(s)`],
-    [`exec walk: the walk-done tell reaches the main agent through the loop fallback with the job, the commit and the review_failed outcome, and the second dispatch walks the flow again instead of reviewing`, main.slice(at('walk')).some(step => tells(step).some(message => String(message.text).includes('review_failed'))) && !failed('again') && again?.status === 'walking' && /^walk-goal-1-[0-9a-z]{6}$/.test(again?.job ?? '') && isDeepStrictEqual(again?.flows, ['flow-shot']), `${main.slice(at('walk')).flatMap(step => tells(step)).map(message => message.text.slice(0, 120)).join(' | ') || 'no tell'} | ${text(at('again')).slice(0, 80)}`],
-    [`exec walk: the goal stays open with flow-shot not walked (the completion waits for a verdict this runtime cannot settle), and the run itself exits clean`, goal !== undefined && goal?.status !== 'done' && !(goal?.history ?? []).some(entry => entry.op === 'status' && entry.to === 'done') && goal?.stage === 'release' && tailOk(execWalk, EXEC_WALK, 'dsh-glm-hourness/execute'), `goal-1 ${goal?.status ?? 'none'} at stage ${goal?.stage ?? 'none'}; exit ${execWalk.status}; main ${main.length} request(s) of ${walkSteps.length} step(s)`],
+    [`exec walk: the artifact's copy exists at the pinned trunk and the evidence lands on the graph: exit 0, the screenshot ref of the copy, the digest in the note`, artifactSize > 0 && walked.length === 1 && evidence.length === 1 && evidence.every(entry => entry?.kind === 'walk' && entry?.exit === 0 && String(entry?.ref ?? '').startsWith('screenshot:') && String(entry?.ref ?? '').endsWith('shot.png') && String(entry?.note ?? '').startsWith(`@${trunk.slice(0, 7)} sha256:`)), `${walked.length} walk op(s); artifact ${artifactSize} byte(s); note ${String(evidence[0]?.note ?? '').slice(0, 60)}`],
+    [`exec walk: the walk-done tell reaches the main agent through the loop fallback with the job and the passed outcome, and the second dispatch sends the acceptance review instead of walking again`, main.slice(at('walk')).some(step => tells(step).some(message => String(message.text).includes('passed'))) && !failed('again') && again?.job === undefined && again?.role === 'acceptance-review', `${main.slice(at('walk')).flatMap(step => tells(step)).map(message => message.text.slice(0, 120)).join(' | ') || 'no tell'} | ${text(at('again')).slice(0, 80)}`],
+    [`exec walk: the acceptance review passes at the trunk, the completion gate closes the goal, and the run itself exits clean`, !failed('complete') && text(at('complete')).includes('"phase":"complete"') && goal?.status === 'done' && goalDone?.actor === 'harness' && (goalDone.evidence ?? []).some(item => item.ref === 'hourness completion gate') && acceptance.startsWith('验收审查第 1 轮：APPROVED · 挡路 0') && acceptance.includes(`@${trunk.slice(0, 12)}`) && tailOk(execWalk, EXEC_WALK, 'dsh-glm-hourness/execute'), `${acceptance.slice(0, 100) || 'no acceptance comment'}; goal-1 ${goal?.status ?? 'none'}; exit ${execWalk.status}; main ${main.length} request(s) of ${walkSteps.length} step(s)`],
   ]
 }
 

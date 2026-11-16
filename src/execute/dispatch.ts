@@ -35,7 +35,7 @@ import { projectOf } from '../data/project-root.ts'
 import { scopeComponents } from '../lessons/docs.ts'
 import { peakModeService } from '../shared/peak-mode.ts'
 import { isGlmModel } from '../shared/route.ts'
-import type { AgentLike, LiveAgentLike, LlmCatalog, ServiceLookup, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
+import type { AgentLike, LiveAgentLike, LlmCatalog, ServiceLookup, SubagentActivation, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
 import { briefGate, renderAcceptanceBrief, renderBrief, renderDesignReviewBrief, renderReviewBrief, type Brief, type BriefContext, type BriefInput, type GateResult } from './brief.ts'
 import { latestDispatch, lostChildOf, makeChildId, nextAttempt, parseHandbackComment, registerAttempt, registeredDispatches, renderDispatchComment, type Attempt, type DispatchSummary, type HandbackComment, type PlanStatus } from './attempts.ts'
 import { trunkBranchOf } from './check.ts'
@@ -102,7 +102,7 @@ interface DispatchServices {
 function readServices(lookup: ServiceLookup | undefined): DispatchServices | undefined {
   const get = (name: string): unknown => lookup === undefined || typeof lookup.get !== 'function' ? undefined : lookup.get(name)
   const subagents = get('subagents') as {
-    startActivation?: (spec: never) => Promise<unknown>
+    startActivation?: (spec: never) => Promise<SubagentActivation>
     resolveMaxDepth?: (configured?: unknown) => number | undefined
   } | undefined
   if (subagents === undefined || typeof subagents.startActivation !== 'function' || typeof subagents.resolveMaxDepth !== 'function') return undefined

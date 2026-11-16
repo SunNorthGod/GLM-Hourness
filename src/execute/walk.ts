@@ -40,7 +40,7 @@ import { estimatedTimeoutMs, isUserNode, stepsServedBy, userGraphOf, walkResult,
 import { goalOf } from '../graph/stage.ts'
 import { liveOf } from '../graph/user-live.ts'
 import type { SnapshotEnvironment } from '../guard/git-snapshot.ts'
-import type { AgentLike, LiveAgentLike } from '../shared/dsh-min.ts'
+import type { AgentLike, LiveAgentLike, SubagentActivation } from '../shared/dsh-min.ts'
 import { forgetAttempt, makeChildId, registerAttempt } from './attempts.ts'
 import { appendJsonl, gateSetup, runLine, snapshotSaver } from './check.ts'
 import { parseGateNorm } from './gate-norm.ts'
@@ -112,7 +112,13 @@ export interface WalkDeps {
   readonly random?: () => number
 }
 
-/** The `startActivation` seam the walk-review activations go through; the request view `dispatch_task`'s start shares. */
+/**
+ * The `startActivation` seam the walk-review activations go through; the
+ * request view `dispatch_task`'s start shares. It resolves at the child's
+ * acceptance with the activation receipt — the verdict is NOT on it: the
+ * settled `{structured?}` rides the activation's `result` promise (rc.3
+ * `SubagentResult`), the promise the dispatch's handback hooks.
+ */
 export interface WalkStart {
   (spec: {
     readonly provider: string
@@ -128,7 +134,7 @@ export interface WalkStart {
     }
     readonly signal: AbortSignal
     readonly delivery: 'caller'
-  }): Promise<unknown>
+  }): Promise<SubagentActivation>
 }
 
 // ---------------------------------------------------------------------------
@@ -673,7 +679,7 @@ async function reviewFlow(deps: WalkDeps, spec: ReviewSpec, parent: LiveAgentLik
       pins: '',
     })
     try {
-      const settlement = await deps.start({
+      const activation = await deps.start({
         provider: 'spawn',
         label: `hourness walk review ${spec.flow.flow.id} try ${attempt}`,
         childId,
@@ -687,11 +693,16 @@ async function reviewFlow(deps: WalkDeps, spec: ReviewSpec, parent: LiveAgentLik
         signal,
         delivery: 'caller',
       })
+      // The verdict rides the settled result, never the receipt: startActivation
+      // resolves at the child's acceptance, whose shape carries no structured
+      // field — reading it there fails every try at once (the dispatch's
+      // handback hooks the same result promise, §3.6.2).
+      const settlement = await activation.result
       const judged = reviewOf(settlement, spec.flow)
       if (judged !== undefined) return judged
     }
     catch {
-      // A failed activation spends one try; the next goes out unless the tries are spent.
+      // A failed activation or a rejected settlement spends one try; the next goes out unless the tries are spent.
     }
     finally {
       forgetAttempt(childId)

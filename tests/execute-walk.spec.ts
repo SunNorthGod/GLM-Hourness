@@ -42,7 +42,7 @@ import {
   WALK_JOB_MS, WALK_REVIEW_SCHEMA,
   type WalkDeps, type WalkJobSpec, type WalkLimitLine, type WalkLine, type WalkOutcome, type WalkReport, type WalkStart,
 } from '../src/execute/walk.ts'
-import type { LiveAgentLike } from '../src/shared/dsh-min.ts'
+import type { LiveAgentLike, SubagentActivation } from '../src/shared/dsh-min.ts'
 import { stageNodes, testRepo, type TestRepo } from './execute-repo.ts'
 import { libraryGraph, loaded, when, WALKED_AT } from './graph-user-helpers.ts'
 
@@ -50,6 +50,17 @@ import { libraryGraph, loaded, when, WALKED_AT } from './graph-user-helpers.ts'
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+
+/**
+ * An activation receipt whose `result` settles with the given fields — the
+ * shape a real `startActivation` resolves to (the verdict rides `result`,
+ * never the receipt itself; the receipt reads back at acceptance).
+ */
+const activationOf = (settlement: { readonly structured?: unknown }): SubagentActivation => ({
+  childId: 'stub',
+  result: Promise.resolve({ output: [], stopReason: 'completed' as const, ...(settlement.structured === undefined ? {} : { structured: settlement.structured }) }),
+  dispose: () => Promise.resolve(),
+})
 
 // ---- the library fixture's views ----
 
@@ -314,6 +325,11 @@ else if (flow !== 'flow-noreport') {
   else if (flow === 'flow-shot') {
     writeFileSync(join(dir, 'shot.png'), 'pretend-image-bytes')
     steps.push({ id: 'step-1', ok: true, artifact: 'shot.png', said: '截到了页面' })
+  }
+  else if (flow === 'flow-shots') {
+    writeFileSync(join(dir, 'shot-1.png'), 'pretend-image-1')
+    writeFileSync(join(dir, 'shot-2.png'), 'pretend-image-2')
+    steps.push({ id: 'step-1', ok: true, artifact: 'shot-1.png', said: '截到了第一页' }, { id: 'step-2', ok: true, artifact: 'shot-2.png', said: '截到了第二页' })
   }
   else {
     steps.push({ id: 'step-1', ok: true, said: '写进去了' }, { id: 'step-2', ok: true, said: '写进去了' })
@@ -622,11 +638,11 @@ test('a step whose last three walks all failed stops the goal: hourness.stopped,
   }
 })
 
-test('a 截图 flow passes through the walk-review role: the reviewer sees the artifact copy under the review schema, its verdict decides the evidence', async () => {
+test('a 截图 flow passes through the walk-review role: the reviewer sees the artifact copy under the review schema, its settled verdict decides the evidence', async () => {
   const r = await walkRig({
     walkLine: '`walk 截图 $ node walk-driver.mjs {flow}`',
     flows: [{ id: 'flow-shot', body: '走法：截图 · 预计 5 秒', steps: ['step-1'] }],
-    start: () => Promise.resolve({ structured: { steps: [{ id: 'step-1', ok: true, why: '看得到页面' }] } }),
+    start: () => Promise.resolve(activationOf({ structured: { steps: [{ id: 'step-1', ok: true, why: '看得到页面' }] } })),
   })
   try {
     await r.run()
@@ -653,11 +669,64 @@ test('a 截图 flow passes through the walk-review role: the reviewer sees the a
   }
 })
 
+test('a multi-step 截图 flow is judged by its verdict list: each named step gets its own judgment, the why is the failure wording', async () => {
+  const r = await walkRig({
+    walkLine: '`walk 截图 $ node walk-driver.mjs {flow}`',
+    flows: [{ id: 'flow-shots', body: '走法：截图 · 预计 5 秒', steps: ['step-1', 'step-2'] }],
+    start: () => Promise.resolve(activationOf({ structured: { steps: [{ id: 'step-1', ok: true }, { id: 'step-2', ok: false, why: '第二页没有列表' }] } })),
+  })
+  try {
+    await r.run()
+    assert.equal(r.starts.length, 1, 'the verdict lands on the first try')
+    const [step1, step2] = [await r.walkHistory('step-1'), await r.walkHistory('step-2')]
+    assert.deepEqual([step1[0]?.evidence?.[0]?.exit, step1[0]?.evidence?.[0]?.note], [0, `@${r.trunk.slice(0, 7)} sha256:${sha256Hex('pretend-image-1').slice(0, 8)} 通过`], 'the verdict ok decides step-1')
+    assert.deepEqual([step2[0]?.evidence?.[0]?.exit, step2[0]?.evidence?.[0]?.note], [1, `@${r.trunk.slice(0, 7)} sha256:${sha256Hex('pretend-image-2').slice(0, 8)} 没过：第二页没有列表`], 'the verdict not-ok with its why decides step-2')
+    const end = (await flowEndsOf(r)).at(-1)
+    assert.deepEqual([end?.flow, end?.outcome], ['flow-shots', 'failed'])
+  }
+  finally {
+    r.dispose()
+  }
+})
+
+test('a review that cannot settle — a verdict missing a wanted step, a settlement that rejects — spends its tries and reads review_failed with no evidence', async () => {
+  const missing = await walkRig({
+    walkLine: '`walk 截图 $ node walk-driver.mjs {flow}`',
+    flows: [{ id: 'flow-shot', body: '走法：截图 · 预计 5 秒', steps: ['step-1'] }],
+    start: () => Promise.resolve(activationOf({ structured: { steps: [{ id: 'step-2', ok: true }] } })),
+  })
+  try {
+    await missing.run()
+    assert.equal(missing.starts.length, 3, 'the uncovered step fails each activation, the tries are spent')
+    assert.equal((await missing.walkHistory('step-1')).length, 0)
+    const end = (await flowEndsOf(missing)).at(-1)
+    assert.deepEqual([end?.flow, end?.outcome], ['flow-shot', 'review_failed'])
+  }
+  finally {
+    missing.dispose()
+  }
+  const rejected = await walkRig({
+    walkLine: '`walk 截图 $ node walk-driver.mjs {flow}`',
+    flows: [{ id: 'flow-shot', body: '走法：截图 · 预计 5 秒', steps: ['step-1'] }],
+    start: () => Promise.resolve({ childId: 'stub', result: Promise.reject(new Error('activation teardown failed')), dispose: () => Promise.resolve() }),
+  })
+  try {
+    await rejected.run()
+    assert.equal(rejected.starts.length, 3, 'the rejected settlement spends a try like any other failure')
+    assert.equal((await rejected.walkHistory('step-1')).length, 0, 'no evidence without a verdict')
+    const ends = await flowEndsOf(rejected)
+    assert.deepEqual([ends.at(-1)?.flow, ends.at(-1)?.outcome], ['flow-shot', 'review_failed'])
+  }
+  finally {
+    rejected.dispose()
+  }
+})
+
 test('three failed reviews stop the flow: each try spends one activation, the journal counts across jobs, hourness.stopped names the flow', async () => {
   const r = await walkRig({
     walkLine: '`walk 截图 $ node walk-driver.mjs {flow}`',
     flows: [{ id: 'flow-shot', body: '走法：截图 · 预计 5 秒', steps: ['step-1'] }],
-    start: () => Promise.resolve({}),
+    start: () => Promise.resolve(activationOf({})),
   })
   try {
     mkdirSync(r.execDir, { recursive: true })
