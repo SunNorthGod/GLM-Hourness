@@ -64,6 +64,8 @@ export interface ViewEntry {
   readonly work?: readonly string[]
   /** A person's script entry: its file from the project root, which the page reads when 讲细点 opens (design §8.2 item 5). */
   readonly script?: string
+  /** A person's script entry: how its file stands against the agreed version, read now (design §8.3's home line names the changed one; boards.ts `scriptStandingOf`). */
+  readonly scriptStanding?: ScriptStanding
 }
 /**
  * Where a timeout's number came from (plain-ui 1.3 §4.7 「数与来源」, §8.2):
@@ -140,6 +142,8 @@ export interface PeakView {
 /** The line of the page head about the main agent (design §8.2 item 1). */
 export interface HolderView {
   readonly line: string
+  /** The state the line words, when it is one the home page names (design §8.3): archived, not-found, elsewhere past the hand-over's five minutes, unknown; absent for ok, none and the hand-over's first five minutes, whose lines stay on the page head only. */
+  readonly state?: 'archived' | 'not-found' | 'elsewhere' | 'unknown'
   /** The main agent's session, for the small print. */
   readonly session?: string
 }
@@ -530,12 +534,17 @@ export function buildView(input: {
       ...(checks.length === 0 ? {} : { checks }),
     }
   })
-  /** A person's script or check entry's lines, and a script's file for 讲细点; nothing for the others or a deleted one. */
-  const workOf = (entry: PersonEntry | undefined, state: string): Pick<ViewEntry, 'work' | 'script'> => {
+  /** A person's script or check entry's lines, and a script's file with its standing now (design §8.2 item 5, §8.3); nothing for the others, a deleted or an unadopted one — the executor refuses an unadopted entry before its standing matters. */
+  const workOf = (entry: PersonEntry | undefined, state: string): Pick<ViewEntry, 'work' | 'script' | 'scriptStanding'> => {
     if (entry === undefined || state === 'deleted') return {}
-    const work = workLines(entry, state, entry.action.kind === 'script' ? input.scriptStanding?.(entry) : undefined, runtime.last[entry.id])
+    const standing = entry.action.kind === 'script' && state !== 'unadopted' ? input.scriptStanding?.(entry) : undefined
+    const work = workLines(entry, state, standing, runtime.last[entry.id])
     if (work === undefined) return {}
-    return { work, ...(entry.action.kind === 'script' ? { script: entry.action.script.file } : {}) }
+    return {
+      work,
+      ...(entry.action.kind === 'script' ? { script: entry.action.script.file } : {}),
+      ...(standing === undefined ? {} : { scriptStanding: standing }),
+    }
   }
   const person = (input.board?.entries ?? []).map((board): ViewEntry => {
     const note = board.status.kind === 'deleted' && board.restorable ? `要恢复：在输入框打 /loops restore ${board.id}` : undefined

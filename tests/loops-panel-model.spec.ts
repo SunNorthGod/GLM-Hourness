@@ -12,9 +12,10 @@ import type { LoopEntry, LoopEntryDefinition, PersonEntry } from '../src/loops/m
 import { nextOccurrence } from '../src/loops/trigger.ts'
 import { buildView, momentText, runLine, type LoopsView, type ScriptStanding, type ViewRuntime } from '../src/loops/view.ts'
 import type { StatusItem } from '../src/shared/status.ts'
-import { scriptStandingOf } from '../src/loops/boards.ts'
+import { holderViewOf, scriptStandingOf } from '../src/loops/boards.ts'
+import { WRITER_HELD_MS } from '../src/loops/holder.ts'
 import { loopsBoard } from '../ui/src/loops/board.ts'
-import { buildLoopsPage, type LoopItem, type LoopsPageModel } from '../ui/src/loops/model.ts'
+import { buildLoopsPage, loopsHomeLine, type LoopItem, type LoopsPageModel } from '../ui/src/loops/model.ts'
 import { holdLoopsSource, LoopsSource } from '../ui/src/loops/source.ts'
 import { projectRootOfView, readScriptText, scriptTextHead } from '../ui/src/graph/script-text.ts'
 import { BOARD_ORDER } from '../ui/src/graph/boards.ts'
@@ -261,7 +262,7 @@ test('a script that is not the agreed bytes, gone or too large reads so before t
   assert.equal(lineOf('changed', 'u-00000004'), '脚本：这台电脑上没有你同意的记录，先不跑')
   const asked: string[] = []
   richView(undefined, (entry) => { asked.push(entry.id); return 'agreed' })
-  assert.deepEqual(asked, ['u-00000001', 'u-00000004'], 'only a script entry that is not deleted is read')
+  assert.deepEqual(asked, ['u-00000001'], 'only an adopted script entry is read: an unadopted one is refused before its standing matters')
 })
 
 test('a check whose last run was refused for a changed or unreadable command says so; the command line stays', () => {
@@ -269,6 +270,43 @@ test('a check whose last run was refused for a changed or unreadable command say
   assert.deepEqual(linesOf('check-changed')?.slice(0, 2), [`检查：项目图上「tsc」的命令改过了，和你 ${AGREED_DAY} 同意的那一条不一样，先不跑；要接着用，跟主 Agent 说「把改了 ts 就跑检查的检查再看一眼，同意一次」`, '命令：node tsc --noEmit'])
   assert.equal(linesOf('check-missing')?.[0], '检查：取不到项目图上「tsc」的命令，先不跑')
   assert.equal(linesOf('outside-project')?.[0], `检查：项目图上「tsc」的命令，你 ${AGREED_DAY} 同意的那一条`)
+})
+
+// --- The home page's line (design §8.3) -------------------------------------
+
+test('the view carries a script entry\'s standing and the holder state the home page names (design §8.3)', () => {
+  const view = richView(undefined, () => 'changed')
+  assert.equal(entryOf(view, 'u-00000001').scriptStanding, 'changed')
+  assert.equal(entryOf(view, 'u-00000002').scriptStanding, undefined, 'a check runs no script')
+  assert.equal(entryOf(view, 'u-00000003').scriptStanding, undefined, 'a deleted entry has none')
+  assert.equal(entryOf(view, 'u-00000004').scriptStanding, undefined, 'an unadopted entry is refused before its standing matters')
+  const noDep = richView()
+  assert.equal(entryOf(noDep, 'u-00000001').scriptStanding, undefined, 'no host read: no standing on the view')
+  assert.deepEqual(holderViewOf({ state: 'archived', at: AT }, Date.parse(AT)), { line: '主 Agent 的会话已归档：在一个会话里打 /wish here', state: 'archived' })
+  assert.deepEqual(holderViewOf({ state: 'not-found', at: AT }, Date.parse(AT)), { line: '主 Agent 的会话找不到了：在一个会话里打 /wish here', state: 'not-found' })
+  assert.deepEqual(holderViewOf({ state: 'unknown', reason: 'archive-unreadable', at: AT }, Date.parse(AT)), { line: '循环板此刻看不清主 Agent 的会话（读不到它归没归档），这几项的提醒先不删', state: 'unknown' })
+  assert.deepEqual(holderViewOf({ state: 'elsewhere', at: new Date(Date.parse(AT) - WRITER_HELD_MS - 1).toISOString() }, Date.parse(AT)), { line: '主 Agent 的会话在另一个 DSH 窗口里，这块板交不过去', state: 'elsewhere' })
+  assert.deepEqual(holderViewOf({ state: 'elsewhere', at: AT }, Date.parse(AT)), { line: '这块板正交给主 Agent 所在的 DSH 进程' }, 'the hand-over\'s first five minutes stay on the page head')
+  assert.deepEqual(holderViewOf({ state: 'ok', at: AT }, Date.parse(AT)), { line: '主 Agent 收得到这块板的消息' })
+  assert.deepEqual(holderViewOf({ state: 'none', reason: 'no-record', at: AT }, Date.parse(AT)), { line: '还没有主 Agent：在输入框打 /wish' }, 'none stays on the page head too')
+  assert.equal(holderViewOf(undefined, Date.parse(AT)), undefined)
+})
+
+test('the home page\'s line is the ladder of design §8.3 over the view\'s facts: the holder\'s four states first, then a script no longer the agreed version', () => {
+  const withStanding = (view: LoopsView, standing: ScriptStanding | undefined): LoopsView =>
+    ({ ...view, entries: view.entries.map(entry => entry.id === 'u-00000001' ? { ...entry, ...(standing === undefined ? {} : { scriptStanding: standing }) } : entry) })
+  const archived = { line: '主 Agent 的会话已归档：在一个会话里打 /wish here', state: 'archived' } as const
+  assert.equal(loopsHomeLine({ ...richView(), holder: archived }), archived.line, 'the holder\'s line verbatim, one source with the page head')
+  assert.equal(loopsHomeLine(withStanding({ ...richView(), holder: archived }, 'changed')), archived.line, 'the holder\'s states come first in the ladder')
+  assert.equal(loopsHomeLine(withStanding(richView(), 'changed')), '循环板：「重启之后查一下服务」的脚本改过了，先不跑')
+  assert.equal(loopsHomeLine(withStanding(richView(), 'missing')), null, 'a gone or oversized script is the entry\'s own line, not the home page\'s')
+  assert.equal(loopsHomeLine(richView()), null, 'nothing of the ladder stands')
+  assert.equal(loopsHomeLine({ ...richView(), holder: { line: '主 Agent 收得到这块板的消息' } }), null, 'ok, none and the hand-over\'s first five minutes stay on the page head')
+  assert.equal(loopsHomeLine(null), null, 'no view yet: no home line')
+  const long = withStanding(richView(), 'changed')
+  const title = '很'.repeat(70)
+  const cut = loopsHomeLine({ ...long, entries: long.entries.map(entry => entry.id === 'u-00000001' ? { ...entry, title } : entry) })
+  assert.ok(cut !== null && [...cut].length === 60 && cut.endsWith('…') && cut.startsWith('循环板：「'), `a longer line is cut to 60 code points, got: ${cut}`)
 })
 
 test('the page model carries the work lines and the script\'s file; a plugin entry has none', () => {
@@ -596,6 +634,13 @@ test('the held source is one per session and view.json, released with the last h
 
 // --- The board --------------------------------------------------------------
 
+/** The board over one view file on a fake remote, for the session the projection names, subscribed once; stop and dispose when done. */
+function startedBoard(fake: ReturnType<typeof fakeRemote>, viewFile: string): { board: ReturnType<typeof loopsBoard>['board'], stop: () => void, dispose: () => void } {
+  const { sessions } = fakeSessions({}, { hournessLoops: { projectKey: 'C:/q', viewFile } })
+  const { board, dispose } = loopsBoard(() => null, { remote: fake.remote, sessions })
+  return { board, stop: board.subscribe('s1', () => {}), dispose }
+}
+
 test('the loop board registers as 循环板 under its BOARD_ORDER id and is there for a session whose projection names a project', async () => {
   const cold = { hournessLoops: { projectKey: 'C:/p', viewFile: VIEW_FILE } }
   const { sessions, setProjections, refreshCountOf } = fakeSessions({}, cold)
@@ -628,10 +673,8 @@ test('the board hands the view\'s status entries over, and keeps its state while
   }]
   const viewFile = 'C:/q/.llm/loops/view.json'
   const fake = fakeRemote({ [viewFile]: viewText({ ...richView(), items }) })
-  const { sessions } = fakeSessions({}, { hournessLoops: { projectKey: 'C:/q', viewFile } })
-  const { board, dispose } = loopsBoard(() => null, { remote: fake.remote, sessions })
+  const { board, stop, dispose } = startedBoard(fake, viewFile)
   try {
-    const stop = board.subscribe('s1', () => {})
     await until(() => board.snapshot('s1').items !== undefined, 'the view read')
     assert.deepEqual(board.snapshot('s1').items, items, 'the entries verbatim, as the rules board hands view.items')
     // A recompute over an unchanged file hands the same state object (useSyncExternalStore keeps it).
@@ -662,6 +705,24 @@ test('the page lists the board\'s status entries as the 两张单子 group, the 
   assert.deepEqual(plainWordsIn([items[0].text, ...items[0].detail].join('\n')), [])
   // A view without entries (an older view.json, or nothing stale) makes no group.
   assert.deepEqual(buildLoopsPage({ ...richView(), items: [] }).items, [])
+})
+
+test('the board hands the home page the ladder line of the view it holds', async () => {
+  const holder = { line: '主 Agent 的会话已归档：在一个会话里打 /wish here', state: 'archived' as const }
+  const viewFile = 'C:/q/.llm/loops/view.json'
+  const fake = fakeRemote({ [viewFile]: viewText({ ...richView(), holder }) })
+  const { board, stop, dispose } = startedBoard(fake, viewFile)
+  try {
+    await until(() => board.snapshot('s1').homeLine === holder.line, 'the view read')
+    assert.equal(board.snapshot('s1').homeLine, holder.line)
+    await fake.write(viewFile, viewText(richView()))
+    fake.push({ kind: 'change', change: { absolutePath: viewFile } })
+    await until(() => board.snapshot('s1').homeLine === null, 'the holder ok again: no home line')
+    stop()
+  }
+  finally {
+    dispose()
+  }
 })
 
 // --- The page never writes --------------------------------------------------

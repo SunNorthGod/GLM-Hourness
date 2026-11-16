@@ -104,6 +104,21 @@ test('the closing line points the person to the metrics board, and no ratio ente
 const denial = (rule: string, second: number): { readonly at: string, readonly rule: string, readonly tool: string } =>
   ({ at: at(second), rule, tool: 'Bash' })
 
+/** A done handback comment that names the changed paths (the 改动 line the floor grouping reads). */
+const handback = (childId: string, paths: readonly string[]): string => renderHandbackComment({
+  attempt: 1, status: 'done', childId, commits: 1, files: paths.length, questions: 0, assumptions: 0, asked: 0, answered: 0, timeouts: 0, plans: 0, incoming: 0, lessons: 0, depth: '轻审', paths, problems: [],
+})
+/** The trunk-landing evidence comment at second `n`. */
+const landed = (n: number) => ({ at: at(n), actor: 'harness' as const, op: 'comment' as const, text: `进主干 abc${n}（从 def${n}）· 检查 ok` })
+/** A reopen within fourteen days of the landing: the rework the floor proposals count. */
+const reopened = (n: number) => ({ at: at(n), actor: 'llm' as const, op: 'status' as const, from: 'done', to: 'doing', reason: '回归坏了' })
+/** A demoted write task that landed and came back, changed `paths`. */
+const demoted = (id: string, title: string, paths: readonly string[]) => node({ id, type: 'task', title, status: 'done' }, 10, 'llm', [
+  { at: at(40), actor: 'harness', op: 'comment', text: handback(id, paths) },
+  landed(44),
+  reopened(48),
+])
+
 const norm = (id: string, title: string): ReturnType<typeof node> =>
   node({ id, type: 'norm', title, status: 'approved', body: `为什么有这条\n级别：提示词\n规则：rules:${id}` })
 
@@ -151,24 +166,11 @@ test('three matters at most ride the section even when more norms point somewher
 })
 
 test('the floor addition rides before the ladder moves now that the handback comments carry the changed paths', () => {
-  const handback = (childId: string, paths: readonly string[]): string => renderHandbackComment({
-    attempt: 1, status: 'done', childId, commits: 1, files: paths.length, questions: 0, assumptions: 0, asked: 0, answered: 0, timeouts: 0, plans: 0, incoming: 0, lessons: 0, depth: '轻审', paths, problems: [],
-  })
-  const landed = (n: number) => ({ at: at(n), actor: 'harness' as const, op: 'comment' as const, text: `进主干 abc${n}（从 def${n}）· 检查 ok` })
-  const reopened = (n: number) => ({ at: at(n), actor: 'llm' as const, op: 'status' as const, from: 'done', to: 'doing', reason: '回归坏了' })
   const graph = graphOf([
     norm('norm-a', '写文件先问'),
     node({ id: 'norm-review-floor', type: 'norm', title: '必须全审的改动', status: 'approved', acceptance: ['文档一类的改动重写过 `files docs/`'] }),
-    node({ id: 't-a', type: 'task', title: '轻审', status: 'done' }, 10, 'llm', [
-      { at: at(40), actor: 'harness', op: 'comment', text: handback('r1', ['src/env/a.ts']) },
-      landed(44),
-      reopened(48),
-    ]),
-    node({ id: 't-b', type: 'task', title: '轻审二', status: 'done' }, 10, 'llm', [
-      { at: at(40), actor: 'harness', op: 'comment', text: handback('r2', ['src/env/b.ts']) },
-      landed(44),
-      reopened(52),
-    ]),
+    demoted('t-a', '轻审', ['src/env/a.ts']),
+    demoted('t-b', '轻审二', ['src/env/b.ts']),
   ])
   const text = weeklyReport(input(graph, { violations: [denial('rules:norm-a', 70), denial('rules:norm-a', 71), denial('rules:norm-a', 72)] }))
   const lines = section(text, '## 规矩的提议')
@@ -179,16 +181,6 @@ test('the floor addition rides before the ladder moves now that the handback com
 })
 
 test('floor additions take the three slots before the ladder moves when both kinds overflow (R4-F5)', () => {
-  const handback = (childId: string, paths: readonly string[]): string => renderHandbackComment({
-    attempt: 1, status: 'done', childId, commits: 1, files: paths.length, questions: 0, assumptions: 0, asked: 0, answered: 0, timeouts: 0, plans: 0, incoming: 0, lessons: 0, depth: '轻审', paths, problems: [],
-  })
-  const landed = (n: number) => ({ at: at(n), actor: 'harness' as const, op: 'comment' as const, text: `进主干 abc${n}（从 def${n}）· 检查 ok` })
-  const reopened = (n: number) => ({ at: at(n), actor: 'llm' as const, op: 'status' as const, from: 'done', to: 'doing', reason: '回归坏了' })
-  const demoted = (id: string, title: string, paths: readonly string[]) => node({ id, type: 'task', title, status: 'done' }, 10, 'llm', [
-    { at: at(40), actor: 'harness', op: 'comment', text: handback(id, paths) },
-    landed(44),
-    reopened(48),
-  ])
   const graph = graphOf([
     norm('norm-a', '一'),
     norm('norm-b', '二'),

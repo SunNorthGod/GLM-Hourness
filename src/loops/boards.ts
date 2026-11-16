@@ -72,15 +72,26 @@ function addedAtOf(lines: readonly JournalLine[]): ReadonlyMap<string, string> {
  * The main agent's line of the page head (design §8.2 item 1), from what the
  * runtime last read about the holder session: the words of holder.ts for a
  * state nobody can be told in, and for the first five minutes of `elsewhere`
- * the hand-over that is still going on.
+ * the hand-over that is still going on. The states the home page names
+ * (design §8.3) carry their kind on the view; the first five minutes, ok and
+ * none stay on the page head only.
  */
-function holderViewOf(known: RuntimeState['holder'], nowMs: number): HolderView | undefined {
+export function holderViewOf(known: RuntimeState['holder'], nowMs: number): HolderView | undefined {
   if (known === undefined) return undefined
   const session = known.session === undefined ? {} : { session: known.session }
   if (known.state === 'ok') return { line: '主 Agent 收得到这块板的消息', ...session }
   if (known.state === 'elsewhere' && nowMs - Date.parse(known.at) < WRITER_HELD_MS) return { line: '这块板正交给主 Agent 所在的 DSH 进程', ...session }
   const line = holderLine({ kind: known.state as HolderStateKind, ...(known.reason === undefined ? {} : { reason: known.reason as HolderReason }) })
-  return line === undefined ? undefined : { line, ...session }
+  if (line === undefined) return undefined
+  switch (known.state) {
+    case 'archived':
+    case 'not-found':
+    case 'elsewhere':
+    case 'unknown':
+      return { line, state: known.state, ...session }
+    default:
+      return { line, ...session }
+  }
 }
 
 /** What the runtime of a project has kept and recorded, as the view reads it. */

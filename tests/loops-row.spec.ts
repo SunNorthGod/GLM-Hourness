@@ -253,7 +253,7 @@ rowTest('view.json carries what the runtime kept: each entry\'s last run in the 
   assert.deepEqual([entry(A)?.trigger, entry(A)?.when, entry(A)?.does, entry(A)?.from], ['time', `每周五 17:00${zoneOf('Asia/Shanghai')}`, '告诉主 Agent', '你在对话里加的：「好，每周五提醒我看一眼」'])
   assert.equal(entry(A)?.next, nextOccurrence(tellEntry(A).when, new Date(NOW), Intl.DateTimeFormat().resolvedOptions().timeZone)?.toISOString())
   assert.deepEqual([entry(B)?.trigger, entry(B)?.does, entry(B)?.next], ['event', `跑脚本 docs/loops/scripts/${B}.mjs，没过才告诉主 Agent`, undefined])
-  assert.deepEqual(view.holder, { line: '主 Agent 的会话已归档：在一个会话里打 /wish here', session: 'sess-main' })
+  assert.deepEqual(view.holder, { line: '主 Agent 的会话已归档：在一个会话里打 /wish here', state: 'archived', session: 'sess-main' })
   assert.equal(view.waiting, 1)
   assert.deepEqual(view.recent, [
     { at: '2026-11-01T10:30:00.000Z', title: '每周五看一眼没合入的分支', text: '删掉了 DSH 里的旧提醒（主 Agent 的会话已归档）' },

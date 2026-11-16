@@ -143,6 +143,32 @@ function peakLineOf(peak: PeakView): string {
   return [clock, level, ...(peak.cap === undefined ? [] : [peak.cap])].join(' · ')
 }
 
+/** The home page's line cap (plain-ui 1.3 §4.7); a longer line ends in an ellipsis at 59 code points. */
+const LINE_MAX = 60
+
+function cutLine(text: string): string {
+  const points = [...text]
+  return points.length <= LINE_MAX ? text : `${points.slice(0, LINE_MAX - 1).join('')}…`
+}
+
+/**
+ * The home page's 现在 line (design §8.3), the first word of the ladder the
+ * view's data names, from the same view.json the page reads: the main
+ * agent's line for a state the home page names (HolderView.state — archived,
+ * not-found, another window past the hand-over's five minutes, unreadable),
+ * else the first script entry whose file is no longer the agreed version.
+ * The ladder's other lines wait for the view to carry their facts — the GLM
+ * login rejection (machine-level), three runs without a pass in a row, a DSH
+ * reminder rebuilt the same day, a plugin's entries it cannot read — and
+ * join when they land. Nothing of the ladder stands: null.
+ */
+export function loopsHomeLine(view: LoopsView | null): string | null {
+  if (view === null) return null
+  if (view.holder?.state !== undefined) return cutLine(view.holder.line)
+  const changed = view.entries.find(entry => entry.scriptStanding === 'changed')
+  return changed === undefined ? null : cutLine(`循环板：「${changed.title}」的脚本改过了，先不跑`)
+}
+
 /** The page model of a project's view; `view` is null while there is no view.json yet. `tell` hears what the board's data lacks (the console, once per key). */
 export function buildLoopsPage(view: LoopsView | null, tell: PageTell = CONSOLE_TELL): LoopsPageModel {
   const entries = view?.entries ?? []
