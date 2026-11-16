@@ -177,3 +177,31 @@ test('the floor addition rides before the ladder moves now that the handback com
   assert.ok(floorAdd >= 0 && ladder > floorAdd, `the floor addition comes first (R4-F5), got: ${JSON.stringify(lines)}`)
   assert.ok(lines.some(line => line.includes('降档之后返工的活集中在 src')), 'the facts name the directory the handback paths group into')
 })
+
+test('floor additions take the three slots before the ladder moves when both kinds overflow (R4-F5)', () => {
+  const handback = (childId: string, paths: readonly string[]): string => renderHandbackComment({
+    attempt: 1, status: 'done', childId, commits: 1, files: paths.length, questions: 0, assumptions: 0, asked: 0, answered: 0, timeouts: 0, plans: 0, incoming: 0, lessons: 0, depth: '轻审', paths, problems: [],
+  })
+  const landed = (n: number) => ({ at: at(n), actor: 'harness' as const, op: 'comment' as const, text: `进主干 abc${n}（从 def${n}）· 检查 ok` })
+  const reopened = (n: number) => ({ at: at(n), actor: 'llm' as const, op: 'status' as const, from: 'done', to: 'doing', reason: '回归坏了' })
+  const demoted = (id: string, title: string, paths: readonly string[]) => node({ id, type: 'task', title, status: 'done' }, 10, 'llm', [
+    { at: at(40), actor: 'harness', op: 'comment', text: handback(id, paths) },
+    landed(44),
+    reopened(48),
+  ])
+  const graph = graphOf([
+    norm('norm-a', '一'),
+    norm('norm-b', '二'),
+    node({ id: 'norm-review-floor', type: 'norm', title: '必须全审的改动', status: 'approved', acceptance: ['涉及凭证的改动全审'] }),
+    demoted('t-a1', '轻审一', ['src/env/a1.ts']),
+    demoted('t-a2', '轻审二', ['src/env/a2.ts']),
+    demoted('t-b1', '轻审三', ['ui/b1.ts']),
+    demoted('t-b2', '轻审四', ['ui/b2.ts']),
+  ])
+  const violations = ['norm-a', 'norm-b'].flatMap(id => [denial(`rules:${id}`, 70), denial(`rules:${id}`, 71), denial(`rules:${id}`, 72)])
+  const lines = section(weeklyReport(input(graph, { violations })), '## 规矩的提议')
+  const matters = lines.filter(line => line.startsWith('- 「'))
+  assert.equal(matters.length, 3, `three matters at most, got: ${JSON.stringify(matters)}`)
+  assert.equal(matters.filter(line => line.includes('要不要加一类')).length, 2, 'both floor additions ride')
+  assert.deepEqual(matters.filter(line => line.includes('要不要升一级')), matters.slice(-1), 'the ladder move rides last, one of the two')
+})
