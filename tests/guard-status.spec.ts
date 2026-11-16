@@ -172,7 +172,7 @@ test('the guard row provides glmHournessStatus/guard over the project journals a
   }
 })
 
-test('a journal that is not there yet: the lifts entry still answers over the missing record file, as the report words it', async () => {
+test('a journal that is not there yet: the lifts entry still answers, and the missing record file is no error-shaped note', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'guard-status-bare-'))
   try {
     await mkdir(join(workspace, '.llm'), { recursive: true })
@@ -183,7 +183,8 @@ test('a journal that is not there yet: the lifts entry still answers over the mi
     const [lifts] = view.items('agent-1')
     assert.equal(lifts?.id, 'rules/lifts')
     assert.equal(lifts?.text, '- 撤下的规则：无')
-    assert.deepEqual(lifts?.detail, ['- lifts.jsonl 读不出（ENOENT），这一次没有对账'], 'the same words the report writes for a project without a record file')
+    assert.equal(lifts?.detail, undefined, 'a record file that is not there yet reads as empty (the gate\'s reading), no 读不出 line')
+    assert.ok(!JSON.stringify(view.items('agent-1')).includes('读不出'), 'the absent file is not worded as a read failure')
     dispose()
   }
   finally {

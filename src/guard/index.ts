@@ -341,8 +341,10 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
   // design §3.10, review finish2 round 2 F16). The session's project is the working directory the
   // row saw at agent creation; a session the row does not know, or one outside a project, has no
   // entries. A journal that is not there yet is no entry, not an error; one that cannot be read
-  // is, and the collector takes the placeholder. The entries name no uncommitted-file line: that
-  // needs a git call and the view is synchronous (the report keeps computing it).
+  // is, and the collector takes the placeholder. The record file that is not there yet reads as
+  // empty (the gate's own reading of absent lifts, lift.ts, design §3.5); one that cannot be read
+  // for another reason is the degraded read the entry words. The entries name no uncommitted-file
+  // line: that needs a git call and the view is synchronous (the report keeps computing it).
   const readFile = config.readFile ?? ((path: string) => readFileSync(path, 'utf8'))
   const clock = config.now ?? (() => new Date())
   const sessions = new Map<string, string>()
@@ -369,7 +371,12 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
       file = { text: readFile(liftRecordPath(root)) }
     }
     catch (error) {
-      file = { error: (error as NodeJS.ErrnoException).code ?? 'error' }
+      // A record file that is not there yet reads as empty, the gate's own
+      // reading of absent lifts (lift.ts, design §3.5); another kind of error
+      // stays the degraded read the entry words.
+      file = (error as NodeJS.ErrnoException).code === 'ENOENT'
+        ? { text: '' }
+        : { error: (error as NodeJS.ErrnoException).code ?? 'error' }
     }
     return guardStatusItems({
       violations,

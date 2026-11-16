@@ -27,7 +27,13 @@ export interface LiftsInput {
   readonly records: readonly LiftRecord[]
   /** The earliest instant any journal record (any class) carries; a gap record counts its `since`. Absent when the journal is empty. */
   readonly earliest?: string | undefined
-  /** The record file's text, when the project root is known; absent without a root, and the lines derive the lifts from the journal alone. */
+  /**
+   * The record file's text, when the project root is known; absent without a
+   * root, and the lines derive the lifts from the journal alone. A file that
+   * is not there yet reads as empty text — the gate's own reading of absent
+   * lifts (lift.ts, design §3.5) — so a fresh project answers like an empty
+   * one, and only a read that failed for another reason is the `error` shape.
+   */
   readonly file?: { readonly text: string } | { readonly error: string }
   /** Whether git sees uncommitted changes to the record file (the caller ran `git status`, 5 seconds, failure absent). */
   readonly uncommitted?: boolean | undefined
@@ -80,10 +86,13 @@ export function ruleLines(records: readonly GuardRecord[], offsetMinutes: number
  * The lift lines (m4-gate G3, design §3.10): which rules stand lifted right
  * now, and whether the record file and the journal agree. The input is not
  * period-bounded — a lift is a decision of the project, its day does not
- * matter (review finish2 round 2 F16). Without a record file the lines
- * derive the lifted rules from the journal alone and reconcile nothing; an
- * unreadable file says so and reconciles nothing. A mismatch never changes a
- * rule's state (the gate reads the file), the lines only name it.
+ * matter (review finish2 round 2 F16). Without a project root the lines
+ * derive the lifted rules from the journal alone and reconcile nothing; a
+ * record file that is not there yet reads as empty (the gate's own reading,
+ * lift.ts), so a fresh project stays quiet and a journal-with-file-gone
+ * mismatch still shows; a file that cannot be read for another reason says
+ * so and reconciles nothing. A mismatch never changes a rule's state (the
+ * gate reads the file), the lines only name it.
  */
 export function liftLines(lifts: LiftsInput, offsetMinutes: number): string[] {
   const lines: string[] = []

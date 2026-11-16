@@ -16,6 +16,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { readFile as readFileUtf8 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkoutRootOf, projectOf } from '../src/data/project-root.ts'
@@ -411,6 +412,24 @@ test('the report derives the lifted rules from the journal alone without a file,
   const dirty = await reportFromFiles({ readFile: path => Promise.resolve(readFileSync(path, 'utf8')) }, { projectHome: join(root, '.llm') }, 'p', () => Promise.reject(new Error('no graph')), undefined, { root, now: Date.parse('2026-11-04T12:00:00Z'), offsetMinutes: 480 })
   assert.ok(dirty.includes('- lifts.jsonl 有未提交的撤下，随下一次提交带上'), dirty)
   rmSync(root, { recursive: true, force: true })
+})
+
+test('a record file that is not there yet reads as empty, not as a read error: a fresh project stays quiet', async () => {
+  const { root } = tempRepo()
+  try {
+    // The journal exists (the session ran) but no lift was ever recorded, so docs/guard/lifts.jsonl was never written.
+    mkdirSync(join(root, '.llm', 'audit'), { recursive: true })
+    writeFileSync(join(root, '.llm', 'audit', 'violations.jsonl'), '')
+    const { reportFromFiles } = await import('../src/workflow/morning-report.ts')
+    // The real node:fs/promises reader: a missing file rejects, the way the ReportFs contract fails.
+    const readFile = (path: string): Promise<string> => readFileUtf8(path, 'utf8')
+    const report = await reportFromFiles({ readFile }, { projectHome: join(root, '.llm') }, 'p', () => Promise.reject(new Error('no graph')), undefined, { root, now: Date.parse('2026-11-04T12:00:00Z'), offsetMinutes: 480 })
+    assert.ok(!report.includes('lifts.jsonl'), report)
+    assert.ok(!report.includes('读不出'), report)
+  }
+  finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('after a worktree copy merges into the main checkout, the next report names the rule (F14 ⑨)', async () => {

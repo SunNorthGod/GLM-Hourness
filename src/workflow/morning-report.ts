@@ -377,11 +377,16 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
   const liftRecords = wholeViolations.flatMap((record): LiftRecord[] => classifyRecord(record as unknown as Readonly<Record<string, unknown>>) === 'lift' ? [record as unknown as LiftRecord] : [])
   const earliest = journalEarliest(wholeViolations)
   const root = options.root
+  // A record file that is not there yet reads as empty, the gate's own reading
+  // of absent lifts (lift.ts, design §3.5); only an error of another kind is
+  // the degraded read the 例外 section words.
   const file = root === undefined
     ? undefined
     : await fs.readFile(liftRecordPath(root)).then(
       text => ({ text }),
-      error => ({ error: (error as NodeJS.ErrnoException).code ?? 'error' }),
+      error => (error as NodeJS.ErrnoException).code === 'ENOENT'
+        ? { text: '' }
+        : { error: (error as NodeJS.ErrnoException).code ?? 'error' },
     )
   const uncommitted = root === undefined || file === undefined || 'error' in file
     ? undefined
