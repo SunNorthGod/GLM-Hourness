@@ -68,6 +68,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "对账（2026-11-13）：规范阶梯与周报未开工——周报读 status 收集器属 P3；metrics 第 9-10 步（批次 L4、退役）另列。保持 approved。"
+    },
+    {
+      "at": "2026-11-16T20:18:30.807Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "底线加类提议数据源闭账：交回批注带「改动」行（hback-paths，cd49ac34）——done 交回记自己 diff 的改动路径，floorTasks 读回、旧批注回退计数，底线加类提议可在真实数据开火；M7 §19.4 ②闭⑥补，ORCHESTRATION §12/HANDOFF 同批改；随 a09fcf38 进 main（2026-11-17）。"
     }
   ]
 }
