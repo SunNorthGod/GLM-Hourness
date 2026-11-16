@@ -39,4 +39,15 @@ Worktree `.worktrees/loops-tails`，分支 `loops-tails`，基线 main `e98bfbca
 
 ## 记录
 
-- [2026-11-17] 开线。worktree 建在 main tip `e98bfbca`（与 origin/main 同点），干净。node_modules 靠主检出父目录解析（工作树目录为其子目录，Node 上溯命中），无 junction。两把探针锁空闲。核验判读如上（候选 1/3 未做、候选 2 只缺 L2）。
+- [2026-11-17] 开线。worktree 建在 main tip `e98bfbca`（与 origin/main 同点），干净。node_modules 靠主检出父目录解析（工作树目录为其子目录，Node 上溯命中）+ check-lint 用显式 `node_modules/` 路径起 eslint/knip/jscpd，补了十个 junction（PowerShell `New-Item -ItemType Junction`；cmd mklink 在 Git Bash 下 `/J` 被路径转换吃掉，教训记档）。两把探针锁空闲。核验判读如上（候选 1/3 未做、候选 2 只缺 L2）。
+- [2026-11-17] 批 1 提交 `7c304a69`：weekly.spec 混合竞争一例（2 加类组 + 2 阶梯提议 → 3 件、加类占前两位、阶梯占末位、第二个阶梯被截）。行为零改动。本 spec 10/10。
+- [2026-11-17] 批 2 提交 `c49ed118`（amend 进 weekly.spec 的 jscpd 去重与 progress）：循环板首页一行落地。
+  - host：`HolderView` 加 `state`（archived/not-found/elsewhere 过 5 分钟/unknown 四种，ok、none、交接前 5 分钟不带上首页——holderViewOf 的 switch 收窄；TS exactOptionalPropertyTypes 下三元表达式里属性访问窄化不进对象字面量，教训记档）；`ViewEntry` 加 `scriptStanding`（buildView 的 workOf 顺路交出，未采纳与已删不读——run.ts 先拒未采纳再谈立场，`scriptStandingOf` 因此少读一次文件，loops-row 的 holder 深等断言随新字段更新）。
+  - ui：`ui/src/loops/model.ts` 的 `loopsHomeLine(view)`（阶梯已落地子集：holder 四句原样在前、第一个 changed 脚本条目句在后，60 码点截断），`ui/src/loops/board.ts` 的 stateOf 交它；ui 解析 view.json 是结构最小校验，旧 view.json（无新字段）照读为 null。
+  - L2：loops-panel-model 33 例（holderViewOf 映射七例、阶梯次序与 60 截断、板快照交行与清行、standing 按条目状态的产出）、loops-row 27（holder 深等随 state 更新）。
+  - 文档：ORCHESTRATION §18 头与 §18.7（页面一条改写：homeLine 的已落地四句 + 等数的四句；「还没有的」清单挪走首页一行），HANDOFF §3 loops 行补 2026-11-17 一段。
+  - jscpd 两次新克隆（weekly.spec 两测试的夹具、panel-model 两板测试的起板六行）按根因去重：weekly.spec 提 handback/landed/reopened/demoted 到文件级，panel-model 提 startedBoard 帮手。eslint 抓出一处 strip-types 看不见的多余断言（改为 switch 收窄）。
+  - 门禁：build 0、preflight 0（18 行 dsh-hourness）、lint 0（eslint 73 / knip 18 / jscpd 1 全平）。
+- [2026-11-17] 全量门禁（合前，rebase 前）：npm test 全绿 3853 过 / 0 败；第一跑 3 败都在 `tests/lessons-seed.spec.ts`——`.agents/tasks/m5/lessons-seed.json` 被 `.gitignore` 挡在 git 外（impl-plan-3 §0 与 loops-seam 同一坑），从主检出拷入（SHA-256 `E10A3247…41910` 相同）后 3/3 过，第二跑全绿 3853/0。棘轮 eslint 73 / knip 18 / jscpd 1 全平（npm test 开头 check-lint 三行）。
+- [2026-11-17] 探针：主检出 `.llm/probe-lock`（owner `lpt loops-tails agent`，每 ≤10 分钟续写并核对首行），工作树跑 `npm run -s probe`，日志 `.llm/logs/lpt-probe.log`，**611/611 全过**（0 FAIL，地板达标）；主检出 `.llm/loops/view.json` 探针前后 SHA-256 与修改时间相同（`237aaaa7…ba8838`）。并行期 sgate 车道持 probe-lock-2（05:14 起，续写正常），两槽各归各主。插记：我的 probe-lock 目录在探针收尾前被人从盘上摘了（05:21 还在续写、05:29 已不存在；`scripts/probe/run-probe.mjs` 不管理锁，非探针自清）——我的那跑已完且全绿，不重跑；锁的归属纪律没破，只记事实。
+- 待办：rebase 到 origin/main `3fafe42a`（polish 车道的 guard lift-record 修复，与本线零文件交集）→ 重跑 build/preflight/test → 探针复核 → 合 main 推双远端。
