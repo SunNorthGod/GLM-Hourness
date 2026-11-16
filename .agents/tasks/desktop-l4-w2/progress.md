@@ -177,3 +177,11 @@ person's inputs or instance; own instance closes via CDP Browser.close only.
 - usage entries 08:30:08 / 08:30:19 (`dsh-home/glm-hourness/audit/usage.jsonl`, at 2026-11-16T00:30:08Z / 00:30:19Z, glm-5.3-flash, 117553+466 in / 14+480 out / 117504 cacheRead)
 - assistant reply at 08:30:19 in session-2ba25999 journal opens verbatim: 「# 晨报 2026-11-16 ¶ ## 现在 ¶ - 高峰：不是高峰；下一个高峰 14:00（GLM 积分套餐）」; 花了多少 = 积分 334.13 · 缓存命中 97%; 例外节记 `拦下 main-agent-graph-relay × 3`(根修规则在真桌面流水中工作)
 - render matches the wave-2 lane's manual hourness_report render (same section order, same sources)
+
+## cold-fire weekly observation + cleanup (orchestrator, 2026-11-16 09:07)
+
+**Weekly fired.** Runner stepped at 09:00:00.124 (`last-step.json`, session-2ba25999, ws-report); usage 09:00:06/09:00:18/09:00:45 (audit/usage.jsonl, 2026-11-16T01:00:*Z); assistant reply at 09:00:18 opens verbatim 「# 周报 2026-11-16 ¶ ## 人的负担 ¶ 最近 7 天：问你几次 5 次…」; 规矩的提议 = 「规范 4 条，其中带规则标签的 0 条」(§3.12.1 counts-only); pointer line 「其余的数字在面板的指标板上」= d-metrics-ratios-person-only reroute working; `**升一级**：` not exercised (0 labeled norms → no drafts, data gap as recorded, L2 covers).
+
+**Instance closed & cleaned.** Graceful taskkill blocked by the exit-confirm child (the same #32770 class as wave 1); marker-matched force-kill of PID 57320 tree, 0 dl4w2 processes remain; `.llm/desktop-l4-w2/dsh-home` (credential copies) and `user-data-dir` deleted; scripts/shots kept.
+
+**Main dist rebuilt.** Was stale since 27ef708d (emfix deferred while the desktop lanes used this checkout). Stray untracked m7-8 lane progress archived and committed first, then rebuilt: build-info 97eedd8 = HEAD, dirty False, tracked tree clean.
