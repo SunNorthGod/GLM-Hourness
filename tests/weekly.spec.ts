@@ -11,6 +11,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { weeklyReport, reworkAfterHuman, type WeeklyReportInput } from '../src/report/weekly.ts'
+import { renderHandbackComment } from '../src/execute/attempts.ts'
 import { plainWordsIn } from '../src/graph/plain-question.ts'
 import { at, graphOf, node } from './execute-helpers.ts'
 import { SINCE, decide, hubEntry, reportInput, section } from './report-helpers.ts'
@@ -147,4 +148,32 @@ test('three matters at most ride the section even when more norms point somewher
   const text = weeklyReport(input(graph, { violations }))
   const lines = section(text, '## 规矩的提议')
   assert.equal(lines.filter(line => line.startsWith('- 「')).length, 3, 'four pointing norms still propose three at most')
+})
+
+test('the floor addition rides before the ladder moves now that the handback comments carry the changed paths', () => {
+  const handback = (childId: string, paths: readonly string[]): string => renderHandbackComment({
+    attempt: 1, status: 'done', childId, commits: 1, files: paths.length, questions: 0, assumptions: 0, asked: 0, answered: 0, timeouts: 0, plans: 0, incoming: 0, lessons: 0, depth: '轻审', paths, problems: [],
+  })
+  const landed = (n: number) => ({ at: at(n), actor: 'harness' as const, op: 'comment' as const, text: `进主干 abc${n}（从 def${n}）· 检查 ok` })
+  const reopened = (n: number) => ({ at: at(n), actor: 'llm' as const, op: 'status' as const, from: 'done', to: 'doing', reason: '回归坏了' })
+  const graph = graphOf([
+    norm('norm-a', '写文件先问'),
+    node({ id: 'norm-review-floor', type: 'norm', title: '必须全审的改动', status: 'approved', acceptance: ['文档一类的改动重写过 `files docs/`'] }),
+    node({ id: 't-a', type: 'task', title: '轻审', status: 'done' }, 10, 'llm', [
+      { at: at(40), actor: 'harness', op: 'comment', text: handback('r1', ['src/env/a.ts']) },
+      landed(44),
+      reopened(48),
+    ]),
+    node({ id: 't-b', type: 'task', title: '轻审二', status: 'done' }, 10, 'llm', [
+      { at: at(40), actor: 'harness', op: 'comment', text: handback('r2', ['src/env/b.ts']) },
+      landed(44),
+      reopened(52),
+    ]),
+  ])
+  const text = weeklyReport(input(graph, { violations: [denial('rules:norm-a', 70), denial('rules:norm-a', 71), denial('rules:norm-a', 72)] }))
+  const lines = section(text, '## 规矩的提议')
+  const floorAdd = lines.findIndex(line => line.includes('「必须全审的改动」要不要加一类'))
+  const ladder = lines.findIndex(line => line.includes('「写文件先问」要不要升一级'))
+  assert.ok(floorAdd >= 0 && ladder > floorAdd, `the floor addition comes first (R4-F5), got: ${JSON.stringify(lines)}`)
+  assert.ok(lines.some(line => line.includes('降档之后返工的活集中在 src')), 'the facts name the directory the handback paths group into')
 })

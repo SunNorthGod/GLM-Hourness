@@ -17,12 +17,12 @@
  * count reaches two inside twenty-eight days and whose path no `files` entry
  * of the floor already covers.
  *
- * The changed paths themselves have no durable record yet: the handback
- * comment keeps only the file count (`文件 N 个`) and the worker's structured
- * handback is not written to the graph, so `FloorTaskFact.paths` arrives
- * empty from the report wiring and no group can form — the grouping logic
- * below is complete and tested, waiting for the source. Like every report
- * this is pure: the clock comes in with the input.
+ * The changed paths come from the handback comment's 改动 line (2026-11-17,
+ * branch hback-paths): the done handback records the file list its own git
+ * diff against the dispatch base read, and `floorTasks` reads the latest
+ * comment that carries the line. Comments written before the line existed
+ * record none — such a task contributes no group rather than a made-up one.
+ * Like every report this is pure: the clock comes in with the input.
  */
 import { parseDispatchComment, parseHandbackComment } from '../execute/attempts.ts'
 import { sourcedMoments } from './metrics.ts'
@@ -49,7 +49,7 @@ export interface FloorTaskFact {
   readonly landings: readonly number[]
   /** The rework moments within fourteen days of a landing: reopens and sourced fix tasks. */
   readonly reworkMs: readonly number[]
-  /** The paths the task changed, when a durable source carries them (none does yet — the wiring passes none). */
+  /** The paths the task changed, as the handback comment's 改动 line carries them; empty on comments written before the line existed (the count-only fallback). */
   readonly paths: readonly string[]
 }
 
@@ -152,13 +152,22 @@ function reworkMoments(graph: LoadedGraph, node: GraphNode, landings: readonly n
   return moments.sort((a, b) => a - b)
 }
 
+/** The changed paths the task's handback comments record: the latest comment that carries the 改动 line, none when no comment does (comments written before the line existed). */
+function recordedPaths(node: GraphNode): readonly string[] {
+  return node.history
+    .flatMap(entry => entry.op === 'comment' && entry.actor === 'harness' && entry.text !== undefined ? [parseHandbackComment(entry.text)] : [])
+    .flatMap(record => record?.paths === undefined ? [] : [record.paths])
+    .at(-1) ?? []
+}
+
 /**
  * The demoted cohort the project graph holds (§3.12.3): landed write tasks
  * whose effective review depth was light or skip, each with its landing and
  * rework moments. The latest dispatch's declaration stands when no handback
  * names an effective depth; a handback naming 全审 (the floor raised it)
  * takes the task out. Tasks without a landing evidence comment have not
- * landed and are not cohort. The paths are empty — no durable source yet.
+ * landed and are not cohort. The paths are the handback comment's 改动
+ * record, empty when no comment carries it.
  */
 export function floorTasks(graph: LoadedGraph): readonly FloorTaskFact[] {
   const facts: FloorTaskFact[] = []
@@ -171,7 +180,7 @@ export function floorTasks(graph: LoadedGraph): readonly FloorTaskFact[] {
     if (depth === undefined) continue
     const landings = landingMoments(node)
     if (landings.length === 0) continue
-    facts.push({ task: node.id, depth, landings, reworkMs: reworkMoments(graph, node, landings), paths: [] })
+    facts.push({ task: node.id, depth, landings, reworkMs: reworkMoments(graph, node, landings), paths: recordedPaths(node) })
   }
   return facts
 }

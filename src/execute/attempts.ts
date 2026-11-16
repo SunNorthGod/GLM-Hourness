@@ -365,6 +365,8 @@ export interface HandbackComment {
   readonly files: number
   readonly base?: string
   readonly report?: string
+  /** The changed file paths the harness's own git diff read at handback time (§3.6.2), as the 改动 line carries them; absent on old comments and when the diff did not answer. */
+  readonly paths?: readonly string[]
   readonly questions: number
   readonly assumptions: number
   readonly asked: number
@@ -391,6 +393,7 @@ export function renderHandbackComment(entry: HandbackComment): string {
     `提交 ${entry.commits} 个${entry.head === undefined ? '' : `（最新 ${entry.head}）`} · 文件 ${entry.files} 个 · 报告 ${entry.report ?? '无'}${entry.base === undefined ? '' : ` · 基线 ${entry.base}`}`,
     `问题 ${entry.questions} · 假设 ${entry.assumptions} · 问了 ${entry.asked} 次（答 ${entry.answered}、超时 ${entry.timeouts}）· 计划 ${entry.plans} 版 · 主 Agent 发来 ${entry.incoming} 条 · 候选经验 ${entry.lessons} 条${entry.lessonsRejected === undefined ? '' : `（拒 ${entry.lessonsRejected}）`}`,
     ...(entry.depth === undefined ? [] : [`有效深浅 ${entry.depth}${entry.floorHit === undefined ? '' : `（${entry.floorHit}）`}`]),
+    ...(entry.paths === undefined || entry.paths.length === 0 ? [] : [`改动 ${entry.paths.map(path => `\`${path}\``).join(' ')}`]),
     ...(entry.policyDrift === undefined || entry.policyDrift.length === 0 ? [] : [renderPolicyDrift(entry.policyDrift)]),
     ...(entry.docs ?? []).map(line => `Docs: ${line}`),
     ...entry.problems.map(problem => `校验不过：${problem}`),
@@ -402,6 +405,23 @@ const HANDBACK_HEAD = /^第 (\d+) 次交回 · (\S+) · (\S+)$/
 const HANDBACK_COMMITS = /^提交 (\d+) 个(?:（最新 ([0-9a-f]+)）)? · 文件 (\d+) 个 · 报告 (\S+)(?: · 基线 ([0-9a-f]+))?/
 const HANDBACK_COUNTS = /^问题 (\d+) · 假设 (\d+) · 问了 (\d+) 次（答 (\d+)、超时 (\d+)）· 计划 (\d+) 版 · 主 Agent 发来 (\d+) 条 · 候选经验 (\d+) 条(?:（拒 (\d+)）)?/
 const HANDBACK_DEPTH = /^有效深浅 (全审|轻审)(?:（(.+)）)?/
+/** The changed-paths line of a handback comment, backtick segments after the 改动 prefix. */
+const HANDBACK_PATHS = '改动 '
+
+/** The backtick segments of the 改动 line, in order; the same delimiter convention the floor list reads (src/execute/floor.ts). */
+function changedPaths(line: string): readonly string[] {
+  const paths: string[] = []
+  let rest = line.slice(HANDBACK_PATHS.length)
+  while (rest.length >= 2) {
+    const opening = rest.indexOf('`')
+    if (opening < 0) break
+    const closing = rest.indexOf('`', opening + 1)
+    if (closing < 0) break
+    paths.push(rest.slice(opening + 1, closing))
+    rest = rest.slice(closing + 1)
+  }
+  return paths
+}
 
 /** Reads a worker's handback comment; undefined when the text is not one. */
 export function parseHandbackComment(text: string): HandbackComment | undefined {
@@ -413,6 +433,8 @@ export function parseHandbackComment(text: string): HandbackComment | undefined 
   if (commits === null || counts === null) return undefined
   const depth = lines.length > 3 ? HANDBACK_DEPTH.exec(lines[3]) : null
   const tail = lines.slice(depth === null ? 3 : 4)
+  const paths = tail.find(line => line.startsWith(HANDBACK_PATHS))
+  const recordedPaths = paths === undefined ? undefined : changedPaths(paths)
   const docs = tail.filter(line => line.startsWith('Docs: ')).map(line => line.slice('Docs: '.length))
   const drift = parsePolicyDrift(text)
   return {
@@ -434,6 +456,7 @@ export function parseHandbackComment(text: string): HandbackComment | undefined 
     lessons: Number(counts[8]),
     ...(counts[9] === undefined ? {} : { lessonsRejected: Number(counts[9]) }),
     ...(depth === null || depth === undefined ? {} : { depth: depth[1] as '全审' | '轻审', ...(depth[2] === undefined ? {} : { floorHit: depth[2] }) }),
+    ...(recordedPaths === undefined || recordedPaths.length === 0 ? {} : { paths: recordedPaths }),
     ...(drift === undefined ? {} : { policyDrift: drift }),
     ...(docs.length > 0 ? { docs } : {}),
     problems: tail.filter(line => line.startsWith('校验不过：')).map(line => line.slice('校验不过：'.length)),

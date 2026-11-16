@@ -11,6 +11,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { draftRefusal } from '../src/execute/asks.ts'
+import { renderHandbackComment } from '../src/execute/attempts.ts'
 import { parseFloor } from '../src/execute/floor.ts'
 import { ladderEntry, ladderProposals, rejectedNorms, type LadderInput } from '../src/report/ladder.ts'
 import { floorProposals, floorTasks, type FloorInput, type FloorTaskFact } from '../src/report/floor-proposals.ts'
@@ -178,7 +179,79 @@ test('floorTasks reads the cohort the graph holds: handback depth over the decla
   assert.equal(light?.reworkMs.length, 1, 'the reopen two days after landing counts')
   assert.equal(named.get('t-skip')?.depth, 'skip')
   assert.equal(named.get('t-skip')?.reworkMs.length, 1, 'the sourced fix task counts')
-  assert.equal(floorProposals({ nowMs: NOW, tasks: facts, floor: parseFloor(undefined) }).length, 0, 'no paths arrive yet, so no group can form')
+  assert.equal(floorProposals({ nowMs: NOW, tasks: facts, floor: parseFloor(undefined) }).length, 0, 'comments written before the 改动 line existed record no paths, so no group can form (the old-record fallback)')
+})
+
+test('the changed paths ride the handback comments and the proposal fires end to end', () => {
+  const iso = (ms: number): string => new Date(ms).toISOString()
+  const handback = (childId: string, depth: '轻审' | undefined, paths?: readonly string[]): string => renderHandbackComment({
+    attempt: 1, status: 'done', childId, commits: 1, files: 1, questions: 0, assumptions: 0, asked: 0, answered: 0, timeouts: 0, plans: 0, incoming: 0, lessons: 0,
+    ...(depth === undefined ? {} : { depth }), ...(paths === undefined ? {} : { paths }), problems: [],
+  })
+  const dispatched = (daysAgo: number, why: string, review: string) => ({
+    at: iso(now(daysAgo)), actor: 'harness', op: 'comment' as const, text: `第 1 次派发 · r · 模型 x/y，理由：${why} · 审查：${review}\npins: x`,
+  })
+  const landed = (daysAgo: number) => ({ at: iso(now(daysAgo)), actor: 'harness', op: 'comment' as const, text: `进主干 abc${daysAgo}（从 def${daysAgo}）· 检查 ok` })
+  const reopened = (daysAgo: number) => ({ at: iso(now(daysAgo)), actor: 'llm', op: 'status' as const, from: 'done', to: 'doing', reason: '回归坏了' })
+  const floorNode = node({ id: 'norm-review-floor', type: 'norm', title: '必须全审的改动', status: 'approved', acceptance: ['文档一类的改动重写过 `files docs/`'] })
+  const graph = graphOf([
+    floorNode,
+    node({ id: 't-a', type: 'task', title: '轻审', status: 'done' }, 10, 'llm', [
+      dispatched(30, '改环境行', '轻审'),
+      { at: iso(now(29)), actor: 'harness', op: 'comment', text: handback('r1', '轻审', ['src/env/a.ts']) },
+      landed(28),
+      reopened(26),
+    ]),
+    node({ id: 't-b', type: 'task', title: '不审', status: 'done' }, 10, 'llm', [
+      dispatched(30, '改环境行', '不审'),
+      { at: iso(now(28)), actor: 'harness', op: 'comment', text: handback('r2', undefined, ['src/env/b.ts']) },
+      landed(27),
+      reopened(25),
+    ]),
+    node({ id: 't-old', type: 'task', title: '旧批注', status: 'done' }, 10, 'llm', [
+      dispatched(30, '改环境行', '轻审'),
+      { at: iso(now(29)), actor: 'harness', op: 'comment', text: handback('r3', '轻审') },
+      landed(28),
+      reopened(26),
+    ]),
+  ])
+  const facts = floorTasks(graph)
+  const named = new Map(facts.map(fact => [fact.task, fact]))
+  assert.deepEqual(named.get('t-a')?.paths, ['src/env/a.ts'], 'the handback comment carries the changed paths')
+  assert.deepEqual(named.get('t-b')?.paths, ['src/env/b.ts'], 'a skip handback without a depth line still carries them')
+  assert.deepEqual(named.get('t-old')?.paths, [], 'a handback without the line records none')
+  const proposals = floorProposals({ nowMs: NOW, tasks: facts, floor: parseFloor(floorNode) })
+  assert.equal(proposals.length, 1, 'two reworked pieces in one top-level directory the floor does not cover propose the addition')
+  assert.deepEqual(proposals[0]?.paths, ['src'])
+  assert.equal(proposals[0]?.declared, 2)
+  assert.equal(proposals[0]?.reworked, 2)
+  // The old-record fallback inside the same graph: the one carrying task cannot reach two, the old-shape task contributes nothing.
+  const mixed = floorProposals({ nowMs: NOW, tasks: facts.filter(fact => fact.task !== 't-b'), floor: parseFloor(floorNode) })
+  assert.equal(mixed.length, 0, 'one carrying task alone proposes nothing and the old-shape task joins no group')
+})
+
+test('the paths read is the latest handback comment that carries the 改动 line', () => {
+  const iso = (ms: number): string => new Date(ms).toISOString()
+  const handback = (childId: string, paths?: readonly string[]): string => renderHandbackComment({
+    attempt: 1, status: 'done', childId, commits: 1, files: 1, questions: 0, assumptions: 0, asked: 0, answered: 0, timeouts: 0, plans: 0, incoming: 0, lessons: 0, depth: '轻审',
+    ...(paths === undefined ? {} : { paths }), problems: [],
+  })
+  const landed = (daysAgo: number) => ({ at: iso(now(daysAgo)), actor: 'harness', op: 'comment' as const, text: `进主干 abc${daysAgo}（从 def${daysAgo}）· 检查 ok` })
+  const graph = graphOf([
+    node({ id: 't-x', type: 'task', title: '两轮', status: 'done' }, 10, 'llm', [
+      { at: iso(now(30)), actor: 'harness', op: 'comment', text: handback('r1', ['src/env/first.ts']) },
+      landed(28),
+      { at: iso(now(20)), actor: 'harness', op: 'comment', text: handback('r2') },
+    ]),
+    node({ id: 't-y', type: 'task', title: '两轮反向', status: 'done' }, 10, 'llm', [
+      { at: iso(now(30)), actor: 'harness', op: 'comment', text: handback('r3') },
+      landed(28),
+      { at: iso(now(20)), actor: 'harness', op: 'comment', text: handback('r4', ['src/env/second.ts']) },
+    ]),
+  ])
+  const named = new Map(floorTasks(graph).map(fact => [fact.task, fact]))
+  assert.deepEqual(named.get('t-x')?.paths, ['src/env/first.ts'], 'a later comment whose diff did not answer falls back to the latest one that recorded')
+  assert.deepEqual(named.get('t-y')?.paths, ['src/env/second.ts'], 'the latest recording wins over an older one')
 })
 
 function now(daysAgo: number): number {

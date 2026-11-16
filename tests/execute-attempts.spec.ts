@@ -191,3 +191,21 @@ test('the handback comment: the component-doc lines sit between the depth and th
   assert.deepEqual(read?.problems, ['files[0] is not a repository-relative path'])
   assert.equal(read?.depth, '轻审')
 })
+
+test('the handback comment: the changed paths sit in one line after the depth and read back; a comment without the line parses no paths', () => {
+  const base = { attempt: 2, status: 'done', childId: 'hz-t-a2-000001', commits: 1, head: 'abc123def456', files: 2, base: 'aaa111bbb222', questions: 0, assumptions: 0, asked: 0, answered: 0, timeouts: 0, plans: 0, incoming: 0, lessons: 0, depth: '轻审' as const, problems: [] }
+  const withPaths = renderHandbackComment({ ...base, paths: ['src/guarded/writer.js', 'docs/notes/with space.md'] })
+  const lines = withPaths.split('\n')
+  assert.ok(lines[3].startsWith('有效深浅 轻审'))
+  assert.equal(lines[4], '改动 `src/guarded/writer.js` `docs/notes/with space.md`')
+  assert.equal(lines.length, 5, 'the paths line rides alone between the depth and the docs')
+  const read = parseHandbackComment(withPaths)
+  assert.deepEqual(read?.paths, ['src/guarded/writer.js', 'docs/notes/with space.md'])
+  // A skip handback has no depth line: the paths line opens the tail and still reads back.
+  const skip = renderHandbackComment({ ...base, depth: undefined, paths: ['src/only.js'] })
+  assert.equal(skip.split('\n')[3], '改动 `src/only.js`')
+  assert.deepEqual(parseHandbackComment(skip)?.paths, ['src/only.js'])
+  // Comments written before the line existed — and an empty record — carry no paths.
+  assert.equal(parseHandbackComment(renderHandbackComment(base))?.paths, undefined)
+  assert.equal(parseHandbackComment(renderHandbackComment({ ...base, paths: [] }))?.paths, undefined)
+})

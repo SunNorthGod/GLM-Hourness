@@ -3,8 +3,10 @@
  * when a dispatched activation settles. A worker's structured handback is
  * semantically validated (commits on the branch, files repository-relative),
  * its long report is copied out of the worktree, its summary lands as one
- * idempotent comment on the task with the communication counts (§3.4.4) and
- * the candidate lessons (§3.5.5: through the lessons service when the row is
+ * idempotent comment on the task with the communication counts (§3.4.4), the
+ * changed paths its own git diff read (the 改动 line, the durable source the
+ * floor proposals group by) and the candidate lessons (§3.5.5: through the
+ * lessons service when the row is
  * on, as the fallback comment with secret-shaped fields elided when not), a
  * `done` handback reads the change and the dispatch's command record against
  * the must-review floor (§3.7.1) for the effective depth and makes sure the
@@ -366,13 +368,16 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
   let hitClass = ''
   // The component-doc lines (docs-at-hand design 0.3 §6): the worker's `docs` line verbatim, then one sentence per component the change touched whose AGENTS.md it did not.
   let docs: readonly string[] = []
+  // The changed paths of this handback, as the harness's own diff read them (§3.6.2): the durable record the floor proposals group by. Undefined when no diff ran or git did not answer — absence is unknown, not an empty change.
+  let changedPaths: readonly string[] | undefined
   if (status === 'done' && stale.length === 0) {
     const floor = parseFloor(graph.nodes.get('norm-review-floor'))
     const head = commits.at(-1)
-    // One git diff read serves the floor and the docs gaps: the change as `--no-renames --name-status` prints it (§3.7.1, §6.1).
+    // One git diff read serves the floor, the docs gaps and the changed-path record: the change as `--no-renames --name-status` prints it (§3.7.1, §6.1).
     const changed = attempt.baseSha === undefined || head === undefined
       ? undefined
       : await deps.git.changedFiles(worktree, attempt.baseSha, head)
+    changedPaths = changed !== undefined && changed.ok ? changed.value.map(file => file.path) : undefined
     const change: FloorChange = changed !== undefined && changed.ok
       ? { paths: changed.value.map(file => file.path), deleted: changed.value.filter(file => file.status === 'D').map(file => file.path) }
       : { paths: [], deleted: [] }
@@ -436,6 +441,7 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
     ...(lessonsResult.rejected === undefined ? {} : { lessonsRejected: lessonsResult.rejected }),
     ...(depth === undefined ? {} : { depth }),
     ...(floorHit === undefined ? {} : { floorHit }),
+    ...(changedPaths === undefined || changedPaths.length === 0 ? {} : { paths: changedPaths }),
     ...(drift.length > 0 ? { policyDrift: drift.map(change => change.id) } : {}),
     ...(docs.length > 0 ? { docs } : {}),
     problems,

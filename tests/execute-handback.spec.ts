@@ -159,7 +159,7 @@ function reviewTaskOf(graph: Awaited<ReturnType<GraphCache['load']>>): GraphNode
 }
 
 /** The handback comments of a task, in history order. */
-function handbacksOf(task: GraphNode): readonly { attempt: number, status: string, childId: string, depth?: string, floorHit?: string }[] {
+function handbacksOf(task: GraphNode): readonly { attempt: number, status: string, childId: string, depth?: string, floorHit?: string, paths?: readonly string[] }[] {
   return task.history.flatMap(entry => entry.op === 'comment' && entry.actor === 'harness' && typeof entry.text === 'string' ? [parseHandbackComment(entry.text)] : []).filter(entry => entry !== undefined)
 }
 
@@ -190,6 +190,7 @@ test('a done handback lands as one comment with the counts and the review task e
     assert.equal(comment.timeouts, 1)
     assert.equal(comment.incoming, 1)
     assert.equal(comment.depth, '全审', 'the declared depth is full, no floor node, no hit')
+    assert.deepEqual(comment.paths, ['src/guarded/writer.js'], 'the handback records the paths its own diff read')
     const reviewTask = [...graph.nodes.values()].find(entry => entry.parent === 'task-1' && entry.kind === 'review')
     assert.ok(reviewTask !== undefined, 'no review task was created')
     assert.deepEqual(reviewTask.acceptance, [REVIEW_TASK_ACCEPTANCE])
@@ -450,8 +451,9 @@ test('a done handback declared skip hands hourness.review-skipped over and gets 
   const attempt = workerAttempt(project, 'hz-task-1-a1-cccccc', { review: 'skip' })
   const rig1 = await rig(project, attempt)
   try {
-    const { graph } = await runDoneHandback(rig1, project, attempt.childId)
+    const { graph, comment } = await runDoneHandback(rig1, project, attempt.childId)
     assert.ok(![...graph.nodes.values()].some(entry => entry.parent === 'task-1' && entry.kind === 'review'), 'a skipped review got a review task')
+    assert.deepEqual(comment.paths, ['src/guarded/writer.js'], 'the skip handback records the paths its own diff read too')
     assert.deepEqual(rig1.emitted, [{ event: 'hourness.review-skipped', key: `review-skipped:task-1:${attempt.childId}`, payload: { task: 'task-1' } }])
   }
   finally {
