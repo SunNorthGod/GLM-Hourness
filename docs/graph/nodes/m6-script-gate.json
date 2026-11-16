@@ -79,6 +79,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "等的 R4d 不再排在自举之后：人 2026-11-05 定提到自举之前，由 rules-r4d 做；R4d 里接 M7 E7 trunkAdvanceFor 的一段仍等 M7 合入 main。"
+    },
+    {
+      "at": "2026-11-16T18:05:14.625Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "§16.16 门内跑脚本落地（3d67dc0f）；余项：late 后台跑满 10 分钟与晚到拦下、notices 投递、探针场景 rules-script、agent 估计超时（d-timeout-measured）。"
     }
   ]
 }
