@@ -116,3 +116,30 @@ cards for any command; the rc.3-era harness client has the fold
 The data face that is ours already exists (the GLM pill dialog parses the
 same reply). Nothing to change in the bundles; recorded honestly instead
 of forcing a no-op.
+
+## Landing
+
+- Gates on polish 3fafe42a (worktree build): build OK, preflight OK
+  (23 rows), `npm test` exit 0 with ratchets flat (eslint 73 suppressed /
+  knip 18 / jscpd 1), L3 probe 611/611 passed (run dir under the system
+  temp; log `.llm/logs/pol-probe-1.log`, prefix pol-). One test-fixture
+  fix on the way: `tests/lessons-seed.spec.ts` needs the checkout-local
+  `.agents/tasks/m5/lessons-seed.json` (gitignored) copied from the main
+  checkout into a fresh worktree.
+- Lock notes for the record: my `.llm/probe-lock` owner.txt was
+  overwritten mid-run by the loops-tails lane ("lpt loops-tails agent");
+  their own run passed and cleaned up, no probe was left running on my
+  slot when I released it, and slot-1 was free afterwards. The sgate lane
+  held `.llm/probe-lock-2` with live renewals for ~1h15m while showing
+  zero probe processes and no run dirs for the last stretch; the
+  main-checkout landing build ran with the collision window empty (no
+  probe process, no run dir), watched for a new run dir appearing.
+- Landed: main did not move before the merge (no rebase);
+  `git merge --ff-only polish` → 3fafe42a; pushed origin/main and github
+  main (e98bfbca..3fafe42a). The loops-tails lane landed 98fde45e..07cb3f03
+  on top afterwards; the main-checkout build then ran against the new tip:
+  build-info commit 07cb3f0, `dirty: true` from the sibling lane's
+  in-flight tracked `package.json` modification in the main checkout (not
+  from this build; this build wrote only the ignored dist and ui client
+  halves). The fix is in the landed dist (guard/index.js, workflow/
+  morning-report.js both branch on ENOENT).
