@@ -4,6 +4,13 @@
  * provider (scripts/probe/probe-llm.mjs), runs scripted tasks, and checks
  * what the GLM-Hourness rows actually did to the model-visible request.
  *
+ * The run takes its probe slot itself before the first boot
+ * (scripts/probe/probe-lock.mjs): a fresh claim — a live probe or a lane's
+ * heartbeated `owner.txt`, whoever wrote it — is waited out, a dead one is
+ * taken over with its content renamed and logged; the run releases the claim
+ * at every exit. This is the §1.1 L3 rule in code, after two lanes' probes
+ * shared a slot once more on 2026-11-17.
+ *
  * Scenarios: a GLM route must get the ZCode dialect; a non-GLM route through
  * the same provider must keep the DSH prompt and tools (no dialect leak),
  * while the orchestration rows, the guard among them, act on every route
@@ -247,6 +254,7 @@ import { ablationRow, attachmentsIn, dataRows, designRows, fenceRow, generatePro
 import { DEFERRED_BY_A3, WORKSPACE_RULES_SHORT } from '../calibrate/ablation.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 import { CANARY } from './probe-net.mjs'
+import { acquireProbeLock } from './probe-lock.mjs'
 
 requireDesktop('probe')
 
@@ -306,6 +314,16 @@ catch (error) {
   process.exit(2)
 }
 process.on('exit', () => unlinkProfile(instructionsProfile))
+
+// The probe lock (§1.1 L3 row, scripts/probe/probe-lock.mjs): the runner
+// takes its slot itself, so the release below must run on every exit of this
+// file; a crash leaves a dead-pid claim the next acquirer takes over at once.
+const probeLock = await acquireProbeLock({ log: console.error })
+if (probeLock === 'busy') {
+  console.error('probe: no probe slot freed; run again when one does (the holders are named above)')
+  process.exit(2)
+}
+
 const PACKAGE_NAME = Object.fromEntries(PACKAGES.map(pkg => [pkg.key, pkg.name]))
 
 /** A solid red 8x8 RGB PNG, built byte by byte so the fixture needs no binary file. */
@@ -5724,9 +5742,13 @@ const voiding = profileChanges.filter(item => item.project)
 if (voiding.length > 0) {
   for (const change of voiding) console.error(`probe guard: ${change.name} profile: ${change.text}`)
   console.error('probe: the project part of a user profile changed during the run; the result is void, rerun (a second occurrence is a probe defect)')
+  await probeLock.release()
   process.exit(2)
 }
-if (failed > 0) process.exit(1)
+if (failed > 0) {
+  await probeLock.release()
+  process.exit(1)
+}
 // A run that passed leaves nothing behind; a directory that cannot be deleted is named and the result stands.
 try {
   removeRunDir(runDir)
@@ -5734,4 +5756,5 @@ try {
 catch (error) {
   console.warn(`probe: the run directory was not deleted (${error instanceof Error ? error.message : String(error)}): ${runDir}`)
 }
+await probeLock.release()
 process.exit(0)

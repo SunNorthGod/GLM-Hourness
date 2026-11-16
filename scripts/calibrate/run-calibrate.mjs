@@ -58,6 +58,7 @@ import { ARMS } from './ablation.mjs'
 import { fencedPathOf } from './fence.mjs'
 import { compareMetrics, metricsSection } from './metrics.mjs'
 import { closeBatch, collectBatch, openBatch, openRun } from './run-dir.mjs'
+import { acquireProbeLock } from '../probe/probe-lock.mjs'
 
 const TASKS_DIR = join(repo, 'tests', 'calibration')
 const PROVIDER = 'glm-zcode'
@@ -148,6 +149,17 @@ const gitOut = (args, cwd) => (spawnSync('git', args, { cwd, encoding: 'utf8' })
 const commit = gitOut(['rev-parse', '--short', 'HEAD'], repo)
 const dirty = gitOut(['status', '--porcelain', '--untracked-files=no'], repo).length > 0
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+
+// The probe lock (§1.1 L3 row, scripts/probe/probe-lock.mjs): a calibration
+// run boots the same scenarios as a probe, so it takes a slot the same way —
+// fresh claims waited out, dead ones taken over with evidence; the release
+// below runs on every exit past this point.
+const probeLock = await acquireProbeLock({ holder: process.env.PROBE_LOCK_HOLDER ?? 'calibrate-runner', log: console.error })
+if (probeLock === 'busy') {
+  console.error('calibrate: no probe slot freed; run again when one does (the holders are named above)')
+  process.exit(2)
+}
+
 // The batch runs in the system temporary directory and is copied to .llm/calibration-runs/<stamp>/ when it is done (scripts/calibrate/run-dir.mjs).
 const batch = openBatch(repo, stamp)
 
@@ -429,9 +441,11 @@ for (const model of models) {
 const closed = closeBatch(batch)
 if (!closed.ok) {
   console.error(`calibrate: ${closed.message}`)
+  await probeLock.release()
   process.exit(1)
 }
 if (closed.message !== '') console.warn(`calibrate: ${closed.message}`)
 console.log(`calibrate: ${runs.filter(run => run.completed).length}/${runs.length} completed at ${commit}${dirty ? ' (dirty)' : ''}${runs.some(run => run.boundaryTooTight) ? `; ${runs.filter(run => run.boundaryTooTight).length} stopped on a bound (boundary too tight)` : ''}; results in ${join(batch.target, 'results.json')}`)
 // A run that never reached the model is a harness failure, not a model result.
+await probeLock.release()
 process.exit(runs.some(run => run.steps === 0) ? 1 : 0)
