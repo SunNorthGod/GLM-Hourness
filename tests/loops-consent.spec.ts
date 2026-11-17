@@ -405,7 +405,7 @@ test('the two examples of loop_propose pass the real checks, and a check proposa
   const setupped = await setup()
   const table = new Map(LOOP_EVENT_TABLE)
   for (const event of EXECUTE_EVENTS) if (!table.has(event.id)) table.set(event.id, event)
-  const seam: { readonly asked: string | undefined } = { asked: undefined }
+  const seam: { asked: string | undefined } = { asked: undefined }
   const registry = {
     events: () => table,
     entries: () => [],

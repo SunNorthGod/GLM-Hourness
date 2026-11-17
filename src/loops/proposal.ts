@@ -378,7 +378,7 @@ async function repinProposal(input: Rec, context: PrepareContext): Promise<Prepa
     cautions = []
   }
   // The definition is checked as a writer's; the board writes the source again at accept.
-  const { source, ...definition } = body
+  const { source, ...definition } = body as LoopEntryDefinition & { readonly source?: unknown }
   void source
   const issues = validateEntry(definition, 'person', { table: context.table, now: context.now })
   const first = issues[0]
