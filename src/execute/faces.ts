@@ -3,12 +3,13 @@
  * GLM channel's wire layer by the face migration, design 0.1 §3/§6 C): the
  * execute row registers one face-policy source on the `glmHournessFaces`
  * registry (read per request at the wire layer), and it names, for one
- * session, the registered (native) tools that session does not see. The
- * tools stay registered globally, so a call by name still executes and each
- * tool body checks its caller; the graph row's write tools — every name of
- * `GRAPH_TOOL_NAMES` but the four read-and-annotate tools, eleven since the
- * user graph added `graph_relink` and `graph_walk` — are what
- * `worker-graph-readonly` catches by name (§3.2.3).
+ * session, the registered (native) tools that session does not see. On the
+ * GLM route `DeferredToolCall` rejects non-resident/removed tools before
+ * `tools/pre-execute`; on non-GLM routes or direct `tools.execute` calls the
+ * tools still enter the pipeline, so `tools/pre-execute` gates (including
+ * `worker-graph-readonly` catching the graph row's write tools by name —
+ * eleven since the user graph added `graph_relink` and `graph_walk`) and
+ * each tool body check the caller.
  *
  * Who loses what: an agent that is not the main agent loses the execute
  * row's and the operate row's tools; an agent that is no registered worker

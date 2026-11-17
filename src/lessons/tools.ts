@@ -3,8 +3,9 @@
  * `lessons_query` is every agent's lookup of what earlier work learned, a
  * worker's included; `lessons_merge` is the main agent's, to turn candidates
  * into lessons, keep them up and, on the person's word, delete or restore
- * one. A tool body checks its caller itself, because a tool outside an
- * agent's face still runs when it is called by name: a delegated child that
+ * one. On the GLM route `DeferredToolCall` rejects tools removed from a child's
+ * wire face before `tools/pre-execute`; a tool body still checks its caller
+ * itself for non-GLM routes or direct calls: a delegated child that
  * calls `lessons_merge` is refused with `role`, and the way out it is told is
  * the handback.
  *

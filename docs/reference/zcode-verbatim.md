@@ -58,7 +58,7 @@ IMPORTANT: Assist with authorized security testing, defensive security, CTF chal
 
 ## 6. 不跟 3.17.1 的地方
 
-主 Agent 的人设（设计行 `glm-hourness/design` 的 `persona` 设置，`docs/ORCHESTRATION.md` §3.1）在系统提示词里是一节 `hourness:output-style`（`src/shared/output-style.ts`），GLM 路由上由 `src/glm-prompt/assembly.ts` 的 `rewriteDialectSections` 摆放（`docs/DESIGN.md` §5.2）。3.17.1 对输出风格的做法与它有三处不同，取舍是项目图 `m3-main-persona` 一步定的（M3 附录 §2.7，2026-11-01 写入本文件）。**编排方同意之前，该步不合入 main**（`zcode-3171-follow` 验收第 1 条的做法）；编排方不同意时，只改 GLM 包的 `rewriteDialectSections`、`installDialect` 与本节，设计行不变。
+主 Agent 的人设（设计行 `glm-hourness/design` 的 `persona` 设置，`docs/ORCHESTRATION.md` §3.1）在系统提示词里是一节 `hourness:output-style`（`src/shared/output-style.ts`），GLM 路由上由 `src/glm-prompt/assembly.ts` 的 `rewriteDialectSections` 摆放（`docs/DESIGN.md` §5.2）。3.17.1 对输出风格的做法与它有三处不同，取舍是项目图 `m3-main-persona` 一步定的（M3 附录 §2.7，2026-11-01 写入本文件）；本步已随 `m3`（第 12 步（b），`2bf2b16`）合入 `main`。
 
 3.17.1 的事实（pristine `reference/zcode-3.17.1/zcode.cjs`）：
 

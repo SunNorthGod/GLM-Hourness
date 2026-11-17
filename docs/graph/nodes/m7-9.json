@@ -3,12 +3,23 @@
   "type": "task",
   "title": "交付的四个数",
   "why": "合入频率、交付用时、出问题的比例与修复用时按固定口径算，好对照",
-  "status": "approved",
+  "status": "done",
   "parent": "m7",
   "kind": "implement",
   "body": "M7 设计 0.4（.agents/tasks/m7/design.md）§1.2 的 m7-9。验证层：L2。实现顺序与接口见设计 §8 与 §3.13。",
   "acceptance": [
     "每周合入几次、一件活从派出到进主干要多久、进主干后出问题的比例、主干变坏到修好要多久，按固定口径从 harness 记的证据与项目图算出，写进指标流水"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "47782092"
+    },
+    {
+      "kind": "test",
+      "ref": "tests/report-metrics.spec.ts",
+      "exit": 0
+    }
   ],
   "history": [
     {
@@ -68,6 +79,25 @@
       "actor": "llm",
       "op": "comment",
       "text": "落地（2026-11-16，分支 m7-9，合并 47782092）：交付的四个数随 weekly 报告调用写进指标流水。src/report/metrics.ts 的 dora 按固定口径从 advances.jsonl、已核实的 trunk 检查与项目图算：部署是本地主干经核对前进一次；前置时间从旅程第一次派发（该任务上一次进主干之后的第一条派发批注）到进主干取中位；失败是 14 天内具名任务重开、出现 source 指向它的任务、后继提交的全量检查失败三者之一；恢复时长从窗口内的全量检查失败到下一条通过。hourness_report {kind:'weekly'} 每次发一条 operate.dora（deploys、leadTasks、leadMs?、failed?、restoreN、restoreMs?；可选字段缺席=没算出来，不写假零）。周报文本零改动（d-metrics-ratios-person-only，比率不进模型上下文），展示等流水读者。恢复时长的批次 L4 一半无耐久来源，按「数字由 harness 算」不发明，暂缺。L2 report-metrics.spec 11 例；门禁 build/preflight/test 0 败、eslint 73/knip 18/jscpd 1 持平；合并后全量探针 608/608（.llm/logs/m79-probe-main.log）。口径细节与偏离记 M7 设计 §19.4 第五次修订与 .agents/tasks/m7-9/progress.md。"
+    },
+    {
+      "at": "2026-11-17T09:42:11.409Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "DORA 四数与 operate.dora 已合入 main 并补齐本地回滚过滤，验证层 L2 通过",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "47782092"
+        },
+        {
+          "kind": "test",
+          "ref": "tests/report-metrics.spec.ts",
+          "exit": 0
+        }
+      ]
     }
   ]
 }

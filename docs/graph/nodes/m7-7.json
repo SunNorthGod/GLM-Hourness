@@ -3,7 +3,7 @@
   "type": "task",
   "title": "夜间巡检",
   "why": "每晚自动打扫工作目录与分支、跑一遍完整检查，问题第二天一早就知道",
-  "status": "approved",
+  "status": "doing",
   "parent": "m7",
   "kind": "implement",
   "body": "M7 设计 0.4（.agents/tasks/m7/design.md）§1.2 的 m7-7。验证层：L2、L3；到点投递随 L4。实现顺序与接口见设计 §8 与 §3.11。",
@@ -75,6 +75,14 @@
       "actor": "llm",
       "op": "comment",
       "text": "巡检落地：hourness_report {kind: patrol}、条目 operate.patrol（每日 02:30）、记录 <proj>/.llm/operate/patrol.jsonl；提交 c0af42fd/a5a2b304，随 cfbed849 进 main（2026-11-16）。"
+    },
+    {
+      "at": "2026-11-17T09:42:10.403Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "hourness_report (patrol) 与 operate.patrol 已合入 main，待冷会话投递批次 L4 核实",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

@@ -3,7 +3,7 @@
   "type": "task",
   "title": "规矩的升降与周报",
   "why": "每周按数据提议升、降或删掉规矩，人在周报里看到负担有没有减轻",
-  "status": "approved",
+  "status": "doing",
   "parent": "m7",
   "kind": "implement",
   "body": "M7 设计 0.4（.agents/tasks/m7/design.md）§1.2 的 m7-8。验证层：L2。实现顺序与接口见设计 §8 与 §3.12。",
@@ -74,6 +74,14 @@
       "actor": "llm",
       "op": "comment",
       "text": "底线加类提议数据源闭账：交回批注带「改动」行（hback-paths，cd49ac34）——done 交回记自己 diff 的改动路径，floorTasks 读回、旧批注回退计数，底线加类提议可在真实数据开火；M7 §19.4 ②闭⑥补，ORCHESTRATION §12/HANDOFF 同批改；随 a09fcf38 进 main（2026-11-17）。"
+    },
+    {
+      "at": "2026-11-17T09:42:10.905Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "hourness_report (weekly)、规范阶梯与底线提议已合入 main，待批次 L4 收尾",
+      "from": "approved",
+      "to": "doing"
     }
   ]
 }

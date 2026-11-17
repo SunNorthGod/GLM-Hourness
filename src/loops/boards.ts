@@ -109,10 +109,10 @@ async function runtimeOf(store: LoopStore, nowMs: number): Promise<ViewRuntime> 
 
 /**
  * Whether a person's script file is the one they agreed to, read now (design
- * §8.2 item 5, §6.6): the executor's own test — the bytes' SHA-256 against
- * the digest in the entry, a file over 64 KiB not read at all — so the page
- * says before the next run what the run would find. Undefined for an entry
- * that runs no script.
+ * §8.2 item 5, §6.6): reads the file with `readFileSync`, rejects a file over
+ * 64 KiB (`SCRIPT_MAX_BYTES`), and checks the bytes' SHA-256 against the digest
+ * in the entry, so the page says before the next run what the run would find.
+ * Undefined for an entry that runs no script.
  */
 export function scriptStandingOf(root: string, entry: PersonEntry): ScriptStanding | undefined {
   if (entry.action.kind !== 'script') return undefined

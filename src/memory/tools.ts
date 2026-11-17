@@ -1,12 +1,13 @@
 /**
  * The memory tools (memory_store, memory_query, memory_forget; M5 design
  * §3.2 to §3.4): the main agent's surface over the memory journals. They
- * register through the normal tools seam and GLM tool search keeps them
- * resident (src/shared/tool-names.ts). The learning tool (learning_signals,
- * §3.6) is the same agent's read-only view of the corrections the person
- * made; it is deferred on the GLM route. A tool body checks its caller
- * itself, because a tool outside an agent's face still runs when it is
- * called by name: a delegated child is refused with `role`.
+ * register through the normal tools seam and are deferred on the GLM route
+ * since ablation A3 (while `memory_habit` stays resident; src/shared/tool-names.ts).
+ * The learning tool (learning_signals, §3.6) is the same agent's read-only view
+ * of the corrections the person made; it is also deferred on the GLM route.
+ * On the GLM route `DeferredToolCall` rejects tools removed from a child's
+ * wire face before `tools/pre-execute`; a tool body still checks its caller
+ * itself for non-GLM routes or direct calls: a delegated child is refused with `role`.
  *
  * A refusal is a tool error whose text is `{code, message, field?, hint?}`
  * (as the graph tools do), in English because the model reads it. Whether

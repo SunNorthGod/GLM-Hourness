@@ -36,7 +36,7 @@ L2 的 mock **只允许 mock 外部网络和文件系统**；不得 mock DSH 契
 任何 `plugin_manager install_bundle` 之前，必须按顺序通过：
 
 ```powershell
-npm run build        # 删各包的 dist/，tsc 全量类型检查（含 adapter 契约检查，见 §4），两个包各编一份到 packages/*/dist/，客户端类型检查与打包
+npm run build        # 删各包的 dist/，tsc 类型检查与编译（tsconfig.json、packages/glm/tsconfig.json、packages/hourness/tsconfig.json、ui/tsconfig.json、tests/tsconfig.json，含 adapter 契约检查，见 §4），两个包各编一份到 packages/*/dist/，客户端打包
 npm run preflight    # 目录表、两包清单与 patch、组合、产物与显示信息、运行时裸导入、client 半一包一源
 npm test             # preflight + 逐字门禁 + 检查器门禁 + 密钥扫描 + 全部 spec
 ```
@@ -220,12 +220,12 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 | 规范（类型感知） | ESLint 10.13.0、`@eslint/js` 10.0.1（核心推荐规则）、typescript-eslint 8.72.1 | `eslint.config.js`；`tests/tsconfig.json` 给测试文件提供类型信息（开 `allowJs`：测试直接导入 `scripts/*.mjs` 的纯函数，类型取自它们的 JSDoc） | `eslint-suppressions.json`（ESLint 自带的批量压制，按文件与规则计数） |
 | 死代码（未用文件、导出、依赖） | knip 6.43.0 | `knip.js`（宿主行入口按 `scripts/packages.mjs` 生成）、`tsconfig.knip.json`（引用两个包的 tsconfig，`packages/*/dist` 对回 `src/`） | `knip-baseline.json`（按类型、文件、名称，不含行号） |
 | 重复 | jscpd 5.4.2 | `.jscpd.json` | `.jscpd-baseline.json`（jscpd 自带的克隆指纹） |
-| 密钥 | gitleaks 8.30.1（独立二进制，§11） | 默认规则；误报才加 `.gitleaks.toml`（目前没有） | 无，任何发现都失败 |
+| 密钥 | gitleaks 8.30.1（独立二进制，§11） | 默认规则；仓库根现有 `.gitleaks.toml`，仅按路径与哈希放行 `tests/memory-habit.spec.ts` 中的测试用假 token 夹具（3 处） | 无，任何发现都失败 |
 
 - `npm run lint`（`scripts/check-lint.mjs`，已接入 `npm test`）：三项各自对照基线。基线之外的新发现使门禁失败；基线里已经不再出现的条目也使门禁失败，并提示运行 `npm run lint:update`。ESLint 这两种失败由它的批量压制自己给出（多出的违规退出码 1，未修剪的压制退出码 2）；knip 没有基线功能，由脚本比对清单；jscpd 的新克隆由它自己的基线判定，失效的指纹由脚本按数量判定。
 - `npm run lint:update`：把基线缩到当前状态（ESLint `--prune-suppressions`、knip 重写清单、jscpd `--update-baseline`）。存在任何新发现时拒绝写入，所以基线只减不增。基线文件缺失时按当前状态新建；删掉基线再重建等于接受全部现有告警，需用户批准（`ORCHESTRATION.md` §7.6）。
 - 修掉基线里的告警后，代码改动与 `npm run lint:update` 的基线变化同一批提交。
-- 包边界〔2026-10-29，split 第 1 步；第 5 步补包名、包目录与行〕：`scripts/packages.mjs` 是「哪个 `src/` 目录属于哪个包、每个包插哪些行」的唯一出处（GLM 通道包 `dsh-glm-zcode`，`packages/glm`，`glm-llm`、`glm-prompt`、`toolsearch`；编排层包 `dsh-hourness`，`packages/hourness`，`data`、`guard`、`memory`、`workflow`、`report`、`graph`；公共库 `shared`）。`PACKAGES` 的顺序就是 profile 里两个包的顺序。`eslint.config.js` 按它生成 `no-restricted-imports`：一个包的源码不得导入另一个包的目录，`src/shared/` 不得导入任何包目录，类型导入同样禁止（tsc 会把越界的文件一起编进产物，不报错）。规则用 `regex`，`^(?:\.\./)+(?:src/)?(?:<另一个包的目录>)(?:/|$)`，与文件深度无关；代价是同名目录会误判，所以 `npm run preflight` 先做目录表自检：目录、包键、包名、包目录与行 id 不重复、每行的模块落在本包的源码目录里、`shared` 不归任何包、`src/` 下每个顶层目录都有归属、登记的目录都存在、包目录与 `src/shared/` 之下没有名为 `src` 或与另一个包顶层目录同名的目录（`tests/preflight.spec.ts`）。客户端源码〔split 第 6 步〕：表里每个包的 `client.sources` 列出 `ui/src/` 下属于它的文件与目录，`ui/src/` 下每个文件恰好属于一个客户端包；一半客户端源码不得导入另一个包的宿主目录，也不得导入另一半的文件或目录（第二个 `regex`：`^(?:\./|(?:\.\./)+)(?:<另一半的名字>)(?:/|\.[a-z.]+$|$)`，名字不带扩展名），表自检同样拒绝两半之间、一半与另一个包宿主目录之间的同名。上线时演示过一次：在未提交的改动里让 GLM 客户端入口导入 `./graph/tab.tsx` 与 `../../src/report/index.ts`、让面板的 `ui/src/graph/tab.tsx` 导入 `../channel.js` 与 `../../../src/glm-llm/zcode.ts` 的类型，四处都报 `no-restricted-imports`，还原后全绿。测试与脚本不受边界约束。上线时演示过一次：在未提交的改动里给 `src/glm-llm/auth/jwt.ts` 加一条到 `../../graph/` 的类型再导出、给 `src/graph/projection.ts` 加一条到 `../toolsearch/` 的类型再导出、给 `src/shared/route.ts` 加一条到 `../graph/` 的再导出，三处都报 `no-restricted-imports`，还原后全绿。
+- 包边界〔2026-10-29，split 第 1 步；第 5 步补包名、包目录与行〕：`scripts/packages.mjs` 是「哪个 `src/` 目录属于哪个包、每个包插哪些行」的唯一出处（GLM 通道包 `dsh-glm-zcode`，`packages/glm`，`glm-llm`、`glm-prompt`、`toolsearch`；编排层包 `dsh-hourness`，`packages/hourness`，`data`、`guard`、`memory`、`workflow`、`report`、`graph`、`rules`、`execute`、`design`、`loops`、`lessons`、`metrics`、`env`、`operate`、`bootstrap`；公共库 `shared`）。`PACKAGES` 的顺序就是 profile 里两个包的顺序。`eslint.config.js` 按它生成 `no-restricted-imports`：一个包的源码不得导入另一个包的目录，`src/shared/` 不得导入任何包目录，类型导入同样禁止（tsc 会把越界的文件一起编进产物，不报错）。规则用 `regex`，`^(?:\.\./)+(?:src/)?(?:<另一个包的目录>)(?:/|$)`，与文件深度无关；代价是同名目录会误判，所以 `npm run preflight` 先做目录表自检：目录、包键、包名、包目录与行 id 不重复、每行的模块落在本包的源码目录里、`shared` 不归任何包、`src/` 下每个顶层目录都有归属、登记的目录都存在、包目录与 `src/shared/` 之下没有名为 `src` 或与另一个包顶层目录同名的目录（`tests/preflight.spec.ts`）。客户端源码〔split 第 6 步〕：表里每个包的 `client.sources` 列出 `ui/src/` 下属于它的文件与目录，`ui/src/` 下每个文件恰好属于一个客户端包；一半客户端源码不得导入另一个包的宿主目录，也不得导入另一半的文件或目录（第二个 `regex`：`^(?:\./|(?:\.\./)+)(?:<另一半的名字>)(?:/|\.[a-z.]+$|$)`，名字不带扩展名），表自检同样拒绝两半之间、一半与另一个包宿主目录之间的同名。上线时演示过一次：在未提交的改动里让 GLM 客户端入口导入 `./graph/tab.tsx` 与 `../../src/report/index.ts`、让面板的 `ui/src/graph/tab.tsx` 导入 `../channel.js` 与 `../../../src/glm-llm/zcode.ts` 的类型，四处都报 `no-restricted-imports`，还原后全绿。测试与脚本不受边界约束。上线时演示过一次：在未提交的改动里给 `src/glm-llm/auth/jwt.ts` 加一条到 `../../graph/` 的类型再导出、给 `src/graph/projection.ts` 加一条到 `../toolsearch/` 的类型再导出、给 `src/shared/route.ts` 加一条到 `../graph/` 的再导出，三处都报 `no-restricted-imports`，还原后全绿。
 - 逐字门禁的导入规则（`DESIGN.md` §5.9）：镜像文件只在开头的导入块里写单行导入；值导入只许来自其他镜像文件，`import type` 只许来自 `src/shared/`；导入块之后不得再有导入语句。门禁只去掉导入块里的语句行，不放宽任何文本的检查。
 - 范围：`src/`、`tests/`、`scripts/`、`ui/` 与根目录配置文件；不查 `packages/*/dist/`、`packages/*/ui/client.js`（构建产物）、`reference/`、`.llm/`、`.agents/`、`.worktrees/`、`.pnpm-store/`。`src/shared/schemastery.ts` 是 vendored 上游代码（文件头写明来源），不进 ESLint 与 jscpd，knip 照常检查对它的引用。配置上的取舍见 `ORCHESTRATION.md` §7.7。
 - 基线（2026-10-28，删除历史调试脚本目录 `scripts/dev/`、升级 TypeScript 5.9.3 之后，项目图 `m1-followups`）：ESLint 303 条，分布在 36 个文件（`tests/` 246、`src/` 57）；按规则：`no-unnecessary-type-assertion` 174、`require-await` 76、`no-base-to-string` 15、`no-unsafe-member-access` 12、`unbound-method` 8、`no-unsafe-assignment` 7、`no-unsafe-argument` 4、`no-unsafe-return` 4，其余 3 条分属 2 条规则。knip 22 条：11 个未用导出、11 个未用导出类型（其中 3 个是编译期契约检查类型）。jscpd 3 处克隆，26 行。门禁上线时（提交 `33345dd`）是 ESLint 317 条、knip 35 条、jscpd 7 处 75 行，其中 ESLint 11 条、knip 9 条（9 个未用文件）、jscpd 4 处来自 `scripts/dev/`；TypeScript 5.9 的 Web Crypto 类型让测试里一处 `no-unsafe-argument` 不再出现。
@@ -317,3 +317,23 @@ DSH 官方类型已作为 devDependency 安装（`@deepseek-ai/dsh-llm`、`@deep
 规则：
 1. 流水文件缺了按空的读：只有 `--home` 指到的目录不存在或不是目录才算目录不对。
 2. 命令行不写任何文件，不取锁，不碰 DSH；改它只需过 `npm run build`、`npm run preflight`、`npm test`。L2 是 `tests/guard-measure.spec.ts`（`ruleStats`）与 `tests/guard-followup.spec.ts`；L3 场景 `guard-followup`。
+
+## 16. 指标命令行
+
+设计见 `ORCHESTRATION.md` §10.6（指标设计 0.7 §7.5）。库入口在 `src/metrics/cli.ts`，入口脚本在 `scripts/metrics/cli.ts`，经 `--experimental-strip-types` 直接从源码运行，不用先 build，只用 Node 22 内置模块。读写的指标流水位于项目根的 `.llm/metrics/`（项目按 `--project` 解析，缺省为当前目录）。
+
+| 命令 | 作用 |
+| --- | --- |
+| `npm run -s metrics -- summary [选项]` | 按事实组计算并输出指标汇总（支持 `--from`、`--to`、`--tz`、`--basis`、`--json`） |
+| `npm run -s metrics -- verify [选项]` | 校验流水并对照图历史、用量流水、超时账与清单四项（`checkLog` + 四项对账） |
+| `npm run -s metrics -- compare --by <v\|model\|host\|role> [选项]` | 按版本、模型、宿主或角色分组对比 |
+| `npm run -s metrics -- prune --before <YYYY-MM-DD> [--project 目录]` | 清理指定日期之前的流水日文件 |
+| `npm run -s metrics -- backfill-graph [--project 目录]` | 从项目图历史补写历史图事件到流水（写入者 `bf-<HEAD 前 7 位>`） |
+
+常用选项：`--project <目录>`（默认当前目录）、`--from <ISO>`、`--to <ISO>`、`--tz <±HH:MM>`（默认 `+08:00`）、`--basis '<文件>:<行数>[,...]'`、`--json`。
+
+退出码：`0` 干净或成功，`1` `verify` 存在发现或执行失败，`2` 参数不合法或目录不在有效项目内。
+规则：
+1. 只读命令（`summary`、`verify`、`compare`）不写指标流水，也不取写锁；`prune` 与 `backfill-graph` 只写对应项目的 `.llm/metrics/`。
+2. 读 JSON 输出用 `npm run -s`；试写用临时 git 项目目录加 `--project`，不要对本仓库 `.llm/metrics/` 做实验。
+3. 命令行与计算模块不碰 DSH，改它们只需过 `npm run build`、`npm run preflight`、`npm test`；L2 在 `tests/metrics-{read,calc,library}.spec.ts`。
