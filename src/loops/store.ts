@@ -700,7 +700,7 @@ export function openLoopStore(projectRoot: string, options: LoopStoreOptions = {
     via: 'chat' | 'board',
   ): Promise<ApplyResult> {
     const by = { actor: via === 'chat' ? 'harness' as const : 'human' as const, via, relay: decided.relay, ...(decided.question === undefined ? {} : { question: decided.question }), proposal: proposalId }
-    let seq = read.journal.nextSeq
+    const seq = read.journal.nextSeq
     let file: FileOutcome = 'written'
     if (image.kind === 'add' || image.kind === 'edit' || image.kind === 'repin') {
       if (image.body === undefined) return fail('invalid', '提议里没有条目的内容，生效不了')
@@ -714,7 +714,6 @@ export function openLoopStore(projectRoot: string, options: LoopStoreOptions = {
       const after: EntryImage = { entry, rev, status: 'active', fileSha256: sha256(entryFileText(entry)), ...(image.scriptText === undefined ? {} : { scriptText: image.scriptText }) }
       const holder: BoardEntry = found ?? { id, title: image.body.title, status: { kind: 'unreadable', reason: '没有这个文件' }, entry: undefined, agreed: undefined, sha256: undefined, restorable: false }
       const outcome = await change(holder, read, { op: image.kind, ...(base === undefined ? {} : { before: base }), after }, by, seq)
-      seq += 1
       if (outcome === 'failed') file = 'failed'
       if (outcome === 'deferred') file = 'deferred'
       return { ok: true, op: 'proposal-accept', id: proposalId, title: image.body.title, file, changed: true, entry }

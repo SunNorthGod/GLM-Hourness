@@ -70,7 +70,7 @@ function contextOf(setupped: Setup, via: 'graph' | 'board', id: string, table: R
     now: new Date(setupped.clock.at),
     via,
     id,
-    checkCommand: async () => ['node', '--version'],
+    checkCommand: () => Promise.resolve(['node', '--version']),
     readScript: (file) => {
       try {
         return readFileSync(join(setupped.root, ...file.split('/')), 'utf8')
@@ -149,7 +149,7 @@ function loopsCommand(setupped: Setup, input: string) {
     store,
     pluginIds: () => new Set(),
     now: () => setupped.clock.at,
-    view: async () => undefined,
+    view: () => Promise.resolve(undefined),
     proposals: () => store.proposals(),
     decide: mutation => store.apply('human', mutation),
   })
@@ -163,7 +163,7 @@ test('a script entry is proposed, put to the human with its text, agreed to in t
   assert.match(digest ?? '', /^[0-9a-f]{12}$/, 'the digest of the detail is stored with the proposal')
   const project = projectOf(setupped.root)!.root
   const accept = createLoopsAccept({ storeFor: cwd => cwd === undefined || projectOf(cwd)?.root !== project ? undefined : setupped.store })
-  const asked = await accept.attachable({ cwd: setupped.root, proposal: id })
+  const asked = accept.attachable({ cwd: setupped.root, proposal: id })
   assert.ok(asked.ok && asked.detail?.mustShow.includes(SCRIPT), 'the stored detail shows the script whole')
   assert.equal(asked.detail === undefined ? '' : attachDigest(asked.detail), digest, 'the detail and its digest are the stored ones, twice the same')
   const { shown } = await putAndAgree(setupped, id)
@@ -368,12 +368,12 @@ test('the graph directory decides `via`, and a proposal made for the chat is not
   const setupped = await setup()
   const accept = createLoopsAccept({ storeFor: () => setupped.store })
   const { id } = await propose(setupped, { kind: 'add', body: { title: '图上的', when: { kind: 'daily', time: '09:00', timeZone: 'Asia/Shanghai' }, action: { kind: 'tell-main', text: '说一声', wake: false } } }, 'graph')
-  const answer = await accept.attachable({ cwd: setupped.root, proposal: id })
+  const answer = accept.attachable({ cwd: setupped.root, proposal: id })
   assert.ok(answer.ok, 'a graph proposal is attachable')
   const refuse = await loopsCommand(setupped, `accept ${id}`)
   assert.equal(refuse.kind, 'error')
   const boardOne = await propose(setupped, { kind: 'add', body: { title: '板上的', when: { kind: 'daily', time: '09:00', timeZone: 'Asia/Shanghai' }, action: { kind: 'tell-main', text: '说一声', wake: false } } }, 'board')
-  const boardAnswer = await accept.attachable({ cwd: setupped.root, proposal: boardOne.id })
+  const boardAnswer = accept.attachable({ cwd: setupped.root, proposal: boardOne.id })
   assert.equal(boardAnswer.ok, false, 'a board proposal is not put to the human through the chat')
   assert.ok(!boardAnswer.ok && boardAnswer.message.includes('/loops accept'), 'the message says what the person types')
 })
@@ -412,9 +412,9 @@ test('the two examples of loop_propose pass the real checks, and a check proposa
   } as unknown as import('../src/loops/registry.ts').LoopsRegistry
   const ctx: ServiceLookup = { get: (name) => name === 'sessionProjections' ? { stateOf: () => ({ active: true }) } : undefined }
   const checks = (): LoopChecks => ({
-    commandOf: async (_cwd, tool) => {
+    commandOf: (_cwd, tool) => {
       seam.asked = tool
-      return { argv: ['node', '--version'], format: null, own: false }
+      return Promise.resolve({ argv: ['node', '--version'], format: null, own: false })
     },
     fill: argv => ({ argv, used: 0, dropped: 0 }),
     present: () => undefined,
@@ -433,7 +433,7 @@ test('the two examples of loop_propose pass the real checks, and a check proposa
     kind: 'add',
     reason: 'the human asked for a check',
     body: { title: '跑一遍检查', when: { kind: 'event', events: ['hourness.trunk-advanced'] }, filter: { files: { paths: ['docs/**/*.md'] } }, action: { kind: 'check', tool: 'pwsh', report: 'on-failure', timeoutSeconds: 60 } },
-  }, { agent: { id: 's9', session: { id: 's9', header: { cwd: setupped.root } } } } as unknown as AgentLike) as { readonly ok: boolean, readonly proposal: string, readonly detail?: { readonly mustShow: readonly string[] } }
+  }, { agent: { id: 's9', session: { id: 's9', header: { cwd: setupped.root } } } }) as { readonly ok: boolean, readonly proposal: string, readonly detail?: { readonly mustShow: readonly string[] } }
   assert.equal(checkDone.ok, true)
   assert.equal(seam.asked, 'pwsh', 'the command came from the tool node named')
   const held = setupped.store.proposals().get(checkDone.proposal)
@@ -448,16 +448,16 @@ test('loop_note records a conclusion on the run delivered to the main agent, and
   const delivered: Record<string, string | undefined> = { 'u-0a1b2c3d': 'run-000000000001' }
   const ctx: ServiceLookup = { get: (name) => name === 'sessionProjections' ? { stateOf: () => ({ active: true }) } : undefined }
   const tool = loopNoteTool({ ctx, io: quickIo({ now: () => setupped.clock.at }), now: () => setupped.clock.at, storeFor: () => setupped.store, runOf: (root, entry) => projectOf(root)?.root === setupped.root ? delivered[entry] : undefined })
-  await assert.rejects(tool.execute({ entry: 'u-4e5f6a7b', text: '没有运行' }, { agent: { id: 's9', session: { id: 's9', header: { cwd: setupped.root } } } } as unknown as AgentLike), /这一项还没有交给你的运行/)
-  await assert.rejects(tool.execute({ entry: 'u-0a1b2c3d', text: '' }, { agent: { id: 's9', session: { id: 's9', header: { cwd: setupped.root } } } } as unknown as AgentLike), /1 to 500/)
-  const done = await tool.execute({ entry: 'u-0a1b2c3d', text: '这次检查没有发现坏链接。' }, { agent: { id: 's9', session: { id: 's9', header: { cwd: setupped.root } } } } as unknown as AgentLike) as { readonly ok: boolean, readonly entry: string, readonly run: string }
+  await assert.rejects(tool.execute({ entry: 'u-4e5f6a7b', text: '没有运行' }, { agent: { id: 's9', session: { id: 's9', header: { cwd: setupped.root } } } }), /这一项还没有交给你的运行/)
+  await assert.rejects(tool.execute({ entry: 'u-0a1b2c3d', text: '' }, { agent: { id: 's9', session: { id: 's9', header: { cwd: setupped.root } } } }), /1 to 500/)
+  const done = await tool.execute({ entry: 'u-0a1b2c3d', text: '这次检查没有发现坏链接。' }, { agent: { id: 's9', session: { id: 's9', header: { cwd: setupped.root } } } }) as { readonly ok: boolean, readonly entry: string, readonly run: string }
   assert.deepEqual([done.ok, done.entry, done.run], [true, 'u-0a1b2c3d', 'run-000000000001'])
   const notes = notesOf(setupped.store.paths)
   assert.deepEqual(notes.map(note => [note.entry, note.run]), [['u-0a1b2c3d', 'run-000000000001']])
   // The 21st note of one entry trims it back to 20.
   for (let index = 2; index <= 21; index++) {
     delivered['u-0a1b2c3d'] = `run-${String(index).padStart(12, '0')}`
-    await tool.execute({ entry: 'u-0a1b2c3d', text: `第 ${index} 次的结论。` }, { agent: { id: 's9', session: { id: 's9', header: { cwd: setupped.root } } } } as unknown as AgentLike)
+    await tool.execute({ entry: 'u-0a1b2c3d', text: `第 ${index} 次的结论。` }, { agent: { id: 's9', session: { id: 's9', header: { cwd: setupped.root } } } })
   }
   const trimmed = notesOf(setupped.store.paths)
   assert.equal(trimmed.length, 20)

@@ -19,7 +19,7 @@ export interface EntryNote {
 }
 
 /** The notes of one entry the file keeps, at most (design §6.10). */
-export const NOTES_PER_ENTRY = 20
+const NOTES_PER_ENTRY = 20
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 

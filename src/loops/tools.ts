@@ -51,7 +51,7 @@ export interface ShowToolDeps {
 }
 
 /** The board as lines for an agent: the view's entries with their ids, what waits, and the last ten runs. */
-export function showText(view: LoopsView): string {
+function showText(view: LoopsView): string {
   const lines: string[] = []
   const plugin = view.entries.filter(entry => entry.source === 'plugin')
   const person = view.entries.filter(entry => entry.source === 'person' && entry.state !== 'deleted')

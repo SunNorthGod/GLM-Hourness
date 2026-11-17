@@ -90,12 +90,12 @@ async function heldProposal(store: LoopStore, id: string): Promise<LoopProposal 
 
 /** The members of the loop row's service the design row calls for `attach: 'loops:<proposal>'`. Nothing in it throws. */
 export function createLoopsAccept(deps: AcceptDeps): {
-  attachable(input: { readonly cwd: string | undefined, readonly proposal: string }): Attachable
-  acceptProposal(input: { readonly questionId: string, readonly graphDir: string, readonly cwd: string | undefined, readonly by: { readonly actor: 'human' | 'llm', readonly relay?: string } }): Promise<string>
-  reconcile(cwd: string, graphDir: string): Promise<{ readonly accepted: readonly string[], readonly rejected: readonly string[], readonly expired: readonly string[] }>
+  attachable: (input: { readonly cwd: string | undefined, readonly proposal: string }) => Attachable
+  acceptProposal: (input: { readonly questionId: string, readonly graphDir: string, readonly cwd: string | undefined, readonly by: { readonly actor: 'human' | 'llm', readonly relay?: string } }) => Promise<string>
+  reconcile: (cwd: string, graphDir: string) => Promise<{ readonly accepted: readonly string[], readonly rejected: readonly string[], readonly expired: readonly string[] }>
 } {
   return {
-    attachable({ cwd, proposal }) {
+    attachable: ({ cwd, proposal }) => {
       try {
         const store = deps.storeFor(cwd)
         if (store === undefined) return { ok: false, message: 'this session has no project: the loop board has nowhere to keep a proposal' }
@@ -110,7 +110,7 @@ export function createLoopsAccept(deps: AcceptDeps): {
         return { ok: false, message: `the loop board could not be read: ${error instanceof Error ? error.message : String(error)}` }
       }
     },
-    async acceptProposal({ questionId, graphDir, cwd }) {
+    acceptProposal: async ({ questionId, graphDir, cwd }) => {
       try {
         const store = deps.storeFor(cwd)
         if (store === undefined) return 'Loop board: this session is in no project; nothing took effect.'
@@ -131,7 +131,7 @@ export function createLoopsAccept(deps: AcceptDeps): {
         return `Loop board could not settle this decision (${error instanceof Error ? error.message : String(error)}); it tries again within a minute from the graph.`
       }
     },
-    async reconcile(cwd, graphDir) {
+    reconcile: async (cwd, graphDir) => {
       const done: { accepted: string[], rejected: string[], expired: string[] } = { accepted: [], rejected: [], expired: [] }
       try {
         const store = deps.storeFor(cwd)

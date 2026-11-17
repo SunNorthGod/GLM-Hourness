@@ -26,7 +26,7 @@ import { scriptDetail, scriptTextProblem, type ScriptDetail } from './script-det
 import { scriptSha256 } from './script.ts'
 import type { LoopEventDeclaration, ScriptLang } from './trigger.ts'
 
-export type ProposalKind = 'add' | 'edit' | 'delete' | 'repin'
+type ProposalKind = 'add' | 'edit' | 'delete' | 'repin'
 
 /** A proposal's script file suffix by language, as the executor and the store read it. */
 const SUFFIX: Readonly<Record<ScriptLang, string>> = { pwsh: 'ps1', node: 'mjs', python: 'py', bash: 'sh' }
@@ -35,7 +35,7 @@ const KINDS: readonly ProposalKind[] = ['add', 'edit', 'delete', 'repin']
 /** A delete names at most three entries (the weekly report's removal, §6.11). */
 const MOST_DELETED = 3
 /** The person's entries of one project, at most (design §9.2). */
-export const MAX_PERSON_ENTRIES = 50
+const MAX_PERSON_ENTRIES = 50
 /** The open proposals of one project, at most (design §9.2). */
 export const MAX_OPEN = 20
 const REASON_MAX = 400
@@ -106,7 +106,7 @@ function whenWords(when: unknown, table: ReadonlyMap<string, LoopEventDeclaratio
     case 'once': return `${time(when.at)} 那一刻`
     case 'cron': return '按计划'
     case 'event': {
-      const events = Array.isArray(when.events) ? when.events : []
+      const events = Array.isArray(when.events) ? when.events.filter((event): event is string => typeof event === 'string') : []
       const words = events.map(event => table.get(event)?.title ?? event)
       return `${words.slice(0, 2).join('或')}${events.length > 2 ? '等' : ''}发生时`
     }
@@ -365,7 +365,7 @@ async function repinProposal(input: Rec, context: PrepareContext): Promise<Prepa
   if (runs === 'script' && content.scriptText !== undefined && entry.action.kind === 'script') {
     scriptText = content.scriptText
     // The pin is the text as it stands: the entry's hash follows the bytes the human is about to see.
-    body = { ...entry, action: { ...entry.action, script: { ...entry.action.script, sha256: scriptSha256(Buffer.from(scriptText, 'utf8')) } } } as LoopEntryDefinition
+    body = { ...entry, action: { ...entry.action, script: { ...entry.action.script, sha256: scriptSha256(Buffer.from(scriptText, 'utf8')) } } }
     cautions = cautionsOf('script', seconds, scriptText, undefined)
     detail = detailOf('script', { lang: entry.action.script.lang, text: scriptText, cautions })
   }
