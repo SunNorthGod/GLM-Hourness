@@ -707,12 +707,12 @@ const healthOf = (store: ReturnType<typeof serviceStore>) => collectHealth(store
 function hostWithParts(): ReturnType<typeof serviceStore> & LoopsContext {
   const store = serviceStore()
   const injector = fakeInjector({ sessionProjections: { register: () => () => {} } as never, sessionController: { resolveAgent: () => Promise.resolve({}) } }, store)
-  return Object.assign(store, { commands: { register: () => () => {} }, on: () => () => {}, inject: injector.inject })
+  return Object.assign(store, { commands: { register: () => () => {} }, tools: { register: () => () => {} }, on: () => () => {}, inject: injector.inject })
 }
 
-test('the row is a cordis plugin that needs the commands service, provides the service and its health, and withdraws both', () => {
+test('the row is a cordis plugin that needs the commands and tools services, provides the service and its health, and withdraws both', () => {
   assert.equal(name, 'dsh-glm-hourness/loops')
-  assert.deepEqual(inject, ['commands'])
+  assert.deepEqual(inject, ['commands', 'tools'])
   const store = hostWithParts()
   const stop = apply(store)
   assert.ok(loopsService(store) !== undefined)
