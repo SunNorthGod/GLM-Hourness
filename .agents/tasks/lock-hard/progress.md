@@ -214,5 +214,68 @@ Committed `3337fca2` on `lock-hard` (code + L2 + docs, one batch):
   the landing step does not touch the foreign modification and reports the
   blocker instead.
 
+## Stage 4 — resumption (after the ZCode restart killed the previous instance)
+
+- The branch was rebased onto main `6dd4f9eb` (the polish lane's docs commit)
+  before the restart: the tip is `5599c1c6` = `6dd4f9eb` + `539f8b4c` (the
+  change, re-rooted) + the progress archive. No gate ran on this base yet.
+- The `.llm/probe-lock-2/owner.txt` claim audited at 2026-11-17 12:16+0800:
+  text claim `sgate lane: probe run 2026-11-16T23:09:24Z`, mtime
+  2026-11-17 07:09+0800 — NOT a lock-hard claim (the resumption brief guessed
+  it was; it is the sgate lane's, a rewrite of its 21:33:26Z claim for
+  another run). Evidence it is dead: no rewrite for ~307 min (the §1.1 stale
+  window is 30 min), the slot directory holds only `owner.txt` (no run
+  directory), and no `.llm/logs` entry of any lane is newer than lkh-probe-3
+  (07:07+0800). Not deleted by hand: the runner's gate takes stale text
+  claims itself, renaming the evidence — the next probe's acquisition is the
+  documented takeover path for exactly this claim. `.llm/probe-lock` is
+  empty (free).
+- Main checkout `git status --porcelain` shows exactly one entry, ` M
+  package.json` — the known foreign overwrite, untouched. The merge range
+  `6dd4f9eb..5599c1c6` touches `package.json` (the test:2 registration), so
+  the landing merge collides with it; see the landing stage for the outcome.
+- Docs commitment checked in `539f8b4c`: honored — §1.1 L3 row rewritten
+  (runner takes the slot, fresh claims waited out, dead ones taken over with
+  evidence, cites the 2026-11-05 and 2026-11-17 incidents into §7) and §7
+  has the 2026-11-17 recurrence row (hback-paths 插曲一至三, walk-review's
+  overwrite, the hardening as disposition). The two new 2026-11-17
+  occurrences the change owed are both present. No extra docs commit needed.
+- Residual claim cleaned at 2026-11-17T04:28:08Z (the §1.1 report duty): the
+  probe-lock-2 `owner.txt` deleted by hand was the sgate lane's text claim
+  `sgate lane: probe run 2026-11-16T23:09:24Z` (mtime 2026-11-17 07:09+0800),
+  verified dead before deletion — ~309 min without the documented heartbeat
+  rewrite, no run directory in the slot, no log of any lane newer than
+  07:07+0800, no node process attributable to it. Both slots free from then
+  on. The takeover-with-evidence path itself stays pinned by L2
+  (`tests/probe-lock.spec.ts`); a live takeover was not forced this session
+  because the first slot was free — the gate takes the first free slot and
+  never touches the other.
+
+### Gates (on `5599c1c6`, the resumed base; logs prefixed `lkh2-`)
+
+- build OK; preflight OK (2 packages, 18 source directories, 23 rows).
+- `npm test` exit 0: 236 spec files, all `# fail 0`.
+- Ratchet flat: eslint 73 suppressed / knip 18 in the baseline / jscpd 1
+  clone (7 duplicated lines).
+- Probe 611/611 passed, exit 0 (`.llm/logs/lkh2-probe.log`; run directory
+  deleted on success). The acquisition gate's live pass on this base: slot
+  `probe-lock` claimed at start with the lock module's JSON claim (holder
+  `probe-runner`, pid 36428, boot stamp present) and released by the
+  token-checked release at the exit — the slot directory left empty.
+
+### Landing plan (written before the merge)
+
+The merge range touches `package.json` (the test:2 registration) and the
+main checkout's working tree carries the person's foreign uncommitted
+overwrite of that same file, so `git merge --ff-only` refuses. The dance:
+copy the person's `package.json` bytes out of the repo, verify the copy
+byte-for-byte, `git restore package.json`, `git merge --ff-only lock-hard`,
+write the saved bytes back over `package.json`, and verify the file is
+byte-identical to the copy again and `git status --porcelain` shows exactly
+the one ` M package.json` entry. If the working file's bytes differ from the
+saved copy at either check (someone wrote during the dance), stop and
+report instead. The person's content is never handed to git's merge or
+stash machinery.
+
 
 
