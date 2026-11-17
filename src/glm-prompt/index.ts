@@ -44,6 +44,7 @@ import { glmMetricSink, type GlmMetricSink } from '../glm-llm/metrics.ts'
 import { wireFaceProjection } from '../glm-llm/face-wire.ts'
 import { installToolSearch } from '../toolsearch/index.ts'
 import { DIALECT_SERVICE, type DialectService } from '../shared/dialect.ts'
+import { MEMORY_SERVICE } from '../shared/memory-service.ts'
 import { peakModeService } from '../shared/peak-mode.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { assemblyRoute, isGlmModel, type Route } from '../shared/route.ts'
@@ -233,18 +234,18 @@ export function buildAgentAliases(agent: AgentLike): BuiltAlias[] {
  */
 export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, health?: Pick<RowHealth, 'report'>, now: () => number = () => Date.now(), peakMode?: () => PeakModeRead, standingDepth?: () => StandingDepth, metric?: GlmMetricSink, workingDirectory?: () => string | undefined, policy?: () => FacePolicyRegistry | undefined): () => void {
   const env = sessionEnv(config.env, agent)
-  const standing = standingDepth?.() ?? {}
-  const depth = standing.level ?? readReportingDepth(config).depth
-  const sectionSets = (outputStyleActive: boolean): { readonly all: ReturnType<typeof dialectSections>, readonly withoutMemory: ReturnType<typeof dialectSections>, readonly withLessons: ReturnType<typeof dialectSections> } => {
-    const all = dialectSections(outputStyleActive, depth, env === undefined ? config : { ...config, env })
+  let standing = standingDepth?.() ?? {}
+  let depth = standing.level ?? readReportingDepth(config).depth
+  const sectionSets = (outputStyleActive: boolean, activeDepth: ReportingDepth): { readonly all: ReturnType<typeof dialectSections>, readonly withoutMemory: ReturnType<typeof dialectSections>, readonly withLessons: ReturnType<typeof dialectSections> } => {
+    const all = dialectSections(outputStyleActive, activeDepth, env === undefined ? config : { ...config, env })
     return {
       all,
       withoutMemory: all.filter(section => section.name !== MEMORY_SECTION),
       withLessons: all.map(section => section.name === MEMORY_SECTION ? { ...section, text: buildMemorySectionDsh(true) } : section),
     }
   }
-  const plain = sectionSets(false)
-  const styled = sectionSets(true)
+  let plain = sectionSets(false, depth)
+  let styled = sectionSets(true, depth)
   const aliases = buildAgentAliases(agent)
   const disposers = aliases.map(alias => agent.ctx.tools.register(alias.tool))
   const searchMode = config.toolSearchMode ?? 'local'
@@ -254,6 +255,17 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
   let glmStep = false
   disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly: AssemblePayload, _context: unknown, next: () => Promise<AssemblePayload>) => {
     const assembled = await next()
+    if (standing.level === undefined && standing.problem === undefined && standingDepth !== undefined) {
+      const resolved = standingDepth()
+      if (resolved.level !== undefined || resolved.problem !== undefined) {
+        standing = resolved
+        if (standing.level !== undefined && standing.level !== depth) {
+          depth = standing.level
+          plain = sectionSets(false, depth)
+          styled = sectionSets(true, depth)
+        }
+      }
+    }
     const glm = isGlmAssembly(assembled)
     glmStep = glm
     health?.report(sessionIdOf(agent), ...withDepthProblem(dialectHealth(assemblyRoute(assembled), glm, searchMode === 'off' ? 'off' : toolSearch === undefined ? 'missing' : 'local'), standing.problem))
@@ -365,11 +377,28 @@ export function apply(ctx: PluginContext & Partial<ProvideHost> & ServiceLookup,
     },
   }
 
+  const hasMemoryService = (): boolean => {
+    try {
+      return typeof ctx.get === 'function' && ctx.get(MEMORY_SERVICE) !== undefined
+    }
+    catch {
+      return false
+    }
+  }
+
   disposers.push(ctx.on('agent/created', ({ agent }) => {
     if (installed.has(agent)) return
     installed.add(agent)
     try {
-      disposers.push(installDialect(agent, config, reporter, now, peakModeReader(ctx, agent), standingDepthReader(ctx, agent, warnDepth), metric, () => sessionWorkingDirectory(ctx, agent.session), () => facePolicyOf(ctx)))
+      const readStanding = standingDepthReader(ctx, agent, warnDepth)
+      let resolvedStanding: StandingDepth | undefined = hasMemoryService() ? readStanding() : undefined
+      const resolveStanding = (): StandingDepth => {
+        if (resolvedStanding !== undefined) return resolvedStanding
+        if (!hasMemoryService()) return {}
+        resolvedStanding = readStanding()
+        return resolvedStanding
+      }
+      disposers.push(installDialect(agent, config, reporter, now, peakModeReader(ctx, agent), resolveStanding, metric, () => sessionWorkingDirectory(ctx, agent.session), () => facePolicyOf(ctx)))
       active.add(agent)
     }
     catch (error) {

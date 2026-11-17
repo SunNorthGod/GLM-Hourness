@@ -49,7 +49,7 @@
  * main agent can file `request_exception`. Without the service the refusal is
  * §3.2.1 unchanged; `openRequests` stays the drive's (E8).
  */
-import { isAbsolute, resolve } from 'node:path'
+import { isAbsolute, relative, resolve } from 'node:path'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { releaseOf, type ReleaseResult } from '../graph/execute-stage.ts'
 import { projectOf } from '../data/project-root.ts'
@@ -59,6 +59,7 @@ import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.t
 import type { HealthState } from '../shared/health.ts'
 import { repoRelative, within } from '../execute/scope.ts'
 import type { Attempt } from '../execute/attempts.ts'
+import { deferPreExecuteEffect, withPreExecuteFrame } from './gate.ts'
 import { takeSnapshot, gitInvocations, gitRisk, snapshotCorrection, type GitInvocation, type GitRisk, type SnapshotEnvironment, type SnapshotWho } from './git-snapshot.ts'
 import { commandName, shellWrites, simpleCommands, type ShellDialect } from './shell.ts'
 import { fileToolTargetOf, isFileWrite, renderCorrection, shellCommandOf, type Correction, type ToolCall } from './rules.ts'
@@ -211,16 +212,10 @@ function indexOutputPath(args: readonly string[]): string | undefined {
 const HOME_MARKERS = /^[~]|^\$HOME|^%USERPROFILE%|^\$env:USERPROFILE/i
 
 const FOLD_CASE = process.platform === 'win32' || process.platform === 'darwin'
-const sameDir = (a: string, b: string): boolean => {
-  const left = resolve(a)
-  const right = resolve(b)
-  return FOLD_CASE ? left.toLowerCase() === right.toLowerCase() : left === right
-}
+const folded = (path: string): string => FOLD_CASE ? path.toLowerCase() : path
 const insideDir = (parent: string, child: string): boolean => {
-  const base = resolve(parent)
-  const full = resolve(child)
-  const folded = (path: string): string => FOLD_CASE ? path.toLowerCase() : path
-  return sameDir(base, full) || folded(full).startsWith(`${folded(base)}/`)
+  const rel = relative(folded(resolve(parent)), folded(resolve(child)))
+  return rel === '' || (rel !== '..' && !rel.startsWith('../') && !rel.startsWith('..\\') && !isAbsolute(rel))
 }
 
 interface GitFacts {
@@ -453,7 +448,7 @@ export interface ExecuteRulesDeps {
 /** Install the four rules on `tools/pre-execute`, prepended. Returns the uninstall function. */
 export function installExecuteRules(ctx: PreExecuteHost, deps: ExecuteRulesDeps): () => void {
   const warn = dialectWarner('execute')
-  const listener: PreExecuteListener = async (payload, next) => {
+  const listener: PreExecuteListener = (payload, next) => withPreExecuteFrame(payload, async () => {
     if (payload.parent !== undefined) return next()
     const agent = payload.agent
     if (agent?.session === undefined) return next()
@@ -467,13 +462,17 @@ export function installExecuteRules(ctx: PreExecuteHost, deps: ExecuteRulesDeps)
     // An allowed delivery to a live dispatch is a communication fact the handback's counts read (§3.4.4).
     const args = call.arguments
     const target = typeof args === 'object' && args !== null && !Array.isArray(args) && typeof (args as Record<string, unknown>).agent_id === 'string' ? (args as Record<string, unknown>).agent_id as string : undefined
-    if (call.name === 'send_message' && target !== undefined && deps.register(target) !== undefined && deps.live(target)) {
-      deps.recordIncoming?.(target)
-    }
+    const incomingTarget = call.name === 'send_message' && target !== undefined && deps.register(target) !== undefined && deps.live(target) ? target : undefined
 
     const attempt = deps.register(agent.id)
     const delegated = attempt === undefined && session.header.origin === 'subagent'
-    if (attempt === undefined && !delegated) return next()
+    if (attempt === undefined && !delegated) {
+      const decision = await next()
+      if (decision.kind === 'allow' && incomingTarget !== undefined) {
+        deferPreExecuteEffect(payload, { onAllow: () => { deps.recordIncoming?.(incomingTarget) } })
+      }
+      return decision
+    }
 
     // The session's effective directory: a subagent's header keeps its
     // parent's, so the rc.3 service is what the file tools resolve against.
@@ -540,8 +539,16 @@ export function installExecuteRules(ctx: PreExecuteHost, deps: ExecuteRulesDeps)
         // A file write's arguments are an object (isFileWrite); the seam's args are the same record.
         const argsRecord = typeof call.arguments === 'object' && call.arguments !== null && !Array.isArray(call.arguments) ? call.arguments as Readonly<Record<string, unknown>> : {}
         if (requests !== undefined && requests.peekGrant({ agent, tool: call.name, args: argsRecord, base: cwd ?? root })) {
-          await record('allowed')
-          return next()
+          const decision = await next()
+          if (decision.kind === 'allow') {
+            deferPreExecuteEffect(payload, {
+              onAllow: async () => {
+                if (incomingTarget !== undefined) deps.recordIncoming?.(incomingTarget)
+                await record('allowed')
+              },
+            })
+          }
+          return decision
         }
         let journaled = refusal
         let ref: string | undefined
@@ -559,6 +566,7 @@ export function installExecuteRules(ctx: PreExecuteHost, deps: ExecuteRulesDeps)
 
     // worker-git (§3.2.4): the shell calls of the dispatched chain.
     const shell = shellCommandOf(call)
+    let snapshotNeeded: { readonly snapshot: GitInvocation, readonly risk: GitRisk } | undefined
     if (shell !== undefined && owner !== undefined) {
       const role = attempt !== undefined && attempt.role === 'worker' ? 'worker' as const : 'reviewer' as const
       const verdict = workerGitVerdict({
@@ -570,17 +578,32 @@ export function installExecuteRules(ctx: PreExecuteHost, deps: ExecuteRulesDeps)
         invocations: shell.dialects.flatMap(d => gitInvocations(shell.command, d, cwd)),
       })
       if (verdict !== undefined && !('snapshot' in verdict)) { await record('refused'); return refuse('worker-git', verdict, payload, agent.id, session.id, deps) }
-      if (verdict !== undefined && 'snapshot' in verdict) {
-        const who: SnapshotWho = { command: shell.command, ...(cwd === undefined ? {} : { sessionDir: cwd }), sessionId: session.id, agentId: agent.id }
-        const outcome = await takeSnapshot(verdict.snapshot.dir ?? cwd ?? '.', verdict.snapshot, verdict.risk, who, deps.snapshots)
-        if (outcome.kind === 'refused') { await record('refused'); return refuse('worker-git', snapshotCorrection(shell.command, outcome.refusal), payload, agent.id, session.id, deps) }
-        if (outcome.kind === 'git-missing') deps.report(agent.id, 'degraded', 'git 不在，快照没有存，命令放行了')
-      }
+      if (verdict !== undefined && 'snapshot' in verdict) snapshotNeeded = verdict
     }
 
-    await record('allowed')
-    return next()
-  }
+    const decision = await next()
+    if (decision.kind === 'allow') {
+      deferPreExecuteEffect(payload, {
+        ...(snapshotNeeded === undefined || shell === undefined ? {} : {
+          beforeAllow: async () => {
+            const who: SnapshotWho = { command: shell.command, ...(cwd === undefined ? {} : { sessionDir: cwd }), sessionId: session.id, agentId: agent.id }
+            const outcome = await takeSnapshot(snapshotNeeded.snapshot.dir ?? cwd ?? '.', snapshotNeeded.snapshot, snapshotNeeded.risk, who, deps.snapshots)
+            if (outcome.kind === 'refused') {
+              await record('refused')
+              return refuse('worker-git', snapshotCorrection(shell.command, outcome.refusal), payload, agent.id, session.id, deps)
+            }
+            if (outcome.kind === 'git-missing') deps.report(agent.id, 'degraded', 'git 不在，快照没有存，命令放行了')
+            return undefined
+          },
+        }),
+        onAllow: async () => {
+          if (incomingTarget !== undefined) deps.recordIncoming?.(incomingTarget)
+          await record('allowed')
+        },
+      })
+    }
+    return decision
+  })
   return ctx.on('tools/pre-execute', listener, { prepend: true })
 }
 

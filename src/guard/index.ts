@@ -145,12 +145,13 @@ function absoluteTargetOf(call: ToolCall, base: string | undefined, roots: reado
   return from === undefined ? undefined : resolve(from, target)
 }
 
-/** Whether the execute row says the agent is a registered worker with an approved plan writing `target` inside its scope; false without the row or when the service throws. */
-function approvedWorkerScope(ctx: ServiceLookup, agentId: string, target: string): boolean {
+/** Whether the execute row says the agent is a registered worker with an approved plan writing `target` inside its scope; false without the row or when the service fails. */
+function approvedWorkerScope(ctx: ServiceLookup, agentId: string, target: string, onProblem?: (reason: string) => void): boolean {
   try {
-    return executeService(ctx)?.inApprovedScope(agentId, target) === true
+    return executeService(ctx, onProblem)?.inApprovedScope(agentId, target) === true
   }
-  catch {
+  catch (error) {
+    onProblem?.(error instanceof Error ? error.message : String(error))
     return false
   }
 }
@@ -275,6 +276,8 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
   const warn = dialectWarner('guard')
   const installed = new WeakSet<AgentLike>()
   const disposers: Array<() => void> = [() => health.dispose()]
+  const registrationProblems: string[] = []
+  let scopeWarned = false
 
   // The request channel's memory and desk (m4-request-card, design §5): the
   // refusal and grant books are this process's memory; everything else reads
@@ -405,7 +408,9 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
       const roots = rootsFor(payload.agent, config)
       const root = projectRootOf(cwd)
       const lifts = root === undefined ? undefined : liftedRulesOf(root)
-      health.report(sessionIdOf(payload.agent), ...guardHealth(roots, projectHomeFor(ctx, config.home, cwd), fallback.available(), dialectUnusable, ignoreProblem(ignored, root), lifts?.unreadable ?? 0))
+      const sessionId = sessionIdOf(payload.agent)
+      health.report(sessionId, ...guardHealth(roots, projectHomeFor(ctx, config.home, cwd), fallback.available(), dialectUnusable, ignoreProblem(ignored, root), lifts?.unreadable ?? 0))
+      if (registrationProblems.length > 0) health.note(sessionId, 'register', registrationProblems.join('；'))
       // The judgment context (design §4.1): only a file-tool write prepares facts. The ref is pre-generated
       // per file-tool call (design §5.2) and rides on the requestable denials; registered only when denied.
       const base = baseFor(ctx, payload.agent)
@@ -415,7 +420,14 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
       const via = viaOf(payload.agent)
       // scratch-only's one exemption (M7 design 0.6 §3.2.1): the execute row vouches for a registered worker's planned file.
       const agentId = payload.agent?.id
-      const approvedScope = agentId !== undefined && target !== undefined && approvedWorkerScope(ctx, agentId, target)
+      const approvedScope = agentId !== undefined && target !== undefined && approvedWorkerScope(ctx, agentId, target, (reason) => {
+        if (!scopeWarned) {
+          scopeWarned = true
+          console.warn(`${name}: approvedWorkerScope failed: ${reason}`)
+          if (sessionId === undefined) health.reactivate('degraded', `查 worker 计划范围失败：${reason}`)
+        }
+        health.note(sessionId, 'execute-scope', `查 worker 计划范围失败：${reason}`)
+      })
       return {
         rules: activeRules({ ...config, workspaceRoots: roots, base }, { context, ref, cwd, ask: { exception: exceptionOf(via, ref), ref }, approvedScope }),
         face: names ?? NATIVE_FACE,
@@ -483,48 +495,64 @@ export function apply(ctx: GuardHost, config: GuardConfig = {}): () => void {
 
   // The lift tool (design §3.5): the main agent's way to stop enforcing a rule because the human said so.
   if (ctx.tools !== undefined) {
-    disposers.push(ctx.tools.register({
-      name: 'guard_lift',
-      description: GUARD_LIFT_DESCRIPTION,
-      parameters: GUARD_LIFT_PARAMETERS,
-      output: { schema: { type: 'object', properties: { outcome: { type: 'string' }, rule: { type: 'string' }, title: { type: 'string' }, blocks: { type: 'string' }, message: { type: 'string' } } }, render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] },
-      execute: (args, exec) => {
-        const { agent } = (exec ?? {}) as ToolExecutionContext
-        const cwd = typeof agent?.session?.header.cwd === 'string' && agent.session.header.cwd.length > 0 ? agent.session.header.cwd : undefined
-        return guardLift(args as Parameters<typeof guardLift>[0], {
-          agent,
-          root: projectRootOf(cwd),
-          record: record => violation(record, cwd),
-          now: () => new Date(),
-        })
-      },
-    }))
+    try {
+      disposers.push(ctx.tools.register({
+        name: 'guard_lift',
+        description: GUARD_LIFT_DESCRIPTION,
+        parameters: GUARD_LIFT_PARAMETERS,
+        output: { schema: { type: 'object', properties: { outcome: { type: 'string' }, rule: { type: 'string' }, title: { type: 'string' }, blocks: { type: 'string' }, message: { type: 'string' } } }, render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] },
+        execute: (args, exec) => {
+          const { agent } = (exec ?? {}) as ToolExecutionContext
+          const cwd = typeof agent?.session?.header.cwd === 'string' && agent.session.header.cwd.length > 0 ? agent.session.header.cwd : undefined
+          return guardLift(args as Parameters<typeof guardLift>[0], {
+            agent,
+            root: projectRootOf(cwd),
+            record: record => violation(record, cwd),
+            now: () => new Date(),
+          })
+        },
+      }))
+    }
+    catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      console.warn(`${name}: registering guard_lift failed: ${reason}`)
+      registrationProblems.push(`工具 guard_lift 注册失败：${reason}`)
+      health.reactivate('degraded', registrationProblems.join('；'))
+    }
   }
 
   // The request tool (design §5.3): global registration, every route and
   // agent; deferred on GLM like guard_lift. Its body answers with the plan
   // text, or with the {code, message, hint} JSON of the failed check.
   if (ctx.tools !== undefined) {
-    disposers.push(ctx.tools.register({
-      name: 'request_exception',
-      description: REQUEST_DESCRIPTION,
-      parameters: {
-        type: 'object',
-        properties: {
-          ref: { type: 'string', description: 'The reference a denial named, r- plus eight lowercase letters or digits.' },
-          purpose: { type: 'string', description: 'Why the call is needed, one short sentence, at most 80 characters.' },
-          reversibility: { type: 'string', description: 'Whether it can be undone and what else it touches, one short sentence, at most 60 characters.' },
-          alternatives: { type: 'string', description: 'What you tried instead, one short sentence, at most 60 characters; `none` is allowed.' },
+    try {
+      disposers.push(ctx.tools.register({
+        name: 'request_exception',
+        description: REQUEST_DESCRIPTION,
+        parameters: {
+          type: 'object',
+          properties: {
+            ref: { type: 'string', description: 'The reference a denial named, r- plus eight lowercase letters or digits.' },
+            purpose: { type: 'string', description: 'Why the call is needed, one short sentence, at most 80 characters.' },
+            reversibility: { type: 'string', description: 'Whether it can be undone and what else it touches, one short sentence, at most 60 characters.' },
+            alternatives: { type: 'string', description: 'What you tried instead, one short sentence, at most 60 characters; `none` is allowed.' },
+          },
+          required: ['ref', 'purpose', 'reversibility', 'alternatives'],
+          additionalProperties: false,
+        } as const,
+        output: { schema: { type: 'object', properties: { outcome: { type: 'string' }, ref: { type: 'string' }, text: { type: 'string' }, lines: { type: 'object' }, tool: { type: 'string' }, arguments: { type: 'object' }, expires: { type: 'string' }, message: { type: 'string' } } }, render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] },
+        execute: (args, exec) => {
+          const { agent } = (exec ?? {}) as ToolExecutionContext
+          return desk.requestException(args as Record<string, unknown>, agent, typeof agent?.session?.header.cwd === 'string' && agent.session.header.cwd.length > 0 ? agent.session.header.cwd : undefined)
         },
-        required: ['ref', 'purpose', 'reversibility', 'alternatives'],
-        additionalProperties: false,
-      } as const,
-      output: { schema: { type: 'object', properties: { outcome: { type: 'string' }, ref: { type: 'string' }, text: { type: 'string' }, lines: { type: 'object' }, tool: { type: 'string' }, arguments: { type: 'object' }, expires: { type: 'string' }, message: { type: 'string' } } }, render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] },
-      execute: (args, exec) => {
-        const { agent } = (exec ?? {}) as ToolExecutionContext
-        return desk.requestException(args as Record<string, unknown>, agent, typeof agent?.session?.header.cwd === 'string' && agent.session.header.cwd.length > 0 ? agent.session.header.cwd : undefined)
-      },
-    }))
+      }))
+    }
+    catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      console.warn(`${name}: registering request_exception failed: ${reason}`)
+      registrationProblems.push(`工具 request_exception 注册失败：${reason}`)
+      health.reactivate('degraded', registrationProblems.join('；'))
+    }
   }
 
   disposers.push(ctx.on('agent/created', ({ agent }) => {

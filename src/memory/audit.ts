@@ -139,21 +139,51 @@ interface LostGap {
   code?: string
 }
 
+const pickEdgeAt = (a: string, b: string, pickFirst: (ta: number, tb: number) => boolean, invalidFallback: string): string => {
+  if (a === '') return b
+  if (b === '') return a
+  const ta = Date.parse(a)
+  const tb = Date.parse(b)
+  return !Number.isNaN(ta) && !Number.isNaN(tb) ? (pickFirst(ta, tb) ? a : b) : invalidFallback
+}
+
+const earlierAt = (a: string, b: string): string => pickEdgeAt(a, b, (ta, tb) => ta <= tb, a)
+
+const laterAt = (a: string, b: string): string => pickEdgeAt(a, b, (ta, tb) => ta >= tb, b)
+
+function mergeGaps(current: LostGap | undefined, taken: LostGap | undefined): LostGap | undefined {
+  if (current === undefined) return taken
+  if (taken === undefined) return current
+  const classes = new Map(current.classes)
+  for (const [klass, count] of taken.classes) classes.set(klass, (classes.get(klass) ?? 0) + count)
+  const code = current.code ?? taken.code
+  return {
+    lost: current.lost + taken.lost,
+    classes,
+    since: earlierAt(current.since, taken.since),
+    until: laterAt(current.until, taken.until),
+    ...(code === undefined ? {} : { code }),
+  }
+}
+
 /** Merge one lost record (or one failed gap write) into the pending gap; the caller has taken the gap out of the journal's way. */
 function mergeLost(gap: LostGap | undefined, record: GuardRecord | undefined, error: unknown, now: () => Date): LostGap {
-  const merged: LostGap = gap ?? { lost: 0, classes: new Map(), since: '', until: '' }
+  const classes = new Map(gap?.classes)
+  let since = gap?.since ?? ''
+  let until = gap?.until ?? ''
+  let lost = gap?.lost ?? 0
   if (record !== undefined) {
     const line = record as unknown as Record<string, unknown>
     const at = typeof line.at === 'string' && line.at.length > 0 ? line.at : now().toISOString()
     const klass = classifyRecord(line)
-    if (merged.since === '') merged.since = at
-    merged.until = at
-    merged.lost += 1
-    merged.classes.set(klass, (merged.classes.get(klass) ?? 0) + 1)
+    since = earlierAt(since, at)
+    until = laterAt(until, at)
+    lost += 1
+    classes.set(klass, (classes.get(klass) ?? 0) + 1)
   }
-  const code = (error as NodeJS.ErrnoException | undefined)?.code
-  if (typeof code === 'string' && code.length > 0) merged.code = Array.from(code).slice(0, CODE_LIMIT).join('')
-  return merged
+  const errorCode = (error as NodeJS.ErrnoException | undefined)?.code
+  const code = typeof errorCode === 'string' && errorCode.length > 0 ? Array.from(errorCode).slice(0, CODE_LIMIT).join('') : gap?.code
+  return { lost, classes, since, until, ...(code === undefined ? {} : { code }) }
 }
 
 /** The gap line for what a journal instance holds; written alone or ahead of the next record. */
@@ -213,7 +243,7 @@ export function rowJournal(row: string, homes: () => DataHomes, fs: AuditFs = no
     return append(path, text).then(
       () => 'written',
       (error: unknown) => {
-        gap = mergeLost(taken, record, error, now)
+        gap = mergeLost(mergeGaps(gap, taken), record, error, now)
         report('violations')(error)
         return 'failed'
       },
@@ -232,7 +262,7 @@ export function rowJournal(row: string, homes: () => DataHomes, fs: AuditFs = no
         await append(path, gapLine(taken, row, now))
       }
       catch (error) {
-        gap = mergeLost(taken, undefined, error, now)
+        gap = mergeLost(mergeGaps(gap, taken), undefined, error, now)
       }
     },
   }
@@ -250,7 +280,7 @@ export function projectJournal(row: string, homeFor: (cwd: string | undefined) =
   const journalOf = (cwd: string | undefined): RowJournal | undefined => {
     const home = homeFor(cwd)
     if (home === undefined) return undefined
-    const key = home.replace(/[\\/]+$/, '')
+    const key = home.replace(/[\\/]+$/, '').replace(/^[A-Za-z]:/, drive => drive.toLowerCase())
     let journal = cached.get(key)
     if (journal === undefined) {
       journal = rowJournal(row, () => ({ projectHome: home }), fs)

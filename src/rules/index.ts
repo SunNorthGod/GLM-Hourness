@@ -71,6 +71,7 @@ import { auditPaths, projectJournal, type ProjectJournal } from '../memory/audit
 import { collectStatus } from '../report/status.ts'
 import type { AgentCommandInvocationLike, AgentLike, AgentsService, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike, ToolsLike } from '../shared/dsh-min.ts'
 import { activationState, provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
+import { executeService } from '../shared/execute-service.ts'
 import { PEAK_MODE_SERVICE } from '../shared/peak-mode.ts'
 import { peakHoursOf, pricingService } from '../shared/pricing.ts'
 import { whenPresent } from '../shared/row-support.ts'
@@ -261,7 +262,10 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
           read: project.read,
           reading: reading(),
           hoursZh: pricing === undefined ? undefined : peakHoursOf(pricing)?.zh,
-          rows: Object.fromEntries(VIEW_ROWS.map(row => [row, activationState(ctx, row)])),
+          rows: {
+            ...Object.fromEntries(VIEW_ROWS.map(row => [row, activationState(ctx, row)])),
+            execute: executeService(ctx) === undefined ? activationState(ctx, 'execute') : activationState(ctx, 'execute') === 'absent' ? 'active' : activationState(ctx, 'execute'),
+          },
           records,
           lifted: liftService(ctx)?.lifted(cwd) ?? [],
           liveHosts: liveHeartbeats(readHeartbeats(project.paths).heartbeats, at).map(heartbeat => heartbeat.host),

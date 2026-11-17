@@ -358,6 +358,15 @@ const outputOf = (maxOutputBytes: number | undefined): number =>
  * takes everything; the promise never rejects.
  */
 function runProcess(plan: ProcessPlan): Promise<ScriptResult> {
+  if (plan.signal?.aborted === true) {
+    try {
+      plan.finish?.()
+    }
+    catch {
+      // A copy that could not be removed now goes with the hour sweep.
+    }
+    return Promise.resolve({ kind: 'refused', reason: 'aborted', message: '在脚本起来之前，这次运行已经被中止' })
+  }
   const started = Date.now()
   let log: number | undefined
   if (plan.logFile !== undefined) {

@@ -89,7 +89,7 @@ export function openRulesBoard(options: BoardOptions): RulesBoard {
     let lock: WriteLock | 'busy'
     try {
       await ensureRuntimeDir(paths)
-      lock = await acquireLock(paths.lock, environment)
+      lock = await acquireLock(paths.lock, environment, { unreadableGraceMs: 2_000 })
     }
     catch (error) {
       return fail('io', `没写成：${error instanceof Error ? error.message : String(error)}`)

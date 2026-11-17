@@ -16,7 +16,7 @@ import { GUARD_RULES } from '../guard/catalog.ts'
 import { DESIGN_LIFTS } from '../guard/main-agent-rules.ts'
 import type { LiftService } from '../guard/lift-service.ts'
 import { ruleStats, sinceCutoff, SUBJECT_LIMIT } from '../guard/measure.ts'
-import { classifyRecord, type GuardRecord, type LateRecord, type ViolationRecord } from '../guard/records.ts'
+import { classifyRecord, type GuardRecord, type LateRecord, type RulesLateRecord, type ViolationRecord } from '../guard/records.ts'
 import { effectiveTimeoutSeconds } from '../loops/trigger.ts'
 import type { HealthRow } from '../shared/health.ts'
 import type { StatusItem } from '../shared/status.ts'
@@ -101,9 +101,9 @@ function recentDenials(records: readonly GuardRecord[]): ReadonlyMap<string, rea
     const klass = classifyRecord(line)
     if ((klass !== 'denial' && klass !== 'late-denial') || typeof line.rule !== 'string' || typeof line.at !== 'string' || Number.isNaN(Date.parse(line.at))) return
     let what: string
-    if (klass === 'late-denial') what = cut(((record as LateRecord).paths ?? []).join('、'))
+    if (klass === 'late-denial' && line.rule === 'file-tools-only') what = cut(((record as LateRecord).paths ?? []).join('、'))
     else {
-      const denial = record as ViolationRecord
+      const denial = record as ViolationRecord | RulesLateRecord
       const subject = denial.call?.command ?? denial.call?.target
       what = cut(subject === undefined ? denial.tool : `${denial.tool} ${subject}`)
     }
@@ -206,7 +206,7 @@ export function buildRulesView(input: RulesViewInput, nowMs: number): RulesView 
       ...(actor === undefined ? {} : { via: actor === 'human' ? 'command' as const : 'agent' as const }),
       waiting: { tickets: stopTickets.length, pausedGoals: stopTickets.filter(goalPaused).length },
     },
-    rows: { ...Object.fromEntries(VIEW_ROWS.map(row => [row, rowOf(row)])), execute: 'absent' },
+    rows: { ...Object.fromEntries(VIEW_ROWS.map(row => [row, rowOf(row)])), execute: rowOf('execute') },
     builtins: BUILTIN_RULES.map(rule => ({
       id: rule.id,
       title: rule.title,

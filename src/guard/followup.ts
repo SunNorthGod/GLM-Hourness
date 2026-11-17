@@ -46,6 +46,8 @@ export interface PendingDenial {
   readonly key: string
   readonly rightPath?: GuardRule['rightPath']
   readonly origin: CallOrigin
+  /** Per-denial journal writer so cross-row settlements write through the noting row's journal. */
+  readonly write?: FollowupWrite | undefined
 }
 
 /** How a gate lets the recorder write a settled follow-up: its row's project journal (the gate's hook emits the metric with it). */
@@ -174,7 +176,7 @@ export function observe(agent: AgentLike | undefined, call: ToolCall, callId: st
   if (at === undefined) return // not model-issued: the loop logged no tool/call for it
   if (entry.turn !== undefined && entry.step !== undefined && at.turn === entry.turn && at.step === entry.step) return
   pending.delete(agent.id)
-  write(sessionId, {
+  write(entry, {
     at: new Date().toISOString(),
     rule: entry.denial.rule,
     tool: settledCall.name,
@@ -243,7 +245,7 @@ function settleSession(sessionId: string): void {
   for (const [agentId, entry] of [...pending]) {
     if (entry.sessionId !== sessionId) continue
     pending.delete(agentId)
-    write(sessionId, {
+    write(entry, {
       at: new Date().toISOString(),
       rule: entry.denial.rule,
       // No call settled it: the record names the denied call's tool, the identity the follow-up is about.
@@ -258,7 +260,7 @@ function settleSession(sessionId: string): void {
   }
 }
 
-/** Write one settled record through the session's journal hook, when a gate registered one. */
-function write(sessionId: string, record: FollowupRecord): void {
-  journals.get(sessionId)?.(record)
+/** Write one settled record through the denial's own writer, else the session's journal hook. */
+function write(entry: PendingEntry, record: FollowupRecord): void {
+  ;(entry.denial.write ?? journals.get(entry.sessionId))?.(record)
 }

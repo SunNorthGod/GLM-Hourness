@@ -20,7 +20,7 @@
 import type { JsonValue } from '../shared/json.ts'
 import { dialectService, toNativeTool } from '../shared/dialect.ts'
 import type { Route } from '../shared/route.ts'
-import type { PreExecuteHost, PreExecuteListener, ServiceLookup, SessionEventHost, SessionEventLike, SessionLike, ToolExecutionPayload } from '../shared/dsh-min.ts'
+import type { PreExecuteDecision, PreExecuteHost, PreExecuteListener, ServiceLookup, SessionEventHost, SessionEventLike, SessionLike, ToolExecutionPayload } from '../shared/dsh-min.ts'
 import { sessionIdOf, type RowHealth } from '../shared/health.ts'
 import { projectRootOf } from '../data/project-home.ts'
 import type { RouteScope } from './origin.ts'
@@ -106,6 +106,71 @@ export interface RuleGateOptions {
 /** The row's context: pre-execute, service lookup, and the two session observers the follow-up recorder needs (design §3.3). */
 export type GateHost = PreExecuteHost & ServiceLookup & SessionEventHost
 
+export interface PreExecuteEffect {
+  readonly beforeAllow?: (() => Promise<PreExecuteDecision | undefined>) | undefined
+  readonly onAllow?: (() => void | Promise<void>) | undefined
+  readonly onDeny?: (() => void) | undefined
+}
+
+interface PreExecuteFrame {
+  depth: number
+  readonly effects: PreExecuteEffect[]
+}
+
+const preExecuteFrames = new WeakMap<object, PreExecuteFrame>()
+
+/** Defer side effects or late allow checks until the outermost `withPreExecuteFrame` settles. */
+export function deferPreExecuteEffect(payload: ToolExecutionPayload, effect: PreExecuteEffect): void {
+  const frame = preExecuteFrames.get(payload)
+  if (frame !== undefined) frame.effects.push(effect)
+}
+
+/** Run a `tools/pre-execute` listener inside a per-payload recursion frame so deferred effects settle once at the outermost frame. */
+export async function withPreExecuteFrame(payload: ToolExecutionPayload, run: () => Promise<PreExecuteDecision>): Promise<PreExecuteDecision> {
+  const existing = preExecuteFrames.get(payload)
+  const frame: PreExecuteFrame = existing ?? { depth: 0, effects: [] }
+  if (existing === undefined) preExecuteFrames.set(payload, frame)
+  frame.depth += 1
+  try {
+    let decision = await run()
+    if (frame.depth === 1) {
+      if (decision.kind === 'allow') {
+        for (const effect of frame.effects) {
+          if (effect.beforeAllow === undefined) continue
+          const nextDecision = await effect.beforeAllow()
+          if (nextDecision !== undefined && nextDecision.kind !== 'allow') {
+            decision = nextDecision
+            break
+          }
+        }
+      }
+      if (decision.kind === 'allow') {
+        for (const effect of frame.effects) {
+          await effect.onAllow?.()
+        }
+      }
+      else {
+        for (const effect of frame.effects) {
+          effect.onDeny?.()
+        }
+      }
+    }
+    return decision
+  }
+  catch (error) {
+    if (frame.depth === 1) {
+      for (const effect of frame.effects) {
+        effect.onDeny?.()
+      }
+    }
+    throw error
+  }
+  finally {
+    frame.depth -= 1
+    if (frame.depth === 0) preExecuteFrames.delete(payload)
+  }
+}
+
 /** Whether this listener was installed by installRuleGate; the contracts test counts listeners by it (design §3.8). */
 export function isGateListener(listener: unknown): boolean {
   return typeof listener === 'function' && (listener as { mark?: unknown }).mark === true
@@ -138,7 +203,7 @@ const cut = (text: string): string => Array.from(text).slice(0, NOTE_LIMIT).join
  * journal. The returned function unsubscribes all three.
  */
 export function installRuleGate(ctx: GateHost, options: RuleGateOptions): () => void {
-  const listener: PreExecuteListener = async (payload, next) => {
+  const listener: PreExecuteListener = (payload, next) => withPreExecuteFrame(payload, async () => {
     if (payload.parent !== undefined && options.judgeChildren !== true) return next()
     const call: ToolCall = { name: toNativeTool(dialectService(ctx), payload.name), arguments: (payload.arguments ?? {}) as JsonValue }
     const sessionId = sessionIdOf(payload.agent)
@@ -178,19 +243,27 @@ export function installRuleGate(ctx: GateHost, options: RuleGateOptions): () => 
           if (outcome.kind === 'carried') {
             const rest = denialList.filter(deny => deny.rule !== outcome.rule)
             if (rest.length === 0) {
+              const grantOrigin = gate.origin
               outcome.markInUse()
               const decision = await next()
               if (decision.kind === 'allow') {
-                const backup = outcome.consume()
-                const record: GrantRecord = {
-                  kind: 'grant',
-                  ...recordOrigin(payload, gate.origin, outcome.rule),
-                  ref: outcome.grant.ref,
-                  signature: outcome.grant.signature,
-                  call: subjectOf(call),
-                  ...(backup === undefined ? {} : { backup }),
-                }
-                writeJournaled(record, payload, options, sessionId)
+                deferPreExecuteEffect(payload, {
+                  onAllow: () => {
+                    const backup = outcome.consume()
+                    const record: GrantRecord = {
+                      kind: 'grant',
+                      ...recordOrigin(payload, grantOrigin, outcome.rule),
+                      ref: outcome.grant.ref,
+                      signature: outcome.grant.signature,
+                      call: subjectOf(call),
+                      ...(backup === undefined ? {} : { backup }),
+                    }
+                    writeJournaled(record, payload, options, sessionId)
+                  },
+                  onDeny: () => {
+                    outcome.release()
+                  },
+                })
                 return decision
               }
               outcome.release()
@@ -234,6 +307,7 @@ export function installRuleGate(ctx: GateHost, options: RuleGateOptions): () => 
             // The recorder calls the rule's right path with the two calls; a rule object carries no `this`.
             ...(rightPath === undefined ? {} : { rightPath: (next: ToolCall, denied: ToolCall) => rightPath(next, denied) }),
             origin: gate.origin,
+            write: record => { writeFollowup(record, payload, options, sessionId) },
           })
         }
         // The denial returns at once; the write is counted when the journal settles: an outcome of 'failed'
@@ -251,9 +325,14 @@ export function installRuleGate(ctx: GateHost, options: RuleGateOptions): () => 
       return { kind: 'deny', reason, info: { rule: denialList[0].rule } }
     }
     const decision = await next()
-    if (decision.kind === 'allow') options.allowed?.(payload, gate.origin)
+    if (decision.kind === 'allow') {
+      const allowOrigin = gate.origin
+      deferPreExecuteEffect(payload, {
+        onAllow: () => { options.allowed?.(payload, allowOrigin) },
+      })
+    }
     return decision
-  }
+  })
   // The gate marks every listener it installs (design §3.1); the contracts test counts pre-execute listeners by it.
   ;(listener as { mark?: boolean }).mark = true
   const dispose = (session: SessionLike): void => {

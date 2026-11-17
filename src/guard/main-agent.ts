@@ -50,6 +50,7 @@
 import type { AgentLike, PreExecuteDecision, PreExecuteHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
 import type { JsonValue } from '../shared/json.ts'
 import { dialectNames, dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
+import { executeService } from '../shared/execute-service.ts'
 import type { HealthState } from '../shared/health.ts'
 import { metricsWhereOf, toMetricsId, type BodyEventOf, type DesignBodies, type MetricsWhere } from '../shared/metrics.ts'
 import { DELEGATIONS_ID } from '../shared/answer-marks.ts'
@@ -317,10 +318,19 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
       if (who === 'main-agent') return denial(GRAPH_CLI_RULE, GRAPH_CLI_CORRECTION)
       return refusedAttempt(GRAPH_CLI_RULE, GRAPH_CLI_CORRECTION, shell.command.includes('relay') ? { what: `用命令行带转述的话改项目图（${subcommand === '' ? '没有子命令' : subcommand}）` } : undefined)
     }
+    let worker: boolean
+    try {
+      worker = (deps.isWorker?.(agent.id) ?? executeService(ctx)?.isWorker(agent.id)) === true
+    }
+    catch {
+      worker = false
+    }
     // Every kind of session: the node of what the human handed over for good is written by record_human_answer alone.
-    if (toDelegations) return denial(GRAPH_DELEGATIONS_RULE, DELEGATIONS_CORRECTION, { node: DELEGATIONS_ID })
+    // A registered worker/reviewer's graph tool calls belong to execute-rules (`worker-graph-readonly`).
+    if (toDelegations && !worker) return denial(GRAPH_DELEGATIONS_RULE, DELEGATIONS_CORRECTION, { node: DELEGATIONS_ID })
     if (delegated) {
       if (graphCall) {
+        if (worker) return next()
         // A subagent has no human to quote: its relay is refused whatever it says; what moves a goal on is refused with or without it.
         if (relayOf(call) !== undefined) return refusedAttempt(GRAPH_RELAY_RULE, SUBAGENT_RELAY_CORRECTION, await attemptOf(deps, { session }, call))
         return await stageRefusal() ?? next()
@@ -334,9 +344,9 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
       // The two rules that hold for every session still apply; the ones about the main agent's own calls cannot be judged.
       deps.report(agent, 'degraded', `读不到主 Agent 的状态（${message(error)}），这次调用没有按主 Agent 判`)
       who = 'ordinary'
-      return (graphCall ? await stageRefusal() : cliRefusal()) ?? next()
+      return (graphCall && !worker ? await stageRefusal() : cliRefusal()) ?? next()
     }
-    if (who === 'ordinary') return (graphCall ? await stageRefusal() : cliRefusal()) ?? next()
+    if (who === 'ordinary') return (graphCall && !worker ? await stageRefusal() : cliRefusal()) ?? next()
     if (graphCall) {
       const verdict = await judgeMainAgentGraph(deps, { id: agent.id, session }, call)
       if (verdict.degraded !== undefined) deps.report(agent, 'degraded', verdict.degraded)

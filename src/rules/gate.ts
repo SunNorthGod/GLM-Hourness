@@ -64,8 +64,9 @@
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { cachedWorktrees, projectOf } from '../data/project-root.ts'
 import { writesInto } from '../guard/directory-writes.ts'
-import { ID_PATTERN } from '../metrics/schema.ts'
+import { ID_PATTERN, MAX_ENTRIES } from '../metrics/schema.ts'
 import * as followup from '../guard/followup.ts'
+import { withPreExecuteFrame } from '../guard/gate.ts'
 import { originOf } from '../guard/origin.ts'
 import { renderCorrection, type ToolCall } from '../guard/rules.ts'
 import { keyOf, type GuardRecord } from '../guard/records.ts'
@@ -73,6 +74,7 @@ import { dialectNames, dialectService, dialectWarner, toNativeTool } from '../sh
 import type { AgentLike, PreExecuteDecision, PreExecuteHost, ServiceLookup, ToolExecutionPayload } from '../shared/dsh-min.ts'
 import { sessionIdOf, type RowHealth } from '../shared/health.ts'
 import type { JsonValue } from '../shared/json.ts'
+import { toMetricsId } from '../shared/metrics.ts'
 import { sessionRoute } from '../shared/route.ts'
 import { DISPATCH_TOOL_NAMES } from '../shared/tool-names.ts'
 import { executeService } from '../shared/execute-service.ts'
@@ -185,11 +187,13 @@ export function installRulesGate(deps: GateDeps): () => void {
   /** Note one refusal as the agent's pending follow-up (design §3.3): the rules have no right path of their own, so only a repeat, something else or no next call can settle it. The origin is the refusal line's. */
   function noteFollowup(agent: AgentLike, exec: ToolExecutionPayload, claimed: boolean, rule: string, call: ToolCall, key: string): void {
     if (typeof exec.callId !== 'string') return
+    const sessionCwd = cwdOf(agent)
     followup.noteDenial(agent, exec.callId, {
       rule,
       call,
       key,
       origin: originOf(claimed, sessionRoute(agent.session)),
+      write: record => { void deps.journal.violation(record, sessionCwd).catch(() => {}) },
     })
   }
 
@@ -223,19 +227,23 @@ export function installRulesGate(deps: GateDeps): () => void {
       const signals: Record<string, number | boolean | string> = {}
       const unread: string[] = []
       for (const [name, value] of Object.entries(values)) {
-        if (typeof value === 'boolean' || (typeof value === 'number' && Number.isInteger(value)) || (typeof value === 'string' && ID_PATTERN.test(value))) signals[name] = value
-        else unread.push(name)
+        const validKey = ID_PATTERN.test(name)
+        const validValue = typeof value === 'boolean'
+          || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+          || (typeof value === 'string' && ID_PATTERN.test(value))
+        if (validKey && validValue && Object.keys(signals).length < MAX_ENTRIES) signals[name] = value
+        else if (unread.length < MAX_ENTRIES) unread.push(toMetricsId(name))
       }
       emitJudged(deps.ctx, {
         event: 'rules.judged',
-        rule,
+        rule: toMetricsId(rule),
         how,
-        tool,
+        tool: toMetricsId(tool),
         sub,
         signals,
         ...(unread.length === 0 ? {} : { unread }),
-        ...(ticket === undefined ? {} : { ticket }),
-        ms,
+        ...(ticket === undefined ? {} : { ticket: toMetricsId(ticket) }),
+        ms: Math.max(0, Math.round(ms)),
       }, { dir: project.root, ...(sessionId === undefined ? {} : { sessionId }) })
     }
 
@@ -320,6 +328,9 @@ export function installRulesGate(deps: GateDeps): () => void {
         noteFollowup(agent, exec, claimed, `rules:${hit.rule}`, call, note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'enforce', effect: 'block', correction: reason, signals: signalsOf(hit) }))
         judgeEvent(hit.rule, 'block', signalsOf(hit), judgedMs)
       }
+      if (agent.session !== undefined) {
+        await deps.tickets.blocked?.({ session: agent.session, view, root: project.root, cwd, tool, args: exec.arguments, rules: verdict.strongest.map(hit => hit.rule) })
+      }
       return { kind: 'deny', reason }
     }
     const session = agent.session
@@ -350,7 +361,7 @@ export function installRulesGate(deps: GateDeps): () => void {
     return undefined
   }
 
-  return deps.ctx.on('tools/pre-execute', async (exec, next) => {
+  return deps.ctx.on('tools/pre-execute', (exec, next) => withPreExecuteFrame(exec, async () => {
     // The follow-up recorder first (design §3.3): this call settles the agent's pending follow-up whoever refuses or allows it.
     const agent = exec.agent
     if (agent !== undefined && typeof exec.callId === 'string') {
@@ -370,5 +381,5 @@ export function installRulesGate(deps: GateDeps): () => void {
       deps.health.report(sessionIdOf(agent), 'degraded', `规则板判定出错：${message(error)}，这次调用放行`)
       return decision
     }
-  }, { prepend: true })
+  }), { prepend: true })
 }

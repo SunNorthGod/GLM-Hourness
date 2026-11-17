@@ -117,6 +117,13 @@ export interface LateRecord extends Omit<ShadowRecord, 'mode'> {
   readonly via: 'turn-end'
 }
 
+/** A late denial from the rules board (`mode: 'late'`): the call had already run before the board's check finished. */
+export interface RulesLateRecord extends Omit<ViolationRecord, 'mode' | 'correction'> {
+  readonly rule: `rules:${string}`
+  readonly mode: 'late'
+  readonly correction?: string | undefined
+}
+
 /**
  * Records the harness could not write (F13, design §3.2). Written by the first
  * append that succeeds afterwards, directly before the record that append
@@ -159,7 +166,7 @@ export interface LiftRecord {
  * (G3), the gap records by the journal itself, and G3 renames the fallback's
  * `ShadowRecord` to the late denial it already classifies as.
  */
-export type GuardRecord = ViolationRecord | RecordedCall | ShadowRecord | LateRecord | FollowupRecord | RequestRecord | GrantRecord | GrantVoidRecord | LiftRecord | GapRecord
+export type GuardRecord = ViolationRecord | RecordedCall | ShadowRecord | LateRecord | RulesLateRecord | FollowupRecord | RequestRecord | GrantRecord | GrantVoidRecord | LiftRecord | GapRecord
 
 /** The class of one journal line; every reader of the journal goes through this. */
 export type RecordClass =

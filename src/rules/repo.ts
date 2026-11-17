@@ -225,7 +225,7 @@ export async function settleProject(paths: RulesPaths, io: StoreIo = realStoreIo
   const read = readProject(paths)
   if (!needsSettling(read)) return read
   await ensureRuntimeDir(paths)
-  const lock = await acquireLock(paths.lock, environment)
+  const lock = await acquireLock(paths.lock, environment, { unreadableGraceMs: 2_000 })
   if (lock === 'busy') return 'busy'
   try {
     return await settleLocked(paths, io)

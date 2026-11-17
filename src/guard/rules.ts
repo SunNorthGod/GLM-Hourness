@@ -51,9 +51,15 @@ export interface GuardRule {
  */
 const ASK_THE_HUMAN = 'tell the human what you need, where and why; only the human can allow it.'
 
-/** Normalize a path for containment checks and path comparison (case-insensitive Windows file systems). */
+const FOLD_CASE = process.platform === 'win32' || process.platform === 'darwin'
+
+/** Normalize a path for containment checks and path comparison (preserving UNC `//` and folding case on Windows/macOS). */
 export function normalizePath(path: string): string {
-  return path.replaceAll('/', '\\').replaceAll('\\\\', '\\').toLowerCase().replaceAll('\\', '/')
+  const slashed = path.replaceAll('\\', '/')
+  const unc = slashed.startsWith('//') && !slashed.startsWith('///')
+  const collapsed = slashed.replace(/\/+/g, '/')
+  const body = unc ? `/${collapsed}` : collapsed
+  return FOLD_CASE ? body.toLowerCase() : body
 }
 
 /**

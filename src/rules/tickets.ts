@@ -96,6 +96,8 @@ export interface TicketDesk {
   defer(call: DeferredCall): Promise<Deferral>
   /** A call that ran: the cleared ticket it answers is done. Never throws. */
   passed(call: PassedCall): Promise<void>
+  /** A retry that was blocked instead of queued: matching open deferred tickets are closed. Never throws. */
+  blocked?(call: PassedCall & { readonly rules: readonly string[] }): Promise<void>
   /** The 5-second period: judge this host's tickets again. Never throws. */
   reconcile(): Promise<void>
   /** A session ended: its tickets go to the agent that dispatched it, or are cancelled. Never throws. */
@@ -400,24 +402,37 @@ export function createTicketDesk(deps: DeskDeps): TicketDesk {
     return { kind: 'deny', reason: text(opened.target, false, goalWord(pauseFields(paused))), ticket: opened.target }
   }
 
-  async function passed(call: PassedCall): Promise<void> {
-    const state = (readView(call.cwd) ?? call.view).read.state
-    if (state.tickets === undefined) return
-    const cleared = openTickets(state).filter(ticket => ticket.state === 'cleared' && sameHost(ticket.host))
-    const scripts = call.scripts ?? []
-    const waiting = scripts.length === 0 ? [] : openTickets(state).filter(ticket => ticket.state === 'deferred' && sameHost(ticket.host) && ticket.rules.some(id => scripts.includes(id)))
-    if (cleared.length === 0 && waiting.length === 0) return
+  function ticketMatcher(call: PassedCall, tickets: readonly Ticket[], filter: (ticket: Ticket) => boolean): readonly Ticket[] {
+    const candidates = tickets.filter(ticket => sameHost(ticket.host) && filter(ticket))
+    if (candidates.length === 0) return []
     const signature = signatureOf(call.tool, call.args)
     // A subagent also answers what its predecessor was deferred on, which went to the agent that dispatched it.
     const root = call.session.header.origin === 'subagent' ? dispatchRoot(call.session.header.parentSession) : undefined
-    const answered = (ticket: Ticket): boolean => ticket.signature === signature && (ticket.sessionId === call.session.id || (typeof root === 'object' && ticket.sessionId === root.id && ticket.handedFrom !== undefined))
-    for (const ticket of cleared) {
-      if (answered(ticket)) await close(call.root, ticket, `等待单 ${ticket.id} 等的调用又做了，单结束`)
+    return candidates.filter(ticket => ticket.signature === signature && (ticket.sessionId === call.session.id || (typeof root === 'object' && ticket.sessionId === root.id && ticket.handedFrom !== undefined)))
+  }
+
+  async function passed(call: PassedCall): Promise<void> {
+    const state = (readView(call.cwd) ?? call.view).read.state
+    if (state.tickets === undefined) return
+    const open = openTickets(state)
+    const scripts = call.scripts ?? []
+    for (const ticket of ticketMatcher(call, open, item => item.state === 'cleared')) {
+      await close(call.root, ticket, `等待单 ${ticket.id} 等的调用又做了，单结束`)
     }
     // A ticket a script rule opened, whose script just let this same call through: the wait is answered by the
     // script's own fresh word, and the agent that retried is the one that ran it, so no wake is sent.
-    for (const ticket of waiting) {
-      if (answered(ticket)) await close(call.root, ticket, `等待单 ${ticket.id} 等的调用这次被它的脚本放行，单结束`)
+    if (scripts.length === 0) return
+    for (const ticket of ticketMatcher(call, open, item => item.state === 'deferred' && item.rules.some(id => scripts.includes(id)))) {
+      await close(call.root, ticket, `等待单 ${ticket.id} 等的调用这次被它的脚本放行，单结束`)
+    }
+  }
+
+  async function blocked(call: PassedCall & { readonly rules: readonly string[] }): Promise<void> {
+    const state = (readView(call.cwd) ?? call.view).read.state
+    if (state.tickets === undefined) return
+    const by = call.rules.length === 0 ? '' : `（${call.rules.join('、')}）`
+    for (const ticket of ticketMatcher(call, openTickets(state), item => item.state === 'deferred')) {
+      await close(call.root, ticket, `等待单 ${ticket.id} 等的调用重试时被规则拦下${by}，单结束`)
     }
   }
 
@@ -785,6 +800,7 @@ export function createTicketDesk(deps: DeskDeps): TicketDesk {
       return { kind: 'deny' as const, reason: denialText({ attempt: deferred.described.attempt, effect: 'queue', rules: deferred.rules, unrecorded: true, peak: deferred.peak }) }
     })(call)),
     passed: call => inTurn(() => safe(passed, (error, answered) => { report(answered.session.id, `等待单随调用放行的处理出错：${message(error)}`) })(call)),
+    blocked: call => inTurn(() => safe(blocked, (error, refused) => { report(refused.session.id, `等待单随调用拦下的处理出错：${message(error)}`) })(call)),
     reconcile,
     ended,
     adopt,

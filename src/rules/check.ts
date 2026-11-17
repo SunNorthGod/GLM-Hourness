@@ -17,13 +17,16 @@
  * It writes nothing and takes no lock: the state is read the way every reader
  * reads it (a state that disagrees with its journal is replayed in memory),
  * and the one thing it hands out besides the result is a `rules.check` event
- * to the metrics exit, which can fail without anyone noticing. A rule that
- * runs a script is judged as one whose script is not approved: the library
- * starts no process, and nothing can approve a script yet.
+ * to the metrics exit, which can fail without anyone noticing. Approved
+ * scripts run through the shared script executor (`src/loops/script.ts`,
+ * unless called recursively from inside a script); unapproved scripts are not
+ * started and are judged by their failure setting.
  */
 import { resolve } from 'node:path'
 import { projectOf } from '../data/project-root.ts'
 import { STAGES } from '../graph/schema.ts'
+import { MAX_ENTRIES } from '../metrics/schema.ts'
+import { toMetricsId } from '../shared/metrics.ts'
 import { describeCall } from './call.ts'
 import { denialText, type PeakSetting } from './denial.ts'
 import { gateEvents } from './events.ts'
@@ -285,11 +288,11 @@ export async function checkCall(call: { readonly tool: string, readonly args: un
     event: 'rules.check',
     effect: result.effect,
     exitCode: result.exitCode,
-    rules: verdict.hits.map(hit => hit.rule),
+    rules: verdict.hits.slice(0, MAX_ENTRIES).map(hit => toMetricsId(hit.rule)),
     peakMode: { level: peak.level, origin: peak.origin },
     ...(options.glmSpend === undefined ? {} : { glmSpend: options.glmSpend }),
     glmPeakSource: glmPeak.source,
-    unknownSignals: signals.filter(signal => signal.value === undefined).map(signal => signal.name),
+    unknownSignals: signals.filter(signal => signal.value === undefined).slice(0, MAX_ENTRIES).map(signal => toMetricsId(signal.name)),
     ...(options.waitedMs === undefined ? {} : { waitedMs: options.waitedMs }),
     caller,
   }
