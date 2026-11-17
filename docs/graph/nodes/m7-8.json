@@ -82,6 +82,12 @@
       "reason": "hourness_report (weekly)、规范阶梯与底线提议已合入 main，待批次 L4 收尾",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-17T19:28:09.540Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "证据 refs 回填：规矩阶梯与底线提议随 efe930f0 落地；底线加类数据源由 hback-paths cd49ac34 补齐（2026-11-18 回填）。"
     }
   ]
 }

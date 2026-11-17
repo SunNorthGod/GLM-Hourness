@@ -83,6 +83,12 @@
       "reason": "hourness_report (patrol) 与 operate.patrol 已合入 main，待冷会话投递批次 L4 核实",
       "from": "approved",
       "to": "doing"
+    },
+    {
+      "at": "2026-11-17T19:28:08.950Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "证据 refs 回填：巡检随 cfbed849 落地、探针场景 glm-operate-patrol 随 a5a2b304；冷会话 02:30 投递桌面核实待批（2026-11-18 回填）。"
     }
   ]
 }

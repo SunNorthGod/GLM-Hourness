@@ -713,6 +713,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-05（原话「都按你说的来」）定 d-freeze-until-dogfood 与 d-finish-then-bootstrap 冲突处按后者办：规则板这一路（§9.3 改稿 → R3 批准路 → R4d → m6-script-gate 第 24 条）提到自举之前，建 rules-r4d。"
+    },
+    {
+      "at": "2026-11-17T19:28:07.751Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "m6-late 落地：§16.16 余项清完——late（超时后台跑至 600s 硬上限、晚到退 2 拦下、mode late 流水与 rules.late-verdict）、notices 投递、未提交改动提醒行、探针场景 rules-script（底线 612→620）；顺手修掉普通路 abort 留僵尸树的真缺陷；随 9760a245 进 main（2026-11-18）。"
     }
   ]
 }
