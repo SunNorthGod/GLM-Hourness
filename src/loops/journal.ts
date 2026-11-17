@@ -10,7 +10,7 @@
  * journal in, the lines, the unfinished last line and the history of each
  * entry out. The store (store.ts) reads the files and appends.
  */
-import type { PersonEntry } from './model.ts'
+import type { LoopEntryDefinition, PersonEntry } from './model.ts'
 
 export type LoopActor = 'human' | 'harness' | 'llm'
 
@@ -39,8 +39,52 @@ export interface JournalRecord {
   readonly observed?: { readonly fileSha256: string }
   /** `ack`: the unreadable lines up to this line number are acknowledged. */
   readonly through?: number
+  /** A proposal op: the whole proposal as the op leaves it (design §9.2 step 4). */
+  readonly proposalAfter?: LoopProposalImage
+  /** An entry write an agreed proposal caused: the person's words and the graph question they were recorded on. */
+  readonly relay?: string
+  readonly question?: string
+  /** The proposal the write came from, `lp-<8 hex digits>`. */
+  readonly proposal?: string
   readonly via?: 'chat' | 'board' | 'repo'
   readonly note?: string
+}
+
+/**
+ * A proposal in the state a record leaves it in (design §7.1 step 1, §9.2
+ * step 4): the content computed once at propose — describe, cautions, the
+ * detail the human must see and its digest — and the decision as it stands.
+ * Every proposal record carries one of these whole, so the latest record of
+ * an id is its state.
+ */
+export interface LoopProposalImage {
+  readonly status: 'open' | 'accepted' | 'rejected' | 'superseded' | 'expired'
+  readonly kind: 'add' | 'edit' | 'delete' | 'repin'
+  readonly via: 'graph' | 'board'
+  /** The moment the proposal was made, ISO. */
+  readonly at: string
+  readonly reason: string
+  /** An add or an edit: the entry as it will be written, the id the board drew and the script or check resolved. */
+  readonly body?: LoopEntryDefinition
+  /** The script's text, for an add, an edit or a repin whose action is a script. */
+  readonly scriptText?: string
+  /** The target of an edit, a delete or a repin. */
+  readonly entry?: string
+  /** A delete's batch of person entries, at most three. */
+  readonly entries?: readonly string[]
+  /** One line of what it does once in force, at most 40 code points. */
+  readonly describe: string
+  readonly cautions: readonly string[]
+  /** The text the human must see, for a script or check add, a changing edit and a repin; stored once, never recomputed. */
+  readonly detail?: { readonly markdown: string, readonly mustShow: readonly string[] }
+  /** The digest of the detail at propose time; the mark an agreeing decision must carry. */
+  readonly digest?: string
+  /** The open proposal this one replaces. */
+  readonly replaces?: string
+  /** The board path's first `/loops accept`, which showed the text. */
+  readonly shownAt?: string
+  /** Who decided it and how, once it is not open any more. */
+  readonly decided?: { readonly by: 'human' | 'llm', readonly at: string, readonly relay?: string, readonly question?: string }
 }
 
 /** The operations after which the entry is as the person agreed to it (or deleted it). */
@@ -49,6 +93,7 @@ const AGREED = new Set(['add', 'edit', 'delete', 'restore', 'repin', 'adopt'])
 const SHA256 = /^[0-9a-f]{64}$/
 const PERSON_ID = /^u-[0-9a-f]{8}$/
 const ACTORS: readonly unknown[] = ['human', 'harness', 'llm']
+const PROPOSAL_STATUS: readonly unknown[] = ['open', 'accepted', 'rejected', 'superseded', 'expired']
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -76,6 +121,10 @@ function recordOf(text: string): JournalRecord | undefined {
   if (typeof value.at !== 'string' || typeof value.op !== 'string' || !ACTORS.includes(value.actor)) return undefined
   if (value.id !== undefined && typeof value.id !== 'string') return undefined
   if (value.through !== undefined && !Number.isInteger(value.through)) return undefined
+  if (value.relay !== undefined && typeof value.relay !== 'string') return undefined
+  if (value.question !== undefined && typeof value.question !== 'string') return undefined
+  if (value.proposal !== undefined && typeof value.proposal !== 'string') return undefined
+  if (value.proposalAfter !== undefined && !(isRecord(value.proposalAfter) && PROPOSAL_STATUS.includes(value.proposalAfter.status))) return undefined
   if (value.op === 'external' && !(isRecord(value.observed) && typeof value.observed.fileSha256 === 'string' && SHA256.test(value.observed.fileSha256))) return undefined
   // A record that says what the person agreed to names the entry by its id and carries it whole; one without that cannot be replayed.
   if (AGREED.has(value.op) && !(typeof value.id === 'string' && PERSON_ID.test(value.id) && imageOf(value.after)?.entry.id === value.id)) return undefined
@@ -136,4 +185,26 @@ export function historyOf(lines: readonly JournalLine[]): ReadonlyMap<string, En
 /** The highest line number the person acknowledged with `/loops ack`; 0 when none. */
 export function acknowledgedThrough(lines: readonly JournalLine[]): number {
   return Math.max(0, ...lines.flatMap(line => line.record?.op === 'ack' && line.record.through !== undefined ? [line.record.through] : []))
+}
+
+/** One proposal as the record holds it. */
+export interface LoopProposal {
+  readonly id: string
+  /** The moment the record that last named it was written, ISO. */
+  readonly at: string
+  readonly image: LoopProposalImage
+}
+
+/**
+ * The proposals the record holds, by id: the last proposal record of each id
+ * carries the whole state (design §9.2 step 4), so the fold is that record.
+ * Entry writes never carry a proposal image and do not take part.
+ */
+export function proposalsOf(lines: readonly JournalLine[]): ReadonlyMap<string, LoopProposal> {
+  const found = new Map<string, LoopProposal>()
+  for (const { record } of lines) {
+    if (record?.proposalAfter === undefined || record.id === undefined) continue
+    found.set(record.id, { id: record.id, at: record.at, image: record.proposalAfter })
+  }
+  return found
 }

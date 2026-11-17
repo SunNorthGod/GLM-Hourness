@@ -44,8 +44,9 @@ import { ensureIgnored } from '../data/project-root.ts'
 import { gitOperationIn } from '../rules/repo.ts'
 import { appendLine, readText, realStoreIo, renameWithRetry, stamp, writeAtomic, type StoreIo } from '../rules/store.ts'
 import { LOOP_EVENT_TABLE } from './events.ts'
-import { acknowledgedThrough, historyOf, parseJournal, type EntryImage, type JournalRecord, type LoopActor } from './journal.ts'
+import { acknowledgedThrough, historyOf, parseJournal, proposalsOf, type EntryImage, type JournalRecord, type LoopActor, type LoopProposal, type LoopProposalImage } from './journal.ts'
 import { entryFileText, validatePersonEntry, type PersonEntry } from './model.ts'
+import { MAX_OPEN } from './proposal.ts'
 import type { LoopEventDeclaration } from './trigger.ts'
 
 /** The loop board's directory in the repository, relative to the project root. */
@@ -77,6 +78,8 @@ export interface LoopsPaths {
   readonly mainStep: string
   /** Where a run's log goes, one folder per entry (design §6.6); the executor appends the file. */
   readonly logsDir: string
+  /** The conclusions the main agent records on a run (design §6.10, §9.1 `notes.jsonl`). */
+  readonly notes: string
 }
 
 export function loopsPaths(projectRoot: string): LoopsPaths {
@@ -97,6 +100,7 @@ export function loopsPaths(projectRoot: string): LoopsPaths {
     removedTasks: join(runtimeDir, 'removed-tasks.jsonl'),
     mainStep: join(runtimeDir, 'main-step.json'),
     logsDir: join(runtimeDir, 'logs'),
+    notes: join(runtimeDir, 'notes.jsonl'),
   }
 }
 
@@ -403,12 +407,21 @@ type Mutation =
   | { readonly op: 'restore', readonly entry: string }
   /** Acknowledge the unreadable lines of the change record. */
   | { readonly op: 'ack' }
+  /** Record an open proposal; the one it replaces is turned `superseded` in the same write (design §7.1 step 1). */
+  | { readonly op: 'propose', readonly id: string, readonly image: Omit<LoopProposalImage, 'status'> }
+  /** The board path's first `/loops accept` of a proposal with text: the text was shown, nothing takes effect yet. */
+  | { readonly op: 'proposal-show', readonly id: string }
+  /** The person's word that a proposal be so: the board path (`human`), or the write a graph decision of the person asked for (`harness`, §7.1 step 4). */
+  | { readonly op: 'proposal-accept', readonly id: string, readonly by: 'human' | 'llm', readonly relay?: string, readonly question?: string }
+  | { readonly op: 'proposal-reject', readonly id: string, readonly by: 'human' | 'llm', readonly relay?: string, readonly question?: string, readonly reason?: string }
+  /** A proposal nobody put to the human for seven days (the reconciliation, §7.1 step 5). */
+  | { readonly op: 'proposal-expire', readonly id: string }
 
 /** What happened to the files: written, removed, left for later because git is busy, not done because a rename or removal failed, or nothing to do. */
 type FileOutcome = 'written' | 'removed' | 'deferred' | 'failed' | 'none'
 
 export type ApplyResult =
-  | { readonly ok: true, readonly op: Mutation['op'], readonly id?: string, readonly title?: string, readonly file: FileOutcome, readonly entry?: PersonEntry }
+  | { readonly ok: true, readonly op: Mutation['op'], readonly id?: string, readonly title?: string, readonly file: FileOutcome, readonly entry?: PersonEntry, readonly changed?: boolean }
   | { readonly ok: false, readonly code: 'busy' | 'invalid' | 'forbidden' | 'not_found' | 'io', readonly message: string }
 
 export interface LoopStoreOptions {
@@ -422,9 +435,11 @@ export interface LoopStore {
   readonly paths: LoopsPaths
   /** The state of the project's entries; reads only. */
   read(): BoardRead
+  /** The proposals the change record holds, by id; reads only. */
+  proposals(): ReadonlyMap<string, LoopProposal>
   /** Persist what a read found, under the write lock. `busy` when another writer holds it for the whole wait; no lock is taken when there is nothing to persist. */
   settle(): Promise<BoardRead | 'busy'>
-  /** One change of the person's. Every operation is the person's: another identity is `forbidden`. */
+  /** One change of the person's, or one step of a proposal's path (design §13: who may write what). */
   apply(actor: LoopActor, mutation: Mutation): Promise<ApplyResult>
   /** Run `body` holding the write lock, after the runtime directory exists. `busy` when the lock is held for the whole wait. */
   locked<T>(body: () => Promise<T>): Promise<T | 'busy'>
@@ -559,10 +574,28 @@ export function openLoopStore(projectRoot: string, options: LoopStoreOptions = {
   /**
    * The record line of a change, then its files. The line comes first and is synced: from there the change has
    * happened, and a file that is not written (git is busy, a rename fails) is owed and written at the next read.
+   * An agreed proposal's write rides the same order with its own actor and `via`, and carries the person's words
+   * and the question they were recorded on (design §9.2 step 4).
    */
-  async function change(found: BoardEntry, read: BoardRead, record: { readonly op: string, readonly before?: EntryImage, readonly after: EntryImage }): Promise<FileOutcome> {
+  async function change(
+    found: BoardEntry,
+    read: BoardRead,
+    record: { readonly op: string, readonly before?: EntryImage, readonly after: EntryImage },
+    by: { readonly actor: LoopActor, readonly via: 'chat' | 'board', readonly relay?: string, readonly question?: string, readonly proposal?: string } = { actor: 'human', via: 'board' },
+    seq: number = read.journal.nextSeq,
+  ): Promise<FileOutcome> {
     const id = found.id
-    await appendJournal(paths, { seq: read.journal.nextSeq, at: iso(), actor: 'human', id, via: 'board', ...record })
+    await appendJournal(paths, {
+      seq,
+      at: iso(),
+      actor: by.actor,
+      id,
+      ...(by.via === 'chat' ? { via: 'chat' as const } : { via: 'board' as const }),
+      ...(by.relay === undefined ? {} : { relay: by.relay }),
+      ...(by.question === undefined ? {} : { question: by.question }),
+      ...(by.proposal === undefined ? {} : { proposal: by.proposal }),
+      ...record,
+    })
     if (read.git !== undefined) return 'deferred'
     const { after } = record
     try {
@@ -580,7 +613,7 @@ export function openLoopStore(projectRoot: string, options: LoopStoreOptions = {
     }
   }
 
-  async function deleteEntry(read: BoardRead, id: string): Promise<ApplyResult> {
+  async function deleteEntry(read: BoardRead, id: string, by?: { readonly actor: LoopActor, readonly via: 'chat' | 'board', readonly relay?: string, readonly question?: string, readonly proposal?: string }, seq = read.journal.nextSeq): Promise<ApplyResult> {
     const found = read.entries.find(candidate => candidate.id === id)
     if (found === undefined) return fail('not_found', `没有这一项（${id}）`)
     if (found.status.kind === 'deleted') return fail('invalid', `「${found.title}」已经删过了；7 天内打 /loops restore ${id} 能恢复`)
@@ -588,7 +621,7 @@ export function openLoopStore(projectRoot: string, options: LoopStoreOptions = {
     const base: EntryImage | undefined = found.agreed ?? (found.entry === undefined || found.sha256 === undefined ? undefined : { entry: found.entry, rev: 0, status: 'active', fileSha256: found.sha256 })
     if (base === undefined) return fail('invalid', `「${found.title}」的条目文件读不出，也没有存档，删不了：跟主 Agent 说「从 git 里恢复 docs/loops/entries/${id}.json」，或自己删掉这个文件`)
     const after: EntryImage = { ...base, rev: base.rev + 1, status: 'deleted' }
-    const file = await change(found, read, { op: 'delete', ...(found.agreed === undefined ? {} : { before: found.agreed }), after })
+    const file = await change(found, read, { op: 'delete', ...(found.agreed === undefined ? {} : { before: found.agreed }), after }, by ?? { actor: 'human', via: 'board' }, seq)
     return { ok: true, op: 'delete', id, title: found.title, file }
   }
 
@@ -614,14 +647,178 @@ export function openLoopStore(projectRoot: string, options: LoopStoreOptions = {
     await appendJournal(paths, { seq: read.journal.nextSeq, at: iso(), actor: 'human', op: 'ack', through: last, via: 'board' })
     return { ok: true, op: 'ack', file: 'none' }
   }
+
+  // ------------------------------------------------------------------ the proposals (design §7.1, §9.2 step 4, §13)
+
+  /** How long the board path's shown text counts (design §7.1 end: the second `/loops accept` within 30 minutes). */
+  const SHOWN_VALID_MS = 30 * 60_000
+
+  /** The person's entry a proposal becomes: the definition with where it came from (design §2.1). */
+  function personEntryOf(image: Omit<LoopProposalImage, 'status'>, proposalId: string, at: string, via: 'chat' | 'board', relay: string, question: string | undefined): PersonEntry {
+    return {
+      ...(image.body ?? {}) as Omit<PersonEntry, 'source'>,
+      source: {
+        kind: 'person',
+        at,
+        via,
+        relay,
+        ...(question === undefined ? {} : { question }),
+        proposal: proposalId,
+      },
+    }
+  }
+
+  /** One record naming a proposal, whole state again (design §9.2 step 4). */
+  async function proposeRecord(seq: number, actor: LoopActor, op: string, id: string, after: LoopProposalImage, via: 'chat' | 'board', relay?: string, question?: string, note?: string): Promise<void> {
+    await appendJournal(paths, {
+      seq,
+      at: iso(),
+      actor,
+      op,
+      id,
+      proposalAfter: after,
+      ...(via === 'chat' ? { via: 'chat' as const } : { via: 'board' as const }),
+      ...(relay === undefined ? {} : { relay }),
+      ...(question === undefined ? {} : { question }),
+      ...(note === undefined ? {} : { note }),
+    })
+  }
+
+  /**
+   * Write what an accepted proposal says (design §7.1 step 4): the entry files
+   * are exactly the proposal's stored text — a script's bytes the stored text,
+   * a check's argv the stored command — with the person as the source; the
+   * proposal turns `accepted` in the same write. The entry records come
+   * first: a crash between them and the proposal's record leaves the entry
+   * standing and the proposal open, which the reconciliation finishes.
+   */
+  async function writeAgreed(
+    read: BoardRead,
+    proposalId: string,
+    image: LoopProposalImage,
+    decided: { readonly by: 'human' | 'llm', readonly at: string, readonly relay: string, readonly question?: string },
+    via: 'chat' | 'board',
+  ): Promise<ApplyResult> {
+    const by = { actor: via === 'chat' ? 'harness' as const : 'human' as const, via, relay: decided.relay, ...(decided.question === undefined ? {} : { question: decided.question }), proposal: proposalId }
+    let seq = read.journal.nextSeq
+    let file: FileOutcome = 'written'
+    if (image.kind === 'add' || image.kind === 'edit' || image.kind === 'repin') {
+      if (image.body === undefined) return fail('invalid', '提议里没有条目的内容，生效不了')
+      const id = image.body.id
+      const found = read.entries.find(candidate => candidate.id === id)
+      if (image.kind === 'add' && found !== undefined && found.status.kind !== 'deleted') return fail('invalid', `编号 ${id} 已被别的条目用着，生效不了：重新提一次`)
+      if (image.kind !== 'add' && found === undefined) return fail('invalid', `这一项（${id}）不在这个项目里，生效不了`)
+      const base = found !== undefined && image.kind !== 'add' ? found.agreed : undefined
+      const rev = (found?.agreed?.rev ?? 0) + 1
+      const entry = personEntryOf(image, proposalId, decided.at, via, decided.relay, decided.question)
+      const after: EntryImage = { entry, rev, status: 'active', fileSha256: sha256(entryFileText(entry)), ...(image.scriptText === undefined ? {} : { scriptText: image.scriptText }) }
+      const holder: BoardEntry = found ?? { id, title: image.body.title, status: { kind: 'unreadable', reason: '没有这个文件' }, entry: undefined, agreed: undefined, sha256: undefined, restorable: false }
+      const outcome = await change(holder, read, { op: image.kind, ...(base === undefined ? {} : { before: base }), after }, by, seq)
+      seq += 1
+      if (outcome === 'failed') file = 'failed'
+      if (outcome === 'deferred') file = 'deferred'
+      return { ok: true, op: 'proposal-accept', id: proposalId, title: image.body.title, file, changed: true, entry }
+    }
+    // A delete: each named entry goes the same way a `/loops delete` does.
+    const ids = image.entries ?? []
+    for (const [index, id] of ids.entries()) {
+      const done = await deleteEntry(read, id, by, seq + index)
+      if (!done.ok) return done
+      if (done.file === 'failed') file = 'failed'
+      if (done.file === 'deferred' && file !== 'failed') file = 'deferred'
+    }
+    return { ok: true, op: 'proposal-accept', id: proposalId, file, changed: ids.length > 0 }
+  }
+
+  async function applyProposal(actor: LoopActor, mutation: Extract<Mutation, { op: 'propose' | 'proposal-show' | 'proposal-accept' | 'proposal-reject' | 'proposal-expire' }>): Promise<ApplyResult> {
+    const done = await locked(async () => {
+      const read = await settleLocked()
+      const held = proposalsOf(parseJournal(readText(paths.journal) ?? '').lines)
+      if (mutation.op === 'propose') {
+        if (actor !== 'llm') return fail('forbidden', '提议只由主 Agent 记：人用 /loops 拍板，人生效过的提议由循环板写')
+        if (held.has(mutation.id)) return fail('invalid', `提议编号 ${mutation.id} 已用过`)
+        const replaces = mutation.image.replaces
+        if (replaces !== undefined) {
+          const old = held.get(replaces)
+          if (old === undefined || old.image.status !== 'open') return fail('invalid', `replaces 不是一条 open 的提议（${replaces}）`)
+        }
+        else if ([...held.values()].filter(proposal => proposal.image.status === 'open').length >= MAX_OPEN) {
+          return fail('invalid', `open 的提议已经有 ${MAX_OPEN} 条了，人还没拍板；先等一等`)
+        }
+        let seq = read.journal.nextSeq
+        if (replaces !== undefined) {
+          const old = held.get(replaces)!
+          await proposeRecord(seq++, actor, 'supersede', replaces, { ...old.image, status: 'superseded' }, old.image.via === 'graph' ? 'chat' : 'board', undefined, undefined, `被提议 ${mutation.id} 取代`)
+        }
+        await proposeRecord(seq, actor, 'propose', mutation.id, { ...mutation.image, status: 'open' }, mutation.image.via === 'graph' ? 'chat' : 'board')
+        return { ok: true as const, op: 'propose' as const, id: mutation.id, file: 'none' as const }
+      }
+      const heldOne = held.get(mutation.id)
+      if (heldOne === undefined) return fail('not_found', `没有提议 ${mutation.id}`)
+      const image = heldOne.image
+      if (mutation.op === 'proposal-show') {
+        if (actor !== 'human') return fail('forbidden', '看原文是人的事：/loops 是人在输入框里敲的')
+        if (image.status !== 'open') return fail('invalid', `提议 ${mutation.id} 已经 ${image.status}，不用再看`)
+        await proposeRecord(read.journal.nextSeq, actor, 'show', mutation.id, { ...image, shownAt: iso() }, image.via === 'graph' ? 'chat' : 'board')
+        return { ok: true as const, op: 'proposal-show' as const, id: mutation.id, file: 'none' as const }
+      }
+      if (mutation.op === 'proposal-expire') {
+        if (actor !== 'harness') return fail('forbidden', '过期由循环板的对账记')
+        if (image.status !== 'open') return { ok: true as const, op: 'proposal-expire' as const, id: mutation.id, file: 'none' as const, changed: false }
+        await proposeRecord(read.journal.nextSeq, actor, 'expire', mutation.id, { ...image, status: 'expired' }, image.via === 'graph' ? 'chat' : 'board', undefined, undefined, '7 天没有待决指向它（提了没交给人）')
+        return { ok: true as const, op: 'proposal-expire' as const, id: mutation.id, file: 'none' as const, changed: true }
+      }
+      if (actor !== 'human' && actor !== 'harness') return fail('forbidden', '提议的同意与否掉不是主 Agent 自己写的')
+      if (actor === 'human' && mutation.by !== 'human') return fail('forbidden', '人是自己同意的，不带别人的原话')
+      // A harness write carries whose the decision was: the person's own on the graph, or the main agent's with their words.
+      if (image.status === 'accepted') return { ok: true as const, op: mutation.op, id: mutation.id, file: 'none' as const, changed: false }
+      if (image.status !== 'open') return fail('invalid', `提议 ${mutation.id} 已经 ${image.status}`)
+      if (mutation.op === 'proposal-accept' && image.detail !== undefined) {
+        // The board path shows the text through the command's own reply; a chat decision carries the mark instead.
+        const shown = image.shownAt === undefined ? Number.NaN : Date.parse(image.shownAt)
+        if (actor === 'human' && !(io.now() - shown <= SHOWN_VALID_MS)) {
+          return fail('invalid', `这条提议的原文你还没看过，或看过超过 30 分钟：先打一次 /loops accept ${mutation.id} 看原文`)
+        }
+      }
+      if (mutation.op === 'proposal-reject') {
+        await proposeRecord(
+          read.journal.nextSeq,
+          actor,
+          'reject',
+          mutation.id,
+          { ...image, status: 'rejected', decided: { by: mutation.by, at: iso(), ...(mutation.relay === undefined ? {} : { relay: mutation.relay }), ...(mutation.question === undefined ? {} : { question: mutation.question }) } },
+          image.via === 'graph' ? 'chat' : 'board',
+          mutation.relay,
+          mutation.question,
+          mutation.reason,
+        )
+        return { ok: true as const, op: 'proposal-reject' as const, id: mutation.id, file: 'none' as const, changed: true }
+      }
+      // The accept carries whose words they were: the person's (chat), the command they typed (board), or their own
+      // decision on the graph, which the reconciliation writes (harness, no relay).
+      const relay = mutation.relay ?? (actor === 'human' ? `人用 /loops accept 同意了提议 ${mutation.id}` : '人在图上自己拍板')
+      if (relay.trim() === '') return fail('invalid', '同意要带着人的原话')
+      const decided = { by: mutation.by, at: iso(), relay, ...(mutation.question === undefined ? {} : { question: mutation.question }) }
+      const written = await writeAgreed(read, mutation.id, image, decided, actor === 'human' ? 'board' : 'chat')
+      if (!written.ok) return written
+      const seq = read.journal.nextSeq + (image.kind === 'delete' ? (image.entries?.length ?? 0) : 1)
+      await proposeRecord(seq, actor, 'accept', mutation.id, { ...image, status: 'accepted', decided }, actor === 'human' ? 'board' : 'chat', relay, mutation.question)
+      return written
+    })
+    return done === 'busy' ? fail('busy', '循环板正忙，没记上，再打一次') : done
+  }
+
   async function apply(actor: LoopActor, mutation: Mutation): Promise<ApplyResult> {
-    if (actor !== 'human') return fail('forbidden', '条目只由人改：删、恢复和确认都得是人敲的 /loops')
-    if (mutation.op !== 'ack' && !PERSON_ID.test(mutation.entry)) return fail('invalid', 'id 写成 u- 加 8 位小写十六进制')
+    const entryOp = mutation.op === 'delete' || mutation.op === 'restore' || mutation.op === 'ack'
+    if (entryOp && actor !== 'human') return fail('forbidden', '条目只由人改：删、恢复和确认都得是人敲的 /loops')
+    if (entryOp && mutation.op !== 'ack' && !PERSON_ID.test(mutation.entry)) return fail('invalid', 'id 写成 u- 加 8 位小写十六进制')
     try {
-      const done = await locked(async () => {
-        const read = await settleLocked()
-        return mutation.op === 'delete' ? deleteEntry(read, mutation.entry) : mutation.op === 'restore' ? restoreEntry(read, mutation.entry) : acknowledge(read)
-      })
+      const done = mutation.op === 'delete' || mutation.op === 'restore' || mutation.op === 'ack'
+        ? await locked(async () => {
+          const read = await settleLocked()
+          return mutation.op === 'delete' ? deleteEntry(read, mutation.entry) : mutation.op === 'restore' ? restoreEntry(read, mutation.entry) : acknowledge(read)
+        })
+        : await applyProposal(actor, mutation)
       return done === 'busy' ? fail('busy', '循环板正忙，没记上，再打一次') : done
     }
     catch (error) {
@@ -629,5 +826,12 @@ export function openLoopStore(projectRoot: string, options: LoopStoreOptions = {
     }
   }
 
-  return { paths, read: () => readBoard(paths, env), settle, apply, locked }
+  return {
+    paths,
+    read: () => readBoard(paths, env),
+    proposals: () => proposalsOf(parseJournal(readText(paths.journal) ?? '').lines),
+    settle,
+    apply,
+    locked,
+  }
 }
