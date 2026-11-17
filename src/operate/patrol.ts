@@ -38,7 +38,7 @@ import { parseDispatchComment } from '../execute/attempts.ts'
 import { parseFloor, floorHits } from '../execute/floor.ts'
 import { readAdvances, readChecks, trunkBranchOf, type VerifiedCheck } from '../execute/check.ts'
 import type { AdvanceRecord } from '../execute/advance.ts'
-import type { Git } from '../execute/git.ts'
+import type { Git, RecentCommit } from '../execute/git.ts'
 import { sha256Hex } from '../execute/digest.ts'
 import { parseGateNorm } from '../execute/gate-norm.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
@@ -59,8 +59,8 @@ import { deliver } from '../rules/wake.ts'
 const MISSED_MS = 26 * 3_600_000
 /** One background command may take the same time a gate command may (§3.8.1). */
 const COMMAND_TIMEOUT_MS = 30 * 60_000
-/** The newest commits the seven-day windows walk, a bound on the log read. */
-const WINDOW_COMMITS = 200
+/** The page size for seven-day commit reads, matching `git.recentCommits`'s upper bound. */
+const WINDOW_COMMITS = 1000
 /** One finding lists at most five names before the count. */
 const DETAIL_MAX = 5
 const DAY_MS = 86_400_000
@@ -157,7 +157,7 @@ interface TrunkState {
 }
 
 async function trunkStateOf(git: Git, project: string, graph: LoadedGraph): Promise<TrunkState> {
-  const trunk = await trunkBranchOf(git, project, graph) ?? 'the main branch'
+  const trunk = await trunkBranchOf(git, project, graph) ?? 'main'
   const upstream = await git.trunkUpstream(project, trunk).then(found => found.ok ? found.value : undefined).catch(() => undefined)
   const refs = await git.trunkRefs(project, trunk, upstream?.remote).then(found => found.ok ? found.value : undefined).catch(() => undefined)
   if (upstream?.remote === undefined) {
@@ -235,6 +235,39 @@ function notifyFailure(deps: PatrolDeps, project: string, sessionId: string | un
   }
 }
 
+/** Commits on `rev` at or after `sinceMs`, paging past `WINDOW_COMMITS` so busy weeks (>200 or >1000 commits) are not dropped. */
+async function recentWindow(git: Git, project: string, rev: string, sinceMs: number): Promise<readonly RecentCommit[]> {
+  const queue: string[] = [rev]
+  const seen = new Set<string>()
+  const window: RecentCommit[] = []
+  let pages = 0
+  while (queue.length > 0 && pages < 20) {
+    const cursor = queue.shift()!
+    pages += 1
+    const batch = await git.recentCommits(project, cursor, WINDOW_COMMITS).then(found => found.ok ? found.value : []).catch(() => [])
+    const inRange: RecentCommit[] = []
+    for (const entry of batch) {
+      if (seen.has(entry.commit)) continue
+      seen.add(entry.commit)
+      const at = Date.parse(entry.at)
+      if (!Number.isNaN(at) && at >= sinceMs) {
+        inRange.push(entry)
+        window.push(entry)
+      }
+    }
+    if (batch.length < WINDOW_COMMITS) continue
+    const oldest = batch[batch.length - 1]
+    const oldestMs = oldest === undefined ? Number.NaN : Date.parse(oldest.at)
+    if (Number.isNaN(oldestMs) || oldestMs < sinceMs) continue
+    for (const entry of inRange) {
+      for (const parent of entry.parents) {
+        if (!seen.has(parent) && !queue.includes(parent)) queue.push(parent)
+      }
+    }
+  }
+  return window
+}
+
 /**
  * The fast reads of §3.11.2's table, each read failing as its own finding,
  * never a throw. The trunk check and the patrol commands are the caller's
@@ -255,14 +288,24 @@ async function patrolFindings(deps: PatrolDeps, input: {
   const advances = await readAdvances(input.execDir).catch(() => [] as readonly AdvanceRecord[])
   const checks = await readChecks(input.execDir).catch(() => [] as readonly VerifiedCheck[])
   const floor = parseFloor(graph?.nodes.get('norm-review-floor'))
-  /** Whether one commit touches the must-review list's file groups. */
-  const hitsFloor = async (commit: string): Promise<boolean> => {
-    const head = await deps.git.recentCommits(project, commit, 1)
-    const parent = head.ok ? head.value[0]?.parents[0] : undefined
-    if (parent === undefined) return false
-    const change = await deps.git.changedFiles(project, parent, commit)
-    if (!change.ok) return false
-    return floorHits(floor, { paths: change.value.map(file => file.path), deleted: change.value.filter(file => file.status === 'D').map(file => file.path) }, [], join(project, '.worktrees', 'hz-patrol')).length > 0
+  /** Whether one commit touches the must-review list's file groups; root/shallow commits read the tree directly. */
+  const hitsFloor = async (entry: RecentCommit): Promise<boolean> => {
+    const parent = entry.parents[0]
+    let paths: readonly string[]
+    let deleted: readonly string[]
+    if (parent === undefined) {
+      const tree = await deps.git.treePaths(project, entry.commit)
+      if (!tree.ok) return false
+      paths = tree.value
+      deleted = []
+    }
+    else {
+      const change = await deps.git.changedFiles(project, parent, entry.commit)
+      if (!change.ok) return false
+      paths = change.value.map(file => file.path)
+      deleted = change.value.filter(file => file.status === 'D').map(file => file.path)
+    }
+    return floorHits(floor, { paths, deleted }, [], join(project, '.worktrees', 'hz-patrol')).length > 0
   }
   /** Whether the task's latest dispatch was reviewed at full depth. */
   const reviewedFull = (task: string | undefined): boolean => {
@@ -290,17 +333,31 @@ async function patrolFindings(deps: PatrolDeps, input: {
       if (state.remoteUnreachable === true) findings.push({ key: 'trunk-remote-unreachable', text: '没连上远端，远端的对照用的是本机记录的值' })
       if (state.local !== undefined) {
         const trailers = await deps.git.trailerCommits(project, state.local).then(found => found.ok ? found.value : []).catch(() => [])
-        const recent = await deps.git.recentCommits(project, state.local, WINDOW_COMMITS).then(found => found.ok ? found.value : []).catch(() => [])
-        const window = recent.filter(entry => !Number.isNaN(Date.parse(entry.at)) && Date.parse(entry.at) >= sinceMs)
+        const window = await recentWindow(deps.git, project, state.local, sinceMs)
         // The commits the advance lines walk over: everything an ok local advance brought in covers its trailers, every line covers its own span.
         const coveredLocalOk = new Set<string>()
         const coveredAny = new Set<string>()
+        const isVerifiedForward = (entry: AdvanceRecord): boolean =>
+          entry.ref === 'local' && entry.ok === true && entry.rollback !== true
+          && (entry.check != null || entry.only === true || entry.checkedAfter === true)
         for (const line of advances) {
-          if (line.from === undefined || line.to === undefined) continue
+          if (line.from === undefined || line.to === undefined || line.from === '' || line.to === '' || line.rollback === true) continue
+          if (line.from === line.to) continue
+          const forward = await deps.git.isAncestor(project, line.from, line.to)
+          if (!forward.ok) continue
+          const verifiedLocal = isVerifiedForward(line)
+          if (!forward.value) {
+            // Avoid unbounded full-history rev-list scans on rollbacks or diverged/rebased pairs.
+            const back = await deps.git.isAncestor(project, line.to, line.from)
+            if (back.ok && back.value) continue
+            coveredAny.add(line.to)
+            if (verifiedLocal) coveredLocalOk.add(line.to)
+            continue
+          }
           const span = await deps.git.commitsBetween(project, line.from, line.to)
           if (!span.ok) continue
           for (const commit of span.value) coveredAny.add(commit)
-          if (line.ref === 'local' && line.ok === true && (line.check != null || line.only === true || line.checkedAfter === true)) {
+          if (verifiedLocal) {
             for (const commit of span.value) coveredLocalOk.add(commit)
           }
         }
@@ -310,7 +367,7 @@ async function patrolFindings(deps: PatrolDeps, input: {
         if (outside.length > 0) findings.push({ key: 'trunk-outside', text: `近 7 天主干上 ${outside.length} 个提交不在任何前进与拉取记录里（系统外的改动）：${names(outside.map(entry => short(entry.commit)))}` })
         const floorCommits: string[] = []
         for (const entry of window) {
-          if (!await hitsFloor(entry.commit)) continue
+          if (!await hitsFloor(entry)) continue
           const trailer = trailers.find(candidate => candidate.commit === entry.commit)
           if (trailer === undefined || !trailer.tasks.some(task => reviewedFull(task))) floorCommits.push(entry.commit)
         }
@@ -319,8 +376,30 @@ async function patrolFindings(deps: PatrolDeps, input: {
           if (line.incomingFloor === undefined || line.incomingFloor.length === 0 || line.at === undefined || Date.parse(line.at) < sinceMs) continue
           findings.push({ key: 'trunk-floor-incoming', text: `拉来的提交带着没全审的改动：${names(line.incomingFloor)}` })
         }
-        const unchecked = advances.filter(line => line.ref === 'local' && (line.ok === false || (line.ok === true && line.check == null && line.only !== true && line.checkedAfter !== true))
-          && line.to !== undefined && !checks.some(record => record.passed && record.commit === line.to))
+        const unchecked: AdvanceRecord[] = []
+        for (let index = 0; index < advances.length; index++) {
+          const line = advances[index]
+          if (line === undefined || line.ref !== 'local' || line.rollback === true) continue
+          const isUnchecked = line.ok === false || (line.ok === true && line.check == null && line.only !== true && line.checkedAfter !== true)
+          if (!isUnchecked || line.to === undefined) continue
+          if (checks.some(record => record.passed && record.commit === line.to)) continue
+          let coveredLater = false
+          for (let laterIndex = index + 1; laterIndex < advances.length; laterIndex++) {
+            const later = advances[laterIndex]
+            if (later === undefined || !isVerifiedForward(later) || later.to === undefined) continue
+            const byTo = line.to !== '' ? await deps.git.isAncestor(project, line.to, later.to) : undefined
+            if (byTo?.ok === true && byTo.value) {
+              coveredLater = true
+              break
+            }
+            const byFrom = line.from !== undefined && line.from !== '' ? await deps.git.isAncestor(project, line.from, later.to) : undefined
+            if (byFrom?.ok === true && byFrom.value) {
+              coveredLater = true
+              break
+            }
+          }
+          if (!coveredLater) unchecked.push(line)
+        }
         if (unchecked.length > 0) findings.push({ key: 'trunk-unchecked-advance', text: `${unchecked.length} 次没检查的主干前进还没补检查：${names(unchecked.map(line => short(line.to)))}` })
       }
     }
@@ -487,7 +566,7 @@ export async function patrolRun(deps: PatrolDeps, agent: AgentLike): Promise<{ t
       void execute.runAction('execute.trunk-check', record).then(async (result) => {
         const outcome = result.outcome === 'done' ? (result.tell === undefined ? 'passed' : 'failed')
           : result.outcome === 'skipped' ? 'passed' : result.reason?.includes('gate_busy') === true ? 'skipped' : 'failed'
-        await appendLine(operateDir, { kind: 'trunk-check', at: new Date().toISOString(), outcome })
+        await appendLine(operateDir, { kind: 'trunk-check', at: new Date(now().getTime()).toISOString(), outcome })
         if (outcome === 'failed') notifyFailure(deps, root, sessionId, '巡检的主干检查', result.outcome === 'done' ? result.tell ?? '主干检查没过' : `主干检查没有跑完：${result.reason ?? ''}`)
       }).catch(() => undefined)
     }
@@ -498,7 +577,7 @@ export async function patrolRun(deps: PatrolDeps, agent: AgentLike): Promise<{ t
     const logFile = join(execDir, 'patrol', `${nowMs}-${index}.log`)
     jobs.push(`巡检命令已在后台开始（${command.command}），结果送到你的下一步`)
     void deps.runLine(command.command, root, logFile, COMMAND_TIMEOUT_MS, new AbortController().signal).then(async (run) => {
-      await appendLine(operateDir, { kind: 'patrol-command', at: new Date().toISOString(), outcome: run.exit === 0 ? 'passed' : 'failed' })
+      await appendLine(operateDir, { kind: 'patrol-command', at: new Date(now().getTime()).toISOString(), outcome: run.exit === 0 ? 'passed' : 'failed' })
       if (run.exit !== 0) notifyFailure(deps, root, sessionId, '巡检的命令', `巡检命令 ${command.command} 没过（退出码 ${run.exit}${run.problem === undefined ? '' : `，${run.problem}`}），输出的前几行：\n${await logHead(logFile, 40)}`)
     }).catch(() => undefined)
   }

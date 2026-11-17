@@ -55,6 +55,7 @@ import { scratchLeftovers, type ScratchLeftovers } from '../guard/scratch.ts'
 import type { HarnessResult, LoopEventRecord } from '../loops/service.ts'
 import { deliver } from '../rules/wake.ts'
 import { createUserNotice, type AgentLike, type ServiceLookup, type ToolDefinitionLike, type ToolExecutionContext, type UserNotice } from '../shared/dsh-min.ts'
+import { toMetricsId, type MetricsWhere } from '../shared/metrics.ts'
 import type { AdvanceRecord } from './advance.ts'
 import { sha256Hex } from './digest.ts'
 import type { GraphCache } from './dispatch.ts'
@@ -66,7 +67,7 @@ import { baselineOf } from '../bootstrap/review.ts'
 import type { GateLauncher, GateVerdict } from './gate-provider.ts'
 import { watchedDigest, type Git, type SnapshotSaver } from './git.ts'
 import type { LoopEmit } from './loop-link.ts'
-import { emitMetric } from './metrics.ts'
+import { emitMetric, executeMetricWhere } from './metrics.ts'
 import { writeWithRetry } from './retry.ts'
 import { latestHumanAt } from './review.ts'
 
@@ -215,6 +216,7 @@ function parseAdvance(line: string): AdvanceRecord | undefined {
     return undefined
   }
   if (!isRecord(value) || (value.ref !== 'local' && value.ref !== 'remote') || typeof value.from !== 'string' || typeof value.to !== 'string') return undefined
+  if (value.rollback !== undefined && typeof value.rollback !== 'boolean') return undefined
   return value as unknown as AdvanceRecord
 }
 
@@ -777,17 +779,20 @@ async function passedHook(deps: CheckDeps, sessionId: string | undefined, projec
     .catch((error: unknown) => { deps.report(sessionId, 'degraded', `检查通过之后的记录没写完（${short(record.commit)}）：${errorText(error)}`) })
 }
 
-function metricOf(result: CheckResult, setup: boolean, lockWaitMs: number): void {
+function metricOf(result: CheckResult, setup: boolean, lockWaitMs: number, where?: MetricsWhere): void {
+  const capped = result.commands.slice(0, 32)
   emitMetric({
     event: 'execute.check',
-    commit: result.commit,
-    tasks: result.tasks,
-    passed: result.passed,
+    commit: toMetricsId(result.commit),
+    ...(result.tasks.length > 0 ? { task: toMetricsId(result.tasks[0]) } : {}),
+    ok: result.passed,
     kind: result.kind,
-    commands: result.commands.map(command => ({ line: command.line, exit: command.exit, ms: command.ms })),
+    cmds: capped.map((_, i) => i),
+    exits: capped.map(c => Math.max(0, Math.round(c.exit))),
+    ms: capped.map(c => Math.max(0, Math.round(c.ms))),
     setup,
-    lockWaitMs,
-  })
+    lockMs: Math.max(0, Math.round(lockWaitMs)),
+  }, where)
 }
 
 const NO_TRAILER = '没有任务尾注：进主干之后不会记到任何活上'
@@ -823,7 +828,7 @@ async function commentFailure(deps: CheckDeps, spec: GateRunSpec, task: string, 
   const written = await writeWithRetry(() => engine.apply('harness', { op: 'comment', id: task, text })).catch(() => undefined)
   if (written === undefined || !written.ok) deps.report(spec.sessionId, 'degraded', `检查没过的批注写不进图（${task}）`)
   if (!stop) return
-  emitMetric({ event: 'execute.stop', node: task, kind: 'check', rounds: n })
+  emitMetric({ event: 'execute.stop', node: toMetricsId(task), kind: 'check', rounds: n }, executeMetricWhere(spec.project, spec.sessionId))
   // The draft to the person goes through `hourness.stopped` and its `execute.stop-draft` action, keyed with the time of the comment that carries 停下 (D11).
   const stoppedAt = written?.ok === true ? written.node.history.filter(entry => entry.op === 'comment' && entry.text === text).at(-1)?.at : undefined
   deps.emit?.(spec.project, spec.sessionId, { event: 'hourness.stopped', key: `stopped:${task}:check-${stoppedAt ?? at}`, payload: { node: task, kind: 'check', rounds: n } })
@@ -841,7 +846,7 @@ async function finishCheck(deps: CheckDeps, spec: GateRunSpec, outcome: GateOutc
     tellHolder(deps, spec, notice(`${c12} merge check did not run (${outcome.code})`, `The merge check of ${c12} did not run: ${outcome.code}: ${outcome.reason}. It counts as no check. ${again}`, false), '检查的通知')
     return { text: `${c12}: ${outcome.code}: ${outcome.reason}`, stopReason: outcome.code === 'aborted' ? 'aborted' : 'error' }
   }
-  metricOf(outcome.result, outcome.setup, outcome.lockWaitMs)
+  metricOf(outcome.result, outcome.setup, outcome.lockWaitMs, executeMetricWhere(spec.project, spec.sessionId))
   const failure = outcome.failure
   if (failure === undefined) {
     const n = outcome.result.commands.length
@@ -953,7 +958,7 @@ export function checkCommitTool(deps: CheckDeps): ToolDefinitionLike {
           deps.report(agent.session?.id, 'degraded', `检查记录写不进去（${short(commit)}）：${errorText(error)}`)
           refuse('write_failed', `the check record cannot be written: ${errorText(error)}`, 'send the call again; the change counts as unchecked until a record lands')
         }
-        metricOf(result, false, 0)
+        metricOf(result, false, 0, executeMetricWhere(project, agent.session?.id))
         await passedHook(deps, agent.session?.id, project, record)
         return { commit, status: 'passed-by-paths', tasks }
       }
@@ -1042,13 +1047,13 @@ export async function trunkCheck(deps: CheckDeps, record: LoopEventRecord): Prom
       catch (error) {
         return { outcome: 'failed', reason: `the trunk record cannot be written: ${errorText(error)}` }
       }
-      metricOf(result, false, 0)
+      metricOf(result, false, 0, executeMetricWhere(project, record.session))
       return { outcome: 'done' }
     }
     const spec: GateRunSpec = { kind: 'trunk', project, graphDir, commit, trunk, mergeBase: undefined, paths: undefined, indexes: missing, covered: [...covered], tasks, gate, normDigest: digest, baselines: baselinesOf(gate, graph), sessionId: record.session }
     const outcome = await runGate(deps, spec, new AbortController().signal)
     if (outcome.kind === 'refused') return { outcome: 'failed', reason: `${outcome.code}: ${outcome.reason}` }
-    metricOf(outcome.result, outcome.setup, outcome.lockWaitMs)
+    metricOf(outcome.result, outcome.setup, outcome.lockWaitMs, executeMetricWhere(spec.project, spec.sessionId))
     const failure = outcome.failure
     if (failure === undefined) return { outcome: 'done' }
     return { outcome: 'done', tell: `The full check on ${trunk} ${short(commit)} failed: ${failure.line} exit ${failure.exit} (${failure.log}). Fix it or revert.` }

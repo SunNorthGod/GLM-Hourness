@@ -76,7 +76,7 @@ export interface AcceptanceStuckFacts {
 }
 
 /** Which way the numbers point for a norm's level (§3.12.2). */
-type LadderDirection = 'up' | 'enforce' | 'down'
+type LadderDirection = 'up' | 'down'
 
 export interface LadderFacts {
   readonly norm: string
@@ -159,7 +159,6 @@ export function askDraft(kind: AskKind, facts: ReviewStuckFacts | CheckStuckFact
       const input = facts as LadderFacts
       const ways: Record<LadderDirection, [string, string]> = {
         up: ['升一级', '拦下更早'],
-        enforce: ['转为真拦', '影子看了够久'],
         down: ['降一级', '近来没有用到它'],
       }
       const [move, why] = ways[input.direction]

@@ -74,10 +74,12 @@ export interface FloorGroupProposal {
   readonly ask: Ask
 }
 
-/** The top-level directory a changed path counts under: its first segment, or the path itself at the repository root. */
-function topDir(path: string): string {
+/** The top-level bucket a changed path counts under: its first segment (a directory bucket) or the root file itself, paired with the path `floorPathIn` probes. */
+function bucketOf(path: string): { readonly name: string, readonly probe: string } {
   const slash = path.indexOf('/')
-  return slash < 0 ? path : path.slice(0, slash)
+  if (slash < 0) return { name: path, probe: path }
+  const dir = path.slice(0, slash)
+  return { name: dir, probe: `${dir}/` }
 }
 
 /** Every `files` path the floor names, for the already-covered check. */
@@ -94,10 +96,10 @@ export function floorProposals(input: FloorInput): readonly FloorGroupProposal[]
     if (!task.landings.some(landing => landing >= sinceMs && landing < input.nowMs)) continue
     const cameBack = task.reworkMs.some(moment => moment >= sinceMs && moment < input.nowMs)
     for (const path of task.paths) {
-      const dir = topDir(path)
-      if (floorPathIn(covered, `${dir}/`)) continue
-      const group = groups.get(dir) ?? { declared: new Set<string>(), reworked: new Set<string>() }
-      if (!groups.has(dir)) groups.set(dir, group)
+      const { name, probe } = bucketOf(path)
+      if (floorPathIn(covered, probe)) continue
+      const group = groups.get(name) ?? { declared: new Set<string>(), reworked: new Set<string>() }
+      if (!groups.has(name)) groups.set(name, group)
       group.declared.add(task.task)
       if (cameBack) group.reworked.add(task.task)
     }

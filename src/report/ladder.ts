@@ -8,14 +8,15 @@
  *
  * Two directions remain. Up: a norm below 门禁 whose rules denied at least
  * three calls in the last seven days. Down: a gate-level norm whose rules
- * denied nothing and have no shadow record in the last twenty-eight days.
- * The third direction the design named — a shadow norm turning enforce — is
- * gone: the person decided code rules block from the day they start
+ * denied nothing and have no late-denial record in the last twenty-eight
+ * days. The third direction the design named — a shadow norm turning enforce
+ * — is gone: the person decided code rules block from the day they start
  * (`d-code-rules-enforce`, 2026-10-31) and deleted the shadow-to-enforce
  * ladder step with the whole promotion machinery (M4 design 0.6, decision
  * one). The counts go through the one classifier every reader shares
- * (classifyRecord): a plain denial is a block, a `mode: 'shadow'` line with
- * paths is a shadow record, anything unreadable counts nowhere.
+ * (classifyRecord): a plain denial is a block, a `mode: 'late'` line (or
+ * legacy `mode: 'shadow'` line with paths) is a late denial, anything
+ * unreadable counts nowhere.
  *
  * The harness never asks the person itself (`d-rules-human-only`,
  * `d-chat-not-cards`): each direction becomes one `askDraft('norm-ladder')`
@@ -41,7 +42,7 @@ const LABELS = ['级别', '规则'] as const
 
 /** How long after blocks still count for a promotion (§3.12.2 「近 7 天」). */
 const UP_WINDOW_MS = 7 * 86_400_000
-/** The quiet stretch that proposes a demotion, blocks and shadow records both (§3.12.2 「近 28 天」). */
+/** The quiet stretch that proposes a demotion, blocks and late-denial records both (§3.12.2 「近 28 天」). */
 const DOWN_WINDOW_MS = 28 * 86_400_000
 /** Blocks in the up window that point up (§3.12.2 「拦截不少于 3 条」). */
 const UP_BLOCKS = 3
@@ -98,10 +99,10 @@ export function rejectedNorms(graph: LoadedGraph, nowMs: number): ReadonlySet<st
   return rejected
 }
 
-/** The blocks and the shadow records of one rule set in `[since, now)` — the classes the one classifier names, the mode tells apart. */
-function countsInWindow(violations: readonly GuardRecord[], rules: ReadonlySet<string>, sinceMs: number, nowMs: number): { blocks: number, shadow: number } {
+/** The blocks and the late-denial records (`mode: 'late'` and legacy `mode: 'shadow'`) of one rule set in `[since, now)` — the classes the one classifier names. */
+function countsInWindow(violations: readonly GuardRecord[], rules: ReadonlySet<string>, sinceMs: number, nowMs: number): { blocks: number, late: number } {
   let blocks = 0
-  let shadow = 0
+  let late = 0
   for (const record of violations) {
     const line = record as unknown as Readonly<Record<string, unknown>>
     if (typeof line.rule !== 'string' || !rules.has(line.rule)) continue
@@ -109,9 +110,9 @@ function countsInWindow(violations: readonly GuardRecord[], rules: ReadonlySet<s
     if (Number.isNaN(at) || at < sinceMs || at >= nowMs) continue
     const klass = classifyRecord(line)
     if (klass === 'denial') blocks += 1
-    else if (klass === 'late-denial' && line.mode === 'shadow') shadow += 1
+    else if (klass === 'late-denial' && (line.mode === 'late' || line.mode === 'shadow')) late += 1
   }
-  return { blocks, shadow }
+  return { blocks, late }
 }
 
 /** One norm read for the ladder: its id, title, level rank and rule ids; undefined when any part is missing or unreadable. */
@@ -142,10 +143,10 @@ export function ladderProposals(input: LadderInput): readonly LadderProposal[] {
       counts = `近 7 天拦截 ${blocks} 条`
     }
     else {
-      const { blocks, shadow } = countsInWindow(input.violations, norm.rules, input.nowMs - DOWN_WINDOW_MS, input.nowMs)
-      if (blocks > 0 || shadow > 0) continue
+      const { blocks, late } = countsInWindow(input.violations, norm.rules, input.nowMs - DOWN_WINDOW_MS, input.nowMs)
+      if (blocks > 0 || late > 0) continue
       direction = 'down'
-      counts = '近 28 天拦截与影子都是 0'
+      counts = '近 28 天拦截与晚到的拦下都是 0'
     }
     proposals.push({ norm: norm.id, title: norm.title, direction, counts, ask: askDraft('norm-ladder', { norm: norm.id, title: norm.title, direction, counts }) })
   }

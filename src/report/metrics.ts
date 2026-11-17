@@ -98,16 +98,22 @@ export function sourcedMoments(graph: LoadedGraph, task: string): number[] {
   return moments
 }
 
-/** Every verified forward move of the trunk that carries a moment, in journal order, each with the first trunk commit after it. */
+/** Every verified forward move of the trunk that carries a moment, in journal order, each with the first non-rollback trunk commit after it. */
 function deploymentsOf(advances: readonly AdvanceRecord[]): Deploy[] {
-  const landed: Deploy[] = []
-  for (const line of advances) {
-    if (line.ref !== 'local' || line.ok !== true) continue
+  const landed: { readonly at: number, readonly to: string, readonly tasks: readonly string[], readonly index: number }[] = []
+  for (let index = 0; index < advances.length; index++) {
+    const line = advances[index]
+    if (line === undefined || line.ref !== 'local' || line.ok !== true || line.rollback === true) continue
     const at = momentOf(line.at)
     if (Number.isNaN(at)) continue
-    landed.push({ at, to: line.to, tasks: line.tasks ?? [], successor: undefined })
+    landed.push({ at, to: line.to, tasks: line.tasks ?? [], index })
   }
-  return landed.map(deploy => ({ ...deploy, successor: advances.find(line => line.ref === 'local' && line.from === deploy.to)?.to }))
+  return landed.map(({ at, to, tasks, index }) => ({
+    at,
+    to,
+    tasks,
+    successor: advances.find((line, later) => later > index && line.ref === 'local' && line.rollback !== true && line.from === to)?.to,
+  }))
 }
 
 /** The lead of one (deployment, task) pair: the deployment's moment minus the journey's first dispatch, undefined when the journey cannot be read. The journey starts after the previous landing of the same task, so a rework's second landing measures its own dispatches (口径 in the lane progress). */

@@ -53,6 +53,7 @@ import { renderCorrection, shellCommandOf, type ToolCall } from '../guard/rules.
 import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import { createUserNotice, type AgentLike, type AgentsService, type PostExecuteListener, type PreExecuteListener, type SessionLike } from '../shared/dsh-min.ts'
 import type { JsonValue } from '../shared/json.ts'
+import { toMetricsId } from '../shared/metrics.ts'
 import { latestDispatch, parseDispatchComment, parseHandbackComment, taskReviewOf, type HandbackComment } from './attempts.ts'
 import { appendAdvance, readAdvances, readChecks, toHolder, trunkBranchOf, type VerifiedCheck } from './check.ts'
 import { sha256Hex } from './digest.ts'
@@ -62,7 +63,7 @@ import { normDigest, parseGateNorm } from './gate-norm.ts'
 import type { ParsedGate } from './gate-norm.ts'
 import type { ParsedFloor } from './floor.ts'
 import { reflogKind, type Git, type TrunkRefs } from './git.ts'
-import { emitMetric } from './metrics.ts'
+import { emitMetric, executeMetricWhere } from './metrics.ts'
 import { writeWithRetry } from './retry.ts'
 
 /** A passed check record as checks.jsonl holds it (§3.8.3 step 8). */
@@ -98,6 +99,8 @@ export interface AdvanceRecord {
   readonly missing?: string
   /** The check passed after the reference had already moved (「检查在前进之后」). */
   readonly checkedAfter?: true
+  /** Whether the move moved the reference backwards (to an ancestor of `from`). */
+  readonly rollback?: boolean
 }
 
 /** The change between two commits, as `changedFiles` (src/execute/git.ts) reads it. */
@@ -1127,8 +1130,18 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
     const who = { agent: by.agentId, callId: by.callId }
     const back = await git.isAncestor(project, to, from)
     if (back.ok && back.value) {
-      await append(project, { ref: 'local', from, to, ...who, check: null, tasks: [], at, ok: true })
-      emitMetric({ event: 'execute.advance', ref: 'local', way: 'advance', from, to, tasks: [] })
+      await append(project, { ref: 'local', from, to, ...who, check: null, tasks: [], at, ok: true, rollback: true })
+      emitMetric({
+        event: 'execute.advance',
+        ref: 'local',
+        how: 'advance',
+        from: toMetricsId(from),
+        to: toMetricsId(to),
+        by: 'rollback',
+        checkAfter: false,
+        reviewPending: [],
+        incomingFloor: 0,
+      }, executeMetricWhere(project, by.sessionId))
       return
     }
     const graph = await loadGraph(project)
@@ -1141,7 +1154,13 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
       await append(project, { ref: 'local', from, to, ...who, tasks, at, ok: false, missing })
       const text = `${setup.trunk} moved from ${short(from)} to ${short(to)} without a passed merge check (${missing}). No evidence was recorded. Run check_commit ${short(to)}; if it fails, fix or revert on the main branch.`
       deps.journal({ at, rule: RULE, tool: by.tool, agentId: by.agentId, sessionId: by.sessionId, correction: text, effect: 'detected-after' })
-      emitMetric({ event: 'execute.unchecked-advance', ref: 'local', from, to, missing })
+      emitMetric({
+        event: 'execute.unchecked-advance',
+        ref: 'local',
+        from: toMetricsId(from),
+        to: toMetricsId(to),
+        missing: toMetricsId(missing),
+      }, executeMetricWhere(project, by.sessionId))
       tell(project, by.sessionId, `${setup.trunk} moved without a passed merge check`, text, { event: 'advance', ref: 'local', from, to, ok: false })
       return
     }
@@ -1164,7 +1183,18 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
       const outcome = await recordTrunkEvidence(project, task, { trailerCommit, record, only: facts.gate.only, from, to, checkedAfter: false, sessionId: by.sessionId })
       if (outcome === 'pending') reviewPending.push(task)
     }
-    emitMetric({ event: 'execute.advance', ref: 'local', way: 'advance', from, to, tasks, byCheck: record !== undefined, byPaths: record === undefined, reviewPending, incomingFloor: incomingFloor.length })
+    emitMetric({
+      event: 'execute.advance',
+      ref: 'local',
+      how: 'advance',
+      from: toMetricsId(from),
+      to: toMetricsId(to),
+      ...(tasks.length > 0 ? { task: toMetricsId(tasks[0]) } : {}),
+      by: record !== undefined ? 'check' : 'paths',
+      checkAfter: false,
+      reviewPending: reviewPending.slice(0, 32).map(toMetricsId),
+      incomingFloor: incomingFloor.length,
+    }, executeMetricWhere(project, by.sessionId))
     if (change.paths.length === 0) await emptyAdvanceAgainstGraph(project, by.sessionId, to)
     deps.onTrunkEvent(project, setup.trunk, trunkEventOf('trunk-advanced', line, change.paths), by.sessionId)
   }
@@ -1191,7 +1221,17 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
     const fetcher = kind === 'fetch' && !movers.some(call => call.invocations.some(invocation => invocation.sub === 'push')) ? movers.find(fetches) : undefined
     if (fetcher !== undefined) {
       await append(project, { ref: 'remote', by: 'fetch', from: from ?? '', to, agent: fetcher.agentId, callId: fetcher.callId, at })
-      emitMetric({ event: 'execute.advance', ref: 'remote', way: 'fetch', from: from ?? '', to, tasks: [] })
+      emitMetric({
+        event: 'execute.advance',
+        ref: 'remote',
+        how: 'fetch',
+        from: toMetricsId(from),
+        to: toMetricsId(to),
+        by: 'none',
+        checkAfter: false,
+        reviewPending: [],
+        incomingFloor: 0,
+      }, executeMetricWhere(project, fetcher.sessionId))
       return
     }
     const by = bookedTo(movers)
@@ -1209,7 +1249,17 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
     }
     if (verdict.ok) {
       await append(project, { ref: 'remote', by: 'push', from: from ?? '', to, ...who, at, ok: true })
-      emitMetric({ event: 'execute.advance', ref: 'remote', way: 'push', from: from ?? '', to, tasks: [] })
+      emitMetric({
+        event: 'execute.advance',
+        ref: 'remote',
+        how: 'push',
+        from: toMetricsId(from),
+        to: toMetricsId(to),
+        by: 'none',
+        checkAfter: false,
+        reviewPending: [],
+        incomingFloor: 0,
+      }, executeMetricWhere(project, by.sessionId))
       return
     }
     const line: AdvanceRecord = { ref: 'remote', by: 'push', from: from ?? '', to, ...who, at, ok: false, missing: verdict.missing }
@@ -1217,7 +1267,13 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
     const remote = setup.remote ?? 'the upstream'
     const text = `${remote}/${setup.trunk} was pushed from ${from === undefined ? '(none)' : short(from)} to ${short(to)} without a passed merge check (${verdict.missing}). The published main branch now carries unchecked commits. Run check_commit ${short(to)}; if it fails, fix forward on the main branch, or tell the person before any force-push.`
     deps.journal({ at, rule: RULE, tool: by.tool, agentId: by.agentId, sessionId: by.sessionId, correction: text, effect: 'detected-after' })
-    emitMetric({ event: 'execute.unchecked-advance', ref: 'remote', from: from ?? '', to, missing: verdict.missing })
+    emitMetric({
+      event: 'execute.unchecked-advance',
+      ref: 'remote',
+      from: toMetricsId(from),
+      to: toMetricsId(to),
+      missing: toMetricsId(verdict.missing),
+    }, executeMetricWhere(project, by.sessionId))
     tell(project, by.sessionId, `${remote}/${setup.trunk} was pushed without a passed merge check`, text, { event: 'advance', ref: 'remote', from: from ?? '', to, ok: false })
     deps.onTrunkEvent(project, setup.trunk, trunkEventOf('outside-advance', line, from === undefined ? [] : await filesOf(project, from, to)), by.sessionId)
   }
@@ -1280,15 +1336,38 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
   /** A move no call claimed (§3.8.4's step compare): the person's terminal, another tool. Recorded, no violation, no evidence. */
   async function outside(project: string, setup: TrunkSetup, seen: TrunkRefs, now: TrunkRefs, sessionId: string): Promise<void> {
     const at = stamp()
+    const where = executeMetricWhere(project, sessionId)
     if (seen.local !== undefined && now.local !== undefined && seen.local !== now.local) {
       const line: AdvanceRecord = { ref: 'local', by: 'outside', from: seen.local, to: now.local, at }
       await append(project, line)
-      emitMetric({ event: 'execute.advance', ref: 'local', way: 'outside', from: seen.local, to: now.local, tasks: [], external: true })
+      emitMetric({
+        event: 'execute.advance',
+        ref: 'local',
+        how: 'outside',
+        from: toMetricsId(seen.local),
+        to: toMetricsId(now.local),
+        by: 'none',
+        checkAfter: false,
+        reviewPending: [],
+        incomingFloor: 0,
+        external: true,
+      }, where)
       deps.onTrunkEvent(project, setup.trunk, trunkEventOf('outside-advance', line, await filesOf(project, seen.local, now.local)), sessionId)
     }
     if (now.remote !== undefined && seen.remote !== now.remote) {
       await append(project, { ref: 'remote', by: 'outside', from: seen.remote ?? '', to: now.remote, at })
-      emitMetric({ event: 'execute.advance', ref: 'remote', way: 'outside', from: seen.remote ?? '', to: now.remote, tasks: [], external: true })
+      emitMetric({
+        event: 'execute.advance',
+        ref: 'remote',
+        how: 'outside',
+        from: toMetricsId(seen.remote),
+        to: toMetricsId(now.remote),
+        by: 'none',
+        checkAfter: false,
+        reviewPending: [],
+        incomingFloor: 0,
+        external: true,
+      }, where)
     }
   }
 
@@ -1441,7 +1520,7 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
     })
     if (verdict.kind === 'deny') {
       deps.journal({ at: stamp(), rule: RULE, tool: payload.name, agentId: caller.agent.id, sessionId: caller.session.id, correction: verdict.reason })
-      emitMetric({ event: 'execute.advance-refused', missing: verdict.missing })
+      emitMetric({ event: 'execute.advance-refused', missing: toMetricsId(verdict.missing) }, executeMetricWhere(caller.project, caller.session.id))
       return { kind: 'deny', reason: verdict.reason }
     }
     const callId = payload.callId
@@ -1546,11 +1625,22 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
     const record = evidenceRecord((await readChecks(execDir)).filter(entry => entry.commit === commit && entry.passed))
     if (record === undefined) return
     const gate = parseGateNorm((await loadGraph(project)).nodes.get('norm-merge-gate'))
+    const where = executeMetricWhere(project, sessionId)
     for (const line of byRef) {
       const at = stamp()
       if (line.ref === 'remote') {
         await append(project, { ref: 'remote', by: 'push', from: line.from, to: line.to, check: commit, at, ok: true, checkedAfter: true })
-        emitMetric({ event: 'execute.advance', ref: 'remote', way: 'push', from: line.from, to: line.to, tasks: [], checkedAfter: true })
+        emitMetric({
+          event: 'execute.advance',
+          ref: 'remote',
+          how: 'push',
+          from: toMetricsId(line.from),
+          to: toMetricsId(line.to),
+          by: 'check',
+          checkAfter: true,
+          reviewPending: [],
+          incomingFloor: 0,
+        }, where)
         continue
       }
       const trailers = await git.taskTrailers(project, line.from, line.to)
@@ -1563,7 +1653,18 @@ export function installTrunkGate(ctx: TrunkGateHost, deps: TrunkGateDeps): {
         const outcome = await recordTrunkEvidence(project, task, { trailerCommit, record, only: gate.only, from: line.from, to: line.to, checkedAfter: true, sessionId })
         if (outcome === 'pending') reviewPending.push(task)
       }
-      emitMetric({ event: 'execute.advance', ref: 'local', way: 'advance', from: line.from, to: line.to, tasks, byCheck: true, checkedAfter: true, reviewPending })
+      emitMetric({
+        event: 'execute.advance',
+        ref: 'local',
+        how: 'advance',
+        from: toMetricsId(line.from),
+        to: toMetricsId(line.to),
+        ...(tasks.length > 0 ? { task: toMetricsId(tasks[0]) } : {}),
+        by: 'check',
+        checkAfter: true,
+        reviewPending: reviewPending.slice(0, 32).map(toMetricsId),
+        incomingFloor: 0,
+      }, where)
     }
   }
 
