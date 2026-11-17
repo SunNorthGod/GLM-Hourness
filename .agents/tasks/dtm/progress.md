@@ -94,3 +94,13 @@
 - 全量探针地板 620/620，`GIT_CONFIG_*` 不设，日志写主检出 `.llm/logs/`、前缀 `dtm-`。
 - rc.3 漂移的探针红先查 `.agents/tasks/rc3-probe/progress.md` 再复钉。
 - 不碰兄弟工作树、`~/.dsh`、真实密钥；落地 rebase → gates → ff → 推 origin/main + github main。
+
+## 执行记录（2026-11-18，续会 Instance 3）
+
+- 续接：前两次实例死于 Start Plan 指标饱和。交接时报告 WIP 为 7 个文件，实为 11 改 + 2 未跟踪（`git status` 为准）：多出 `tests/rules-fixtures.ts`、`tests/rules-panel-model.spec.ts`、`tests/rules-timing.spec.ts`、`tests/rules-view.spec.ts`、`ui/src/rules/model.ts` 与未跟踪的 `src/shared/journal.ts`、`.agents/tasks/rc3-probe/`（并行泳道的进度副本，不属本车道，未动）。
+- WIP 审计结论：故事线完整且与上面的计划一致——stage 3（视图与页面：`RulesScriptView.timeout`、`timeoutFrom` 展宽、`view-build.ts` 的 `scriptOf` 同公式同账、ui 规则板 `scriptLines` 经 `checkCell`、`index.ts` 把账喂进 view 输入）+ 两本超时账（env 与 rules）的解析与整理提取为 `src/shared/journal.ts` + `package.json` 把 `tests/rules-timing.spec.ts` 挂进 `test:2`（c05e7fe8 的遗留，spec 落了没挂）。前实例遗言的「细节断言没算上『被上限截住』的后缀」：句子本身对，断言错——`checkCell` 把「来历（新的在前）：」表头与每条历史分放在不同行，原断言要两个字串同行；修法是拆成两条 `some(...includes)`，后缀「想要 33 秒，被上限截在 30 秒」照实断言（tests/rules-panel-model.spec.ts）。
+- 棘轮两处（c05e7fe8+WIP 的欠账）：knip 7 条新发现 = `src/rules/timing.ts` 只在模块内用的导出（`RULES_RECENT_RUNS`、`timingFile`、`lastValueOf`、`heldValueText`、类型 `RunLine`/`TimingSource`/`TimeoutLine`）——去掉 export；jscpd 1 个新克隆 = ui 规则板照抄循环板的 `told`+`CONSOLE_TELL` 块——提升到 `ui/src/loops/timeouts.ts`（`PageTell` 的所在地）导出共用，两块板同一份。jscpd 报告的文件名/行号在 Windows 路径上错位，认 fragment 认出来的。
+- 门禁：build exit 0（dtm-build.log）、preflight exit 0（2 包 23 行，dtm-preflight.log）、npm test 首轮 1 例红（即上述断言，其余全过），修后复跑全绿；棘轮 eslint 69 suppressed / knip 18 / jscpd 1 不变（dtm-test.log）。
+- 探针：按交接指示先查 `.agents/tasks/rc3-probe/progress.md`——并行泳道在装的 0.2.2-rc.3 上跑全量探针，run 1 = 465/620（155 红，两个根因：`subagents.startActivation` 契约拍平、`agents.roots()` 移除），run 2 在飞（05:01 落盘 465/620 的 run 1 尾巴是 rc3-probe-1.log；05:11 还有 build3 日志，泳道仍在迭代）。rc.3 基线未钉稳 → 本车道按指示 park green-on-tests，不跑全量探针、不吸收未知红。探针地板 620/620 的验证欠着，等 rc3 泳道钉稳基线后补。
+- 文档：ORCHESTRATION §16.16 头括注加一段已实现、新 bold 段「超时的估计与实测维护」整段写入、原「没有做」段改为证据清单（保留其余特性的 L2 列表并补 timing/view/env-timeout 条目）；§16.7 清单加 rules-timing/rules-view；§16.14 头注加超时行展宽一句；§18.2 尾条改写（剩下的一半明确只在循环板）；HANDOFF M6 行已做/欠两列更新。
+- 提交切分：c05e7fe8 之后的 WIP 按一件事一个提交切成两个行为提交——先 `refactor(env,rules)`（journal.ts 提取 + timing.ts 收敛模块面），再 `feat(rules)`（页面与接线 + ui 共用 CONSOLE_TELL + test:2 挂 spec + 断言放宽），文档一个提交。落地时 rebase 到 origin/main（b049b3ef，desktop-l4-new 的 docs 提交，无源码改动）。
