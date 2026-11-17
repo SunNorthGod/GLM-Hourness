@@ -131,3 +131,12 @@
 
 ### 提交 2 的修正（fixup 进 b6a2c0a5）：普通路不再留下后台进程
 - 门路执行器按 §6.7 的契约总是先安排后台位（runScript 的 gate 分支对每次门脚本都构造 LatePlan），超时结局带 `late` 提前返回；`runJudgedScripts` 的普通路（checkCall/重喂）在收尾 abort 掉后台树之后没有等它真的死透——违反了自己注释「returns 时没有进程留着」，`tests/rules-script.spec.ts` 的失败做法用例在清库时 EBUSY（30s 脚本被 abort 杀掉的同时 rm 已在跑；昨夜更有一棵 21:39 的树成了僵尸，含孩子进程）。修正：普通路收齐结局里出现的 `late` promise，`controller.abort()` 之后 `await Promise.allSettled(lateness)`——每个后台运行的 promise 在进程真结束时（或硬上限到时）落定，等待由硬上限兜底。晚到路不变（本就不 abort）。
+
+## 落地记录（2026-11-18）
+
+- 提交 3 的检查修了三处（随 34d5d624 amend）：`lastToolResult(steps[n])` 读的是第 n-1 个脚本条目的工具结果（请求 n 的历史里最后一条 tool 消息是上一条的），拦截与慢调用两处下标各挪一位；晚到词按每个请求计数而不是跨请求求和——通知发一次后留在会话历史里，后续每个请求各带同一份拷贝，「只说一次」的断言是前 9 个请求为 0、第 10/11 个各恰 1。四处 Read 交错读 package.json/README.md，避开运行时的 repeat-tool 提醒。修复先在保留的运行产物上离线验证（三条条件全真），再复跑。
+- rebase 两次：第一次到 answer-race 修复后的 main（package.json test:2 与 metrics-buffer 车道的 data-lock-takeover 各让一步合一行）；第二次到 loops-s5 落地后的 main（116294e3，test:1 被它改过——第一版合并把 HEAD 侧的 test:1 丢了，发现 loops-consent 计数为 0 后重并，test:1 逐字取 main，test:2 双方新增并存）。
+- 最终树上门禁：build / preflight 绿，npm test 240 个套件 0 失败（worktree 缺 `.agents/tasks/m5/lessons-seed.json` 的 3 个环境红，从主检出拷入未跟踪文件后绿），棘轮 eslint 69 / knip 18 / jscpd 1，check-secrets 绿。
+- 全量探针：`rules-script` 首跑 617/620（三条检查的下标/计数错误，机制本身全对），修后 620/620 两次（一次在 metrics-buffer 后的树上，一次在 loops-s5 后的最终树上，PROBE-EXIT=0）。新底线 **620**（612 + 本场景 8 条）。
+- 并行探针说明：第二次复跑期间另一进程持着 probe-lock，本车道走了 probe-lock-2 槽位，两槽设计按预期工作。
+- 遗留：agent 估计的超时与按实测最慢一次的 3 倍调整（`d-timeout-measured`）仍在 §16.16「没有做」；桌面版 L4 未做。
