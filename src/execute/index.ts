@@ -141,27 +141,42 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   let facesNote: string | undefined = FACES_NOTE
   const health = provideRowHealth(ctx, 'execute', 'active', '已加载；派发与派发链的写入边界在本行的会话里生效')
   disposers.push(() => { health.dispose() })
+  // Startup facts handed in with no dir and no session (today only
+  // `execute.loop-contribute`, M7 design 0.6 §3.16) wait here until the row
+  // learns the project this process serves: the first event whose directory
+  // resolves to a project root (metrics design §3.3: dir first, then the
+  // session's cwd). That first root is the one attribution anchor of the
+  // row's lifetime — the project on a single-project host, and on a
+  // multi-project host the documented best-effort home of a fact no project
+  // owns; it is never re-anchored, so a second project cannot inherit what
+  // the first one took. Leftovers that never found their anchor are handed to
+  // the metrics row's no-project counter at dispose (§3.5: counted, not
+  // written) — a loss says so; without the service the hand-over is the same
+  // accepted no-op any sender has before the row activates.
   const startupMetrics: EmittedEvent[] = []
-  const contributedProjects = new Set<string>()
+  let metricsAnchor: string | undefined
+  const flushStartupMetrics = (root: string): void => {
+    for (const pending of startupMetrics.splice(0)) emitSharedMetric(ctx, pending, { dir: root })
+  }
   disposers.push(setDefaultMetricSink((event, where) => {
     const { event: k, ...body } = event
     const emitted = { k, by: 'execute', body } as EmittedEvent
     if (where?.dir === undefined && where?.sessionId === undefined) {
-      if (startupMetrics.length < 8) startupMetrics.push(emitted)
+      if (metricsAnchor !== undefined) emitSharedMetric(ctx, emitted, { dir: metricsAnchor })
+      else if (startupMetrics.length < 8) startupMetrics.push(emitted)
       return
     }
-    if (startupMetrics.length > 0 && where.dir !== undefined && where.dir !== '') {
-      const root = projectOf(where.dir)?.root
-      if (root !== undefined) {
-        const key = process.platform === 'win32' || process.platform === 'darwin' ? root.toLowerCase() : root
-        if (!contributedProjects.has(key)) {
-          contributedProjects.add(key)
-          for (const pending of startupMetrics) emitSharedMetric(ctx, pending, { dir: root })
-        }
-      }
+    if (metricsAnchor === undefined && where.dir !== undefined && where.dir !== '') {
+      metricsAnchor = projectOf(where.dir)?.root
+      if (metricsAnchor !== undefined) flushStartupMetrics(metricsAnchor)
     }
     emitSharedMetric(ctx, emitted, where)
   }))
+  disposers.push(() => {
+    if (startupMetrics.length === 0) return
+    if (metricsAnchor !== undefined) flushStartupMetrics(metricsAnchor)
+    else for (const pending of startupMetrics.splice(0)) emitSharedMetric(ctx, pending, {})
+  })
   const report = (sessionId: string | undefined, state: HealthState, reason: string): void => {
     health.report(sessionId, state, reason)
   }

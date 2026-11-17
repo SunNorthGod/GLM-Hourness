@@ -22,7 +22,7 @@ import { createGateLauncher } from '../src/execute/gate-provider.ts'
 import { createGit } from '../src/execute/git.ts'
 import { startHandback, type HandbackDeps } from '../src/execute/handback.ts'
 import { apply as executeApply } from '../src/execute/index.ts'
-import { setMetricSink, type MetricEvent } from '../src/execute/metrics.ts'
+import { emitMetric, executeMetricWhere, setMetricSink, type MetricEvent } from '../src/execute/metrics.ts'
 import { askMainTool, submitPlanTool, type RequestsDeps } from '../src/execute/requests.ts'
 import type { WalkDeps } from '../src/execute/walk.ts'
 import { apply as metricsApply } from '../src/metrics/index.ts'
@@ -331,23 +331,9 @@ test('L2: execute row forwards execute.* events into .llm/metrics/ via METRICS_S
     resolveMaxDepth: () => 1,
     registerProvider: () => () => {},
   } as unknown as InjectableServices['subagents']
-  const loops: LoopsService = {
-    contribute: () => ({ ok: true, accepted: ['execute.reviewed'], dropped: [], dispose: () => {} }),
-    emit: () => Promise.resolve({ ok: true, id: 'e1', duplicate: false }),
-    listens: () => false,
-    recordRun: () => {},
-  } as unknown as LoopsService
+  const loops: LoopsService = LOOPS_FAKE
   runtime.ctx.provide?.(LOOPS_SERVICE, loops)
-  const inject: NonNullable<Parameters<typeof executeApply>[0]['inject']> = (_names, cb) => {
-    const picked: Record<string, unknown> = {}
-    for (const n of _names) {
-      if (n === 'tools') picked.tools = tools
-      if (n === 'subagents') picked.subagents = subagents
-      if ((n as string) === LOOPS_SERVICE) picked[LOOPS_SERVICE] = loops
-    }
-    if (Object.keys(picked).length === _names.length) return cb(picked as never)
-    return undefined
-  }
+  const inject = injectOf({ tools, subagents, [LOOPS_SERVICE]: loops })
   const stopMetrics = metricsApply(runtime.ctx as never, { checkDelay: 60_000 })
   const stopExecute = executeApply({ ...runtime.ctx, inject }, {})
   const metricsReason = (): string =>
@@ -380,4 +366,120 @@ test('L2: execute row forwards execute.* events into .llm/metrics/ via METRICS_S
   finally {
     repo.dispose()
   }
+})
+
+/** The loop board the row-level cases hand over to: it takes every entry and answers every event. */
+const LOOPS_FAKE: LoopsService = {
+  contribute: () => ({ ok: true, accepted: ['execute.reviewed'], dropped: [], dispose: () => {} }),
+  emit: () => Promise.resolve({ ok: true, id: 'e1', duplicate: false }),
+  listens: () => false,
+  recordRun: () => {},
+} as unknown as LoopsService
+
+/** The fake inject: hand over the named services when every one of them was provided, wait otherwise. */
+function injectOf(handovers: Record<string, unknown>): NonNullable<Parameters<typeof executeApply>[0]['inject']> {
+  return (_names, cb) => {
+    const picked: Record<string, unknown> = {}
+    for (const n of _names) {
+      const value = handovers[n as string]
+      if (value !== undefined) picked[n as string] = value
+    }
+    if (Object.keys(picked).length === _names.length) return cb(picked as never)
+    return undefined
+  }
+}
+
+/** The fake rc.3 host pieces the row-level cases share: tools, the loop board, and the inject that hands both over. */
+function startRowWithLoops(runtime: ReturnType<typeof fakeRuntime>): () => void {
+  const registered: ToolDefinitionLike[] = []
+  const tools = { get: (name: string) => registered.find(tool => tool.name === name), register: (definition: ToolDefinitionLike) => { registered.push(definition); return () => {} } }
+  runtime.ctx.provide?.('tools', tools)
+  const loops: LoopsService = LOOPS_FAKE
+  runtime.ctx.provide?.(LOOPS_SERVICE, loops)
+  const inject = injectOf({ tools, [LOOPS_SERVICE]: loops })
+  return executeApply({ ...runtime.ctx, inject }, {})
+}
+
+/** The metrics row's activation reason, as the health table would render it. */
+function metricsReasonOf(runtime: ReturnType<typeof fakeRuntime>): string {
+  return (runtime.services.get('glmHournessHealth/metrics') as { activation(): { readonly reason: string } } | undefined)?.activation().reason ?? ''
+}
+
+/** Poll an async check for up to 4 seconds (the writer flush is IO-paced). */
+async function waitUntil(check: () => Promise<boolean>, what: string): Promise<void> {
+  for (let waited = 0; waited < 4000; waited += 25) {
+    if (await check()) return
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  assert.ok(await check(), what)
+}
+
+/** The metrics row and the execute row together on a fake host, with the ordered dispose both directions need (the row first, so its dispose hand-over still finds the service). */
+async function withRowAndMetrics(runtime: ReturnType<typeof fakeRuntime>, run: (stopExecute: () => void, reason: () => string) => void | Promise<void>): Promise<void> {
+  const stopMetrics = metricsApply(runtime.ctx as never, { checkDelay: 60_000 })
+  const stopExecute = startRowWithLoops(runtime)
+  try {
+    await run(stopExecute, () => metricsReasonOf(runtime))
+  }
+  finally {
+    stopExecute()
+    stopMetrics()
+  }
+}
+
+test('L2: the startup buffer flushes to the first project the row serves, later naked facts follow the same anchor, and a second project inherits nothing', async () => {
+  const first = testRepo()
+  const second = testRepo()
+  const runtime = fakeRuntime({ cwd: first.root, natives: [] })
+  await withRowAndMetrics(runtime, async (stopExecute, reason) => {
+    // The apply-time hand-over's contribute result waits; the counter stays empty while it waits.
+    const waiting = reason()
+    assert.ok(!waiting.includes('无项目的事件'), waiting)
+    // The first event whose directory resolves fixes the anchor and flushes the buffer there.
+    emitMetric({ event: 'execute.peak-cap', model: 'probe-model', cap: 1, running: 1 }, executeMetricWhere(first.root, 's1'))
+    await waitUntil(async () => (await readLog(first.root)).events.some(event => event.k === 'execute.loop-contribute'), 'the buffered contribute result flushed into the first project')
+    assert.equal((await readLog(first.root)).events.filter(event => event.k === 'execute.peak-cap').length, 1)
+    // A later naked fact follows the anchor instead of waiting to be inherited by the next project.
+    emitMetric({ event: 'execute.peak-cap', model: 'probe-model', cap: 1, running: 1 })
+    // An event of a second project writes there and inherits nothing.
+    emitMetric({ event: 'execute.peak-cap', model: 'probe-model', cap: 1, running: 1 }, executeMetricWhere(second.root, 's2'))
+    await waitUntil(async () => (await readLog(second.root)).events.length > 0, 'the second project wrote its own event')
+    const firstAfter = await readLog(first.root)
+    const secondAfter = await readLog(second.root)
+    assert.equal(firstAfter.events.filter(event => event.k === 'execute.peak-cap').length, 2, 'the later naked fact went to the anchor')
+    assert.equal(secondAfter.events.filter(event => event.k === 'execute.loop-contribute').length, 0, 'the second project inherits no startup fact')
+    assert.equal(secondAfter.events.filter(event => event.k === 'execute.peak-cap').length, 1)
+    assert.ok(!reason().includes('无项目的事件'), reason())
+    // The buffer drained through the anchor, so dispose handed the counter nothing.
+    stopExecute()
+    const afterDispose = reason()
+    assert.ok(!afterDispose.includes('无项目的事件'), afterDispose)
+  })
+  first.dispose()
+  second.dispose()
+})
+
+test('L2: a dispose with no project ever spoken hands the startup facts to the no-project counter instead of dropping them silently', async () => {
+  const repo = testRepo()
+  const runtime = fakeRuntime({ cwd: repo.root, natives: [] })
+  try {
+    await withRowAndMetrics(runtime, (stopExecute, reason) => {
+      const before = reason()
+      assert.ok(!before.includes('无项目的事件'), before)
+      stopExecute()
+      assert.match(reason(), /无项目的事件 1 条（execute\.loop-contribute）/)
+    })
+  }
+  finally {
+    repo.dispose()
+  }
+})
+
+test('L2: without the metrics row the dispose hand-over is the accepted no-op any sender has before the row activates', () => {
+  const repo = testRepo()
+  const runtime = fakeRuntime({ cwd: repo.root, natives: [] })
+  const stopExecute = startRowWithLoops(runtime)
+  assert.equal(runtime.services.get('glmHournessMetrics'), undefined)
+  stopExecute()
+  repo.dispose()
 })
