@@ -159,9 +159,25 @@ export async function withTakeoverLock<T>(
   const takeoverFile = `${targetFile}.takeover`
   let takeoverHandle = await open(takeoverFile, 'wx').catch(() => undefined)
   if (takeoverHandle === undefined) {
-    const takeoverInfo = await stat(takeoverFile).catch(() => undefined)
-    if (takeoverInfo !== undefined && Date.now() - takeoverInfo.mtimeMs > staleMs) {
-      await unlink(takeoverFile).catch(() => {})
+    const observed = await stat(takeoverFile).catch(() => undefined)
+    if (observed !== undefined && Date.now() - observed.mtimeMs > staleMs) {
+      // Evict the leftover by atomic rename, re-verifying its stat first: the
+      // re-check leaves a `.takeover` another contender created after the
+      // observation alone (an unlink here destroyed such fresh files and let
+      // two contenders into the section), and the rename moves the named file
+      // or fails with ENOENT — the exclusive create afterwards then answers
+      // to exactly one contender.
+      const current = await stat(takeoverFile).catch(() => undefined)
+      if (
+        current !== undefined
+        && current.mtimeMs === observed.mtimeMs
+        && current.birthtimeMs === observed.birthtimeMs
+        && current.size === observed.size
+        && current.ino === observed.ino
+      ) {
+        const trash = `${takeoverFile}.trash-${randomUUID()}`
+        await rename(takeoverFile, trash).then(() => unlink(trash).catch(() => {}), () => {})
+      }
       takeoverHandle = await open(takeoverFile, 'wx').catch(() => undefined)
     }
   }
