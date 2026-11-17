@@ -18,9 +18,10 @@
  *   starting one (Node cannot spawn them without a shell);
  * - the environment is the whitelist of design §6.6 plus the `HOURNESS_*`
  *   names of the run: no DSH credential and no GLM key reaches a script;
- * - a timeout ends the whole process tree, work and check alike (design
- *   `d-script-timeout`: the late running of a gating script is the rules
- *   board's, not this file's);
+ * - a timeout ends the whole process tree, work and check alike; a gating
+ *   script is the one exception (design `d-script-timeout`): it keeps running
+ *   in the background up to the hard cap and hands its later end back through
+ *   the `late` promise of its `timeout` result;
  * - output is capped per stream (design: 1 MiB, at most 4 MiB), and a run
  *   with a `logFile` writes the command line, the digest, the resolved
  *   program and then the whole output there.
@@ -49,6 +50,10 @@ export const CHECK_CONCURRENT = 2
 /** The timeout of a gating script that names none, and the most it may have (design §6.7). */
 export const GATE_TIMEOUT_MS = 10_000
 export const GATE_TIMEOUT_MAX_MS = 30_000
+/** How long a gating script that timed out may keep running in the background (design `d-script-timeout`: ten minutes). */
+export const GATE_HARD_CAP_MS = 600_000
+/** How many of a project's gating scripts may run in the background at once (design §6.6, review F49). */
+export const GATE_LATE_MAX = 8
 /** How many gating scripts of a project run at once, and how many wait for a place; one more is answered with a timeout at once (design §6.6, review F49). */
 export const GATE_CONCURRENT = 4
 export const GATE_QUEUE_MAX = 16
@@ -95,13 +100,17 @@ export interface ScriptRequest {
    * stand in front of a call (design §6.6, §6.7): at most `GATE_CONCURRENT` of a
    * project at once and `GATE_QUEUE_MAX` waiting, the wait counts into the
    * timeout (the call is held while it waits), the timeout is at most
-   * `GATE_TIMEOUT_MAX_MS` and, absent, `GATE_TIMEOUT_MS`. The tree is ended at
-   * the timeout, as for `work`: a gating script is not kept running in the
-   * background after it, which the late verdict of design §6.7 would need and
-   * which comes with the host's gate using this file.
+   * `GATE_TIMEOUT_MAX_MS` and, absent, `GATE_TIMEOUT_MS`. At the timeout the
+   * result carries `late` and the process keeps running in the background, up
+   * to `GATE_HARD_CAP_MS` and at most `GATE_LATE_MAX` of a project, until it
+   * ends on its own, is ended at the cap, or the caller's `signal` ends it
+   * (the `late` promise tells which); the caller that does not want the late
+   * run aborts its `signal` and the tree is ended.
    */
   readonly purpose: 'work' | 'gate'
   readonly timeoutMs?: number
+  /** The background cap of a gating run, at most `GATE_HARD_CAP_MS`; only a test shortens it (loop board design 0.6 §6.6: the cap is ten minutes). */
+  readonly hardCapMs?: number
   /** Given: the command line, the digest and the whole output are appended here. */
   readonly logFile?: string
   readonly signal?: AbortSignal
@@ -109,10 +118,23 @@ export interface ScriptRequest {
 
 export type ScriptResult =
   | { readonly kind: 'exited', readonly exitCode: number, readonly stdout: string, readonly stderr: string, readonly durationMs: number, readonly truncated: boolean }
-  /** The tree was ended at the limit; a gating script's later end is the rules board's (design §6.6). */
-  | { readonly kind: 'timeout', readonly stdout: string, readonly stderr: string, readonly durationMs: number }
+  /**
+   * The limit passed. `work`: the tree was ended, there is no `late`. `gate`:
+   * the process keeps running in the background and `late` gives its later end;
+   * without `late` the background was full (`GATE_LATE_MAX`) or no place ever
+   * came up (`GATE_QUEUE_MAX`), and the tree was ended (or never started) at
+   * the timeout (design §6.6, §6.7).
+   */
+  | { readonly kind: 'timeout', readonly stdout: string, readonly stderr: string, readonly durationMs: number, readonly late?: Promise<LateScriptResult> }
   | { readonly kind: 'crashed', readonly reason: 'spawn' | 'signal' | 'io', readonly message: string, readonly durationMs: number }
   | { readonly kind: 'refused', readonly reason: 'script-changed' | 'script-missing' | 'outside-project' | 'too-large' | 'aborted', readonly message: string }
+
+/** How a gating script that outlived its timeout ended (design §6.6, §6.7). The promise never rejects. */
+export type LateScriptResult =
+  | { readonly kind: 'exited', readonly exitCode: number, readonly stdout: string, readonly stderr: string, readonly durationMs: number, readonly truncated: boolean }
+  | { readonly kind: 'crashed', readonly reason: 'signal' | 'io', readonly message: string, readonly durationMs: number }
+  /** It ran into the hard cap and the tree was ended: not finished (design `d-script-timeout`). */
+  | { readonly kind: 'capped', readonly durationMs: number }
 
 export interface CommandRequest {
   /**
@@ -292,6 +314,39 @@ function laneFor(key: string, size: number): Lane {
   return made
 }
 
+/** The pids of the gating runs in the background: the host's exit ends their trees (design V14, §6.7), as far as an exit handler can reach. */
+const backgroundPids = new Set<number>()
+let exitHooked = false
+
+function hookExit(): void {
+  if (exitHooked) return
+  exitHooked = true
+  process.on('exit', () => {
+    for (const pid of backgroundPids) killTree(pid)
+  })
+}
+
+/** How many of a project's gating runs are in the background, so at most `GATE_LATE_MAX` of them run at once (design §6.6, review F49). */
+const backgrounds = new Map<string, number>()
+
+/** A place in the project's background for a run that just timed out, or `false` when `GATE_LATE_MAX` are already running. */
+function backgroundPlace(project: string): () => boolean {
+  const key = fold(project)
+  return () => {
+    const used = backgrounds.get(key) ?? 0
+    if (used >= GATE_LATE_MAX) return false
+    backgrounds.set(key, used + 1)
+    return true
+  }
+}
+
+const leaveBackground = (project: string): void => {
+  const key = fold(project)
+  const used = backgrounds.get(key) ?? 1
+  if (used <= 1) backgrounds.delete(key)
+  else backgrounds.set(key, used - 1)
+}
+
 // ------------------------------------------------------------- the process
 
 /** End the process and everything it spawned (design §6.6): Windows takes `taskkill /T /F`, the others the process group. The takeover's trial ends its runs the same way (takeover design 0.6 §6.3). */
@@ -335,6 +390,23 @@ interface ProcessPlan {
   readonly finish?: () => void
 }
 
+/**
+ * The background continuation of a gating run (design §6.6, §6.7): at the
+ * timeout the process moves to the background instead of being ended, if
+ * `takePlace` says the project's background has room, and `settle` receives
+ * the run's later end whenever that comes — on its own, at the cap, or by the
+ * caller's `signal`. `ended` is the one promise that carries it to the caller.
+ */
+interface LatePlan {
+  readonly capMs: number
+  /** A place in the project's background, or `false` when `GATE_LATE_MAX` are running and the tree is ended at the timeout instead. */
+  readonly takePlace: () => boolean
+  /** Resolved exactly once, when the background run is over (win or lose). */
+  readonly settle: (result: LateScriptResult) => void
+  /** The promise `settle` resolves; the `late` field of the `timeout` result. */
+  readonly ended: Promise<LateScriptResult>
+}
+
 const timeoutOf = (request: { readonly timeoutMs?: number }): number =>
   request.timeoutMs === undefined || !(Number.isFinite(request.timeoutMs) && request.timeoutMs > 0)
     ? WORK_TIMEOUT_MS
@@ -354,10 +426,12 @@ const outputOf = (maxOutputBytes: number | undefined): number =>
 /**
  * Start one process and wait for its end, whatever kind of end (design §6.6).
  * The timer starts at the spawn, so a wait in a lane is free; the timeout
- * ends the whole tree; output is kept per stream up to the cap while the log
- * takes everything; the promise never rejects.
+ * ends the whole tree — unless `late` is given and the background has room,
+ * in which case the timeout only settles the main promise and the process
+ * keeps running up to the cap; output is kept per stream up to the cap while
+ * the log takes everything; the promise never rejects.
  */
-function runProcess(plan: ProcessPlan): Promise<ScriptResult> {
+function runProcess(plan: ProcessPlan, late?: LatePlan): Promise<ScriptResult> {
   if (plan.signal?.aborted === true) {
     try {
       plan.finish?.()
@@ -384,15 +458,22 @@ function runProcess(plan: ProcessPlan): Promise<ScriptResult> {
   const kept = { out: 0, err: 0 }
   let truncated = false
   let timedOut = false
+  let backgrounded = false
+  let capped = false
+  let aborted = false
+  let killed = false
+  let capTimer: NodeJS.Timeout | undefined
   return new Promise<ScriptResult>(resolveResult => {
     let settled = false
+    let closed = false
     let timer: NodeJS.Timeout | undefined
     let child: ChildProcess | undefined
-    const done = (result: ScriptResult): void => {
-      if (settled) return
-      settled = true
-      if (timer !== undefined) clearTimeout(timer)
-      timer = undefined
+    /** The run is over, win or lose: the log closes and the private copy goes away (a tree ended hard can hold the copy a moment on Windows: one late try, the hour sweep behind it). */
+    const close = (): void => {
+      if (closed) return
+      closed = true
+      if (capTimer !== undefined) clearTimeout(capTimer)
+      capTimer = undefined
       plan.signal?.removeEventListener('abort', onAbort)
       if (log !== undefined) {
         try {
@@ -408,9 +489,27 @@ function runProcess(plan: ProcessPlan): Promise<ScriptResult> {
       catch {
         // A copy that could not be removed now goes with the hour sweep.
       }
+      if (killed) setTimeout(() => { try { plan.finish?.() } catch { /* the sweep of stale copies takes it later */ } }, 1_000).unref()
+    }
+    const done = (result: ScriptResult): void => {
+      if (settled) return
+      settled = true
+      if (timer !== undefined) clearTimeout(timer)
+      timer = undefined
+      // A timeout with the run still going in the background keeps the abort listener, the log and the private copy until the run ends.
+      if (result.kind !== 'timeout' || result.late === undefined) close()
       resolveResult(result)
     }
+    /** The background run ended: the whole output, the whole time. The private copy goes with it. */
+    const doneLate = (result: LateScriptResult): void => {
+      if (!backgrounded) return
+      backgrounded = false
+      if (child?.pid !== undefined) backgroundPids.delete(child.pid)
+      close()
+      late?.settle(result)
+    }
     const onAbort = (): void => {
+      aborted = true
       if (child?.pid !== undefined) killTree(child.pid)
     }
     try {
@@ -439,16 +538,45 @@ function runProcess(plan: ProcessPlan): Promise<ScriptResult> {
     }
     timer = setTimeout(() => {
       timedOut = true
-      if (child?.pid !== undefined) killTree(child.pid)
+      if (late === undefined || late.takePlace() === false) {
+        killed = true
+        if (child?.pid !== undefined) killTree(child.pid)
+        return
+      }
+      // The background continues: the whole output keeps being collected, and the hard cap ends the tree when it passes.
+      backgrounded = true
+      hookExit()
+      if (child.pid !== undefined) backgroundPids.add(child.pid)
+      capTimer = setTimeout(() => {
+        capped = true
+        killed = true
+        if (child?.pid !== undefined) killTree(child.pid)
+      }, Math.max(0, late.capMs - (Date.now() - started)))
+      const stdout = Buffer.concat(slices.out).toString('utf8')
+      const stderr = Buffer.concat(slices.err).toString('utf8')
+      done({ kind: 'timeout', stdout, stderr, durationMs: Date.now() - started, late: late.ended })
     }, plan.timeoutMs)
     plan.signal?.addEventListener('abort', onAbort, { once: true })
     child.on('error', (error: Error) => {
+      if (backgrounded) {
+        doneLate({ kind: 'crashed', reason: 'io', message: message(error), durationMs: Date.now() - started })
+        return
+      }
       done({ kind: 'crashed', reason: 'spawn', message: message(error), durationMs: Date.now() - started })
     })
     child.on('close', (code: number | null, signalName: NodeJS.Signals | null) => {
       const durationMs = Date.now() - started
       const stdout = Buffer.concat(slices.out).toString('utf8')
       const stderr = Buffer.concat(slices.err).toString('utf8')
+      if (backgrounded) {
+        if (capped) doneLate({ kind: 'capped', durationMs })
+        else if (aborted || signalName !== null) {
+          killed = true
+          doneLate({ kind: 'crashed', reason: 'signal', message: `被信号结束：${String(signalName)}`, durationMs })
+        }
+        else doneLate({ kind: 'exited', exitCode: code ?? 0, stdout, stderr, durationMs, truncated })
+        return
+      }
       if (timedOut) {
         done({ kind: 'timeout', stdout, stderr, durationMs })
         return
@@ -560,7 +688,7 @@ export function runScript(request: ScriptRequest): Promise<ScriptResult> {
       return Promise.resolve(crashedRun('io', `脚本副本写不下：${message(error)}`))
     }
     const firstLine = `$ ${commandText(request.script)} · sha256 ${hash} · program ${resolved.path}`
-    const start = (timeoutMs: number): Promise<ScriptResult> => runProcess({
+    const start = (timeoutMs: number, late?: LatePlan): Promise<ScriptResult> => runProcess({
       program: resolved.path,
       args: [...spec.before, copy],
       cwd: project,
@@ -573,20 +701,7 @@ export function runScript(request: ScriptRequest): Promise<ScriptResult> {
       finish: () => {
         unlinkSync(copy)
       },
-    }).then(result => {
-      if (result.kind !== 'exited') {
-        // A tree ended hard can hold the copy a moment on Windows: one late try, the hour sweep behind it.
-        setTimeout(() => {
-          try {
-            unlinkSync(copy)
-          }
-          catch {
-            // The sweep of stale copies takes it later.
-          }
-        }, 1_000).unref()
-      }
-      return result
-    })
+    }, late)
     if (request.purpose === 'gate') {
       const arrived = Date.now()
       const limit = gateTimeoutOf(request)
@@ -601,8 +716,18 @@ export function runScript(request: ScriptRequest): Promise<ScriptResult> {
           }
           return entered === 'aborted' ? refusedRun('aborted', '在脚本起来之前，这次运行已经被中止') : { kind: 'timeout' as const, stdout: '', stderr: '', durationMs: Date.now() - arrived }
         }
+        let settleLate!: (result: LateScriptResult) => void
+        const late: LatePlan = {
+          capMs: Math.min(request.hardCapMs === undefined || !(Number.isFinite(request.hardCapMs) && request.hardCapMs > 0) ? GATE_HARD_CAP_MS : request.hardCapMs, GATE_HARD_CAP_MS),
+          takePlace: backgroundPlace(project),
+          settle: (result) => {
+            leaveBackground(project)
+            settleLate(result)
+          },
+          ended: new Promise<LateScriptResult>(resolve => { settleLate = resolve }),
+        }
         try {
-          return await start(Math.max(1, limit - (Date.now() - arrived)))
+          return await start(Math.max(1, limit - (Date.now() - arrived)), late)
         }
         finally {
           entered()
