@@ -221,10 +221,32 @@ function goalRefusal(graph: LoadedGraph, node: GraphNode, release: ReleaseResult
   return layer === undefined || layer.ok ? undefined : releaseRefusal(graph, layer)
 }
 
-/** Open questions the person owes an answer on in the subtree, and the subtree's unresolved stop marks (§3.7.3, §3.5.1). */
+/**
+ * Open questions the person owes an answer on in the subtree, and the
+ * subtree's unresolved stop marks (§3.7.3, §3.5.1). The person's word lifts a
+ * stop mark when it came after it, read the way the settlement that wrote the
+ * mark reads one (src/execute/handback.ts taskReviewHandback, src/execute/
+ * check.ts): anywhere in the subtree, and — the review stop's answer hangs
+ * off the reviewed task, outside the review task's subtree — the stopped
+ * node's parent and the questions proposed under the stopped node or its
+ * parent, where the stop flow (asks.ts stopDraftOf) puts the matter.
+ */
 function waitingOn(graph: LoadedGraph, node: GraphNode): { readonly questions: string[], readonly stops: string[] } {
   const subtree = subtreeOf(childrenIndex(graph), node)
-  const humanTimes = subtree.flatMap(entry => entry.history.filter(item => item.actor === 'human' || item.relay !== undefined).map(item => Date.parse(item.at)))
+  const said = (entries: readonly (GraphNode | undefined)[]): readonly number[] =>
+    entries.flatMap(entry => entry?.history ?? []).filter(item => item.actor === 'human' || item.relay !== undefined).map(item => Date.parse(item.at))
+  const questionsByParent = new Map<string, GraphNode[]>()
+  for (const entry of graph.nodes.values()) {
+    if (entry.type !== 'question' || entry.parent === undefined) continue
+    const held = questionsByParent.get(entry.parent) ?? []
+    held.push(entry)
+    questionsByParent.set(entry.parent, held)
+  }
+  const humanTimes = [...said(subtree), ...subtree.flatMap((entry) => {
+    const parent = entry.parent === undefined ? undefined : graph.nodes.get(entry.parent)
+    const asked = [...questionsByParent.get(entry.id) ?? [], ...(parent?.id === undefined ? [] : questionsByParent.get(parent.id) ?? [])]
+    return said([parent, ...asked])
+  })]
   const stops = subtree.filter(entry => entry.history.some(item => {
     const marked = item.op === 'comment' && item.text !== undefined && /·\s*停下\s*$/.test(item.text)
     return marked && !humanTimes.some(time => time > Date.parse(item.at))

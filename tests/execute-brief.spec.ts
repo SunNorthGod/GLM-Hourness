@@ -5,8 +5,8 @@ import { BRIEF_LIMIT, briefGate, parseDispatchArgs, renderAcceptanceBrief, rende
 import { digest12 } from '../src/execute/digest.ts'
 import { releaseOf } from '../src/graph/execute-stage.ts'
 import type { LoadedGraph } from '../src/graph/parse.ts'
-import type { GraphNode } from '../src/graph/schema.ts'
-import { comment, freeContext, getNode as get, graphOf, must, node, refusalOf as refused, withNode } from './execute-helpers.ts'
+import type { HistoryEntry, GraphNode } from '../src/graph/schema.ts'
+import { at, comment, freeContext, getNode as get, graphOf, must, node, refusalOf as refused, withNode } from './execute-helpers.ts'
 
 const WORK = { kind: 'implement' as const, acceptance: ['feed lists the 20 newest posts', 'every item has a title'], worktree: true }
 
@@ -201,6 +201,32 @@ test('row 7, waiting_human: open questions the person decides, stop marks withou
   assert.match(remembered.hint, /^stopped in this process;/)
   // Questions elsewhere in the goal do not hold this task.
   assert.equal(gate(graphOf([...graph.nodes.values(), node({ id: 'question-8', type: 'question', parent: 'task-2', options: [{ key: 'A', label: 'a' }, { key: 'B', label: 'b' }] })]), 'task-1').ok, true)
+})
+
+test('row 7, review stop: the answer on the question under the reviewed task lifts the review task\'s stop', () => {
+  // The stop flow puts the matter to the person as a question under the reviewed task
+  // (stopDraftOf: parent <reviewed>, sources [<review task>]), outside the review
+  // task's subtree; record_human_answer decides it with their words as relay.
+  const graph = plain()
+  const review = (history: readonly HistoryEntry[]): GraphNode =>
+    node({ id: 'review-2', type: 'task', parent: 'task-1', kind: 'review', writeScope: [], edges: [{ type: 'source', to: 'task-1' }], acceptance: ['the feed matches its acceptance'] }, 0, 'harness', history)
+  const stopped = graphOf([...graph.nodes.values(), review([comment(30, '第 1 轮：挡路 1，不挡路 1 · 全审 · hz-review-2-a1-000000 · 停下')])])
+  const held = refused(gate(stopped, 'review-2', { reviewTarget: { handedBack: true, stale: false } }, { depth: 'full', depthWhy: 'a full round' }))
+  assert.equal(held.code, 'waiting_human')
+  assert.match(held.hint, /^stopped, no answer since: review-2;/)
+  const onGraph = (question: GraphNode, reviewedHistory: readonly HistoryEntry[] = []): LoadedGraph => graphOf([
+    ...[...stopped.nodes.values()].map(entry => entry.id === 'task-1' ? { ...entry, history: [...entry.history, ...reviewedHistory] } : entry),
+    question,
+  ])
+  // The decided question under the reviewed task, the decision after the mark: the gate reads the person's word.
+  const answered = onGraph(node({ id: 'question-2', type: 'question', parent: 'task-1' }, 20, 'llm', [{ at: at(40), actor: 'llm', op: 'decide', from: 'approved', to: 'done', conclusion: 'one more round', relay: '先修挡路的那一处' }]))
+  assert.equal(gate(answered, 'review-2', { reviewTarget: { handedBack: true, stale: false } }, { depth: 'full', depthWhy: 'a full round' }).ok, true)
+  // The person's word on the reviewed task itself lifts it the same way.
+  const spoken = onGraph(node({ id: 'question-2', type: 'question', parent: 'task-1' }, 20), [comment(40, '按你说的修，再看一轮', 'human')])
+  assert.equal(gate(spoken, 'review-2', { reviewTarget: { handedBack: true, stale: false } }, { depth: 'full', depthWhy: 'a full round' }).ok, true)
+  // A decision from before the mark does not lift it; the count starts from the person's word.
+  const before = onGraph(node({ id: 'question-2', type: 'question', parent: 'task-1' }, 20, 'llm', [{ at: at(20), actor: 'llm', op: 'decide', from: 'approved', to: 'done', conclusion: 'one more round', relay: '先修挡路的那一处' }]))
+  assert.equal(refused(gate(before, 'review-2', { reviewTarget: { handedBack: true, stale: false } }, { depth: 'full', depthWhy: 'a full round' })).code, 'waiting_human')
 })
 
 test('row 8, busy: a node with a running dispatch is not dispatched again, whatever the role', () => {
