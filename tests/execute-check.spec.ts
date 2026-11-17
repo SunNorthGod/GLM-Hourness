@@ -574,9 +574,9 @@ test('with the backend registered, check_commit starts an external activation on
     assert.equal(out.status, 'started')
     const spec = subagents.starts[0]
     assert.ok(spec !== undefined, 'the activation was started')
-    assert.deepEqual([spec.provider, spec.label, spec.delivery, spec.request.cwd], ['hourness-gate', `hourness check ${commit.slice(0, 12)}`, 'caller', r.repo.root])
-    assert.deepEqual(spec.request.prompt, [{ type: 'text', text: `hourness-gate job ${String(out.job)}` }])
-    assert.equal(spec.request.parent, r.agent)
+    assert.deepEqual([spec.provider, spec.label, spec.delivery, spec.cwd], ['hourness-gate', `hourness check ${commit.slice(0, 12)}`, 'caller', r.repo.root])
+    assert.deepEqual(spec.prompt, [{ type: 'text', text: `hourness-gate job ${String(out.job)}` }])
+    assert.equal(spec.parent, r.agent)
     const [settled] = subagents.results
     assert.ok(settled !== undefined)
     const result = await settled

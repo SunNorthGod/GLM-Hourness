@@ -837,7 +837,7 @@ async function whileTempUnlinkFails<T>(body: () => Promise<T>): Promise<T> {
 }
 
 /** The `agents` service with a registry that cannot be walked, so demoteOthers throws after the record was written. */
-const brokenRegistry = { get: () => undefined, roots: () => { throw new Error('registry is down') } }
+const brokenRegistry = { get: () => undefined, list: () => { throw new Error('registry is down') } }
 
 /** Poll until the holder record names `id`, so a concurrent /wish starts only once the other's write has landed. */
 async function waitForRecord(host: DesignHost, id: string): Promise<void> {

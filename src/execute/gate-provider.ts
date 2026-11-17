@@ -127,7 +127,9 @@ export function createGateLauncher(): GateLauncher {
           const activation = await service.startActivation({
             provider: GATE_PROVIDER,
             label: job.label,
-            request: { prompt: [{ type: 'text', text: `hourness-gate job ${job.id}` }], parent: parent as unknown as LiveAgentLike, cwd: job.cwd },
+            prompt: [{ type: 'text', text: `hourness-gate job ${job.id}` }],
+            parent: parent as unknown as LiveAgentLike,
+            cwd: job.cwd,
             signal,
             delivery: 'caller',
           })

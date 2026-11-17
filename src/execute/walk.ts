@@ -129,14 +129,12 @@ export interface WalkStart {
     readonly provider: string
     readonly label: string
     readonly childId: string
-    readonly request: {
-      readonly cwd: string
-      readonly prompt: readonly unknown[]
-      readonly parent: LiveAgentLike
-      readonly agentOptions: { readonly provider: string, readonly model: string, readonly reasoningEffort?: string }
-      readonly outputSchema: unknown
-      readonly maxDepth?: number
-    }
+    readonly cwd: string
+    readonly prompt: readonly unknown[]
+    readonly parent: LiveAgentLike
+    readonly agentOptions: { readonly provider: string, readonly model: string, readonly reasoningEffort?: string }
+    readonly outputSchema: unknown
+    readonly maxDepth?: number
     readonly signal: AbortSignal
     readonly delivery: 'caller'
   }): Promise<SubagentActivation>
@@ -730,13 +728,11 @@ async function reviewFlow(deps: WalkDeps, spec: ReviewSpec, parent: LiveAgentLik
         provider: 'spawn',
         label: `hourness walk review ${spec.flow.flow.id} try ${attempt}`,
         childId,
-        request: {
-          cwd: spec.project,
-          prompt: [{ type: 'text', text: reviewPrompt(spec) }],
-          parent,
-          agentOptions: agentOptionsOf(spec.choice),
-          outputSchema: WALK_REVIEW_SCHEMA,
-        },
+        cwd: spec.project,
+        prompt: [{ type: 'text', text: reviewPrompt(spec) }],
+        parent,
+        agentOptions: agentOptionsOf(spec.choice),
+        outputSchema: WALK_REVIEW_SCHEMA,
         signal: attemptController.signal,
         delivery: 'caller',
       }).then(

@@ -686,10 +686,10 @@ export interface DesignAgentLike extends LiveAgentLike {
   whenIdle(): Promise<void>
 }
 
-/** The `agents` registry as the design row reads it: `get`, and `roots()`, the live top-level agents in registration order (rc.3 dsh-agent, agent:622–624). */
+/** The `agents` registry as the design row reads it: `get`, and `list()`, every live agent in registration order (0.2.2-rc.3 dsh-agent, agent:720–731; 0.2.1-rc.3's top-level `roots()` is gone — the caller filters subagents by the session header's origin). */
 export interface DesignAgentsService {
   get(id: string): DesignAgentLike | undefined
-  roots(): readonly DesignAgentLike[]
+  list(): readonly DesignAgentLike[]
 }
 
 /**
@@ -720,19 +720,17 @@ export interface SubagentActivation {
   dispose(): Promise<void>
 }
 
-/** The dispatch the execute row starts (rc.3 `SubagentActivationSpec`, `SubagentStartRequest`; the execute row passes no `agentPreset`). */
+/** The dispatch the execute row starts (0.2.2-rc.3 `SubagentActivationSpec`; the execute row passes no `agentPreset`). 0.2.2-rc.3 flattened what 0.2.2-rc.1 nested under `request` (0.2.2-rc.3 dsh-subagent startActivation 3018–3036). */
 interface SubagentStartSpec {
   readonly provider: string
   readonly label: string
   readonly childId?: string
-  readonly request: {
-    readonly cwd?: string
-    readonly prompt: readonly unknown[]
-    readonly parent: LiveAgentLike
-    readonly agentOptions?: { readonly provider?: string, readonly model?: string, readonly reasoningEffort?: string }
-    readonly outputSchema?: unknown
-    readonly maxDepth?: number
-  }
+  readonly cwd?: string
+  readonly prompt: readonly unknown[]
+  readonly parent: LiveAgentLike
+  readonly agentOptions?: { readonly provider?: string, readonly model?: string, readonly reasoningEffort?: string }
+  readonly outputSchema?: unknown
+  readonly maxDepth?: number
   readonly signal: AbortSignal
   readonly delivery: 'caller' | 'parent'
 }
@@ -742,14 +740,6 @@ interface SubagentRun {
   readonly id: string
   readonly result: Promise<SubagentResult>
   dispose(): Promise<void>
-}
-
-/** An entry of a parent's durable direct-child catalog (rc.3 `SubagentCatalogEntry`). */
-interface SubagentCatalogEntry {
-  readonly id: string
-  readonly createdAt: number
-  readonly label?: string
-  readonly mode: 'one-shot' | 'external' | 'continuable' | 'unknown'
 }
 
 /**
@@ -814,38 +804,33 @@ interface SubagentProvider {
  * another parent throws `UNAUTHORIZED`.
  *
  * What the execute row adds (M7 design §3.1.2, §3.8.2, §4):
- * - `startActivation` (subagent:3036–3048, `startLocal` 1391–1477) starts a
- *   child from a `spawn` provider or a registered external one and resolves
- *   with the activation as soon as the child is accepted; a `childId` already
- *   taken throws `DUPLICATE_CHILD` (1430–1437), an exhausted activation
- *   budget `ACTIVATION_LIMIT_REACHED` (1046–1048). `request.cwd` an absolute
- *   path is used as-is (1523–1527), `agentOptions` merge over the parent's
- *   route (315–329), `outputSchema` gives the child `structured_output`
- *   (889–960) and `delivery: 'caller'` keeps the harness as the only reader
- *   of the result (1460, 2048–2063).
- * - `resolveMaxDepth` (3023–3030) is the depth budget a dispatch passes on so
- *   a worker cannot dispatch again.
- * - `registerProvider` (3256–3267) installs an external backend; the disposer
- *   unregisters it (new starts refuse, running ones live on).
- * - `waitForChildren(parent)` (1296–1330) joins every progressing descendant;
- *   true means work was joined and the host rechecks the parent's idle state.
- * - `sendMessage(sender, targetId, content, options)` (1538–1550, 2119–2135)
- *   steers one message to the sender's direct parent or direct continuable
- *   child; an idle child starts a turn, an absent one cold-resumes from
- *   persistence (2141–2189) without its `outputSchema` — which is why M7
- *   refuses ended worker ids at the tool (§3.2.5).
- * - `listChildren(parentSessionId, signal?)` (2339–2352) reads the durable
- *   direct-child catalog without loading anyone: the reconcile's map of what
- *   survived a restart.
+ * - `startActivation` (0.2.2-rc.3 subagent:3018–3036, `startLocal` 1478–1576)
+ *   starts a child from a `spawn` provider or a registered external one and
+ *   resolves with the activation as soon as the child is accepted; a
+ *   `childId` already taken throws `DUPLICATE_CHILD`, an exhausted activation
+ *   budget `ACTIVATION_LIMIT_REACHED`. An absolute `cwd` is used as-is
+ *   (resolveDirectory 2258–2262), `agentOptions` merge over the parent's
+ *   route, `outputSchema` gives the child `structured_output` and
+ *   `delivery: 'caller'` keeps the harness as the only reader of the result.
+ *   0.2.2-rc.1 nested `parent`/`prompt`/`cwd`/`agentOptions`/`outputSchema`/
+ *   `maxDepth` under a `request` envelope; 0.2.2-rc.3 flattened them onto the
+ *   spec (subagent:3018–3036 reads `spec.parent.id`, `spec.maxDepth`,
+ *   `spec.outputSchema`).
+ * - `resolveMaxDepth` (0.2.2-rc.3 subagent:3010–3017) is the depth budget a
+ *   dispatch passes on so a worker cannot dispatch again.
+ * - `registerProvider` (0.2.2-rc.3 subagent:3232–3247) installs an external
+ *   backend; the disposer unregisters it (new starts refuse, running ones
+ *   live on).
+ *
+ * 0.2.1-rc.3's `waitForChildren(parent)` and service-level `listChildren`
+ * are gone in 0.2.2-rc.3 (`waitForTreeWork(root)`, subagent:3086–3088; the
+ * catalog read moved inside `rootOf`/`namesOf`); nothing here reads either.
  */
 export interface SubagentsService {
   interrupt(targetSessionId: string, authority: { readonly kind: 'user', readonly parentSessionId: string }): void
   startActivation(spec: SubagentStartSpec): Promise<SubagentActivation>
   resolveMaxDepth(configured?: number | 'provider-managed'): number | undefined
   registerProvider(provider: SubagentProvider): () => void
-  waitForChildren(parent: LiveAgentLike): Promise<boolean>
-  sendMessage(sender: LiveAgentLike, targetId: string, content: readonly unknown[], options: { readonly signal: AbortSignal }): Promise<string>
-  listChildren(parentSessionId: string, signal?: AbortSignal): Promise<readonly SubagentCatalogEntry[]>
 }
 
 /**

@@ -149,8 +149,8 @@ test('a lost dispatch with nothing to read back is commented lost and listed in 
     assert.equal((await rig.comments('task-1')).filter(text => text.includes('在宿主重启时丢失')).length, 1)
     // The main agent dispatches the task again: the brief names what the branch already has.
     const subagents = {
-      startActivation(spec: { readonly childId: string, readonly request: { readonly prompt: readonly { readonly text: string }[] } }) {
-        started.push({ childId: spec.childId, prompt: spec.request.prompt[0]?.text ?? '' })
+      startActivation(spec: { readonly childId: string, readonly prompt: readonly { readonly text: string }[] }) {
+        started.push({ childId: spec.childId, prompt: spec.prompt[0]?.text ?? '' })
         return Promise.resolve({ childId: spec.childId, result: new Promise(() => {}), dispose: () => Promise.resolve() })
       },
       resolveMaxDepth: () => 1,

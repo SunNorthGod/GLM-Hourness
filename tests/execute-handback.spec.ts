@@ -676,8 +676,8 @@ async function acceptanceRig(settle: (trunk: string, start: number) => unknown):
   const trunk = (): string => git(project.root, ['rev-parse', 'refs/heads/main']).trim()
   const starts: { childId: string, label: string, model: string, cwd: string }[] = []
   const subagents = {
-    startActivation(spec: { readonly childId: string, readonly label: string, readonly request: { readonly cwd: string, readonly agentOptions: { readonly model: string } } }) {
-      starts.push({ childId: spec.childId, label: spec.label, model: spec.request.agentOptions.model, cwd: spec.request.cwd })
+    startActivation(spec: { readonly childId: string, readonly label: string, readonly cwd: string, readonly agentOptions: { readonly model: string } }) {
+      starts.push({ childId: spec.childId, label: spec.label, model: spec.agentOptions.model, cwd: spec.cwd })
       const settlement = settle(trunk(), starts.length)
       return Promise.resolve({ childId: spec.childId, result: new Promise(done => setTimeout(() => done(settlement), 100)), dispose: () => Promise.resolve() })
     },

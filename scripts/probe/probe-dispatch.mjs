@@ -172,13 +172,11 @@ export function apply(ctx, config = {}) {
           provider: 'spawn',
           label: `task ${args.task}`,
           childId,
-          request: {
-            prompt: [{ type: 'text', text: args.prompt }],
-            parent,
-            cwd: args.cwd,
-            agentOptions: { model: args.model },
-            outputSchema: OUTPUT_SCHEMA,
-          },
+          prompt: [{ type: 'text', text: args.prompt }],
+          parent,
+          cwd: args.cwd,
+          agentOptions: { model: args.model },
+          outputSchema: OUTPUT_SCHEMA,
           signal: exec.signal,
           delivery: 'parent',
         })
@@ -243,7 +241,7 @@ export function apply(ctx, config = {}) {
         goal: { objective: args.objective, maxGoalRounds: args.maxGoalRounds },
         track: made => goalAgents.set(made.id, { evidence: join(args.cwd, args.evidence) }),
       })
-      note({ kind: 'goal-created', agentId: agent.id, root: ctx.agents.roots().includes(agent), goal: goalView(created) })
+      note({ kind: 'goal-created', agentId: agent.id, root: ctx.agents.list().filter(member => member.session?.header?.origin !== 'subagent').includes(agent), goal: goalView(created) })
       const deadline = Date.now() + 90_000
       for (;;) {
         const goal = ctx.goals.get(agent)
@@ -335,7 +333,7 @@ export function apply(ctx, config = {}) {
     async execute(args, exec) {
       const root = callerOf(exec, 'probe_wait_goal')
       const cwd = root.session.header.cwd
-      const target = ctx.agents.roots().find(agent => agent !== root && agent.session?.header?.cwd === cwd)
+      const target = ctx.agents.list().find(agent => agent !== root && agent.session?.header?.origin !== 'subagent' && agent.session?.header?.cwd === cwd)
       if (target === undefined) throw new Error('probe_wait_goal: no other root session in this working directory')
       const deadline = Date.now() + (args.timeoutMs ?? 120_000)
       const reached = []

@@ -209,7 +209,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
     return holder?.kind === 'held' ? holder.record.sessionId !== session.id : undefined
   }
 
-  const agents = (): DesignAgentsService | undefined => service<DesignAgentsService>(ctx, 'agents', ['get', 'roots'])
+  const agents = (): DesignAgentsService | undefined => service<DesignAgentsService>(ctx, 'agents', ['get', 'list'])
 
   /**
    * What the human said and was shown in a session: the session projection
@@ -422,7 +422,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
         health.report(except, 'degraded', '拿不到会话登记（agents 服务），别的会话没有退出主 Agent')
         return
       }
-      for (const other of registry.roots()) {
+      for (const other of registry.list()) {
         const session = other.session
         const project = projectOfSession(session)
         if (session.id === except || session.header.origin === 'subagent' || project === undefined || project.key !== key || !modeOf(projections, session).active) continue

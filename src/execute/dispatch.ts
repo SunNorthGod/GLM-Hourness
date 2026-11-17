@@ -646,17 +646,15 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
           provider: 'spawn',
           label: reviewedTrunk !== undefined ? `hourness acceptance ${target.id} round ${attempt}` : `hourness ${taskReview ? 'review' : 'task'} ${target.id} attempt ${attempt}`,
           childId,
-          request: {
-            // The child's working directory is absolute: the session header
-            // keeps it, and the chain's git judge compares it with the
-            // register's worktree regardless of the host's process cwd.
-            cwd: cwdOf,
-            prompt: [{ type: 'text', text: brief.text }],
-            parent: agent as unknown as LiveAgentLike,
-            agentOptions: agentOptionsOf(choice),
-            outputSchema,
-            ...(maxDepth === undefined ? {} : { maxDepth }),
-          },
+          // The child's working directory is absolute: the session header
+          // keeps it, and the chain's git judge compares it with the
+          // register's worktree regardless of the host's process cwd.
+          cwd: cwdOf,
+          prompt: [{ type: 'text', text: brief.text }],
+          parent: agent as unknown as LiveAgentLike,
+          agentOptions: agentOptionsOf(choice),
+          outputSchema,
+          ...(maxDepth === undefined ? {} : { maxDepth }),
           signal: exec.signal,
           delivery: 'caller',
         })

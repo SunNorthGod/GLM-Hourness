@@ -655,8 +655,8 @@ test('a 截图 flow passes through the walk-review role: the reviewer sees the a
     const start = r.starts[0]
     assert.equal(start?.provider, 'spawn')
     assert.equal(start?.label, 'hourness walk review flow-shot try 1')
-    assert.equal(start?.request.outputSchema, WALK_REVIEW_SCHEMA as unknown)
-    const prompt = (start?.request.prompt[0] as { readonly text: string } | undefined)?.text ?? ''
+    assert.equal(start?.outputSchema, WALK_REVIEW_SCHEMA as unknown)
+    const prompt = (start?.prompt[0] as { readonly text: string } | undefined)?.text ?? ''
     const artifactPattern = escapeRegExp(join(r.execDir, 'walks', r.spec.job, 'flow-shot', 'shot.png'))
     assert.match(prompt, new RegExp(`step-1 "step-1" — acceptance: step-1做成了; artifact: ${artifactPattern}`))
     assert.match(prompt, /structured_output once/)

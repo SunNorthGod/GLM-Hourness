@@ -5,7 +5,7 @@
  * before the handler, `command/done` after it settles, commands:327–395);
  * session projections folded lazily over the log, like
  * dsh-session-projection (`register`, `stateOf`, init with the inherited
- * event count); the agents registry (`get`, `roots`); a live agent's
+ * event count); the agents registry (`get`, `list`); a live agent's
  * `followup`, `steer`, `inject`, `whenIdle` (an idle agent that is woken
  * starts its first assembly before the call returns, agent-loop:800–807).
  * Services are those of the cordis store. Nothing the runtime does not do.
@@ -228,7 +228,7 @@ export function designHost(options: { readonly graph?: boolean, readonly project
   if (faces !== undefined) store.provide('glmHournessFaces', faces)
   const projectHome = join(root, 'project')
   store.provide('glmHournessData', { userHome, projectHome })
-  const registry: DesignAgentsService = { get: id => agents.get(id), roots: () => [...agents.values()].filter(agent => agent.session.header.origin !== 'subagent') }
+  const registry: DesignAgentsService = { get: id => agents.get(id), list: () => [...agents.values()] }
   store.provide('agents', registry)
   if (options.persistence === true) store.provide('sessionPersistence', { list: () => Promise.resolve(stored.map(id => ({ header: { id } }))) })
   if (options.dialect !== undefined) store.provide('glmHournessDialect', options.dialect)

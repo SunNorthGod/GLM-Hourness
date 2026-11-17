@@ -124,7 +124,7 @@ export interface ProviderSubagents {
   readonly results: Activation['result'][]
 }
 
-/** `registerProvider` keeps one provider per name; `startActivation` starts the named one the way rc.3's `startExternal` does. */
+/** `registerProvider` keeps one provider per name; `startActivation` starts the named one the way 0.2.2-rc.3's `startExternal` does (the spec minus provider/delivery/childId/name goes to the backend, with the cwd resolved). */
 export function providerSubagents(): ProviderSubagents {
   const providers = new Map<string, Provider>()
   const starts: StartSpec[] = []
@@ -143,7 +143,8 @@ export function providerSubagents(): ProviderSubagents {
         if (provider === undefined) throw new Error(`no subagent provider named "${spec.provider}"`)
         starts.push(spec)
         const controller = new AbortController()
-        const run = await provider.start({ ...spec.request, cwd: spec.request.cwd ?? sandbox, label: spec.label, signal: controller.signal })
+        const { provider: _provider, delivery: _delivery, childId: _childId, ...request } = spec
+        const run = await provider.start({ ...request, cwd: request.cwd ?? sandbox, signal: controller.signal })
         results.push(run.result)
         return { childId: run.id, result: run.result, dispose: () => run.dispose() }
       },

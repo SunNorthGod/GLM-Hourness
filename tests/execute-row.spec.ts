@@ -66,12 +66,6 @@ function fakeSubagents(): { readonly service: InjectableServices['subagents'], r
       return 1
     },
     registerProvider(): () => void { return () => {} },
-    waitForChildren(): Promise<boolean> {
-      return Promise.resolve(false)
-    },
-    sendMessage(): Promise<string> {
-      return Promise.resolve('m')
-    },
     listChildren(): Promise<readonly unknown[]> {
       return Promise.resolve([])
     },
@@ -384,11 +378,11 @@ test('a dispatch without model or why is invalid with the catalog hint; a goal i
     assert.equal(review.role, 'acceptance-review')
     assert.equal(review.task, 'goal-1')
     assert.match(review.childId, /^hz-goal-1-acc-a1-[0-9a-z]{6}$/)
-    const spec = subagents.started.at(-1) as { label: string, request: { cwd: string, outputSchema?: unknown, prompt: readonly { text?: string }[] } }
+    const spec = subagents.started.at(-1) as { label: string, cwd: string, outputSchema?: unknown, prompt: readonly { text?: string }[] }
     assert.equal(spec.label, 'hourness acceptance goal-1 round 1')
-    assert.equal(spec.request.cwd, resolve(project.root), 'the acceptance reviewer works in the main checkout')
-    assert.deepEqual(spec.request.outputSchema, REVIEW_SCHEMA)
-    assert.match(spec.request.prompt[0]?.text ?? '', new RegExp(`Review goal goal-1 at commit ${trunk.slice(0, 12)} against its acceptance`))
+    assert.equal(spec.cwd, resolve(project.root), 'the acceptance reviewer works in the main checkout')
+    assert.deepEqual(spec.outputSchema, REVIEW_SCHEMA)
+    assert.match(spec.prompt[0]?.text ?? '', new RegExp(`Review goal goal-1 at commit ${trunk.slice(0, 12)} against its acceptance`))
     const registered = registeredAttempt(review.childId)
     assert.equal(registered?.role, 'acceptance-review')
     assert.equal(registered?.worktree, resolve(project.root))
@@ -440,9 +434,9 @@ test('a task under an unreleased module is refused not_released; the design revi
     assert.match(refused.hint, /module module-b/)
     const review = await dispatch(deps, project.root, { id: 'module-b', model: 'probe-model', why: 'the design is done' }) as { childId: string, role: string }
     assert.equal(review.role, 'review')
-    const spec = subagents.started.at(-1) as { request: { outputSchema?: unknown, prompt?: readonly { text?: string }[] } }
-    assert.deepEqual(spec.request.outputSchema, REVIEW_SCHEMA)
-    const brief = (spec.request.prompt as readonly { text?: string }[])[0]?.text ?? ''
+    const spec = subagents.started.at(-1) as { outputSchema?: unknown, prompt?: readonly { text?: string }[] }
+    assert.deepEqual(spec.outputSchema, REVIEW_SCHEMA)
+    const brief = (spec.prompt as readonly { text?: string }[])[0]?.text ?? ''
     assert.match(brief, /Review the design of module module-b "Reports" against the direction list/)
     assert.match(brief, /direction:0 direction one/)
     assert.match(brief, /direction:1 direction two/)
@@ -491,8 +485,8 @@ test('reasoningEffort is checked against the ids of the model\u2019s effort reco
     assert.equal(none.code, 'invalid')
     assert.equal(none.hint, 'Model "plain-model" has no reasoning effort levels.')
     const listed = await dispatch(deps, project.root, { id: 'task-1', model: 'glm-5.3-flash', why: 'two small files', reasoningEffort: 'low' }) as { childId: string }
-    const spec = subagents.started.at(-1) as { request: { agentOptions: { reasoningEffort?: string } } }
-    assert.equal(spec.request.agentOptions.reasoningEffort, 'low')
+    const spec = subagents.started.at(-1) as { agentOptions: { reasoningEffort?: string } }
+    assert.equal(spec.agentOptions.reasoningEffort, 'low')
     cleanup(String(listed.childId))
   }
   finally {
@@ -674,7 +668,7 @@ test('the review dispatch carries the reviewed task\'s 政策差 classes into th
     await write(handback(1, 'hz-task-1-a1-aaaaaa', ['floor']))
     const subagents = fakeSubagents()
     const { deps, cleanup } = depsFor(project, subagents.service, { reviewTarget: () => ({ handedBack: true, stale: false }) })
-    const briefOf = (): string => (subagents.started.at(-1) as { request: { prompt: readonly { text?: string }[] } }).request.prompt[0]?.text ?? ''
+    const briefOf = (): string => (subagents.started.at(-1) as { prompt: readonly { text?: string }[] }).prompt[0]?.text ?? ''
     const review = await dispatch(deps, project.root, { id: 'review-1', model: 'probe-model', why: 'review it', depth: 'full', depthWhy: 'probe: full' }) as { role: string, childId: string }
     assert.equal(review.role, 'review', 'the gate does not refuse a review dispatch for a policy drift (§8)')
     assert.ok(briefOf().includes('- Policy changed since the dispatch: floor. The forms now in force: gate/norm-merge-gate and floor/norm-review-floor — read with graph_show; rules — the rules board page. Judge the change against the forms as they stand now.'), briefOf().slice(briefOf().indexOf('## Context'), briefOf().indexOf('## Constraints')))
