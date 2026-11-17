@@ -130,35 +130,53 @@ export async function acquireProbeLock(setup = {}) {
   const log = setup.log ?? (() => {})
   const deadline = environment.now() + waitMs
   const refused = new Map()
-  for (;;) {
-    for (const slot of PROBE_LOCK_SLOTS) {
-      const dir = join(root, '.llm', slot)
-      const judged = judgeClaim(join(dir, PROBE_LOCK_CLAIM), environment)
-      if (judged.verdict === 'fresh') {
-        refused.set(slot, judged.holder)
-        log(`probe: ${dir} held by ${judged.holder} — waiting`)
-        continue
-      }
-      mkdirSync(dir, { recursive: true })
-      const lock = await acquireLock(join(dir, PROBE_LOCK_CLAIM), environment, {
-        holder,
-        retryMs: setup.retryMs ?? RETRY_MS,
-        waitMs: attemptMs,
-        staleMs: PROBE_LOCK_HOLD_MS,
-        bootToleranceMs: PROBE_LOCK_BOOT_TOLERANCE_MS,
-        unreadableGraceMs: setup.graceMs ?? UNREADABLE_GRACE_MS,
-        keepStale: true,
-      })
-      if (lock !== 'busy') {
-        if (judged.verdict === 'dead') log(`probe: ${dir} taken over from ${judged.holder}; the old claim is kept as ${PROBE_LOCK_CLAIM}.stale-* next to the new one`)
-        else log(`probe: ${dir} claimed for ${holder} (pid ${environment.pid})`)
-        return {
+  const trySlot = async (slot, slotWaitMs, logFresh) => {
+    const dir = join(root, '.llm', slot)
+    const judged = judgeClaim(join(dir, PROBE_LOCK_CLAIM), environment)
+    if (judged.verdict === 'fresh') {
+      refused.set(slot, judged.holder)
+      if (logFresh) log(`probe: ${dir} held by ${judged.holder} — waiting`)
+      return { kind: 'fresh' }
+    }
+    mkdirSync(dir, { recursive: true })
+    const lock = await acquireLock(join(dir, PROBE_LOCK_CLAIM), environment, {
+      holder,
+      retryMs: setup.retryMs ?? RETRY_MS,
+      waitMs: slotWaitMs,
+      staleMs: PROBE_LOCK_HOLD_MS,
+      bootToleranceMs: PROBE_LOCK_BOOT_TOLERANCE_MS,
+      unreadableGraceMs: setup.graceMs ?? UNREADABLE_GRACE_MS,
+      keepStale: true,
+    })
+    if (lock !== 'busy') {
+      if (judged.verdict === 'dead') log(`probe: ${dir} taken over from ${judged.holder}; the old claim is kept as ${PROBE_LOCK_CLAIM}.stale-* next to the new one`)
+      else log(`probe: ${dir} claimed for ${holder} (pid ${environment.pid})`)
+      return {
+        kind: 'acquired',
+        lock: {
           holder,
           release: () => lock.release(),
-        }
+        },
       }
-      // Someone won the slot between the judgment and the attempt; the next pass re-judges.
-      refused.set(slot, 'a claim written while this acquirer was trying')
+    }
+    // Someone won the slot between the judgment and the attempt; the next pass re-judges.
+    refused.set(slot, 'a claim written while this acquirer was trying')
+    return { kind: 'busy' }
+  }
+  for (;;) {
+    // Probe all candidate slots once without waiting so a busy/contended slot 1 never stalls acquisition when slot 2 is free.
+    let hadCandidate = false
+    for (const slot of PROBE_LOCK_SLOTS) {
+      const attempt = await trySlot(slot, 0, true)
+      if (attempt.kind === 'acquired') return attempt.lock
+      if (attempt.kind === 'busy') hadCandidate = true
+    }
+    if (hadCandidate && attemptMs > 0) {
+      for (const slot of PROBE_LOCK_SLOTS) {
+        const remaining = Math.min(attemptMs, Math.max(0, deadline - environment.now()))
+        const attempt = await trySlot(slot, remaining, false)
+        if (attempt.kind === 'acquired') return attempt.lock
+      }
     }
     if (environment.now() >= deadline) {
       log(`probe: both lock slots stayed held for ${Math.round(waitMs / 60_000)} min — ${PROBE_LOCK_SLOTS.map(slot => `${slot}: ${refused.get(slot) ?? 'free'}`).join('; ')}`)
@@ -166,4 +184,31 @@ export async function acquireProbeLock(setup = {}) {
     }
     await environment.sleep(pollMs)
   }
+}
+
+/**
+ * Bind SIGINT/SIGTERM cleanup and idempotent disposal to an acquired probe lock
+ * so runners release the slot on every exit path and signal.
+ */
+export function bindProbeLockExit(probeLock) {
+  let released = false
+  const release = async () => {
+    if (released) return
+    released = true
+    await probeLock.release().catch(() => {})
+  }
+  const onSigint = () => {
+    void release().finally(() => process.exit(130))
+  }
+  const onSigterm = () => {
+    void release().finally(() => process.exit(143))
+  }
+  process.once('SIGINT', onSigint)
+  process.once('SIGTERM', onSigterm)
+  const dispose = async () => {
+    process.removeListener('SIGINT', onSigint)
+    process.removeListener('SIGTERM', onSigterm)
+    await release()
+  }
+  return { release, dispose }
 }

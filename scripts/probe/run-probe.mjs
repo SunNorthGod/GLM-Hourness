@@ -254,7 +254,7 @@ import { ablationRow, attachmentsIn, dataRows, designRows, fenceRow, generatePro
 import { DEFERRED_BY_A3, WORKSPACE_RULES_SHORT } from '../calibrate/ablation.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 import { CANARY } from './probe-net.mjs'
-import { acquireProbeLock } from './probe-lock.mjs'
+import { acquireProbeLock, bindProbeLockExit } from './probe-lock.mjs'
 
 requireDesktop('probe')
 
@@ -284,6 +284,17 @@ for (const [name, shape] of shapesBefore) {
     process.exit(2)
   }
 }
+// The probe lock (§1.1 L3 row, scripts/probe/probe-lock.mjs): the runner
+// takes its slot before creating run directories or profile junctions so a
+// busy exit leaves nothing behind; release runs on every exit and signal.
+const probeLock = await acquireProbeLock({ log: console.error })
+if (probeLock === 'busy') {
+  console.error('probe: no probe slot freed; run again when one does (the holders are named above)')
+  process.exit(2)
+}
+const lockGuard = bindProbeLockExit(probeLock)
+let exitCode = 0
+try {
 const runDir = openRunDir(new Date().toISOString().replace(/[:.]/g, '-'))
 /** The generated profiles by name; every one generated is unlinked on exit, a failed run included. */
 const profiles = {}
@@ -297,6 +308,7 @@ for (const [name, packages] of Object.entries(PROBE_PROFILES)) {
   }
   catch (error) {
     console.error(`probe: cannot generate the ${name} profile under ${runDir}: ${error instanceof Error && 'code' in error ? error.code : String(error)}`)
+    await lockGuard.dispose()
     process.exit(2)
   }
 }
@@ -311,18 +323,10 @@ try {
 }
 catch (error) {
   console.error(`probe: cannot generate the instructions profile under ${instructionsHome}: ${error instanceof Error && 'code' in error ? error.code : String(error)}`)
+  await lockGuard.dispose()
   process.exit(2)
 }
 process.on('exit', () => unlinkProfile(instructionsProfile))
-
-// The probe lock (§1.1 L3 row, scripts/probe/probe-lock.mjs): the runner
-// takes its slot itself, so the release below must run on every exit of this
-// file; a crash leaves a dead-pid claim the next acquirer takes over at once.
-const probeLock = await acquireProbeLock({ log: console.error })
-if (probeLock === 'busy') {
-  console.error('probe: no probe slot freed; run again when one does (the holders are named above)')
-  process.exit(2)
-}
 
 const PACKAGE_NAME = Object.fromEntries(PACKAGES.map(pkg => [pkg.key, pkg.name]))
 
@@ -5742,19 +5746,22 @@ const voiding = profileChanges.filter(item => item.project)
 if (voiding.length > 0) {
   for (const change of voiding) console.error(`probe guard: ${change.name} profile: ${change.text}`)
   console.error('probe: the project part of a user profile changed during the run; the result is void, rerun (a second occurrence is a probe defect)')
-  await probeLock.release()
-  process.exit(2)
+  exitCode = 2
 }
-if (failed > 0) {
-  await probeLock.release()
-  process.exit(1)
+else if (failed > 0) {
+  exitCode = 1
 }
-// A run that passed leaves nothing behind; a directory that cannot be deleted is named and the result stands.
-try {
-  removeRunDir(runDir)
+else {
+  // A run that passed leaves nothing behind; a directory that cannot be deleted is named and the result stands.
+  try {
+    removeRunDir(runDir)
+  }
+  catch (error) {
+    console.warn(`probe: the run directory was not deleted (${error instanceof Error ? error.message : String(error)}): ${runDir}`)
+  }
 }
-catch (error) {
-  console.warn(`probe: the run directory was not deleted (${error instanceof Error ? error.message : String(error)}): ${runDir}`)
 }
-await probeLock.release()
-process.exit(0)
+finally {
+  await lockGuard.dispose()
+}
+process.exit(exitCode)

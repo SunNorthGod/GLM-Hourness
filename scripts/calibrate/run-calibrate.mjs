@@ -58,7 +58,7 @@ import { ARMS } from './ablation.mjs'
 import { fencedPathOf } from './fence.mjs'
 import { compareMetrics, metricsSection } from './metrics.mjs'
 import { closeBatch, collectBatch, openBatch, openRun } from './run-dir.mjs'
-import { acquireProbeLock } from '../probe/probe-lock.mjs'
+import { acquireProbeLock, bindProbeLockExit } from '../probe/probe-lock.mjs'
 
 const TASKS_DIR = join(repo, 'tests', 'calibration')
 const PROVIDER = 'glm-zcode'
@@ -88,7 +88,15 @@ const { values: options } = parseArgs({
     'collect': { type: 'string' },
   },
 })
+class CalibrateExitError extends Error {
+  constructor(message, exitCode) {
+    super(message)
+    this.exitCode = exitCode
+  }
+}
+let probeLockHeld = false
 const fail = (message) => {
+  if (probeLockHeld) throw new CalibrateExitError(`calibrate: ${message}`, 2)
   console.error(`calibrate: ${message}`)
   process.exit(2)
 }
@@ -159,9 +167,11 @@ if (probeLock === 'busy') {
   console.error('calibrate: no probe slot freed; run again when one does (the holders are named above)')
   process.exit(2)
 }
+probeLockHeld = true
+const lockGuard = bindProbeLockExit(probeLock)
 
 // The batch runs in the system temporary directory and is copied to .llm/calibration-runs/<stamp>/ when it is done (scripts/calibrate/run-dir.mjs).
-const batch = openBatch(repo, stamp)
+let batch
 
 const jsonl = file => existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)) : []
 const round = value => Math.round(value * 100) / 100
@@ -426,26 +436,44 @@ const writeResults = () => {
     runs,
   }, null, 2)}\n`)
 }
-for (const model of models) {
-  for (const task of tasks) {
-    for (let index = 0; index < repeat; index += 1) {
-      const result = await calibrate(task, model, index)
-      runs.push(result)
-      writeResults()
-      const failed = result.acceptance.checks.filter(check => !check.ok).map(check => check.name)
-      console.log(`  ${result.completed ? 'PASS' : 'FAIL'}  stop ${result.stop}${result.boundaryTooTight ? ' (boundary too tight, not the model\'s failure)' : ''}, ${result.steps} step(s), ${result.toolCalls} call(s), rework ${result.rework}, interruptions ${result.interruptions}, violations ${result.violations}, credits ${result.credits.charged} (raw ${result.credits.raw}), ${round(result.durationMs / 60_000)} min${failed.length > 0 ? `; failed: ${failed.join('; ')}` : ''}${result.acceptance.error === undefined ? '' : `; checker: ${result.acceptance.error}`}`)
+let exitCode
+try {
+  batch = openBatch(repo, stamp)
+  for (const model of models) {
+    for (const task of tasks) {
+      for (let index = 0; index < repeat; index += 1) {
+        const result = await calibrate(task, model, index)
+        runs.push(result)
+        writeResults()
+        const failed = result.acceptance.checks.filter(check => !check.ok).map(check => check.name)
+        console.log(`  ${result.completed ? 'PASS' : 'FAIL'}  stop ${result.stop}${result.boundaryTooTight ? ' (boundary too tight, not the model\'s failure)' : ''}, ${result.steps} step(s), ${result.toolCalls} call(s), rework ${result.rework}, interruptions ${result.interruptions}, violations ${result.violations}, credits ${result.credits.charged} (raw ${result.credits.raw}), ${round(result.durationMs / 60_000)} min${failed.length > 0 ? `; failed: ${failed.join('; ')}` : ''}${result.acceptance.error === undefined ? '' : `; checker: ${result.acceptance.error}`}`)
+      }
     }
   }
+  // The batch is done: everything goes back to the repository and the temporary directories are deleted, or nothing is deleted and the way to finish is said.
+  const closed = closeBatch(batch)
+  if (!closed.ok) {
+    console.error(`calibrate: ${closed.message}`)
+    exitCode = 1
+  }
+  else {
+    if (closed.message !== '') console.warn(`calibrate: ${closed.message}`)
+    console.log(`calibrate: ${runs.filter(run => run.completed).length}/${runs.length} completed at ${commit}${dirty ? ' (dirty)' : ''}${runs.some(run => run.boundaryTooTight) ? `; ${runs.filter(run => run.boundaryTooTight).length} stopped on a bound (boundary too tight)` : ''}; results in ${join(batch.target, 'results.json')}`)
+    // A run that never reached the model is a harness failure, not a model result.
+    exitCode = runs.some(run => run.steps === 0) ? 1 : 0
+  }
 }
-// The batch is done: everything goes back to the repository and the temporary directories are deleted, or nothing is deleted and the way to finish is said.
-const closed = closeBatch(batch)
-if (!closed.ok) {
-  console.error(`calibrate: ${closed.message}`)
-  await probeLock.release()
-  process.exit(1)
+catch (error) {
+  if (error instanceof CalibrateExitError) {
+    console.error(error.message)
+    exitCode = error.exitCode
+  }
+  else {
+    console.error(error)
+    exitCode = 1
+  }
 }
-if (closed.message !== '') console.warn(`calibrate: ${closed.message}`)
-console.log(`calibrate: ${runs.filter(run => run.completed).length}/${runs.length} completed at ${commit}${dirty ? ' (dirty)' : ''}${runs.some(run => run.boundaryTooTight) ? `; ${runs.filter(run => run.boundaryTooTight).length} stopped on a bound (boundary too tight)` : ''}; results in ${join(batch.target, 'results.json')}`)
-// A run that never reached the model is a harness failure, not a model result.
-await probeLock.release()
-process.exit(runs.some(run => run.steps === 0) ? 1 : 0)
+finally {
+  await lockGuard.dispose()
+}
+process.exit(exitCode)

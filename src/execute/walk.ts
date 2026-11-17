@@ -41,6 +41,7 @@ import { goalOf } from '../graph/stage.ts'
 import { liveOf } from '../graph/user-live.ts'
 import type { SnapshotEnvironment } from '../guard/git-snapshot.ts'
 import type { AgentLike, LiveAgentLike, SubagentActivation } from '../shared/dsh-min.ts'
+import { toMetricsId } from '../shared/metrics.ts'
 import { forgetAttempt, makeChildId, registerAttempt } from './attempts.ts'
 import { appendJsonl, gateSetup, runLine, snapshotSaver } from './check.ts'
 import { parseGateNorm } from './gate-norm.ts'
@@ -48,7 +49,7 @@ import { sha256HexOfBytes } from './digest.ts'
 import { agentOptionsOf, type CatalogEntry, type ModelChoice } from './models.ts'
 import { acquireGateLock, ensureExecDir, type GateLockSetup } from './gate-lock.ts'
 import type { GateLauncher, GateVerdict } from './gate-provider.ts'
-import { emitMetric } from './metrics.ts'
+import { emitMetric, executeMetricWhere } from './metrics.ts'
 import { writeWithRetry } from './retry.ts'
 import type { CommandRunner } from './dispatch.ts'
 import type { Git } from './git.ts'
@@ -56,6 +57,8 @@ import type { LoopEmit } from './loop-link.ts'
 
 /** The budget a walk job spends before it starts no new flow (§2.7 step 4); below the checks' 60-minute lock wait (tests pin it). */
 export const WALK_JOB_MS = 45 * 60_000
+/** Per-flow timeout for a `截图` or `终端` walk-review activation; tests pin it. */
+export const WALK_REVIEW_MS = 10 * 60_000
 
 /** Where a walk run's report and artifacts are copied, under `<exec>`; the evidence refs and the reviewer name these copies. */
 const WALK_RUNS_DIR = 'walks'
@@ -110,6 +113,8 @@ export interface WalkDeps {
   readonly now?: () => Date
   /** The random source of the review child id suffix; tests pin it. */
   readonly random?: () => number
+  /** Per-flow timeout for a `截图` or `终端` walk-review activation; defaults to `WALK_REVIEW_MS` (tests pin it). */
+  readonly reviewTimeoutMs?: number
 }
 
 /**
@@ -492,8 +497,9 @@ export function stepExits(flow: FlowView, report: WalkReport & { readonly ok: tr
     if (contradiction && step.id === entryId) {
       return { id: step.id, exit: commandExit, result: '没过：命令的退出码不是 0，而报告里列出的步骤全是 ok' }
     }
-    const ok = judged === undefined ? step.ok : judged.get(step.id)?.ok === true
-    const why = judged?.get(step.id)?.why ?? step.said
+    const review = judged?.get(step.id)
+    const ok = step.ok === true && (judged === undefined || review?.ok === true)
+    const why = !step.ok ? (step.said ?? review?.why) : (review?.why ?? step.said)
     return {
       id: step.id,
       exit: ok ? 0 : commandExit === 0 ? 1 : commandExit,
@@ -652,16 +658,32 @@ function reviewOf(settlement: unknown, flow: FlowView): ReadonlyMap<string, { re
   return wanted.every(id => judged.has(id)) ? judged : undefined
 }
 
+type ReviewOutcome =
+  | { readonly kind: 'judged', readonly verdicts: ReadonlyMap<string, { readonly ok: boolean, readonly why?: string }> }
+  | { readonly kind: 'failed' }
+  | { readonly kind: 'aborted' }
+
+/** Dispose a started activation without letting a teardown failure escape. */
+async function disposeActivation(activation: SubagentActivation | undefined): Promise<void> {
+  await activation?.dispose?.().catch(() => {})
+}
+
 /**
  * One flow's review: up to `REVIEW_TRIES` activations of the `walk-review`
- * role, registered as a reviewer so the reviewers' boundaries hold. The map
- * of verdicts, or `undefined` when every try failed (the flow reads as
- * `review_failed` and no evidence is written).
+ * role, registered as a reviewer so the reviewers' boundaries hold, bounded
+ * by `WALK_REVIEW_MS` per flow and responsive to `signal`. Returns the map
+ * of verdicts, `'aborted'` when cancelled, or `'failed'` when every try
+ * failed or the per-flow review timeout expired.
  */
-async function reviewFlow(deps: WalkDeps, spec: ReviewSpec, parent: LiveAgentLike, signal: AbortSignal): Promise<ReadonlyMap<string, { readonly ok: boolean, readonly why?: string }> | undefined> {
-  if (deps.start === undefined) return undefined
+async function reviewFlow(deps: WalkDeps, spec: ReviewSpec, parent: LiveAgentLike, signal: AbortSignal): Promise<ReviewOutcome> {
+  if (signal?.aborted) return { kind: 'aborted' }
+  if (deps.start === undefined) return { kind: 'failed' }
   const random = deps.random ?? Math.random
+  const deadline = Date.now() + (deps.reviewTimeoutMs ?? WALK_REVIEW_MS)
   for (let attempt = 1; attempt <= REVIEW_TRIES; attempt++) {
+    if (signal?.aborted) return { kind: 'aborted' }
+    const remainingMs = deadline - Date.now()
+    if (attempt > 1 && remainingMs <= 0) return { kind: 'failed' }
     const childId = makeChildId(spec.flow.flow.id, attempt, random)
     registerAttempt({
       childId,
@@ -678,8 +700,33 @@ async function reviewFlow(deps: WalkDeps, spec: ReviewSpec, parent: LiveAgentLik
       plan: 'none',
       pins: '',
     })
+    const attemptController = new AbortController()
+    let stopReason: 'aborted' | 'timeout' | undefined
+    const onParentAbort = (): void => {
+      stopReason = 'aborted'
+      attemptController.abort()
+    }
+    signal?.addEventListener('abort', onParentAbort, { once: true })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let activation: SubagentActivation | undefined
     try {
-      const activation = await deps.start({
+      const stopGate = new Promise<'aborted' | 'timeout'>((resolve) => {
+        if (signal?.aborted) {
+          stopReason = 'aborted'
+          attemptController.abort()
+          resolve('aborted')
+          return
+        }
+        const onAttemptAbort = (): void => {
+          resolve(signal?.aborted || stopReason === 'aborted' ? 'aborted' : 'timeout')
+        }
+        attemptController.signal.addEventListener('abort', onAttemptAbort, { once: true })
+        timer = setTimeout(() => {
+          if (stopReason === undefined) stopReason = 'timeout'
+          attemptController.abort()
+        }, Math.max(0, remainingMs))
+      })
+      const startPromise = deps.start({
         provider: 'spawn',
         label: `hourness walk review ${spec.flow.flow.id} try ${attempt}`,
         childId,
@@ -690,25 +737,73 @@ async function reviewFlow(deps: WalkDeps, spec: ReviewSpec, parent: LiveAgentLik
           agentOptions: agentOptionsOf(spec.choice),
           outputSchema: WALK_REVIEW_SCHEMA,
         },
-        signal,
+        signal: attemptController.signal,
         delivery: 'caller',
-      })
+      }).then(
+        (started) => {
+          activation = started
+          if (attemptController.signal.aborted) void disposeActivation(started)
+          return { kind: 'started' as const, activation: started }
+        },
+        (error: unknown) => ({ kind: 'rejected' as const, error }),
+      )
+      const startRace = await Promise.race([
+        startPromise,
+        stopGate.then((kind): { readonly kind: 'aborted' } | { readonly kind: 'timeout' } => ({ kind })),
+      ])
+      if (startRace.kind === 'aborted' || signal?.aborted) {
+        await disposeActivation(activation)
+        return { kind: 'aborted' }
+      }
+      if (startRace.kind === 'timeout') {
+        await disposeActivation(activation)
+        return { kind: 'failed' }
+      }
+      if (startRace.kind === 'rejected') continue
+      const startedActivation = startRace.activation
+      activation = startedActivation
+      if (attemptController.signal.aborted) {
+        await disposeActivation(startedActivation)
+        return signal?.aborted || stopReason === 'aborted' ? { kind: 'aborted' } : { kind: 'failed' }
+      }
       // The verdict rides the settled result, never the receipt: startActivation
       // resolves at the child's acceptance, whose shape carries no structured
       // field — reading it there fails every try at once (the dispatch's
       // handback hooks the same result promise, §3.6.2).
-      const settlement = await activation.result
-      const judged = reviewOf(settlement, spec.flow)
-      if (judged !== undefined) return judged
+      const resultPromise = startedActivation.result.then(
+        settlement => ({ kind: 'settled' as const, settlement }),
+        (error: unknown) => ({ kind: 'rejected' as const, error }),
+      )
+      const resultRace = await Promise.race([
+        resultPromise,
+        stopGate.then((kind): { readonly kind: 'aborted' } | { readonly kind: 'timeout' } => ({ kind })),
+      ])
+      if (resultRace.kind === 'aborted' || signal?.aborted) {
+        await disposeActivation(startedActivation)
+        return { kind: 'aborted' }
+      }
+      if (resultRace.kind === 'timeout') {
+        await disposeActivation(startedActivation)
+        return { kind: 'failed' }
+      }
+      if (resultRace.kind === 'rejected') continue
+      const judged = reviewOf(resultRace.settlement, spec.flow)
+      if (judged !== undefined) return { kind: 'judged', verdicts: judged }
     }
     catch {
+      if (signal?.aborted) {
+        await disposeActivation(activation)
+        return { kind: 'aborted' }
+      }
       // A failed activation or a rejected settlement spends one try; the next goes out unless the tries are spent.
     }
     finally {
+      if (timer !== undefined) clearTimeout(timer)
+      signal?.removeEventListener('abort', onParentAbort)
       forgetAttempt(childId)
     }
   }
-  return undefined
+  return signal?.aborted ? { kind: 'aborted' } : { kind: 'failed' }
 }
 
 // ---------------------------------------------------------------------------
@@ -752,11 +847,12 @@ async function walkFlow(deps: WalkDeps, spec: WalkJobSpec, worktree: string, run
   const command = flow.spec.command
   const flowEnd = (outcome: WalkOutcome, exit?: number, reason?: string): { readonly outcome: WalkOutcome, readonly exit?: number, readonly elapsedMs: number, readonly reason?: string } =>
     ({ outcome, ...(exit === undefined ? {} : { exit }), elapsedMs: now().getTime() - started, ...(reason === undefined ? {} : { reason }) })
+  if (signal?.aborted) return flowEnd('not_run', undefined, 'the job was stopped')
   const reportDir = join(worktree, ...REPORT_ROOT.split('/'), flow.flow.id)
   await rm(reportDir, { recursive: true, force: true }).catch(() => undefined)
   const run = await runLine(command, worktree, join(runsDir, `${flow.flow.id}.log`), limit.ms, signal)
   const timedOut = run.problem?.startsWith('timed out') === true
-  if (signal.aborted) return flowEnd('not_run', undefined, 'the job was stopped')
+  if (signal?.aborted) return flowEnd('not_run', undefined, 'the job was stopped')
   const report = await readWalkReport(worktree, flow, timedOut)
   if (!report.ok) {
     // Rule 1 and 2: a timeout or an unusable report writes an exit 1 on the entry step, the rest stay silent.
@@ -768,13 +864,14 @@ async function walkFlow(deps: WalkDeps, spec: WalkJobSpec, worktree: string, run
   } catch (error) {
     return flowEnd('failed', run.exit, `the run's copy could not be written (${error instanceof Error ? error.message : String(error)})`)
   }
+  if (signal?.aborted) return flowEnd('not_run', undefined, 'the job was stopped')
   let judged: ReadonlyMap<string, { readonly ok: boolean, readonly why?: string }> | undefined
   if (kind === '截图' || kind === '终端') {
     const artifacts = new Map<string, string>()
     for (const step of report.steps) {
       if (step.artifact !== undefined) artifacts.set(step.id, join(runsDir, flow.flow.id, step.artifact))
     }
-    judged = await reviewFlow(deps, {
+    const reviewed = await reviewFlow(deps, {
       project: spec.project,
       graphDir: spec.graphDir,
       commit: spec.trunk.sha,
@@ -784,8 +881,11 @@ async function walkFlow(deps: WalkDeps, spec: WalkJobSpec, worktree: string, run
       choice: spec.choice,
       why: spec.why,
     }, spec.parent, signal)
-    if (judged === undefined) return flowEnd('review_failed', run.exit)
+    if (reviewed.kind === 'aborted' || signal?.aborted) return flowEnd('not_run', undefined, 'the job was stopped')
+    if (reviewed.kind === 'failed') return flowEnd('review_failed', run.exit)
+    judged = reviewed.verdicts
   }
+  if (signal?.aborted) return flowEnd('not_run', undefined, 'the job was stopped')
   const { entries, written } = await writeFlowEvidence(deps, { graphDir: spec.graphDir, commit: spec.trunk.sha, job: spec.job, sessionId: spec.sessionId }, flow, kind, command, join(runsDir, flow.flow.id), report, run.exit ?? -1, judged)
   // The evidence line means this flow's evidence is fully written (§2.7 step 3); a partial write stays for the reconcile.
   if (written.length === entries.length && entries.length > 0) {
@@ -844,6 +944,7 @@ export async function runWalkJob(deps: WalkDeps, spec: WalkJobSpec, signal: Abor
           const limits = await readLimitLines(execDir)
           const stopped = new Set<string>()
           for (const [index, flow] of spec.flows.entries()) {
+            if (signal?.aborted) break
             const limit = limitOf(flow, lines)
             const elapsed = now().getTime() - lockStart
             if (index > 0 && elapsed + limit.ms > WALK_JOB_MS) {
@@ -911,13 +1012,14 @@ export async function runWalkJob(deps: WalkDeps, spec: WalkJobSpec, signal: Abor
   emitMetric({
     event: 'execute.walk',
     phase: 'end',
-    goal: spec.goal.id,
-    job: spec.job,
-    commit,
+    goal: toMetricsId(spec.goal.id),
+    job: toMetricsId(spec.job),
+    commit: toMetricsId(commit),
+    flows: spec.flows.slice(0, 32).map(flow => toMetricsId(flow.flow.id)),
     passed: results.filter(result => result.outcome === 'passed').length,
     failed: results.filter(result => result.outcome === 'failed').length,
-    outcomes: results.map(result => result.outcome),
-  })
+    outcomes: results.slice(0, 32).map(result => toMetricsId(result.outcome)),
+  }, executeMetricWhere(spec.project, spec.sessionId))
   deps.emit(spec.project, spec.sessionId, {
     event: 'hourness.walk-done',
     key: `walk-done:${spec.job}`,

@@ -541,7 +541,7 @@ export function openLoopStore(projectRoot: string, options: LoopStoreOptions = {
 
   async function locked<T>(body: () => Promise<T>): Promise<T | 'busy'> {
     await ensureRuntimeDir(paths)
-    const lock = await acquireLock(paths.lock, lockEnvironment, { keepStale: true })
+    const lock = await acquireLock(paths.lock, lockEnvironment, { keepStale: true, unreadableGraceMs: 2_000 })
     if (lock === 'busy') return 'busy'
     try {
       return await body()

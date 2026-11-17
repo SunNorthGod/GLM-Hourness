@@ -26,7 +26,7 @@
  * injected clock, so tests do not touch file times.
  */
 import { randomUUID } from 'node:crypto'
-import { open, readFile, rename, unlink } from 'node:fs/promises'
+import { open, rename, stat, unlink } from 'node:fs/promises'
 import { uptime } from 'node:os'
 
 /** A lock older than this is taken over: the critical section lasts tens of milliseconds. */
@@ -109,20 +109,69 @@ interface LockContent {
   readonly holder?: string
 }
 
-async function readContent(file: string): Promise<{ readonly text: string, readonly content: Partial<LockContent> } | undefined> {
-  let text: string
+interface ReadLock {
+  readonly text: string
+  readonly content: Partial<LockContent>
+  readonly mtimeMs: number
+  readonly birthtimeMs: number
+  readonly size: number
+  readonly ino: number
+}
+
+async function readContent(file: string): Promise<ReadLock | undefined> {
   try {
-    text = await readFile(file, 'utf8')
+    const handle = await open(file, 'r')
+    try {
+      const text = await handle.readFile('utf8')
+      const info = await handle.stat()
+      let content: Partial<LockContent> = {}
+      try {
+        const parsed: unknown = JSON.parse(text)
+        if (typeof parsed === 'object' && parsed !== null) content = parsed
+      }
+      catch {
+        // Non-JSON content is tracked as unreadable with its file stats.
+      }
+      return {
+        text,
+        content,
+        mtimeMs: info.mtimeMs,
+        birthtimeMs: info.birthtimeMs,
+        size: info.size,
+        ino: info.ino,
+      }
+    }
+    finally {
+      await handle.close()
+    }
   }
   catch {
     return undefined
   }
-  try {
-    const parsed: unknown = JSON.parse(text)
-    return { text, content: typeof parsed === 'object' && parsed !== null ? parsed : {} }
+}
+
+/** Serialize stale-lock takeover across contenders with a short-lived `.takeover` file. */
+export async function withTakeoverLock<T>(
+  targetFile: string,
+  action: () => Promise<T>,
+  staleMs = 5_000,
+): Promise<{ readonly acquired: true, readonly value: T } | { readonly acquired: false }> {
+  const takeoverFile = `${targetFile}.takeover`
+  let takeoverHandle = await open(takeoverFile, 'wx').catch(() => undefined)
+  if (takeoverHandle === undefined) {
+    const takeoverInfo = await stat(takeoverFile).catch(() => undefined)
+    if (takeoverInfo !== undefined && Date.now() - takeoverInfo.mtimeMs > staleMs) {
+      await unlink(takeoverFile).catch(() => {})
+      takeoverHandle = await open(takeoverFile, 'wx').catch(() => undefined)
+    }
   }
-  catch {
-    return { text, content: {} }
+  if (takeoverHandle === undefined) return { acquired: false }
+  try {
+    await takeoverHandle.close().catch(() => {})
+    return { acquired: true, value: await action() }
+  }
+  finally {
+    await unlink(takeoverFile).catch(() => {})
   }
 }
 
@@ -167,8 +216,8 @@ export async function acquireLock(file: string, environment: LockEnvironment = r
   const token = randomUUID()
   const startedAt = environment.now()
   const deadline = startedAt + (options.waitMs ?? LOCK_WAIT_MS)
-  /** The content without information this waiter last saw, and when it first saw it. */
-  let unreadable: { readonly text: string, readonly since: number } | undefined
+  /** The content without information this waiter last saw, and when it first saw it (reset on any text or mtime/birthtime advance). */
+  let unreadable: { readonly text: string, readonly mtimeMs: number, readonly birthtimeMs: number, readonly since: number } | undefined
   for (;;) {
     const boot = environment.bootTime?.()
     const written: LockContent = { pid: environment.pid, startedAt, at: environment.now(), token, ...(boot === undefined ? {} : { boot }), ...(options.holder === undefined ? {} : { holder: options.holder }) }
@@ -196,13 +245,33 @@ export async function acquireLock(file: string, environment: LockEnvironment = r
       continue
     }
     let abandoned = isAbandoned(holder.content, environment, options)
-    // Seen "continuously": any content that tells something, or none at all, ends the run of looks.
+    // Seen "continuously": any content that tells something, or none at all, ends the run of looks; an mtime/birthtime advance (heartbeat rewrite) resets the grace clock.
     if (typeof holder.content.pid === 'number' || typeof holder.content.at === 'number' || (options.unreadableGraceMs ?? 0) <= 0) unreadable = undefined
-    else if (unreadable?.text !== holder.text) unreadable = { text: holder.text, since: environment.now() }
+    else if (unreadable === undefined || unreadable.text !== holder.text || unreadable.mtimeMs !== holder.mtimeMs || unreadable.birthtimeMs !== holder.birthtimeMs) {
+      unreadable = { text: holder.text, mtimeMs: holder.mtimeMs, birthtimeMs: holder.birthtimeMs, since: environment.now() }
+    }
     if (unreadable !== undefined) abandoned = environment.now() - unreadable.since >= (options.unreadableGraceMs ?? 0)
-    // Remove only the lock that was read: a writer that took over in between keeps its fresh one.
-    const removed = abandoned && (await readContent(file))?.text === holder.text
-      && await (options.keepStale === true ? rename(file, `${file}.stale-${environment.now()}`) : unlink(file)).then(() => true, () => false)
+    // Remove only the exact lock file that was read: serialize stale takeover via an exclusive `.takeover` file and re-verify stat right before atomic rename.
+    let removed = false
+    if (abandoned) {
+      await withTakeoverLock(file, async () => {
+        const current = await stat(file).catch(() => undefined)
+        if (
+          current !== undefined
+          && current.mtimeMs === holder.mtimeMs
+          && current.birthtimeMs === holder.birthtimeMs
+          && current.size === holder.size
+          && current.ino === holder.ino
+        ) {
+          const archive = options.keepStale === true ? `${file}.stale-${environment.now()}` : `${file}.trash-${randomUUID()}`
+          const moved = await rename(file, archive).then(() => true, () => false)
+          if (moved) {
+            if (options.keepStale !== true) await unlink(archive).catch(() => {})
+            removed = true
+          }
+        }
+      })
+    }
     if (removed) {
       unreadable = undefined
       continue

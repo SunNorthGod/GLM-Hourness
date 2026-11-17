@@ -20,8 +20,9 @@
  * Nothing here throws into the beat: a file that cannot be read or written
  * leaves the lock as it was and is told to the caller as a fault.
  */
-import { open, rename, unlink } from 'node:fs/promises'
+import { open, rename, stat, unlink } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
+import { withTakeoverLock } from '../data/lock.ts'
 import { writeAtomic, type StoreIo } from '../rules/store.ts'
 import type { LoopsPaths } from './store.ts'
 
@@ -85,14 +86,30 @@ export interface RunLock {
 
 const message = (error: unknown): string => error instanceof Error ? error.message : String(error)
 
-/** Read a JSON file; undefined when it is not there or says nothing. */
-async function readJson<T>(file: string): Promise<T | undefined> {
+interface JsonSnapshot<T> {
+  readonly value: T
+  readonly mtimeMs: number
+  readonly birthtimeMs: number
+  readonly size: number
+  readonly ino: number
+}
+
+/** Read a JSON file together with its file stats; undefined when it is not there or says nothing. */
+async function readJsonWithStat<T>(file: string): Promise<JsonSnapshot<T> | undefined> {
   try {
     const handle = await open(file, 'r')
     try {
       const text = await handle.readFile('utf8')
+      const info = await handle.stat()
       const value: unknown = JSON.parse(text)
-      return typeof value === 'object' && value !== null ? value as T : undefined
+      if (typeof value !== 'object' || value === null) return undefined
+      return {
+        value: value as T,
+        mtimeMs: info.mtimeMs,
+        birthtimeMs: info.birthtimeMs,
+        size: info.size,
+        ino: info.ino,
+      }
     }
     finally {
       await handle.close()
@@ -101,6 +118,23 @@ async function readJson<T>(file: string): Promise<T | undefined> {
   catch {
     return undefined
   }
+}
+
+/** Read a JSON file; undefined when it is not there or says nothing. */
+async function readJson<T>(file: string): Promise<T | undefined> {
+  return (await readJsonWithStat<T>(file))?.value
+}
+
+function sameFileStat(a: Pick<JsonSnapshot<unknown>, 'mtimeMs' | 'birthtimeMs' | 'size' | 'ino'>, b: { readonly mtimeMs: number, readonly birthtimeMs: number, readonly size: number, readonly ino: number }): boolean {
+  return a.mtimeMs === b.mtimeMs && a.birthtimeMs === b.birthtimeMs && a.size === b.size && a.ino === b.ino
+}
+
+async function removeChecked(file: string, snapshot: JsonSnapshot<unknown>): Promise<void> {
+  const current = await stat(file).catch(() => undefined)
+  if (current === undefined || !sameFileStat(snapshot, current)) return
+  const trash = `${file}.trash-${randomBytes(4).toString('hex')}`
+  const moved = await rename(file, trash).then(() => true, () => false)
+  if (moved) await unlink(trash).catch(() => {})
 }
 
 export function createRunLock(deps: RunLockDeps): RunLock {
@@ -151,17 +185,17 @@ export function createRunLock(deps: RunLockDeps): RunLock {
   /** Take the request back: this process no longer has the holder session, or it now holds the lock. */
   async function unask(): Promise<void> {
     if (asked === undefined) return
-    const request = await readJson<HandoverFile>(deps.paths.handover)
+    const snapshot = await readJsonWithStat<HandoverFile>(deps.paths.handover)
     asked = undefined
-    if (request?.token !== token) return
-    await unlink(deps.paths.handover).catch(() => {})
+    if (snapshot?.value.token !== token) return
+    await removeChecked(deps.paths.handover, snapshot)
   }
 
   async function dropLock(): Promise<void> {
-    const file = await readJson<LockFile>(deps.paths.runner)
+    const snapshot = await readJsonWithStat<LockFile>(deps.paths.runner)
     held = false
-    if (file?.token !== token) return
-    await unlink(deps.paths.runner).catch(() => {})
+    if (snapshot?.value.token !== token) return
+    await removeChecked(deps.paths.runner, snapshot)
   }
 
   /** The hand-over request of another process that is worth answering, if there is one. */
@@ -185,7 +219,8 @@ export function createRunLock(deps: RunLockDeps): RunLock {
   }
 
   async function claim(): Promise<LockStand> {
-    const file = await readJson<LockFile>(deps.paths.runner)
+    const snapshot = await readJsonWithStat<LockFile>(deps.paths.runner)
+    const file = snapshot?.value
     if (file?.token === token) {
       held = true
       return asHolder()
@@ -200,10 +235,26 @@ export function createRunLock(deps: RunLockDeps): RunLock {
       await ask(session)
       return { kind: 'waiting', pid: file.pid }
     }
-    if (file !== undefined) {
-      // A lock nobody refreshed, or one from another boot: kept as evidence, not deleted.
-      const kept = await rename(deps.paths.runner, `${deps.paths.runner}.stale-${deps.now()}`).then(() => true).catch(() => false)
-      if (!kept) return { kind: 'fault', reason: '旧的运行锁改不了名，这一拍先不跑这个项目' }
+    if (snapshot !== undefined) {
+      // A lock nobody refreshed, or one from another boot: serialize takeover via an exclusive `.takeover` file and re-verify stat before renaming.
+      const takeover = await withTakeoverLock<LockStand | undefined>(deps.paths.runner, async () => {
+        const current = await stat(deps.paths.runner).catch(() => undefined)
+        if (current !== undefined) {
+          if (!sameFileStat(snapshot, current)) {
+            return { kind: 'elsewhere', pid: (await readJson<LockFile>(deps.paths.runner))?.pid ?? 0 }
+          }
+          const archived = await rename(deps.paths.runner, `${deps.paths.runner}.stale-${deps.now()}`).then(
+            () => 'ok' as const,
+            (error: NodeJS.ErrnoException) => error.code === 'ENOENT' ? 'gone' as const : 'fault' as const,
+          )
+          if (archived === 'fault') return { kind: 'fault', reason: '旧的运行锁改不了名，这一拍先不跑这个项目' }
+        }
+        return undefined
+      })
+      if (!takeover.acquired) {
+        return { kind: 'elsewhere', pid: (await readJson<LockFile>(deps.paths.runner))?.pid ?? 0 }
+      }
+      if (takeover.value !== undefined) return takeover.value
     }
     else {
       // Somebody else's fresh request means they are about to take the lock: leave it to them.
