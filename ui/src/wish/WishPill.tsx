@@ -8,8 +8,8 @@
  * "/wish". It is quiet: no pop-up, no flicker, no badge. All wording is in
  * ./model.ts.
  */
-import { Tag, useAnchoredPosition, useDismissOnOutsidePointer } from '@deepseek-ai/dsh-client-ui-primitives'
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { Tag, useDismissOnOutsidePointer } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import { mainAgentActive } from '../../../src/graph/main-agent.ts'
 import type { ClientContext, RemoteRoot, SessionSlotProps, SessionsClient } from '../dsh.ts'
@@ -48,7 +48,14 @@ function makePill(remote: RemoteRoot, sessions: SessionsClient): (props: Session
     const triggerRef = useRef<HTMLButtonElement>(null)
     const panelRef = useRef<HTMLDivElement>(null)
     const rowWidth = useRowWidth(anchorRef, shown)
-    const position = useAnchoredPosition({ open, anchorRef, panelRef, side: 'top', gap: 8, margin: 12 })
+    // The anchor name this pill instance carries: the trigger names itself and
+    // the portaled popover points back at it, the way the rc.3 client's model
+    // select (ModelSelect.tsx) wires its own card; the popover's placement is
+    // the anchor band in ./styles.ts. The primitives' measured placement hook
+    // is gone on desktop 0.2.2-rc.3 and the renderer Chromium (152 on rc.1 as
+    // on rc.3) supports CSS anchors, so the same bundle places itself on both
+    // runtimes.
+    const anchorStyle: CSSProperties & Record<'--hw-anchor', string> = { '--hw-anchor': `--hw-wish-${useId().replaceAll(':', '')}` }
     useDismissOnOutsidePointer(anchorRef, open, setOpen, panelRef)
     const services: EntryServices = useMemo(() => ({ remote, sessionId, inputActions, draft }), [sessionId, inputActions, draft])
 
@@ -64,11 +71,10 @@ function makePill(remote: RemoteRoot, sessions: SessionsClient): (props: Session
       return () => { document.removeEventListener('keydown', onKeyDown) }
     }, [open])
 
-    // The popover is hidden while it is measured; the focus moves into it once it is placed.
-    const placed = position !== null
+    // The focus moves into the popover when it opens; CSS anchors place it from the first frame.
     useEffect(() => {
-      if (open && placed) panelRef.current?.focus()
-    }, [open, placed])
+      if (open) panelRef.current?.focus()
+    }, [open])
 
     if (!shown) return null
     const openGoal = graph?.status === 'ready' && hasOpenGoal(graph.graph)
@@ -80,7 +86,7 @@ function makePill(remote: RemoteRoot, sessions: SessionsClient): (props: Session
         role="dialog"
         aria-label={label}
         tabIndex={-1}
-        style={placed ? position : { visibility: 'hidden', left: 0, top: 0 }}
+        style={anchorStyle}
       >
         <style>{WISH_CSS}</style>
         <p>{main ? WISH_TEXT.popoverMain : WISH_TEXT.popoverOrdinary}</p>
@@ -90,7 +96,7 @@ function makePill(remote: RemoteRoot, sessions: SessionsClient): (props: Session
       </div>
     )
     return (
-      <span className="hw-anchor" ref={anchorRef}>
+      <span className="hw-anchor" ref={anchorRef} style={anchorStyle}>
         <style>{WISH_CSS}</style>
         <button
           ref={triggerRef}

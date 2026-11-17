@@ -22,7 +22,7 @@
  */
 import * as React from 'react'
 import { createPortal } from 'react-dom'
-import { Button, useAnchoredPosition, useDismissOnOutsidePointer, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, useDismissOnOutsidePointer, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   forgetGlmOnboarding, glmOnboardingDone, noteSessionSeen,
   parseHealth, recordGlmOnboardingDone, restOf, statusOf,
@@ -108,13 +108,17 @@ export function installChannel(ctx) {
   // Accent and danger use the theme's state tokens, like the graph panel.
   const CSS = [
     // The anchor is the dock's flex item; it keeps the three letters whole while DSH's stats shrink beside it.
-    '.glmh-anchor{display:inline-flex;flex:none;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px))}',
+    '.glmh-anchor{display:inline-flex;flex:none;anchor-name:var(--glmh-anchor);font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px))}',
     '.glmh-pill{display:inline-flex;align-items:center;gap:6px;box-sizing:border-box;max-width:100%;padding:1px 8px;border:none;border-radius:var(--dsw-radius-sm,6px);background:transparent;color:var(--dsw-alias-label-tertiary,#8a8a8a);font:inherit;line-height:inherit;white-space:nowrap;cursor:pointer}',
     '.glmh-pill:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.06));color:var(--dsw-alias-label-secondary,#b5b5b5)}',
     '.glmh-pill[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.06));color:var(--dsw-alias-label-secondary,#b5b5b5)}',
     '.glmh-pill svg{width:14px;height:14px;flex:none}',
     '.glmh-pill-label{flex:none;overflow:visible}',
-    '.glmh-dialog{position:fixed;z-index:1100;box-sizing:border-box;width:max-content;min-width:min(340px,calc(100vw - 24px));max-width:min(460px,calc(100vw - 24px));padding:16px;border:0;border-radius:var(--dsw-radius-lg,12px);background:var(--dsw-specific-menu,#232325);backdrop-filter:var(--dsw-menu-backdrop-filter,blur(24px));box-shadow:var(--dsw-elevation-prominent,0 12px 32px rgba(0,0,0,.45));font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#b5b5b5);cursor:default}',
+    // CSS anchors place the dialog above the trigger (8px gap), its left edge at
+    // the trigger's left and its bottom clamped into the viewport (the shipped
+    // stat dialog's band; rc.3 stat-dialog.module.css). The safe alignments fall
+    // back to the band's start edge when the dialog would overflow the other one.
+    '.glmh-dialog{position:fixed;z-index:1100;position-anchor:var(--glmh-anchor);box-sizing:border-box;top:max(12px,var(--dsh-frame-overlay-top,12px));bottom:calc(anchor(top) + 8px);left:anchor(left);right:12px;align-self:safe end;justify-self:safe start;width:fit-content;height:fit-content;margin:0;min-width:min(340px,calc(100vw - 24px));max-width:min(460px,calc(100vw - 24px));max-height:calc(100dvh - 12px - max(12px,var(--dsh-frame-overlay-top,12px)));overflow-y:auto;padding:16px;border:0;border-radius:var(--dsw-radius-lg,12px);background:var(--dsw-specific-menu,#232325);backdrop-filter:var(--dsw-menu-backdrop-filter,blur(24px));box-shadow:var(--dsw-elevation-prominent,0 12px 32px rgba(0,0,0,.45));font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#b5b5b5);cursor:default}',
     '.glmh-dialog:focus{outline:none}',
     '.glmh-dialog-title{display:flex;justify-content:space-between;gap:16px;margin-bottom:8px;color:var(--dsw-alias-label-primary,#e8e8e8);font-weight:500}',
     '.glmh-dialog-titlelabel{display:inline-flex;align-items:center;gap:6px;min-width:0}',
@@ -245,8 +249,14 @@ export function installChannel(ctx) {
     const triggerRef = React.useRef(null)
     const panelRef = React.useRef(null)
     const sessionId = props.sessionId
-    // The measured dialog is clamped into the viewport (the shipped stat dialogs' placement and outside-close).
-    const pos = useAnchoredPosition({ open, anchorRef, panelRef, side: 'top', gap: 8, margin: 12 })
+    // The anchor name this pill instance carries: the trigger names itself and
+    // the portaled dialog points back at it, the way the rc.3 client's model
+    // select (ModelSelect.tsx) wires its own card; the dialog's placement is
+    // the anchor band in CSS below. The primitives' measured placement hook is
+    // gone on desktop 0.2.2-rc.3 and the renderer Chromium (152 on rc.1 as on
+    // rc.3) supports CSS anchors, so the same bundle places itself on both
+    // runtimes.
+    const anchorStyle = { '--glmh-anchor': `--glmh-pill-${React.useId().replaceAll(':', '')}` }
     useDismissOnOutsidePointer(anchorRef, open, setOpen, panelRef)
 
     // Escape closes and gives focus back to the trigger.
@@ -261,11 +271,10 @@ export function installChannel(ctx) {
       return () => { document.removeEventListener('keydown', onKeyDown) }
     }, [open])
 
-    // Focus moves into the dialog once it is placed (it is hidden while measured).
-    const placed = pos !== null && pos !== undefined
+    // Focus moves into the dialog when it opens; CSS anchors place it from the first frame.
     React.useEffect(() => {
-      if (open && placed && panelRef.current !== null) panelRef.current.focus()
-    }, [open, placed])
+      if (open && panelRef.current !== null) panelRef.current.focus()
+    }, [open])
 
     // 登出 asks once: the first click arms it for a few seconds.
     React.useEffect(() => {
@@ -322,7 +331,7 @@ export function installChannel(ctx) {
 
     const dialog = h('div', {
       ref: panelRef, className: 'glmh-dialog', role: 'dialog', 'aria-label': 'GLM 通道', tabIndex: -1,
-      style: placed ? pos : { visibility: 'hidden', left: 0, top: 0 },
+      style: anchorStyle,
     },
     h('div', { className: 'glmh-dialog-title' },
       h('span', { className: 'glmh-dialog-titlelabel' }, h(ChannelIcon), 'GLM 通道'),
@@ -359,7 +368,7 @@ export function installChannel(ctx) {
       }, confirmLogout ? '再点一次确认登出' : '登出'),
     ))
 
-    return h('span', { className: 'glmh-anchor', ref: anchorRef },
+    return h('span', { className: 'glmh-anchor', ref: anchorRef, style: anchorStyle },
       h('style', null, CSS),
       h('button', {
         ref: triggerRef, type: 'button', className: 'glmh-pill', 'aria-haspopup': 'dialog', 'aria-expanded': open ? 'true' : 'false',

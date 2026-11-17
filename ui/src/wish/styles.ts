@@ -29,11 +29,18 @@ export const WISH_CSS = [
   '.hw-note{font-size:12px;color:var(--dsw-alias-label-tertiary,#8a8a8a)}',
   '.hw-note-ok{color:var(--dsw-alias-state-success-primary,#3fb950)}',
   '.hw-note-error{color:var(--dsw-alias-state-error-primary,#f85149)}',
-  '.hw-anchor{display:inline-flex;flex:none;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px))}',
+  '.hw-anchor{display:inline-flex;flex:none;anchor-name:var(--hw-anchor);font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px))}',
   '.hw-pill{display:inline-flex;align-items:center;box-sizing:border-box;max-width:100%;padding:1px 8px;border:none;border-radius:var(--dsw-radius-sm,8px);background:transparent;color:var(--dsw-alias-label-tertiary,#8a8a8a);font:inherit;line-height:inherit;white-space:nowrap;cursor:pointer}',
   '.hw-pill:hover,.hw-pill[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.06));color:var(--dsw-alias-label-secondary,#b5b5b5)}',
   '.hw-pill-main{color:var(--dsw-alias-state-business-primary,#7aaaff)}',
-  '.hw-dialog{position:fixed;z-index:1100;box-sizing:border-box;width:max-content;min-width:min(340px,calc(100vw - 24px));max-width:min(460px,calc(100vw - 24px));display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:16px;border:0;border-radius:var(--dsw-radius-lg,16px);background:var(--dsw-specific-menu,#232325);backdrop-filter:var(--dsw-menu-backdrop-filter,blur(40px) saturate(150%));box-shadow:var(--dsw-elevation-prominent,0 0 0 .5px var(--dsw-alias-border-l3,rgba(255,255,255,.29)),0 3px 8px rgba(0,0,0,.04),0 0 20px rgba(0,0,0,.05));font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#b5b5b5);cursor:default}',
+  // CSS anchors place the popover above the trigger (8px gap), its left edge at
+  // the trigger's left and its bottom clamped into the viewport (the shipped
+  // stat dialog's band; rc.3 stat-dialog.module.css). The safe alignments fall
+  // back to the band's start edge when the popover would overflow the other
+  // one. The primitives' measured placement hook is gone on desktop
+  // 0.2.2-rc.3; the renderer Chromium (152 on rc.1 as on rc.3) supports CSS
+  // anchors, so the same bundle places itself on both runtimes.
+  '.hw-dialog{position:fixed;z-index:1100;position-anchor:var(--hw-anchor);box-sizing:border-box;top:max(12px,var(--dsh-frame-overlay-top,12px));bottom:calc(anchor(top) + 8px);left:anchor(left);right:12px;align-self:safe end;justify-self:safe start;width:fit-content;height:fit-content;margin:0;min-width:min(340px,calc(100vw - 24px));max-width:min(460px,calc(100vw - 24px));max-height:calc(100dvh - 12px - max(12px,var(--dsh-frame-overlay-top,12px)));overflow-y:auto;display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:16px;border:0;border-radius:var(--dsw-radius-lg,16px);background:var(--dsw-specific-menu,#232325);backdrop-filter:var(--dsw-menu-backdrop-filter,blur(40px) saturate(150%));box-shadow:var(--dsw-elevation-prominent,0 0 0 .5px var(--dsw-alias-border-l3,rgba(255,255,255,.29)),0 3px 8px rgba(0,0,0,.04),0 0 20px rgba(0,0,0,.05));font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#b5b5b5);cursor:default}',
   '.hw-dialog:focus{outline:none}',
   '.hw-dialog p{margin:0}',
 ].join('\n')

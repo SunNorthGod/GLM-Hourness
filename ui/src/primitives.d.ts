@@ -15,6 +15,12 @@ declare module 'react-dom' {
  * (docs/DEVELOPMENT.md §5.6). Props follow the calls in the rc.3 client
  * bundles (reference/dsh-desktop-0.2.1-rc.3/dsh-client-ui-*), limited to
  * what this bundle passes.
+ *
+ * The measured placement hook (viewport-clamped panel placement against an
+ * anchor) was dropped by desktop 0.2.2-rc.3 — the host's own dialogs moved
+ * to CSS Anchor Positioning (.agents/tasks/rc3-ui/progress.md) — so the
+ * bundle's two anchored dialogs place themselves through CSS anchors and
+ * this table declares nothing for measured placement.
  */
 declare module '@deepseek-ai/dsh-client-ui-primitives' {
   import type { ButtonHTMLAttributes, ComponentType, InputHTMLAttributes, ReactElement, ReactNode, RefAttributes, RefObject } from 'react'
@@ -57,8 +63,6 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
     readonly anchor: ReactElement
   }): ReactElement
 
-  /** Viewport-clamped placement of a panel measured against its anchor (ui-chat useStatDialog); null until measured. ui/src/channel.js uses it. */
-  export function useAnchoredPosition(options: { readonly open: boolean, readonly anchorRef: RefObject<Element | null>, readonly panelRef: RefObject<HTMLElement | null>, readonly side?: 'top' | 'bottom', readonly align?: 'start' | 'end', readonly gap: number, readonly margin: number }): { readonly left: number, readonly top: number } | null
   /** Copy text: the Clipboard API, else a hidden textarea and execCommand; false when neither worked. ui/src/channel.js uses it. */
   export function writeClipboard(text: string): Promise<boolean>
   /** Close on a pointerdown outside the root and the panel (ui-chat useStatDialog). ui/src/channel.js uses it. */
