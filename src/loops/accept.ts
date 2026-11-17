@@ -20,9 +20,9 @@
  * stored when it was proposed — never recomputed (review F37).
  */
 import { projectOf } from '../data/project-root.ts'
+import { agreementOf, settleQuestion, SEEN_MARK } from '../design/agreement.ts'
 import type { GraphNode } from '../graph/schema.ts'
 import { loadGraph } from '../graph/store.ts'
-import { ANSWER_MARKS } from '../shared/answer-marks.ts'
 import type { Attachable, AttachDetail } from '../shared/attach.ts'
 import type { LoopActor, LoopProposal } from './journal.ts'
 import type { LoopStore } from './store.ts'
@@ -35,33 +35,10 @@ export interface AcceptDeps {
   readonly now?: () => number
 }
 
-/** How long a proposal nobody put to the human lapses (design §7.1 step 5). */
-const EXPIRES_AFTER_MS = 7 * 24 * 3_600_000
-
-const SEEN = '已给人看原文 '
-
-/** How the human agreed on the graph, or why what the graph says is not their agreement. */
-type Agreement = { readonly ok: true, readonly by: 'human' | 'llm', readonly relay?: string, readonly reason: string } | { readonly ok: false, readonly message: string }
-
-/**
- * The agreement a question holds: it is `done` and its last decision is the human's own, or the main agent's with the
- * human's words as `relay` and a reason that starts as a recorded agreement does (`ANSWER_MARKS.agree`). Nothing else
- * is an agreement, whatever the question's text says.
- */
-function agreementOf(node: GraphNode): Agreement {
-  if (node.status !== 'done') return { ok: false, message: `the question ${node.id} is ${node.status}, not decided` }
-  const decision = [...node.history].reverse().find(entry => entry.op === 'decide')
-  if (decision === undefined) return { ok: false, message: `the question ${node.id} has no decision` }
-  const reason = decision.reason ?? ''
-  if (decision.actor === 'human') return { ok: true, by: 'human', ...(decision.relay === undefined ? {} : { relay: decision.relay }), reason }
-  if (decision.actor === 'llm' && decision.relay !== undefined && decision.relay.trim() !== '' && reason.startsWith(ANSWER_MARKS.agree)) return { ok: true, by: 'llm', relay: decision.relay, reason }
-  return { ok: false, message: `the decision on ${node.id} is not the human's: it carries no words of theirs` }
-}
-
 /** Whether the mark in the decision's reason says the human was shown exactly the text the proposal stores (never recomputed, review F37). */
 function seenExactly(proposal: LoopProposal, reason: string): boolean {
   const { digest } = proposal.image
-  return digest === undefined || reason.includes(`${SEEN}${digest}`)
+  return digest === undefined || reason.includes(`${SEEN_MARK}${digest}`)
 }
 
 /** The id of the person's entry a proposal writes, for the line that says what took effect. */
@@ -150,21 +127,15 @@ export function createLoopsAccept(deps: AcceptDeps): {
         }
         const asHost: LoopActor = 'harness'
         for (const proposal of open) {
-          const node = questions.get(proposal.id)
-          if (node === undefined) {
-            if (now - Date.parse(proposal.image.at) > EXPIRES_AFTER_MS && (await store.apply(asHost, { op: 'proposal-expire', id: proposal.id })).ok) done.expired.push(proposal.id)
-            continue
-          }
-          if (node.status === 'dropped') {
-            const dropping = [...node.history].reverse().find(entry => entry.to === 'dropped')
-            const relay = dropping?.relay
-            if ((await store.apply(asHost, { op: 'proposal-reject', id: proposal.id, by: dropping?.actor === 'human' ? 'human' : 'llm', ...(relay === undefined ? {} : { relay }) })).ok) done.rejected.push(proposal.id)
-            continue
-          }
-          const agreement = agreementOf(node)
-          if (!agreement.ok || !seenExactly(proposal, agreement.reason)) continue
-          const result = await store.apply(asHost, { op: 'proposal-accept', id: proposal.id, by: agreement.by, ...(agreement.relay === undefined ? {} : { relay: agreement.relay }), question: node.id })
-          if (result.ok && result.changed === true) done.accepted.push(proposal.id)
+          const settled = await settleQuestion({
+            id: proposal.id,
+            at: proposal.image.at,
+            node: questions.get(proposal.id),
+            now,
+            seen: reason => seenExactly(proposal, reason),
+            apply: mutation => store.apply(asHost, mutation),
+          })
+          if (settled !== undefined) done[settled].push(proposal.id)
         }
       }
       catch {

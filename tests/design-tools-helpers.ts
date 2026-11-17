@@ -5,16 +5,17 @@
  * something with `attach` (the real boards add their own rows to the table
  * when they merge, src/design/attach.ts).
  */
+import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import { apply } from '../src/design/index.ts'
 import type { AttachBoard, AttachService, Attachable } from '../src/design/attach.ts'
-import type { DesignToolDeps } from '../src/design/propose.ts'
+import { proposeTool, type DesignToolDeps } from '../src/design/propose.ts'
 import { TALK_PROJECTION, type TalkState } from '../src/design/talk.ts'
 import { openEngine, type GraphEngine } from '../src/graph/engine.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import { designHost, type DesignHost, type FakeAgent } from './design-host.ts'
-import { exampleRecord } from './proposal-examples.ts'
+import { exampleArgs, exampleRecord } from './proposal-examples.ts'
 
 export interface MainAgentFixture {
   readonly host: DesignHost
@@ -53,6 +54,21 @@ export function toolDeps(fixture: Pick<MainAgentFixture, 'host' | 'dir'>, boards
     report: () => undefined,
     ...over,
   }
+}
+
+/**
+ * The chat step the boards' L2 specs share (rules-accept, loops-consent): the
+ * proposal is put to the human with the real `propose_to_human` (`attach`
+ * names the proposal), the main agent shows the reply as it is, and the human
+ * says the words. Returns the text the main agent showed.
+ */
+export async function putAndAgree(fixture: MainAgentFixture, design: DesignToolDeps, attach: string, words: string): Promise<{ readonly shown: string }> {
+  const outcome = await fixture.host.invoke(fixture.agent, proposeTool(design), { ...exampleArgs('recommend'), attach })
+  assert.equal(outcome.kind, 'ok', JSON.stringify(outcome))
+  const shown = outcome.kind === 'ok' ? String(outcome.value.text) : ''
+  fixture.host.reply(fixture.agent, shown)
+  await fixture.host.say(fixture.agent, words)
+  return { shown }
 }
 
 /** The five columns of a design decision as the engine takes them: reason, architecture and the checked solutions in the body, acceptance and non-goals. The plan is the nodes that point at the decision. */

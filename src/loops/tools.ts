@@ -23,6 +23,7 @@ import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { projectOf } from '../data/project-root.ts'
+import { execAgent, textRender, toolShell } from '../design/tool-support.ts'
 import { graphService } from '../graph/service.ts'
 import type { AgentLike, ServiceLookup, ToolDefinitionLike } from '../shared/dsh-min.ts'
 import { emitMetric } from '../shared/metrics.ts'
@@ -75,10 +76,10 @@ export function loopShowTool(deps: ShowToolDeps): ToolDefinitionLike {
     parameters: SHOW_PARAMETERS,
     output: {
       schema: TEXT_SCHEMA,
-      render: (_args, value) => [{ type: 'text', text: (value as { text: string }).text }],
+      render: textRender,
     },
     execute: (_args, exec) => {
-      const agent = (exec as { agent?: AgentLike } | undefined)?.agent
+      const agent = execAgent(exec)
       const caller = agent?.session?.header.cwd
       if (typeof caller !== 'string' || caller === '' || projectOf(caller) === undefined) {
         return Promise.resolve({ ok: true, text: '这个会话不在一个 git 项目里，没有循环板' })
@@ -225,14 +226,8 @@ export function loopProposeTool(deps: ProposeToolDeps): ToolDefinitionLike {
   }
 
   return {
-    name: 'loop_propose',
-    description: DESCRIPTION,
-    parameters: PROPOSE_PARAMETERS,
-    output: {
-      schema: PROPOSE_SCHEMA,
-      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-    },
-    execute: (args, exec) => propose(args, (exec as { agent?: AgentLike } | undefined)?.agent),
+    ...toolShell('loop_propose', DESCRIPTION, PROPOSE_PARAMETERS, PROPOSE_SCHEMA),
+    execute: (args, exec) => propose(args, execAgent(exec)),
   }
 }
 
@@ -291,13 +286,7 @@ export function loopNoteTool(deps: NoteToolDeps): ToolDefinitionLike {
   }
 
   return {
-    name: 'loop_note',
-    description: 'Record one line of conclusion on the run of a loop board entry that was just delivered to you ({entry, text}, 1 to 500 characters). The line hangs on that run and shows when the entry is opened on the board\'s page. The entry\'s own text tells you when to call this; without a run of that entry delivered to you the call fails.',
-    parameters: NOTE_PARAMETERS,
-    output: {
-      schema: NOTE_SCHEMA,
-      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-    },
-    execute: (args, exec) => note(args, (exec as { agent?: AgentLike } | undefined)?.agent),
+    ...toolShell('loop_note', 'Record one line of conclusion on the run of a loop board entry that was just delivered to you ({entry, text}, 1 to 500 characters). The line hangs on that run and shows when the entry is opened on the board\'s page. The entry\'s own text tells you when to call this; without a run of that entry delivered to you the call fails.', NOTE_PARAMETERS, NOTE_SCHEMA),
+    execute: (args, exec) => note(args, execAgent(exec)),
   }
 }

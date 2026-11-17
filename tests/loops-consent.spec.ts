@@ -14,7 +14,6 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { createLoopsAccept } from '../src/loops/accept.ts'
 import { ATTACH_BOARDS, attachDigest } from '../src/design/attach.ts'
-import { proposeTool } from '../src/design/propose.ts'
 import { recordTool } from '../src/design/record.ts'
 import { loopProposalLine, LOOPS_SERVICE, loopProposalIdOf } from '../src/loops/service.ts'
 import { appendJournal, openLoopStore, type LoopStore } from '../src/loops/store.ts'
@@ -31,8 +30,8 @@ import { LOOP_EVENT_TABLE } from '../src/loops/events.ts'
 import { ANSWER_MARKS } from '../src/shared/answer-marks.ts'
 import type { ServiceLookup } from '../src/shared/dsh-min.ts'
 import { projectOf } from '../src/data/project-root.ts'
-import { mainAgentWithGoal, toolDeps, type MainAgentFixture } from './design-tools-helpers.ts'
-import { exampleArgs, exampleRecord } from './proposal-examples.ts'
+import { mainAgentWithGoal, putAndAgree as putAndAgreeChat, toolDeps, type MainAgentFixture } from './design-tools-helpers.ts'
+import { exampleRecord } from './proposal-examples.ts'
 import { entryFileOf, NOW, quickIo, seedAgreed, scriptEntry, SCRIPT_TEXT, sha256, tellEntry, writeFiles } from './loops-helpers.ts'
 import { runLoopsCommand } from '../src/loops/commands.ts'
 import type { LoopProposal } from '../src/loops/journal.ts'
@@ -123,15 +122,8 @@ function designOf(setupped: Setup): ReturnType<typeof toolDeps> {
 }
 
 /** The proposal is put to the human with the real propose_to_human; the main agent shows the reply as it is and the human says yes. */
-async function putAndAgree(setupped: Setup, id: string, words = MAIN_WORDS): Promise<{ readonly shown: string }> {
-  const { fixture, design } = { fixture: setupped.fixture, design: designOf(setupped) }
-  const outcome = await fixture.host.invoke(fixture.agent, proposeTool(design), { ...exampleArgs('recommend'), attach: `loops:${id}` })
-  assert.equal(outcome.kind, 'ok', JSON.stringify(outcome))
-  const shown = outcome.kind === 'ok' ? String(outcome.value.text) : ''
-  fixture.host.reply(fixture.agent, shown)
-  await fixture.host.say(fixture.agent, words)
-  return { shown }
-}
+const putAndAgree = (setupped: Setup, id: string, words = MAIN_WORDS): ReturnType<typeof putAndAgreeChat> =>
+  putAndAgreeChat(setupped.fixture, designOf(setupped), `loops:${id}`, words)
 
 const agree = (setupped: Setup, words = MAIN_WORDS): ReturnType<MainAgentFixture['host']['invoke']> => setupped.fixture.host.invoke(setupped.fixture.agent, recordTool(designOf(setupped)), { kind: 'question', question: 'question-1', answer: 'agree', words: [words], recordedAs: '同意这条循环板条目' })
 

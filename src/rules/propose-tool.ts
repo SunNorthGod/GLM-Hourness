@@ -11,6 +11,7 @@ import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { projectOf } from '../data/project-root.ts'
+import { execAgent, toolShell } from '../design/tool-support.ts'
 import { graphService } from '../graph/service.ts'
 import type { AgentLike, ServiceLookup, ToolDefinitionLike } from '../shared/dsh-min.ts'
 import { refuse } from '../shared/tool-refusal.ts'
@@ -122,13 +123,7 @@ export function rulesProposeTool(deps: ProposeToolDeps): ToolDefinitionLike {
   }
 
   return {
-    name: 'rules_propose',
-    description: DESCRIPTION,
-    parameters: PARAMETERS,
-    output: {
-      schema: OUTPUT_SCHEMA,
-      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-    },
-    execute: (args, exec) => propose(args, (exec as { agent?: AgentLike } | undefined)?.agent),
+    ...toolShell('rules_propose', DESCRIPTION, PARAMETERS, OUTPUT_SCHEMA),
+    execute: (args, exec) => propose(args, execAgent(exec)),
   }
 }

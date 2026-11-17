@@ -25,7 +25,7 @@ import { rulesProposeTool, RULES_PROPOSE_EXAMPLES } from '../src/rules/propose-t
 import { readProject } from '../src/rules/repo.ts'
 import { RULES_SERVICE, proposalLine } from '../src/rules/service.ts'
 import { projectOf } from '../src/data/project-root.ts'
-import { toolDeps, mainAgentWithGoal, type MainAgentFixture } from './design-tools-helpers.ts'
+import { putAndAgree as putAndAgreeChat, toolDeps, mainAgentWithGoal, type MainAgentFixture } from './design-tools-helpers.ts'
 import { draftOf } from './rules-fixtures.ts'
 import { exampleArgs } from './proposal-examples.ts'
 
@@ -66,15 +66,8 @@ async function propose(setupped: Setup, input: Record<string, unknown>, via: 'gr
 const scriptRule = (over: Record<string, unknown> = {}): Record<string, unknown> => draftOf({ id: 'r-locale-keys', title: 'Translation files keep the same keys', filter: { writes: { paths: ['locales/'] } }, action: { kind: 'script', lang: 'node', text: SCRIPT, timeoutSeconds: 10 }, ...over })
 
 /** The proposal is put to the human with the real propose_to_human; the main agent shows the reply as it is and the human says yes. */
-async function putAndAgree(setupped: Setup, id: string, words = '可以，就按推荐的来'): Promise<{ readonly shown: string }> {
-  const { fixture, design } = setupped
-  const outcome = await fixture.host.invoke(fixture.agent, proposeTool(design), { ...exampleArgs('recommend'), attach: `rules:${id}` })
-  assert.equal(outcome.kind, 'ok', JSON.stringify(outcome))
-  const shown = outcome.kind === 'ok' ? String(outcome.value.text) : ''
-  fixture.host.reply(fixture.agent, shown)
-  await fixture.host.say(fixture.agent, words)
-  return { shown }
-}
+const putAndAgree = (setupped: Setup, id: string, words = '可以，就按推荐的来'): ReturnType<typeof putAndAgreeChat> =>
+  putAndAgreeChat(setupped.fixture, setupped.design, `rules:${id}`, words)
 
 const agree = (setupped: Setup, words = '可以，就按推荐的来'): ReturnType<Setup['fixture']['host']['invoke']> => setupped.fixture.host.invoke(setupped.fixture.agent, recordTool(setupped.design), { kind: 'question', question: 'question-1', answer: 'agree', words: [words], recordedAs: '同意这条规则' })
 

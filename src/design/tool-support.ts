@@ -23,6 +23,12 @@ export function refuseWith(result: Extract<ApplyResult, { ok: false }>): never {
 
 const render: ToolDefinitionLike['output']['render'] = (_args, value) => [{ type: 'text', text: JSON.stringify(value) }]
 
+/** The render of a `{ok, text}` result as one text block: what the human reads. */
+export const textRender: ToolDefinitionLike['output']['render'] = (_args, value) => [{ type: 'text', text: (value as { text: string }).text }]
+
+/** The agent a host hands a tool's execute with, or undefined when there is none. */
+export const execAgent = (exec: unknown): AgentLike | undefined => (exec as { agent?: AgentLike } | undefined)?.agent
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

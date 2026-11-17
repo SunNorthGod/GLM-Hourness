@@ -18,6 +18,7 @@
  * changes rules.
  */
 import { projectOf } from '../data/project-root.ts'
+import { execAgent, textRender } from '../design/tool-support.ts'
 import { matchesFilter } from '../loops/trigger.ts'
 import type { AgentLike, ServiceLookup, ToolDefinitionLike } from '../shared/dsh-min.ts'
 import { GLM_PEAK_PRICING } from './builtin.ts'
@@ -93,10 +94,10 @@ export function rulesShowTool(deps: ShowToolDeps): ToolDefinitionLike {
     parameters: EMPTY_PARAMETERS,
     output: {
       schema: OUTPUT_SCHEMA,
-      render: (_args, value) => [{ type: 'text', text: (value as { text: string }).text }],
+      render: textRender,
     },
     execute: (_args, exec) => {
-      const agent = (exec as { agent?: AgentLike } | undefined)?.agent
+      const agent = execAgent(exec)
       return Promise.resolve({ ok: true, text: showFor(deps, agent) })
     },
   }
