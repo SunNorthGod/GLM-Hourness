@@ -29,13 +29,14 @@ import { SCRIPT_MAX_BYTES } from './command-text.ts'
 import { holderLine, WRITER_HELD_MS, type HolderReason, type HolderStateKind } from './holder.ts'
 import { parseJournal, type JournalLine } from './journal.ts'
 import { readState, type RuntimeState } from './inbox.ts'
+import { notesOf } from './notes.ts'
 import type { PersonEntry } from './model.ts'
 import { recentRecords, runEvents } from './records.ts'
 import type { LoopsRegistry } from './registry.ts'
 import { ensureRuntimeDir, openLoopStore, type BoardRead, type LoopStore } from './store.ts'
 import { staleEntriesOf, timeoutEntriesOf, type StaleCandidate, type TimeoutCandidate } from './status.ts'
 import type { StaleEntry, TimeoutEntry } from './service.ts'
-import { attentionOf, buildView, type HolderView, type LoopsView, type PeakView, type ScriptStanding, type ViewRuntime } from './view.ts'
+import { attentionOf, buildView, momentText, type HolderView, type LoopsView, type PeakView, type ScriptStanding, type ViewRuntime } from './view.ts'
 
 /** How often `view.json` of one project is written at most. */
 const VIEW_EVERY_MS = 2_000
@@ -248,9 +249,11 @@ export function createBoards(deps: BoardsDeps): Boards {
     }, wait) }
   }
 
-  /** The two weekly lists (design §6.11): the person's entries and the plugins' against the run facts of the metrics journal. Never throws. */
+  /** The two weekly lists (design §6.11): the person's entries and the plugins' against the run facts of the metrics journal. An entry an open `delete` proposal names is not listed as stale — the human has not decided that removal yet. Never throws. */
   async function computeLists(root: string, store: LoopStore, board: BoardRead, nowMs: number): Promise<BoardLists> {
     const person = board.entries.filter(entry => entry.status.kind !== 'deleted')
+    const proposals = store.proposals()
+    const proposedDelete = new Set([...proposals.values()].flatMap(proposal => proposal.image.status === 'open' && proposal.image.kind === 'delete' ? proposal.image.entries ?? [] : []))
     // A change record that is not there yet names no entry, so none has a provable age: none is stale.
     const added = addedAtOf(parseJournal(readText(store.paths.journal) ?? '').lines)
     const staleCandidates: readonly StaleCandidate[] = person.map(entry => ({ id: entry.id, title: entry.title, addedAt: added.get(entry.id) }))
@@ -262,7 +265,7 @@ export function createBoards(deps: BoardsDeps): Boards {
     const fromMs = Math.min(nowMs - FACTS_WINDOW_MS, ...(first.length === 0 ? [nowMs] : first))
     const runs = await runEvents(root, new Date(fromMs).toISOString(), nowMs)
     return {
-      stale: staleEntriesOf({ entries: staleCandidates, runs, nowMs }),
+      stale: staleEntriesOf({ entries: staleCandidates, runs, nowMs, proposedDelete }),
       timeouts: timeoutEntriesOf({ entries: timeoutCandidates, runs, nowMs }),
     }
   }
@@ -276,6 +279,12 @@ export function createBoards(deps: BoardsDeps): Boards {
     note(root, 'details', read.flatMap(({ item, details }) => details?.ok === false ? [`「${item.entry.title}」的明细读不到：${details.reason}`] : []))
     const plugin = read.map(({ item, details }) => details === undefined ? item : { ...item, details })
     listsByRoot.set(root, await computeLists(root, store, board, nowMs))
+    // The conclusions the main agent recorded, for the entry's small print (design §6.10).
+    const notes = new Map<string, readonly string[]>()
+    for (const note of notesOf(store.paths)) {
+      const lines = notes.get(note.entry) ?? []
+      notes.set(note.entry, [...lines, `结论（${momentText(note.at)}，run ${note.run}）：${note.text}`])
+    }
     const view = buildView({
       at: new Date(nowMs).toISOString(),
       project: projectKey(root),
@@ -285,6 +294,7 @@ export function createBoards(deps: BoardsDeps): Boards {
       runtime: await runtimeOf(store, nowMs),
       ...(peak === undefined ? {} : { peak }),
       ...(deps.itemsOf === undefined ? {} : { items: deps.itemsOf(root) }),
+      notes: entry => notes.get(entry),
       checks: entry => deps.registry.checksOf(entry, root),
       scriptStanding: entry => scriptStandingOf(root, entry),
     })

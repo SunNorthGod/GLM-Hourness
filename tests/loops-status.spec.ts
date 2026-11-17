@@ -149,10 +149,11 @@ test('staleItems and timeoutItems word the lists into the hub entries: one text 
   assert.deepEqual(stale[0]?.detail, [
     `- 「旧的」：${momentText(ago(40))} 加的，最近 28 天跑过 2 次，都没有结果`,
     `- 「从没跑过的」：${momentText(ago(35))} 加的，最近 28 天一次都没触发过`,
+    `Propose removing them in one proposal: loop_propose {kind: "delete", entries: ["${A}", "${B}"]}, then propose_to_human.`,
   ])
   // An entry whose result is outside the window names it.
   const withOld = staleItems([{ id: A, title: '旧的', addedAt: ago(40), runs28d: 1, why: 'no-result', lastResultAt: ago(39) }], 's', NOW)
-  assert.deepEqual(withOld[0]?.detail, [`- 「旧的」：${momentText(ago(40))} 加的，最近 28 天跑过 1 次，都没有结果；上一次有结果是 ${momentText(ago(39))}`])
+  assert.deepEqual(withOld[0]?.detail, [`- 「旧的」：${momentText(ago(40))} 加的，最近 28 天跑过 1 次，都没有结果；上一次有结果是 ${momentText(ago(39))}`, `Propose removing them in one proposal: loop_propose {kind: "delete", entries: ["${A}"]}, then propose_to_human.`])
 
   const timeouts = timeoutItems([
     { id: A, title: '人的', timeouts7d: 3, lastTimeoutAt: ago(1) },
@@ -164,10 +165,24 @@ test('staleItems and timeoutItems word the lists into the hub entries: one text 
   assert.deepEqual(timeouts[0]?.detail, [
     `- 「人的」：最近 7 天没跑完 3 次，最近一次 ${momentText(ago(1))}`,
     `- 「插件的」：最近 7 天没跑完 4 次，最近一次 ${momentText(ago(2))}；请插件的作者修`,
+    'Propose fixing the script (dispatch a subagent, then loop_propose kind "edit").',
   ])
+  // A plugin's entry alone names no fix of the person's.
+  const plugins = timeoutItems([{ id: PLUGIN, title: '插件的', timeouts7d: 4, lastTimeoutAt: ago(2) }], 's', NOW)
+  assert.deepEqual(plugins[0]?.detail, [`- 「插件的」：最近 7 天没跑完 4 次，最近一次 ${momentText(ago(2))}；请插件的作者修`])
   // Empty lists make no entry, so the weekly report omits its section.
   assert.deepEqual(staleItems([], 's', NOW), [])
   assert.deepEqual(timeoutItems([], 's', NOW), [])
+})
+
+test('an entry an open delete proposal names is not listed as stale: the human has not decided that removal yet', () => {
+  const entries = [person(A, 30), person(B, 31)]
+  const runs = runsOf(A, done(ago(20), 'skipped'))
+  const listed = staleEntriesOf({ entries, runs, nowMs: NOW })
+  assert.deepEqual(listed.map(entry => entry.id), [B, A], 'no result ever first')
+  const filtered = staleEntriesOf({ entries, runs, nowMs: NOW, proposedDelete: new Set([A]) })
+  assert.deepEqual(filtered.map(entry => entry.id), [B])
+  assert.deepEqual(staleEntriesOf({ entries, runs, nowMs: NOW, proposedDelete: new Set([A, B]) }), [])
 })
 
 // ------------------------------------------------------------------ run facts

@@ -9,8 +9,8 @@
  * (boards.ts) and holds them for the service's readers (index.ts), and the
  * status hub's `loops/*` entries word the same lists (this file's worders,
  * status hub design 0.3 §4.2, §12 loops row). The filter 「已在一条 open 的
- * 删除提议里的不列」 joins when the proposal path (`loop_propose`) is built;
- * today no proposal can exist.
+ * 删除提议里的不列」 reads the open proposals the store holds (boards.ts
+ * feeds the set in).
  */
 import type { EntryRunEvent } from './records.ts'
 import type { StaleEntry, TimeoutEntry } from './service.ts'
@@ -47,16 +47,20 @@ export interface StaleCandidate {
  * The first list (design §6.11, acceptance 34): the candidates four weeks
  * old or older whose window holds no run that reached a result, at most
  * `LIST_CAP`, the stalest first — no result ever first, then by the last
- * result, and equals by the day they were added.
+ * result, and equals by the day they were added. An entry an open `delete`
+ * proposal already names is not listed: the human has not decided it, and
+ * the report would ask twice for the same removal.
  */
 export function staleEntriesOf(input: {
   readonly entries: readonly StaleCandidate[]
   readonly runs: ReadonlyMap<string, readonly EntryRunEvent[]>
   readonly nowMs: number
+  /** The person's entry ids an open `delete` proposal names (boards.ts, from the store's proposals). */
+  readonly proposedDelete?: ReadonlySet<string>
 }): readonly StaleEntry[] {
   const windowMs = input.nowMs - STALE_WINDOW_MS
   const found = input.entries.flatMap((entry): StaleEntry[] => {
-    if (entry.addedAt === undefined) return []
+    if (entry.addedAt === undefined || input.proposedDelete?.has(entry.id) === true) return []
     const added = Date.parse(entry.addedAt)
     if (!Number.isFinite(added) || added + STALE_AGE_MS > input.nowMs) return []
     let runs28d = 0
@@ -139,8 +143,9 @@ const PERSON_ID = /^u-[0-9a-f]{8}$/
 /**
  * The weekly report's first list as the hub's `loops/stale` entry (status hub
  * design 0.3 §12 loops row; the section title of loops §17 M7 item 8): the
- * headline as the text, one line per entry as the detail. No entry when the
- * list is empty, so the report omits the section.
+ * headline as the text, one line per entry as the detail, and the one line
+ * that says how to propose the removal (design §17 M7 item 8). No entry when
+ * the list is empty, so the report omits the section.
  */
 export function staleItems(entries: readonly StaleEntry[], source: string, nowMs: number): readonly StatusItem[] {
   if (entries.length === 0) return []
@@ -151,6 +156,7 @@ export function staleItems(entries: readonly StaleEntry[], source: string, nowMs
     const last = entry.lastResultAt === undefined ? '' : `；上一次有结果是 ${momentText(entry.lastResultAt)}`
     return oneLine(`- 「${entry.title}」：${momentText(entry.addedAt)} 加的，${runs}${last}`, STATUS_TEXT_MAX)
   })
+  detail.push(`Propose removing them in one proposal: loop_propose {kind: "delete", entries: [${entries.map(entry => `"${entry.id}"`).join(', ')}]}, then propose_to_human.`)
   return [{
     id: 'loops/stale',
     owner: 'loops',
@@ -165,8 +171,8 @@ export function staleItems(entries: readonly StaleEntry[], source: string, nowMs
 
 /**
  * The weekly report's second list as the hub's `loops/timeouts` entry: a
- * plugin's entry says who is to fix it, and no proposal is named yet (the
- * `loop_propose` lines of §17 M7 item 8 join when that path lands).
+ * plugin's entry says who is to fix it; a person's entry rides the section's
+ * one line that says how to propose the fix (design §17 M7 item 8).
  */
 export function timeoutItems(entries: readonly TimeoutEntry[], source: string, nowMs: number): readonly StatusItem[] {
   if (entries.length === 0) return []
@@ -174,6 +180,9 @@ export function timeoutItems(entries: readonly TimeoutEntry[], source: string, n
     const who = PERSON_ID.test(entry.id) ? '' : '；请插件的作者修'
     return oneLine(`- 「${entry.title}」：最近 7 天没跑完 ${entry.timeouts7d} 次，最近一次 ${momentText(entry.lastTimeoutAt)}${who}`, STATUS_TEXT_MAX)
   })
+  if (entries.some(entry => PERSON_ID.test(entry.id))) {
+    detail.push('Propose fixing the script (dispatch a subagent, then loop_propose kind "edit").')
+  }
   return [{
     id: 'loops/timeouts',
     owner: 'loops',

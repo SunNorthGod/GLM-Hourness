@@ -498,6 +498,8 @@ export function buildView(input: {
   readonly items?: readonly StatusItem[] | undefined
   /** The checks a plugin entry's hand-over gives the page for this project, with their timeouts (registry.ts `checksOf`). */
   readonly checks?: (entry: string) => readonly ViewCheck[] | undefined
+  /** The conclusions the main agent recorded on a person's entry's runs (notes.ts), as the page's small print lines; absent or empty: none. */
+  readonly notes?: (entry: string) => readonly string[] | undefined
   /** Whether a person's script file is the one agreed to, as the host reads it now (boards.ts); absent: taken as agreed. */
   readonly scriptStanding?: (entry: PersonEntry) => ScriptStanding | undefined
 }): LoopsView {
@@ -549,6 +551,7 @@ export function buildView(input: {
   const person = (input.board?.entries ?? []).map((board): ViewEntry => {
     const note = board.status.kind === 'deleted' && board.restorable ? `要恢复：在输入框打 /loops restore ${board.id}` : undefined
     const entry = board.entry
+    const conclusions = input.notes?.(board.id) ?? []
     return {
       id: board.id,
       title: board.title,
@@ -562,6 +565,7 @@ export function buildView(input: {
       from: personFrom(entry),
       ...(entry?.why === undefined ? {} : { why: entry.why }),
       ...ownRulesOf(entry),
+      ...(conclusions.length === 0 ? {} : { details: conclusions }),
       ...workOf(entry, board.status.kind),
     }
   })
