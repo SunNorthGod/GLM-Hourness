@@ -263,3 +263,21 @@ HANDOFF §3 loops row.
   - 两个 spec 的 putAndAgree 抽进 tests/design-tools-helpers.ts。
   门禁:eslint 69 / knip 18 / jscpd 1 全部回基线;preflight OK;
   loops-consent 13/13、rules-accept 9/9 复跑绿。
+
+## 2026-11-18 落地:main 再进两笔后的重验
+
+- main 在解冻后又进了四笔(532eac69 lock 的 takeover 驱逐、15e976be
+  metrics 归因、两笔 docs),rebase 到 35df00b6;package.json 的 test:1/2
+  各被两边改到,手工两边都留(test:1 带 loops-consent,test:2 带
+  data-lock-takeover)。
+- rebase 后暴露两处只跑 strip-types 漏掉的:
+  - registry spec 的宿主 tools 只有 register,tsc 的 strict 挂
+    (LoopsContext.tools 是完整 ToolsLike),补空形(17b0f3f2);
+  - propose-to-human.spec 拿 loops: 当"表里没有的前缀"样本,loop 行进了
+    ATTACH_BOARDS 后前提不成立,样本换 scripts: 并按两种拒绝分叉(852e300a)。
+- 门禁终值:build 绿;eslint 69 suppressed / knip 18 / jscpd 1;
+  preflight OK;npm test 全量 0 fail;s5-probe-3.log 612/612(exit 0)。
+- probe 共跑三次:第一次 609/612,glm-exec-drive 的 /goal pause 之后整个
+  headless 静默退 1(stderr 空,4 秒 hold 中途死), loops 行在该场景
+  disabled: true、请求里无 loops 工具,判为偶发;二、三次 612/612。
+  同类单场景偶发此前 gem2 lane 也有一次(611/612 重跑过)。
