@@ -20,6 +20,7 @@ import { openRulesBoard } from './engine.ts'
 import { prepareProposal } from './proposal.ts'
 import { readProject } from './repo.ts'
 import { rulesPaths, type StoreIo } from './store.ts'
+import { recordEstimate } from './timing.ts'
 
 export interface ProposeToolDeps {
   readonly ctx: ServiceLookup
@@ -37,14 +38,14 @@ export interface ProposeToolDeps {
 export const RULES_PROPOSE_EXAMPLES = [
   'Example 1. The human defined the switch release-freeze last week and says "no pushes this week, the site is being redesigned":',
   '{"kind":"rule","reason":"the human said no pushes during the redesign","body":{"id":"r-no-push-freeze","title":"No push while the redesign freeze is on","scope":"project","when":{"kind":"event","events":["gate.tool-call"]},"filter":{"command":{"matches":"^\\\\s*git\\\\s+push\\\\b"}},"condition":{"signal":"release-freeze","is":true},"action":{"kind":"block"},"lifetime":{"kind":"until-lifted"}}}',
-  'Example 2. zh.json lost keys last week and the page showed English; you had a sub-agent write this script. It reads the event (JSON) on stdin: {"payload":{"tool","args","command","writes","role","model","session","cwd"}}; exit 0 lets the call run, exit 2 blocks it (the reason goes on stderr), exit 3 queues it; a timeout or a crash lets the call through unless you write onError "block":',
-  '{"kind":"rule","reason":"zh.json lost keys last week","body":{"id":"r-locale-keys","title":"Translation files keep the same keys","scope":"project","when":{"kind":"event","events":["gate.tool-call"]},"filter":{"writes":{"paths":["locales/"]}},"action":{"kind":"script","lang":"node","timeoutSeconds":10,"text":"import { readFileSync, existsSync } from \'node:fs\'\\nimport { basename, dirname, join } from \'node:path\'\\nconst { payload } = JSON.parse(readFileSync(0, \'utf8\'))\\nif (typeof payload.args.content !== \'string\') process.exit(0)\\nconst file = join(payload.cwd, payload.writes[0])\\nconst other = join(dirname(file), basename(file) === \'zh.json\' ? \'en.json\' : \'zh.json\')\\nif (!existsSync(other)) process.exit(0)\\nconst keys = (o) => Object.keys(o).sort().join(\',\')\\nif (keys(JSON.parse(payload.args.content)) !== keys(JSON.parse(readFileSync(other, \'utf8\')))) { process.stderr.write(\'keys differ\'); process.exit(2) }\\nprocess.exit(0)\\n"},"lifetime":{"kind":"until-lifted"}}}',
+  'Example 2. zh.json lost keys last week and the page showed English; you had a sub-agent write this script. It reads the event (JSON) on stdin: {"payload":{"tool","args","command","writes","role","model","session","cwd"}}; exit 0 lets the call run, exit 2 blocks it (the reason goes on stderr), exit 3 queues it; estimate how long one run takes in estimateSeconds and the timeout is three times that (clamped to 1 to 30 seconds), moving to three times the slowest real run once the script has run; a timeout or a crash lets the call through unless you write onError "block":',
+  '{"kind":"rule","reason":"zh.json lost keys last week","body":{"id":"r-locale-keys","title":"Translation files keep the same keys","scope":"project","when":{"kind":"event","events":["gate.tool-call"]},"filter":{"writes":{"paths":["locales/"]}},"action":{"kind":"script","lang":"node","estimateSeconds":4,"text":"import { readFileSync, existsSync } from \'node:fs\'\\nimport { basename, dirname, join } from \'node:path\'\\nconst { payload } = JSON.parse(readFileSync(0, \'utf8\'))\\nif (typeof payload.args.content !== \'string\') process.exit(0)\\nconst file = join(payload.cwd, payload.writes[0])\\nconst other = join(dirname(file), basename(file) === \'zh.json\' ? \'en.json\' : \'zh.json\')\\nif (!existsSync(other)) process.exit(0)\\nconst keys = (o) => Object.keys(o).sort().join(\',\')\\nif (keys(JSON.parse(payload.args.content)) !== keys(JSON.parse(readFileSync(other, \'utf8\')))) { process.stderr.write(\'keys differ\'); process.exit(2) }\\nprocess.exit(0)\\n"},"lifetime":{"kind":"until-lifted"}}}',
 ].join('\n')
 
 const DESCRIPTION = [
   'Propose a change of the project\'s rules board: a rule, lifting a rule, a switch, the peak mode, removing rules, or approving a changed script again. It records the proposal and changes nothing: only the human can change rules.',
   'Call it when the human asks for a rule or a change. Main agent: then put the proposal to the human with propose_to_human (kind question, form recommend, attach = the "attach" in the result): one yes-or-no question with your recommendation and reason inside; it takes effect only when the human agrees and you record their words with record_human_answer. Sub-agent: report the proposal id in your handoff; the main agent puts it to the human.',
-  'Arguments: kind (rule | lift | switch | peak-mode | remove | repin), body, reason (why, 1 to 400 characters), replaces (an open proposal this one replaces, after the human added to it or turned it down). body: rule = {id r-<name>, title, scope, when, filter?, condition?, action, lifetime} where action is {kind block|queue|record|inform} or {kind script, lang node|pwsh|python|bash, text, timeoutSeconds?, onError?}; lift = {id}; switch = {name, type {kind boolean} or {kind enum, values}, description?}; peak-mode = {level inform|reduce|stop}; remove = [{id}] (1 to 3); repin = {id}.',
+  'Arguments: kind (rule | lift | switch | peak-mode | remove | repin), body, reason (why, 1 to 400 characters), replaces (an open proposal this one replaces, after the human added to it or turned it down). body: rule = {id r-<name>, title, scope, when, filter?, condition?, action, lifetime} where action is {kind block|queue|record|inform} or {kind script, lang node|pwsh|python|bash, text, estimateSeconds?, timeoutSeconds?, onError?} (estimateSeconds: how long one run takes, whole seconds; the timeout is three times it, clamped to 1 to 30; write timeoutSeconds only when the script must have an exact timeout); lift = {id}; switch = {name, type {kind boolean} or {kind enum, values}, description?}; peak-mode = {level inform|reduce|stop}; remove = [{id}] (1 to 3); repin = {id}.',
   RULES_PROPOSE_EXAMPLES,
 ].join('\n')
 
@@ -108,6 +109,16 @@ export function rulesProposeTool(deps: ProposeToolDeps): ToolDefinitionLike {
         refuse(written.error.code, written.error.message, written.error.hint ?? 'nothing was recorded; try again in a moment if the board was busy')
       }
       const { proposal } = made
+      // The writer's estimate, with the session that proposed it (d-timeout-measured 「可追溯」); the proposal took effect either way.
+      let estimateProblem: string | undefined
+      if (proposal.script?.estimateSeconds !== undefined) {
+        estimateProblem = await recordEstimate(project.root, {
+          at: new Date(deps.now()).toISOString(),
+          rule: (proposal.body as { readonly id: string }).id,
+          seconds: proposal.script.estimateSeconds,
+          ...(caller.sessionId === undefined ? {} : { session: caller.sessionId }),
+        }, deps.rulesDir)
+      }
       const attach = `rules:${proposal.id}`
       const subagent = caller.role === 'subagent'
       return {
@@ -116,7 +127,7 @@ export function rulesProposeTool(deps: ProposeToolDeps): ToolDefinitionLike {
         describe: proposal.describe,
         cautions: proposal.cautions,
         attach,
-        message: subagent ? MESSAGES.subagent(proposal.id) : via === 'graph' ? MESSAGES.graph(attach) : MESSAGES.board(proposal.id),
+        message: `${subagent ? MESSAGES.subagent(proposal.id) : via === 'graph' ? MESSAGES.graph(attach) : MESSAGES.board(proposal.id)}${estimateProblem === undefined ? '' : ` The estimate's session could not be recorded: ${estimateProblem.slice(0, 120)}`}`,
       }
     }
     return refuse('busy', 'the board could not give the proposal an id', 'call rules_propose again')

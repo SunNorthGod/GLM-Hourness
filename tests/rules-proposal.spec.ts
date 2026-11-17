@@ -90,6 +90,23 @@ clockedTest('a script rule is made ready with its file, its hash and the caution
   return Promise.resolve()
 })
 
+clockedTest('a script rule with an estimate: the action carries it, the first timeout is three times it, and the person sees where it comes from (d-timeout-measured)', (project) => {
+  const made = prepareProposal({ kind: 'rule', body: scriptDraft({ action: { kind: 'script', lang: 'node', text: SCRIPT, estimateSeconds: 4 } }), reason: 'zh.json lost keys last week' }, context(project))
+  assert.ok(made.ok, JSON.stringify(made))
+  const { proposal } = made
+  const stored = proposal.body as { action: Record<string, unknown> }
+  assert.deepEqual(stored.action, { kind: 'script', script: { file: 'docs/rules/scripts/r-locale-keys.mjs', sha256: sha256Of(SCRIPT), lang: 'node' }, estimateSeconds: 4 })
+  assert.equal(proposal.script?.estimateSeconds, 4)
+  assert.match(proposal.describe, /12 秒（估的 4 秒乘 3）没答或出错时放行/)
+  assert.equal(proposal.cautions[1], '超过 12 秒算没答（第一次超时 12 秒，是估跑的 4 秒乘 3），按放行处理（默认）')
+  const capped = prepareProposal({ kind: 'rule', body: scriptDraft({ action: { kind: 'script', lang: 'node', text: SCRIPT, estimateSeconds: 20 } }), reason: 'x' }, context(project))
+  assert.ok(capped.ok, JSON.stringify(capped))
+  assert.match(capped.ok ? capped.proposal.describe : '', /30 秒（估的 20 秒乘 3）没答或出错时放行/, 'an estimate above the ceiling holds the ceiling in what the person reads')
+  const bad = failed(prepareProposal({ kind: 'rule', body: scriptDraft({ action: { kind: 'script', lang: 'node', text: SCRIPT, estimateSeconds: 0 } }), reason: 'x' }, context(project)))
+  assert.deepEqual([bad.field, bad.message], ['body.action.estimateSeconds', '估的秒数写成不小于 1 的整数秒'])
+  return Promise.resolve()
+})
+
 clockedTest('what is wrong with a proposal is named by the field to correct, and nothing is made', async (project) => {
   const make = (input: Record<string, unknown>): { field: string, message: string } => failed(prepareProposal(input, context(project)))
   assert.equal(make({ kind: 'detector', body: {}, reason: 'x' }).field, 'kind')

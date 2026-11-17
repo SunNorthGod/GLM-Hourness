@@ -116,7 +116,7 @@ export interface Proposal {
   readonly kind: ProposalKind
   readonly body: unknown
   /** The script of a `rule` that runs one, or the script a `repin` asks to approve (the file's text as the board read it). */
-  readonly script?: { readonly text: string, readonly sha256: string, readonly file: string, readonly lang: ScriptLang, readonly timeoutSeconds?: number, readonly onError?: 'allow' | 'block' }
+  readonly script?: { readonly text: string, readonly sha256: string, readonly file: string, readonly lang: ScriptLang, readonly timeoutSeconds?: number, readonly estimateSeconds?: number, readonly onError?: 'allow' | 'block' }
   /** One line of what the proposal does once it is in force. */
   readonly describe: string
   /** What the human is to know besides it, one sentence each (they go after the question, with the script). */
@@ -178,7 +178,7 @@ export interface Ticket {
 
 /** Something the main agent has still to be told and could not be told on this host. */
 export interface Notice {
-  readonly kind: 'late-block' | 'script-capped'
+  readonly kind: 'late-block' | 'script-capped' | 'timeout-capped'
   readonly rule: string
   readonly text: string
   readonly at: string
@@ -809,7 +809,10 @@ function checkFilter(filter: unknown, code: boolean, add: Add): void {
 
 function checkScript(action: Readonly<Record<string, unknown>>, ruleId: unknown, add: Add): void {
   for (const key of Object.keys(action)) {
-    if (!['kind', 'script', 'timeoutSeconds', 'onError'].includes(key)) add(`action.${key}`, '脚本动作没有这个字段')
+    if (!['kind', 'script', 'timeoutSeconds', 'estimateSeconds', 'onError'].includes(key)) add(`action.${key}`, '脚本动作没有这个字段')
+  }
+  if (action.estimateSeconds !== undefined && !(typeof action.estimateSeconds === 'number' && Number.isInteger(action.estimateSeconds) && action.estimateSeconds >= 1)) {
+    add('action.estimateSeconds', '估的秒数写成不小于 1 的整数秒')
   }
   const script = action.script
   if (!isRecord(script)) {
@@ -830,7 +833,13 @@ function checkScript(action: Readonly<Record<string, unknown>>, ruleId: unknown,
     && tails.some(tail => file === tail || file.endsWith(`/${tail}`))
   if (!sound) add('action.script.file', '脚本文件写成 <规则目录>/scripts/<规则 id>.<后缀>，相对项目，不含 ..')
   // The timeout and the failure setting have the ranges of a gating event (src/loops/trigger.ts); the shared check says so.
-  const checked = validateScriptAction({ kind: 'script', script: script as unknown as ScriptAction['script'], ...(action.timeoutSeconds === undefined ? {} : { timeoutSeconds: action.timeoutSeconds as number }), ...(action.onError === undefined ? {} : { onError: action.onError as 'allow' | 'block' }) }, { purpose: 'gate' })
+  const checked = validateScriptAction({
+    kind: 'script',
+    script: script as unknown as ScriptAction['script'],
+    ...(action.timeoutSeconds === undefined ? {} : { timeoutSeconds: action.timeoutSeconds as number }),
+    ...(action.estimateSeconds === undefined ? {} : { estimateSeconds: action.estimateSeconds as number }),
+    ...(action.onError === undefined ? {} : { onError: action.onError as 'allow' | 'block' }),
+  }, { purpose: 'gate', ...(action.estimateSeconds === undefined ? {} : { estimateSeconds: action.estimateSeconds as number }) })
   if (!checked.ok) for (const issue of checked.issues) add(issue.path, issue.message)
 }
 

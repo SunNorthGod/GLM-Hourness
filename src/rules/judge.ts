@@ -179,6 +179,8 @@ export interface JudgeResult extends Verdict {
 export interface JudgeOptions {
   /** Ids of the rules whose script a person approved on this machine (the hash pinned at approval). A script of any other rule is not run. */
   readonly approved?: ReadonlySet<string>
+  /** The latest runs of each script rule, from the board's timing journal (d-timeout-measured): they fill a rule's timeout when the rule writes none, taking it over from the writer's estimate. */
+  readonly timing?: ReadonlyMap<string, readonly { readonly runId: string, readonly seconds: number }[]>
 }
 
 const SUBJECT_ITEMS: readonly SubjectItem[] = ['role', 'model', 'session', 'targetModel']
@@ -250,9 +252,10 @@ export function judge(input: JudgeInput, rules: readonly (Rule | BuiltinRule)[],
     }
     if (rule.action.kind !== 'script') continue
     const script = rule.action
+    const recent = options.timing?.get(rule.id) ?? []
     const timings = matched.map((event) => {
       const fallback = RULES_EVENT_TABLE.get(event)?.gateOnErrorDefault
-      return { event, timing: validateScriptAction(script, { purpose: 'gate', ...(fallback === undefined ? {} : { gateOnErrorDefault: fallback }) }) }
+      return { event, timing: validateScriptAction(script, { purpose: 'gate', ...(script.estimateSeconds === undefined ? {} : { estimateSeconds: script.estimateSeconds }), ...(recent.length === 0 ? {} : { recent }), ...(fallback === undefined ? {} : { gateOnErrorDefault: fallback }) }) }
     })
     const unsound = timings.some(entry => !entry.timing.ok)
     const unapproved = options.approved?.has(rule.id) !== true

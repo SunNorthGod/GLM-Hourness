@@ -441,6 +441,8 @@ test('a script action: the reference points at the rule\'s own script file, the 
   assert.deepEqual(paths(draftOf({ action: SCRIPT, filter: { writes: { paths: ['migrations/**'] } } })), [], 'a script may judge a write: exit 3 then blocks')
   assert.deepEqual(paths(script({ timeoutSeconds: 30, onError: 'block' })), [])
   assert.deepEqual([0, 31, 1.5, '5'].map(timeoutSeconds => paths(script({ timeoutSeconds }))), [['action.timeoutSeconds'], ['action.timeoutSeconds'], ['action.timeoutSeconds'], ['action.timeoutSeconds']])
+  assert.deepEqual(paths(script({ estimateSeconds: 4 })), [], "the writer's estimate is a field of its own")
+  assert.deepEqual([0, 1.5, '4', -3].map(estimateSeconds => paths(script({ estimateSeconds }))), [['action.estimateSeconds'], ['action.estimateSeconds'], ['action.estimateSeconds'], ['action.estimateSeconds']])
   assert.deepEqual(paths(script({ onError: 'maybe' })), ['action.onError'])
   assert.deepEqual(paths(script({ script: { ...SCRIPT.script, sha256: 'abc' } })), ['action.script.sha256'])
   assert.deepEqual(paths(script({ script: { ...SCRIPT.script, sha256: 'A'.repeat(64) } })), ['action.script.sha256'], 'lower-case hex')

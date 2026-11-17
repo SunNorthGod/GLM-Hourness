@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { GATE_EVENTS, gateEvents, modelId, RULES_EVENT_TABLE, stepEvent } from '../src/rules/events.ts'
-import { combine, evaluateCondition, judge, judgeInput, type RuleHit } from '../src/rules/judge.ts'
+import { combine, evaluateCondition, judge, judgeInput, type JudgeOptions, type JudgeResult, type RuleHit } from '../src/rules/judge.ts'
 import type { Condition } from '../src/rules/model.ts'
 import { effectiveSignal } from '../src/rules/signals.ts'
 import { isGlmModel } from '../src/shared/route.ts'
@@ -355,6 +355,18 @@ test('an approved script is handed back to be run with its timing, and only when
   const other = judge(inputOf({}, [peak(true)]), [scripted({ id: 'r-other-script' })], approved)
   assert.equal(other.pending.length, 0, 'approval belongs to the rule')
   assert.equal(other.refused.length, 1)
+})
+
+test('a timeout the rule does not write comes from the writer\'s estimate, then from the runs the journal holds (d-timeout-measured)', () => {
+  const withEstimate = (estimateSeconds: number, timing?: JudgeOptions['timing']): JudgeResult =>
+    judge(inputOf({}, [peak(true)]), [scripted({ action: { kind: 'script', script: { file: 'docs/rules/scripts/r-script.mjs', sha256: SHA, lang: 'node' }, estimateSeconds } })], { approved: new Set(['r-script']), ...(timing === undefined ? {} : { timing }) })
+  assert.equal(withEstimate(4).pending[0]?.timeoutSeconds, 12, 'the first timeout is three times the estimate')
+  assert.equal(withEstimate(20).pending[0]?.timeoutSeconds, 30, 'three times the estimate above the ceiling holds the ceiling')
+  const measured = withEstimate(4, new Map([['r-script', [{ runId: 'rr-1', seconds: 3 }, { runId: 'rr-2', seconds: 5 }]]]))
+  assert.equal(measured.pending[0]?.timeoutSeconds, 15, 'three times the slowest of the recent runs takes over from the estimate')
+  assert.equal(withEstimate(4, new Map([['r-other', [{ runId: 'rr-1', seconds: 9 }]]])).pending[0]?.timeoutSeconds, 12, 'runs of another rule do not count')
+  const pinned = judge(inputOf({}, [peak(true)]), [scripted({ action: { kind: 'script', script: { file: 'docs/rules/scripts/r-script.mjs', sha256: SHA, lang: 'node' }, timeoutSeconds: 5, estimateSeconds: 4 } })], { approved: new Set(['r-script']), timing: new Map([['r-script', [{ runId: 'rr-1', seconds: 9 }]]]) })
+  assert.equal(pinned.pending[0]?.timeoutSeconds, 5, 'an explicit timeout is not maintained')
 })
 
 test('a stored script whose timing is out of range is not run either', () => {

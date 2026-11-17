@@ -482,15 +482,15 @@ test('no estimate and no runs: the ceiling of the purpose', () => {
   assert.deepEqual(effectiveTimeoutSeconds({ recent: [], purpose: 'work' }), { seconds: 1800, source: 'ceiling', capped: false })
 })
 
-test('an estimate alone is the timeout, raised to the smallest the entry allows and cut at the ceiling', () => {
-  assert.deepEqual(effectiveTimeoutSeconds({ estimate: 12, recent: [], purpose: 'gate' }), { seconds: 12, source: 'estimate', capped: false })
-  assert.deepEqual(effectiveTimeoutSeconds({ estimate: 600, recent: [], purpose: 'work' }), { seconds: 600, source: 'estimate', capped: false })
-  assert.deepEqual(effectiveTimeoutSeconds({ estimate: 30, recent: [], purpose: 'gate' }), { seconds: 30, source: 'estimate', capped: false })
-  assert.deepEqual(effectiveTimeoutSeconds({ estimate: 45, recent: [], purpose: 'gate' }), { seconds: 30, source: 'estimate', capped: true })
+test('an estimate alone is three times the estimated run time (d-timeout-measured, 12:56Z), raised to the smallest the entry allows and cut at the ceiling', () => {
+  assert.deepEqual(effectiveTimeoutSeconds({ estimate: 4, recent: [], purpose: 'gate' }), { seconds: 12, source: 'estimate', capped: false })
+  assert.deepEqual(effectiveTimeoutSeconds({ estimate: 200, recent: [], purpose: 'work' }), { seconds: 600, source: 'estimate', capped: false })
+  assert.deepEqual(effectiveTimeoutSeconds({ estimate: 10, recent: [], purpose: 'gate' }), { seconds: 30, source: 'estimate', capped: false })
+  assert.deepEqual(effectiveTimeoutSeconds({ estimate: 15, recent: [], purpose: 'gate' }), { seconds: 30, source: 'estimate', capped: true })
   assert.deepEqual(effectiveTimeoutSeconds({ estimate: 5000, recent: [], purpose: 'work' }), { seconds: 1800, source: 'estimate', capped: true })
-  assert.equal(effectiveTimeoutSeconds({ estimate: 2.2, recent: [], purpose: 'gate' }).seconds, 3, 'whole seconds, rounded up')
-  assert.equal(effectiveTimeoutSeconds({ estimate: 0.4, recent: [], purpose: 'gate' }).seconds, 1, 'a gate timeout is at least 1 second')
-  assert.equal(effectiveTimeoutSeconds({ estimate: 2, recent: [], purpose: 'work' }).seconds, 5, 'a work timeout is at least 5 seconds')
+  assert.equal(effectiveTimeoutSeconds({ estimate: 0.8, recent: [], purpose: 'gate' }).seconds, 3, 'whole seconds, rounded up')
+  assert.equal(effectiveTimeoutSeconds({ estimate: 0.2, recent: [], purpose: 'gate' }).seconds, 1, 'a gate timeout is at least 1 second')
+  assert.equal(effectiveTimeoutSeconds({ estimate: 1, recent: [], purpose: 'work' }).seconds, 5, 'a work timeout is at least 5 seconds')
 })
 
 test('with runs: three times the slowest, never above the ceiling, capped says when the ceiling cut it', () => {
@@ -518,7 +518,7 @@ test('bad numbers count as absent and never throw: negative, NaN, infinite, the 
   assert.deepEqual(effectiveTimeoutSeconds({ estimate: 0, recent: [], purpose: 'gate' }), { seconds: 30, source: 'ceiling', capped: false }, 'an estimate of zero is no estimate')
   const mixed = [{ runId: 'bad1', seconds: Number.NaN }, { runId: 'bad2', seconds: -3 }, { runId: 'bad3', seconds: Number.POSITIVE_INFINITY }, { runId: 'good', seconds: 4 }]
   assert.deepEqual(effectiveTimeoutSeconds({ recent: mixed, purpose: 'gate' }), { seconds: 12, source: ['good'], capped: false }, 'bad runs are left out of the decision and of its source')
-  assert.deepEqual(effectiveTimeoutSeconds({ estimate: 8, recent: mixed.slice(0, 3), purpose: 'gate' }), { seconds: 8, source: 'estimate', capped: false }, 'only bad runs: back to the estimate')
+  assert.deepEqual(effectiveTimeoutSeconds({ estimate: 8, recent: mixed.slice(0, 3), purpose: 'gate' }), { seconds: 24, source: 'estimate', capped: false }, 'only bad runs: back to three times the estimate')
   assert.deepEqual(effectiveTimeoutSeconds({ recent: mixed.slice(0, 3), purpose: 'work' }), { seconds: 1800, source: 'ceiling', capped: false })
   const garbage = [null, undefined, 5, 'r1', {}, { runId: 7, seconds: 3 }, { runId: 'x' }, { seconds: 3 }, { runId: 'ok', seconds: '3' }, { runId: 'fine', seconds: 2 }]
   assert.deepEqual(effectiveTimeoutSeconds({ recent: garbage as never, purpose: 'gate' }), { seconds: 6, source: ['fine'], capped: false })
@@ -589,7 +589,7 @@ test('a timeout the entry does not write is filled by effectiveTimeoutSeconds: t
   })
   assert.deepEqual(validateScriptAction(script(), { purpose: 'gate', estimateSeconds: 8, gateOnErrorDefault: 'block' }), {
     ok: true,
-    timing: { timeoutSeconds: 8, onError: 'block', filled: { seconds: 8, source: 'estimate', capped: false } },
+    timing: { timeoutSeconds: 24, onError: 'block', filled: { seconds: 24, source: 'estimate', capped: false } },
   })
   assert.deepEqual(validateScriptAction(script(), { purpose: 'work', estimateSeconds: 9000 }), {
     ok: true,

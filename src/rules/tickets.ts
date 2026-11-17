@@ -48,6 +48,7 @@ import { peakEndAfter, type PeakReading, type ProjectView } from './peak.ts'
 import type { HostRef } from './request.ts'
 import type { StoreIo } from './store.ts'
 import { runJudgedScripts, type ScriptOutcome } from './script-run.ts'
+import { timingOf } from './timing.ts'
 import { clockReadings, tableOf } from './table.ts'
 import { agentsOf, clearedBecause, deliver, heartbeatLostText, isStopTicket, stopWakeText, walkToRoot, wakeNotice, wakeText } from './wake.ts'
 
@@ -245,7 +246,7 @@ export function createTicketDesk(deps: DeskDeps): TicketDesk {
     const now = new Date(deps.now())
     const { readings } = clockReadings(state, deps.peak(), now)
     const table = tableOf(state, effectivePeakMode(state).level)
-    const verdict = judge(judgeInput({ now, project: hold.root, events: hold.events, signals: [...readings.values()], unreadable: hold.unreadable }), table, { approved: approvedScriptRules(state) })
+    const verdict = judge(judgeInput({ now, project: hold.root, events: hold.events, signals: [...readings.values()], unreadable: hold.unreadable }), table, { approved: approvedScriptRules(state), timing: timingOf(hold.root, deps.rulesDir) })
     const queued = verdict.effect === 'queue' ? verdict.strongest.map(hit => hit.rule) : []
     const blocking = verdict.effect === 'block' ? verdict.strongest.map(hit => hit.rule) : []
     return {
@@ -572,7 +573,14 @@ export function createTicketDesk(deps: DeskDeps): TicketDesk {
     const table = tableOf(state, effectivePeakMode(state).level)
     let outcomes: readonly ScriptOutcome[]
     try {
-      outcomes = await runJudgedScripts(table, judged, { root: hold.root, events: hold.events, now, session: ticket.sessionId })
+      outcomes = await runJudgedScripts(table, judged, {
+        root: hold.root,
+        events: hold.events,
+        now,
+        session: ticket.sessionId,
+        ...(deps.rulesDir === undefined ? {} : { rulesDir: deps.rulesDir }),
+        onProblem: deps.warn,
+      })
     }
     catch (error) {
       report(ticket.sessionId, `等待单 ${ticket.id} 的脚本重问没有跑成（${message(error)}），单保持`)

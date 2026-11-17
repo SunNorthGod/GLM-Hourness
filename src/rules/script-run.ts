@@ -14,7 +14,9 @@
  * is not the approved bytes any more) is a failure and goes by the rule's `onError`: `allow`
  * lets the call through, `block` blocks it. Scripts run side by side; the first that blocks
  * ends the wait and the others are called off, and what ends after that is not read.
- * The output of a script is not kept anywhere but in the reason of a block or deferral.
+ * The output of a script is not kept anywhere but in the reason of a block or deferral; the
+ * run itself lands in the board's timing journal (src/rules/timing.ts, d-timeout-measured)
+ * with its duration, the timeout in force and how the call was treated.
  *
  * The gate asks for the late run (design §6.7 「超时之后」): a timeout is judged by the
  * failure setting at once, and a timeout whose failure setting lets the call through
@@ -29,6 +31,7 @@ import { runScript, type HookEnvelope, type LateScriptResult, type ScriptRequest
 import type { RulesEventRecord } from './events.ts'
 import type { JudgeResult, RuleHit } from './judge.ts'
 import type { BuiltinRule, Rule } from './model.ts'
+import { recordScriptRuns, type RecordedRun } from './timing.ts'
 
 /** Starts one script; the shared executor's `runScript`, or a stand-in. */
 export type RunScript = (request: ScriptRequest) => Promise<ScriptResult>
@@ -40,6 +43,8 @@ export interface ScriptOutcome {
   readonly file: string
   readonly outcome: 'allow' | 'block' | 'queue' | 'failed' | 'timeout' | 'refused'
   readonly ms?: number
+  /** The id the executor gave this run (the envelope's `run`); the timing journal names it in a value's source. */
+  readonly runId?: string
   /** The hit it makes of the rule: absent when the call goes through. */
   readonly hit?: RuleHit
   /** A sentence for the person who reads the result of `checkCall`: what happened to the script, and what the rule's failure setting made of it. */
@@ -154,11 +159,12 @@ async function runPendingScripts(options: RunPendingOptions): Promise<ScriptOutc
   const lateness: Array<Promise<LateScriptResult>> = []
   const runs = options.pending.map(async (pending): Promise<void> => {
     const event = options.events.find(entry => entry.event === pending.event)
+    const runId = `rr-${randomBytes(4).toString('hex')}`
     const envelope: HookEnvelope = {
       version: 1,
       board: 'rules',
       entry: pending.rule,
-      run: `rr-${randomBytes(4).toString('hex')}`,
+      run: runId,
       event: pending.event,
       at: options.now.toISOString(),
       project: options.root,
@@ -170,10 +176,11 @@ async function runPendingScripts(options: RunPendingOptions): Promise<ScriptOutc
     // What ends after another script blocked is not read: that run was called off.
     if (controller.signal.aborted) return
     const outcome = outcomeOf(pending, options.info(pending.rule), result)
-    read.set(pending.rule, outcome === undefined || !options.waitLate || result.kind !== 'timeout' || result.late === undefined || outcome.hit !== undefined
-      ? outcome
-      : { ...outcome, late: result.late })
-    if (outcome?.hit?.effect === 'block' && options.waitLate !== true) controller.abort()
+    const withRun = outcome === undefined ? undefined : { ...outcome, runId }
+    read.set(pending.rule, withRun === undefined || !options.waitLate || result.kind !== 'timeout' || result.late === undefined || withRun.hit !== undefined
+      ? withRun
+      : { ...withRun, late: result.late })
+    if (withRun?.hit?.effect === 'block' && options.waitLate !== true) controller.abort()
   })
   await Promise.all(runs)
   if (options.waitLate !== true) {
@@ -201,6 +208,11 @@ function ruleInfoOf(table: readonly (Rule | BuiltinRule)[]): (rule: string) => R
  * shared one unless the caller names another. `checkCall`, the tool-call gate and the
  * desk's re-feed of a script that queued a call all come through here. Only the gate
  * names `late`, for the late verdicts of design §6.7.
+ *
+ * After the endings are read the runs land in the board's timing journal
+ * (d-timeout-measured): a problem there is told to `onProblem` and never changes a
+ * verdict. `rulesDir` is the row's rules directory override, as the caller was
+ * configured with.
  */
 export async function runJudgedScripts(table: readonly (Rule | BuiltinRule)[], judged: Pick<JudgeResult, 'pending'>, parts: {
   readonly root: string
@@ -211,17 +223,49 @@ export async function runJudgedScripts(table: readonly (Rule | BuiltinRule)[], j
   readonly run?: RunScript
   /** Timeouts keep running in the background, and the outcomes that let the call through carry the `late` promise (the tool-call gate). */
   readonly late?: boolean
+  /** The row's rules directory override, for the timing journal and the held-value notice. */
+  readonly rulesDir?: string
+  /** Told when a run or a value could not be recorded; the verdict does not wait for the answer. */
+  readonly onProblem?: (message: string) => void
 }): Promise<ScriptOutcome[]> {
-  return judged.pending.length === 0
-    ? []
-    : runPendingScripts({
-      pending: judged.pending,
-      info: ruleInfoOf(table),
+  if (judged.pending.length === 0) return []
+  const outcomes = await runPendingScripts({
+    pending: judged.pending,
+    info: ruleInfoOf(table),
+    root: parts.root,
+    events: parts.events,
+    now: parts.now,
+    ...(parts.session === undefined ? {} : { session: parts.session }),
+    run: parts.run ?? runScript,
+    ...(parts.late === true ? { waitLate: true } : {}),
+  })
+  const byRule = new Map(table.map(rule => [rule.id, rule]))
+  const runs = outcomes.flatMap((outcome): RecordedRun[] => {
+    const pending = judged.pending.find(entry => entry.rule === outcome.rule)
+    if (outcome.runId === undefined || pending === undefined) return []
+    const action = byRule.get(outcome.rule)?.action
+    return [{
+      rule: outcome.rule,
+      run: outcome.runId,
+      outcome: outcome.outcome,
+      ...(outcome.ms === undefined ? {} : { ms: outcome.ms }),
+      limitSeconds: pending.timeoutSeconds,
+      ...(action?.kind === 'script' && action.onError !== undefined ? { onError: action.onError } : {}),
+    }]
+  })
+  if (runs.length > 0) {
+    const problems = await recordScriptRuns({
       root: parts.root,
-      events: parts.events,
+      ...(parts.rulesDir === undefined ? {} : { rulesDir: parts.rulesDir }),
+      facts: (rule) => {
+        const action = byRule.get(rule)?.action
+        if (action?.kind !== 'script') return undefined
+        return { pinned: action.timeoutSeconds !== undefined, ...(action.estimateSeconds === undefined ? {} : { estimate: action.estimateSeconds }) }
+      },
+      runs,
       now: parts.now,
-      ...(parts.session === undefined ? {} : { session: parts.session }),
-      run: parts.run ?? runScript,
-      ...(parts.late === true ? { waitLate: true } : {}),
     })
+    for (const problem of problems) parts.onProblem?.(problem)
+  }
+  return outcomes
 }

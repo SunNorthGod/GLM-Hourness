@@ -188,7 +188,7 @@ export function ticketProblem(key: string, value: unknown, path: string): Proble
 export function noticeProblem(value: unknown, path: string): Problem {
   if (!isRecord(value)) return `${path} must be an object`
   return unknownKeys(value, ['kind', 'rule', 'text', 'at'], path)
-    ?? oneOf(value, 'kind', ['late-block', 'script-capped'], path)
+    ?? oneOf(value, 'kind', ['late-block', 'script-capped', 'timeout-capped'], path)
     ?? requiredText(value, 'rule', path)
     ?? requiredText(value, 'text', path)
     ?? (isTime(value.at) ? undefined : `${path}.at must be an ISO time`)
@@ -202,10 +202,11 @@ const PROPOSAL_FIELDS = ['id', 'kind', 'body', 'script', 'describe', 'cautions',
 function proposalScriptProblem(script: unknown, path: string): Problem {
   if (script === undefined) return undefined
   if (!isRecord(script)) return `${path} must be an object`
-  return unknownKeys(script, ['text', 'sha256', 'file', 'lang', 'timeoutSeconds', 'onError'], path)
+  return unknownKeys(script, ['text', 'sha256', 'file', 'lang', 'timeoutSeconds', 'estimateSeconds', 'onError'], path)
     ?? requiredText(script, 'text', path)
     ?? scriptPinProblem({ file: script.file, sha256: script.sha256, lang: script.lang }, path, false)
     ?? (script.timeoutSeconds === undefined || isCount(script.timeoutSeconds) ? undefined : `${path}.timeoutSeconds must be a count`)
+    ?? (script.estimateSeconds === undefined || (isCount(script.estimateSeconds) && script.estimateSeconds >= 1) ? undefined : `${path}.estimateSeconds must be a count of at least 1`)
     ?? (script.onError === undefined ? undefined : oneOf(script, 'onError', ['allow', 'block'], path))
 }
 

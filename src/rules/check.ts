@@ -40,6 +40,7 @@ import { runJudgedScripts, type RunScript } from './script-run.ts'
 import { showText } from './show.ts'
 import { GLM_PEAK, effectiveSignal, type SignalReading } from './signals.ts'
 import { rulesPaths } from './store.ts'
+import { timingOf } from './timing.ts'
 import { readingsOf, signalsRead, tableOf } from './table.ts'
 
 /** The signals the host computes and a caller may give a value for. */
@@ -234,11 +235,12 @@ export async function checkCall(call: { readonly tool: string, readonly args: un
     stage: options.stage === undefined ? { unknown: '命令行没有会话的焦点，用 --stage 给' } : { stage: options.stage },
     unreadable: { role: spelled('role'), model: spelled('model'), session: spelled('session') },
   })
-  const judged = judge(input, table, { approved: approvedScriptRules(view.state) })
+  const judged = judge(input, table, { approved: approvedScriptRules(view.state), timing: timingOf(view.root, options.rulesDir) })
 
   const byId = new Map(table.map(rule => [rule.id, rule]))
   // A script that calls `checkCall` again (it runs `npm run -s rules -- check`) is told what the rules say of their own actions and runs no script: otherwise a script could call itself without end.
   const insideScript = process.env.HOURNESS_BOARD === 'rules'
+  const journalProblems: string[] = []
   const ran = insideScript
     ? []
     : await runJudgedScripts(table, judged, {
@@ -246,7 +248,9 @@ export async function checkCall(call: { readonly tool: string, readonly args: un
       events: input.events,
       now,
       ...(options.session === undefined ? {} : { session: options.session }),
+      ...(options.rulesDir === undefined ? {} : { rulesDir: options.rulesDir }),
       ...(options.runScript === undefined ? {} : { run: options.runScript }),
+      onProblem: problem => journalProblems.push(problem),
     })
   const verdict: JudgeResult = ran.length === 0 ? judged : { ...judged, ...combine([...judged.hits, ...ran.flatMap(outcome => outcome.hit ?? [])]) }
   const hitOf = new Map(verdict.hits.map(hit => [hit.rule, hit]))
@@ -281,6 +285,7 @@ export async function checkCall(call: { readonly tool: string, readonly args: un
       ...verdict.refused.map(script => script.reason),
       ...(insideScript && judged.pending.length > 0 ? ['在脚本里自查，没有再跑脚本'] : []),
       ...ran.flatMap(outcome => outcome.note ?? []),
+      ...journalProblems,
     ],
   }
 

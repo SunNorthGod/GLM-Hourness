@@ -91,6 +91,7 @@ import { gitOperationIn } from './repo.ts'
 import { projectHealth } from './row-health.ts'
 import { runJudgedScripts, type ScriptOutcome } from './script-run.ts'
 import { rulesPaths, type RulesPaths, type StoreIo } from './store.ts'
+import { timingOf } from './timing.ts'
 import { clockReadings, signalsRead, tableOf } from './table.ts'
 import type { TicketDesk } from './tickets.ts'
 
@@ -318,7 +319,7 @@ export function installRulesGate(deps: GateDeps): () => void {
       ...(advance === undefined ? {} : { trunkAdvance: advance }),
     })
     const judgedAt = deps.now()
-    const judged = judge(judgeInput({ now, project: project.root, events, signals: [...readings.values()], unreadable }), table, { approved: approvedScriptRules(state) })
+    const judged = judge(judgeInput({ now, project: project.root, events, signals: [...readings.values()], unreadable }), table, { approved: approvedScriptRules(state), timing: timingOf(project.root, deps.rulesDir) })
     const judgedMs = deps.now() - judgedAt
 
     // 4. What the strongest effect makes of the call.
@@ -334,7 +335,9 @@ export function installRulesGate(deps: GateDeps): () => void {
       events,
       now,
       ...(caller.sessionId === undefined ? {} : { session: caller.sessionId }),
+      ...(deps.rulesDir === undefined ? {} : { rulesDir: deps.rulesDir }),
       late: true,
+      onProblem: warn,
     })
     const verdict = ran.length === 0 ? judged : { ...judged, ...combine([...judged.hits, ...ran.flatMap(outcome => outcome.hit ?? [])]) }
     report(sessionId, basename(project.root), view, reading, project.root)

@@ -56,6 +56,12 @@ export interface ScriptAction {
   readonly script: ScriptRef
   /** Whole seconds: 1 to 30 on a gating event, 5 to 1800 elsewhere. When absent, effectiveTimeoutSeconds fills it (validateScriptAction). */
   readonly timeoutSeconds?: number
+  /**
+   * Whole seconds the writing agent estimated one run takes (decision d-timeout-measured). Used when the action
+   * writes no `timeoutSeconds`: the first timeout is three times it, clamped; after real runs the measured value
+   * takes over. The loop board's own entries do not carry it yet (the proposal-channel half of §18.2 is not done).
+   */
+  readonly estimateSeconds?: number
   /** Gating events only: what a timeout or crash does. Absent: the event's gateOnErrorDefault, else 'allow'. */
   readonly onError?: 'allow' | 'block'
 }
@@ -659,10 +665,10 @@ export interface TimeoutDecision {
 }
 
 /**
- * The one place a script's timeout is chosen (decision d-timeout-measured): the writer's estimate to start with, then
- * three times the slowest of the recent runs, never above the ceiling of the purpose and never below the least the
- * entry allows; with neither, the ceiling. Whole seconds, rounded up. Bad numbers count as absent, so the function
- * never throws and always gives a value with its source. It reads no clock and no file.
+ * The one place a script's timeout is chosen (decision d-timeout-measured): three times the writer's estimated run
+ * time to start with, then three times the slowest of the recent runs, never above the ceiling of the purpose and
+ * never below the least the entry allows; with neither, the ceiling. Whole seconds, rounded up. Bad numbers count as
+ * absent, so the function never throws and always gives a value with its source. It reads no clock and no file.
  */
 export function effectiveTimeoutSeconds(input: TimeoutInput): TimeoutDecision {
   const gate = input.purpose === 'gate'
@@ -679,7 +685,7 @@ export function effectiveTimeoutSeconds(input: TimeoutInput): TimeoutDecision {
     source = runs.map(run => run.runId)
   }
   else if (estimate !== undefined) {
-    wanted = estimate
+    wanted = 3 * estimate
     source = 'estimate'
   }
   else return { seconds: ceiling, source: 'ceiling', capped: false, ...carried }
@@ -694,6 +700,8 @@ export interface ScriptTimingContext {
   readonly gateOnErrorDefault?: 'allow' | 'block'
   /** The estimate the writing agent gave at approval, used when the entry does not write a timeout. */
   readonly estimateSeconds?: number
+  /** The entry's latest runs, from the board's timing journal; they take the value over from the estimate. */
+  readonly recent?: TimeoutInput['recent']
 }
 
 export interface ScriptTiming {
@@ -726,6 +734,8 @@ export function validateScriptAction(
   if (issues.length > 0) return { ok: false, issues }
   const gating = gate ? { onError: action.onError ?? context.gateOnErrorDefault ?? 'allow' } : {}
   if (typeof written === 'number') return { ok: true, timing: { timeoutSeconds: written, ...gating } }
-  const filled = effectiveTimeoutSeconds({ recent: [], purpose: context.purpose, ...(context.estimateSeconds === undefined ? {} : { estimate: context.estimateSeconds }) })
+  const filled = effectiveTimeoutSeconds(context.recent === undefined
+    ? { recent: [], purpose: context.purpose, ...(context.estimateSeconds === undefined ? {} : { estimate: context.estimateSeconds }) }
+    : { recent: context.recent, purpose: context.purpose, ...(context.estimateSeconds === undefined ? {} : { estimate: context.estimateSeconds }) })
   return { ok: true, timing: { timeoutSeconds: filled.seconds, ...gating, filled } }
 }

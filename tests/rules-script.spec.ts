@@ -54,6 +54,27 @@ projectTest('exit 0 lets the call through; the script got the event of the call 
   assert.deepEqual([seen.payload.tool, seen.payload.command, seen.payload.role, seen.payload.model, seen.payload.caller, seen.payload.cwd], ['pwsh', 'run case-allow now', 'subagent', 'zai/glm-4.6', 'library', project.root])
 })
 
+projectTest('each run lands in the board\'s timing journal (d-timeout-measured): the run with its duration, the value it computed, and no note when it all wrote', async (project) => {
+  await approve(project, 'r-timed', 'case-timed', script('process.exit(0)'), {
+    action: { kind: 'script', lang: 'node', text: script('process.exit(0)'), estimateSeconds: 4 },
+  })
+  const result = await check(project, 'run case-timed now')
+  assert.deepEqual(scriptsOf(result), [['r-timed', 'allow']])
+  assert.ok(result.notes.every(note => !note.includes('超时账')), 'a journal that wrote cleanly says nothing')
+  const lines = readFileSync(join(project.root, '.llm', 'rules', 'timing.jsonl'), 'utf8').split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Record<string, unknown>)
+  const run = lines.find(line => line.kind === 'run')
+  assert.deepEqual([run?.rule, run?.outcome], ['r-timed', 'allow'])
+  assert.match(String(run?.run), /^rr-[0-9a-f]{8}$/)
+  assert.equal(typeof run?.ms, 'number')
+  const value = lines.find(line => line.kind === 'value')
+  assert.deepEqual(value?.source, { by: 'runs', runIds: [run?.run], seconds: 1, factor: 3 }, 'the measured run took the value over from the estimate')
+  assert.equal(value?.seconds, 3)
+  await check(project, 'run case-timed again')
+  const again = readFileSync(join(project.root, '.llm', 'rules', 'timing.jsonl'), 'utf8').split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Record<string, unknown>)
+  assert.equal(again.filter(line => line.kind === 'run').length, 2)
+  assert.equal(again.filter(line => line.kind === 'value').length, 1, 'the value stands while the slowest run is the same')
+})
+
 projectTest('exit 2 blocks the call with the rule, the script and its reason from standard error, exit code 4', async (project) => {
   await approve(project, 'r-block', 'case-block', script('process.stderr.write("keys differ\\nin zh.json\\u0007")\nprocess.exit(2)'))
   const result = await check(project, 'run case-block')

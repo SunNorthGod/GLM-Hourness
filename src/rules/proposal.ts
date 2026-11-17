@@ -78,8 +78,9 @@ function actionWords(rule: Pick<Rule, 'when' | 'action'>): string {
   const { action } = rule
   if (action.kind !== 'script') return EFFECT_WORDS[action.kind]
   const { seconds } = gateTiming(action, rule.when.events)
+  const from = action.estimateSeconds !== undefined && action.timeoutSeconds === undefined ? `（估的 ${action.estimateSeconds} 秒乘 3）` : ''
   const name = action.script.file.split('/').at(-1) ?? action.script.file
-  return `跑脚本 ${name}：它退出 2 就拦下、3 就排队；${seconds} 秒没答或出错时${action.onError === 'block' ? '拦下' : '放行'}`
+  return `跑脚本 ${name}：它退出 2 就拦下、3 就排队；${seconds} 秒${from}没答或出错时${action.onError === 'block' ? '拦下' : '放行'}`
 }
 
 /** One line saying what a rule does once it is in force, in the words the human reads. */
@@ -130,8 +131,8 @@ function ruleProposal(body: Record<string, unknown>, reason: string, context: Pr
     const problem = scriptTextProblem(text)
     if (problem !== undefined) return invalid('body.action.text', problem)
     if (typeof body.id !== 'string') return invalid('body.id', 'the rule needs an id (r-<name>)')
-    const extra = Object.keys(action).find(key => !['kind', 'text', 'lang', 'timeoutSeconds', 'onError'].includes(key))
-    if (extra !== undefined) return invalid(`body.action.${extra}`, 'a script action is {kind, text, lang, timeoutSeconds?, onError?}')
+    const extra = Object.keys(action).find(key => !['kind', 'text', 'lang', 'timeoutSeconds', 'estimateSeconds', 'onError'].includes(key))
+    if (extra !== undefined) return invalid(`body.action.${extra}`, 'a script action is {kind, text, lang, timeoutSeconds?, estimateSeconds?, onError?}')
     const file = scriptFileFor(context.rulesDirFromRoot, body.id, lang as ScriptLang)
     const sha256 = sha256Of(text as string)
     script = {
@@ -140,9 +141,10 @@ function ruleProposal(body: Record<string, unknown>, reason: string, context: Pr
       file,
       lang: lang as ScriptLang,
       ...(typeof action.timeoutSeconds === 'number' ? { timeoutSeconds: action.timeoutSeconds } : {}),
+      ...(typeof action.estimateSeconds === 'number' ? { estimateSeconds: action.estimateSeconds } : {}),
       ...(action.onError === 'allow' || action.onError === 'block' ? { onError: action.onError } : {}),
     }
-    stored = { ...body, action: { kind: 'script', script: { file, sha256, lang }, ...(script.timeoutSeconds === undefined ? {} : { timeoutSeconds: script.timeoutSeconds }), ...(script.onError === undefined ? {} : { onError: script.onError }) } }
+    stored = { ...body, action: { kind: 'script', script: { file, sha256, lang }, ...(script.timeoutSeconds === undefined ? {} : { timeoutSeconds: script.timeoutSeconds }), ...(script.estimateSeconds === undefined ? {} : { estimateSeconds: script.estimateSeconds }), ...(script.onError === undefined ? {} : { onError: script.onError }) } }
   }
   if (stored.reason === undefined) stored = { ...stored, reason }
   const existing = activeRules(context.state)
@@ -155,7 +157,11 @@ function ruleProposal(body: Record<string, unknown>, reason: string, context: Pr
 
 /** The timeout and the failure setting the judgement gives a script rule: the event that blocks on failure wins, as in judge.ts. */
 function gateTiming(action: ScriptAction, events: readonly string[]): { readonly seconds: number, readonly onError: 'allow' | 'block' } {
-  const timings = events.map(event => validateScriptAction(action, { purpose: 'gate', ...(RULES_EVENT_TABLE.get(event)?.gateOnErrorDefault === undefined ? {} : { gateOnErrorDefault: RULES_EVENT_TABLE.get(event)!.gateOnErrorDefault! }) }))
+  const timings = events.map(event => validateScriptAction(action, {
+    purpose: 'gate',
+    ...(action.estimateSeconds === undefined ? {} : { estimateSeconds: action.estimateSeconds }),
+    ...(RULES_EVENT_TABLE.get(event)?.gateOnErrorDefault === undefined ? {} : { gateOnErrorDefault: RULES_EVENT_TABLE.get(event)!.gateOnErrorDefault! }),
+  }))
   const chosen = timings.find(entry => entry.ok && entry.timing.onError === 'block') ?? timings[0]
   return chosen?.ok === true ? { seconds: chosen.timing.timeoutSeconds, onError: chosen.timing.onError ?? 'allow' } : { seconds: 0, onError: 'allow' }
 }
@@ -167,7 +173,8 @@ function scriptCautions(rule: Pick<Rule, 'when' | 'filter' | 'condition' | 'acti
   const events = rule.when.events as readonly string[]
   const { seconds, onError } = gateTiming(action, events)
   const failure = onError === 'block' ? '拦下' : '放行'
-  const cautions = [`脚本在 ${file}`, `超过 ${seconds} 秒算没答，按${failure}处理${action.onError === undefined ? '（默认）' : ''}`, `出错时也${failure}`]
+  const from = action.estimateSeconds !== undefined && action.timeoutSeconds === undefined ? `（第一次超时 ${seconds} 秒，是估跑的 ${action.estimateSeconds} 秒乘 3）` : ''
+  const cautions = [`脚本在 ${file}`, `超过 ${seconds} 秒算没答${from}，按${failure}处理${action.onError === undefined ? '（默认）' : ''}`, `出错时也${failure}`]
   const filter = rule.filter as Record<string, unknown> | undefined
   const narrow = filter !== undefined && ['tool', 'command', 'writes'].some(key => filter[key] !== undefined)
   if (!narrow && events.includes('gate.tool-call')) {

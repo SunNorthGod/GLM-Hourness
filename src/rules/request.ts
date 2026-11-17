@@ -83,7 +83,7 @@ export type Request = Common & (
   | { readonly op: 'proposal-reject', readonly id: string, readonly by?: 'human' | 'llm', readonly relay?: string }
   /** The proposal was put to nobody for 7 days (`via: 'graph'`, no question on the graph names it). */
   | { readonly op: 'proposal-expire', readonly id: string }
-  | { readonly op: 'notice-add', readonly kind: 'late-block' | 'script-capped', readonly rule: string, readonly text: string }
+  | { readonly op: 'notice-add', readonly kind: 'late-block' | 'script-capped' | 'timeout-capped', readonly rule: string, readonly text: string }
   | { readonly op: 'notice-delivered', readonly id: string }
 )
 
@@ -92,7 +92,7 @@ const MAX_MANUAL_MS = 7 * 24 * 3_600_000
 
 const TICKET_STATES: readonly string[] = ['deferred', 'cleared', 'done', 'cancelled', 'expired']
 const EXPIRED_WHY: readonly string[] = ['age', 'not-retried', 'host-gone']
-const NOTICE_KINDS: readonly string[] = ['late-block', 'script-capped']
+const NOTICE_KINDS: readonly string[] = ['late-block', 'script-capped', 'timeout-capped']
 const MAX_LABELS = 50
 const MAX_TEXT = 2000
 
@@ -278,7 +278,7 @@ function parseBody(op: RequestOp, fields: Fields): Request | string {
       if (!(typeof kind === 'string' && NOTICE_KINDS.includes(kind))) return `kind 要是 ${NOTICE_KINDS.join('、')} 之一`
       const rule = text(fields, 'rule', '规则 id')
       const words = text(fields, 'text', '要告诉主 Agent 的话', MAX_TEXT)
-      return all(rule, words) ?? { op, kind: kind as 'late-block' | 'script-capped', rule: got(rule), text: got(words) }
+      return all(rule, words) ?? { op, kind: kind as 'late-block' | 'script-capped' | 'timeout-capped', rule: got(rule), text: got(words) }
     }
   }
 }

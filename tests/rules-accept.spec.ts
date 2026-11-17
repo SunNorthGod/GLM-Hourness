@@ -232,6 +232,19 @@ test('rules_propose records a proposal for the project of the session, says how 
   assert.match(board.kind === 'ok' ? String(board.value.message) : '', /The project graph is not available: tell the human this proposal as one yes-or-no question and that they can type \/rules accept p-[0-9a-f]{8} or \/rules reject p-[0-9a-f]{8}\./)
 })
 
+test('rules_propose records the writer\'s estimate with the session that proposed it (d-timeout-measured)', async () => {
+  const setupped = await setup()
+  const tool = rulesProposeTool({ ctx: stubGraphService(setupped.fixture.dir), rulesDir: 'docs/rules', now: () => Date.now() })
+  const ok = await setupped.fixture.host.invoke(setupped.fixture.agent, tool, { kind: 'rule', body: scriptRule({ action: { kind: 'script', lang: 'node', text: SCRIPT, estimateSeconds: 4 } }), reason: 'zh.json lost keys last week' })
+  assert.equal(ok.kind, 'ok', JSON.stringify(ok))
+  assert.match(String(ok.kind === 'ok' ? (ok.value.cautions as string[])[1] : ''), /第一次超时 12 秒，是估跑的 4 秒乘 3/)
+  const lines = readFileSync(join(setupped.root, '.llm', 'rules', 'timing.jsonl'), 'utf8').split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Record<string, unknown>)
+  const estimate = lines.find(line => line.kind === 'estimate')
+  assert.deepEqual([estimate?.rule, estimate?.seconds], ['r-locale-keys', 4])
+  assert.equal(typeof estimate?.session, 'string')
+  assert.notEqual(estimate?.session, '')
+})
+
 test('the two examples of rules_propose are real: they pass the checks of a proposal, the description fits, and the example script blocks', async () => {
   const setupped = await setup()
   const lines = RULES_PROPOSE_EXAMPLES.split('\n').filter(line => line.startsWith('{'))
