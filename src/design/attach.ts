@@ -4,13 +4,12 @@
  * seam ruling "attach"): a proposal the rules board, the loops board or the
  * takeover recorded, named by `attach` on propose_to_human, shown as the
  * question's last paragraph and handed back to its board by
- * record_human_answer after the human agreed. Each board adds one row to ATTACH_BOARDS when it is
- * merged and imports only its own service module; M3 imports nothing else of
- * a board. Until then the table is empty and every attach is refused with
- * the reason.
+ * record_human_answer after the human agreed. Each board is one row of
+ * ATTACH_BOARDS and M3 imports nothing else of a board.
  */
 import { createHash } from 'node:crypto'
 import { ATTACH_PATTERN, TAKEOVER_ATTACH_PREFIX, bootstrapService, takeoverAttachOf } from '../bootstrap/service.ts'
+import { loopProposalIdOf, loopsAttachService } from '../loops/service.ts'
 import { proposalIdOf, rulesBoardService } from '../rules/service.ts'
 import type { AttachDetail, Attachable, AttachService } from '../shared/attach.ts'
 import type { ServiceLookup } from '../shared/dsh-min.ts'
@@ -41,13 +40,23 @@ const RULES_BOARD: AttachBoard = {
   idOf: body => proposalIdOf(body),
 }
 
+/** The loop board: its proposals are `loops:lp-<8 hex digits>` (loop board design 0.6 §7.1 step 2, M3 appendix §3.13). */
+const LOOPS_BOARD: AttachBoard = {
+  prefix: 'loops:',
+  format: /^loops:lp-[0-9a-f]{8}$/,
+  board: 'the loop board',
+  service: lookup => loopsAttachService(lookup),
+  idOf: body => loopProposalIdOf(body),
+}
+
 /**
- * The boards that take `attach`; a board adds its row when it merges. The
- * takeover's row (takeover design 0.6 §7.4, M3 appendix §3.13): the two
- * things only the human can say, `bootstrap:tk-<8>:cost` and `:touch`.
+ * The boards that take `attach`. The takeover's row (takeover design 0.6
+ * §7.4, M3 appendix §3.13): the two things only the human can say,
+ * `bootstrap:tk-<8>:cost` and `:touch`.
  */
 export const ATTACH_BOARDS: readonly AttachBoard[] = [
   RULES_BOARD,
+  LOOPS_BOARD,
   {
     prefix: TAKEOVER_ATTACH_PREFIX,
     format: ATTACH_PATTERN,

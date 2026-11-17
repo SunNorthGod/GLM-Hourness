@@ -7,13 +7,15 @@
  * them.
  *
  * `LoopsService` has the members that exist: `contribute`, the events and runs
- * of the runtime (`emit`, `listens`, `recordRun`), and the two weekly lists
+ * of the runtime (`emit`, `listens`, `recordRun`), the two weekly lists
  * the status hub's batch 6 and the weekly report asked for (`staleEntries`,
  * `timeoutEntries`, design §6.11 — the board computes them beside its view,
  * from the metrics journal and the change record, and holds them for the
- * readers). The members of the path of a person's agreement (`attachable`,
- * `acceptProposal`) arrive with that path, which is not built yet. The reader
- * checks the members that exist and takes a service that has more.
+ * readers), and the three members of the path of a person's agreement
+ * (`attachable`, `proposalLine`, `acceptProposal`, design §7.1) — one service,
+ * of which `loopsService` checks the hand-over members and `loopsAttachService`
+ * the agreement members. The reader checks the members that exist and takes a
+ * service that has more.
  *
  * The service is handed out only in a process that has a session controller,
  * which is the one process that can reach a session and deliver (design §3.1,
@@ -26,6 +28,7 @@
  * (`installContribution`), which the graph row and the env row share.
  */
 import type { ServiceLookup } from '../shared/dsh-min.ts'
+import type { Attachable, AttachService } from '../shared/attach.ts'
 import type { HarnessResult, LoopEventRecord } from '../shared/loop-records.ts'
 import type { LoopEntryDefinition } from './model.ts'
 import type { LoopEventDeclaration } from './trigger.ts'
@@ -171,6 +174,19 @@ export interface LoopsService {
    * timeouts first. Undefined as `staleEntries` is.
    */
   timeoutEntries(project: string, now: Date): readonly TimeoutEntry[] | undefined
+  /**
+   * The members of the path of a person's agreement (design §7.1), which the
+   * design row (M3) reads through `loopsAttachService`: `attachable` before a
+   * proposal is put to the human and again before their words are recorded
+   * (the stored detail, never recomputed), `proposalLine` for the last line of
+   * the question, `acceptProposal` once the human agreed, resolving to the
+   * line the main agent is told. Neither throws. Optional on the type: a
+   * reader that needs them checks they are there, the way `loopsService`
+   * checks the hand-over members.
+   */
+  attachable?(request: { readonly cwd: string | undefined, readonly proposal: string }): Attachable
+  proposalLine?(id: string): string
+  acceptProposal?(request: { readonly questionId: string, readonly graphDir: string, readonly cwd: string | undefined, readonly by: { readonly actor: 'human' | 'llm', readonly relay?: string } }): Promise<string>
 }
 
 /** What a contributing row's context needs for `installContribution`. */
@@ -226,4 +242,29 @@ export function loopsService(ctx: ServiceLookup, problem?: (message: string) => 
   if (typeof members.contribute === 'function' && typeof members.emit === 'function' && typeof members.listens === 'function' && typeof members.recordRun === 'function') return value as LoopsService
   problem?.(`${LOOPS_SERVICE} has the wrong shape; the row cannot hand its entries over`)
   return undefined
+}
+
+/** The last line of the question that carries a loop proposal: names the proposal and nothing else (loop board design §7.1 step 2). */
+export function loopProposalLine(proposal: string): string {
+  return `循环板提议 \`${proposal}\``
+}
+
+const PROPOSAL_LINE_PATTERN = /循环板提议 `(lp-[0-9a-f]{8})`\s*$/
+
+/** The loop proposal a question body ends with; undefined when it ends with none of this board's. The inverse of `loopProposalLine`. */
+export function loopProposalIdOf(body: string): string | undefined {
+  return PROPOSAL_LINE_PATTERN.exec(body)?.[1]
+}
+
+/**
+ * The members of the path of a person's agreement on the loop board's service,
+ * as the design row (M3, src/design/attach.ts) reads them for
+ * `attach: 'loops:<proposal>'`: undefined while the loop row is off, or while
+ * the service there does not have them. The row's service carries these
+ * beside the ones `loopsService` checks, so a wider service reads as both.
+ */
+export function loopsAttachService(ctx: ServiceLookup): AttachService | undefined {
+  const value: unknown = typeof ctx.get === 'function' ? ctx.get(LOOPS_SERVICE) : undefined
+  const members = value as Partial<Record<keyof AttachService, unknown>> | undefined
+  return typeof members?.attachable === 'function' && typeof members.proposalLine === 'function' && typeof members.acceptProposal === 'function' ? value as AttachService : undefined
 }
