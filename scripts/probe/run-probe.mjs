@@ -1326,6 +1326,46 @@ const rulesHandover = runScenario('rules-handover', 'deepseek-probe', [
   { text: 'child done' },
 ]])
 
+// Rules board, gating scripts and the verdict that comes late
+// (docs/ORCHESTRATION.md §16.16; design §9.3, §6.7, §15 R4 L3). The project
+// starts without rules; the agent proposes two script rules with
+// rules_propose and the person approves each through the real /rules
+// handler, naming the runtime proposal id with {proposal:<n>}: one whose
+// node script answers 2 with a reason for any command naming
+// `rules-probe-script`, one whose script sleeps 9 s before answering 2
+// under a 5 s timeout — a block the call never waited for. The first accept
+// of each shows the script whole, the second takes effect. Then the blocked
+// command is refused with the script's own reason without running; the slow
+// one runs while its script goes on in the background, and the board lands
+// the late verdict afterwards: the journal line with mode late and the
+// script's record, the on-the-spot words to the main agent and the
+// rules.late-verdict event.
+const scriptRule = (id, title, word, text, over = {}) => ({
+  id,
+  title,
+  scope: 'project',
+  when: { kind: 'event', events: ['gate.tool-call'] },
+  filter: { command: { matches: word } },
+  action: { kind: 'script', text, lang: 'node', ...over },
+  lifetime: { kind: 'until-lifted' },
+})
+const SCRIPT_BLOCK_TEXT = "process.stderr.write('the probe script forbids this word')\nprocess.exit(2)\n"
+const SCRIPT_SLOW_TEXT = "setTimeout(() => { process.stderr.write('the probe slow script would block this'); process.exit(2) }, 9000)\n"
+const scriptProject = rulesGateProject('rules-script', repoJson({ version: 2, rules: {} }))
+const rulesScript = runScenario('rules-script', 'glm-5.3', [
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'rules_propose', input: { kind: 'rule', body: scriptRule('r-script-block', '探针：脚本拦下', 'rules-probe-script', SCRIPT_BLOCK_TEXT), reason: '探针：人要先看脚本原文再同意' } } } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'rules_propose', input: { kind: 'rule', body: scriptRule('r-script-slow', '探针：慢脚本', 'rules-probe-slow', SCRIPT_SLOW_TEXT, { timeoutSeconds: 5 }), reason: '探针：超时放行，晚到的拦截也要落地' } } } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'accept {proposal:1}' } },
+  { tool: { name: 'Read', arguments: { file_path: join(scriptProject.ws, 'README.md') } }, command: { name: 'rules', input: 'accept {proposal:1}' } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } }, command: { name: 'rules', input: 'accept {proposal:2}' } },
+  { tool: { name: 'Read', arguments: { file_path: join(scriptProject.ws, 'README.md') } }, command: { name: 'rules', input: 'accept {proposal:2}' } },
+  { tool: { name: 'Bash', arguments: { command: 'Write-Output rules-probe-script', timeout: 30000 } } },
+  { tool: { name: 'Bash', arguments: { command: 'Write-Output rules-probe-slow', timeout: 30000 } } },
+  { tool: { name: 'pwsh', arguments: { command: 'Start-Sleep -Seconds 8', description: 'Let the slow script finish and the board speak' } } },
+  { tool: { name: 'Read', arguments: { file_path: join(repo, 'package.json') } } },
+  { text: 'done', status: true },
+], 'Propose two script rules, approve them as the person asks, run the blocked command, run the slow command, wait for the board, then reply done.', RULES_ROW, scriptProject.ws)
+
 // The third part (M4 design §6.3.1 items 6 and 「调高上限」, §14.1
 // env-checks-timeout; scenario env-checks-ceiling): an approved tool node
 // whose check line estimates 25 s (three times is 75 s, over the 60 s
@@ -3952,6 +3992,19 @@ const handoverChild = bySession(rulesHandover, handoverStarted?.childId)
 const handoverMain = bySession(rulesHandover, handoverStarted?.parentId)
 const handoverJournal = journalOfProject(handoverProject)
 const handoverTicket = handoverState?.tickets?.['q-1']
+// The gating-scripts scenario: what the board kept (the proposals, the two
+// script pins with the person's approval on this machine), the records it
+// journaled, the requests' late words (source hourness-rules-late) and the
+// rules.late-verdict event in the project's metrics log.
+const scriptState = readStateOf(scriptProject)
+const scriptRecords = gateRecords('rules-script')
+const scriptLate = scriptRecords.find(record => record.mode === 'late')
+const scriptAccepts = rulesScript.steps.map(step => step.command).filter(command => command !== undefined)
+const lateMessages = step => (step?.messages ?? []).filter(message => message.source === 'hourness-rules-late')
+// A notice told once rides the session's history: every later request carries the same one copy, so told-once is a per-request count.
+const scriptLateByRequest = rulesScript.steps.map(step => lateMessages(step).length)
+const scriptFirstLateWord = lateMessages(rulesScript.steps[9])[0]
+const scriptVerdicts = (await readLog(scriptProject.ws)).events.filter(event => event.k === 'rules.late-verdict')
 // rules-queue and rules-peak: what the board tells a model, at the wall clock of this machine (the model-facing lines write HH:MM in it).
 const localHm = iso => new Date(iso).toLocaleString('sv-SE').slice(11, 16)
 const PEAK_END_HM = localHm(PEAK_END)
@@ -5697,6 +5750,14 @@ const checks = [
   ['rules-handover: after the person lifts the rule the main agent is told once, with the text for a ticket handed over from a subagent that has ended', handoverMain.length === 6 && wakeMessages(handoverMain[4]).length === 0 && wakeMessages(handoverMain[5]).length === 1 && new RegExp(`^\\[rules board\\] Ticket q-1 cleared: rule r-probe-queue was lifted by the human\\. Subagent "${handoverStarted?.childId.slice(-8)}" was deferred on pwsh "Write-Output rules-probe-queued" and has ended\\. Dispatch the task again or run the call yourself; a new dispatch of the same call reuses q-1\\.$`).test(wakeMessages(handoverMain[5])[0].text) && handoverTicket?.state === 'cancelled' && typeof handoverTicket?.clearedAt === 'string' && typeof handoverTicket?.closedAt === 'string' && handoverTicket.clearedAt < handoverTicket.closedAt, wakeMessages(handoverMain[5])[0]?.text ?? 'no wake in the last request'],
   ['rules-handover: the main agent\'s requests carry the reminder only when it changed, and it names the ticket handed over from the subagent', handoverMain.length === 6 && boardTexts(handoverMain[0]).length === 1 && consecutiveDiffer(boardTexts(handoverMain.at(-1))) && boardTexts(handoverMain.at(-1)).some(text => text.includes('handed over from subagent') && text.includes('Do not dispatch these tasks again before their tickets clear.')), handoverMain.map(step => boardTexts(step).length).join(', ')],
   ['rules-handover: nothing is written in the scenario\'s user-level directory', !existsSync(join(runDir, 'rules-handover', 'dsh-home', 'glm-hourness', 'rules')), ''],
+  ['rules-script: the run exits clean; the person approves both script rules through the real handler, each first accept showing the script whole and the second taking effect', scriptProject.ready && rulesScript.status === 0 && pluginStderrClean('rules-script') && rulesScript.steps.length === 11 && scriptAccepts.length === 4 && scriptAccepts.every((command, index) => command.kind === 'success' && (command.text ?? '').includes(index % 2 === 0 ? '这条提议还没有生效' : '生效了')), `exit ${rulesScript.status}, ${rulesScript.steps.length} step(s), git ${scriptProject.ready}; accepts ${scriptAccepts.map(command => command.kind).join(', ')}`],
+  ['rules-script: both script rules are in force with the approval recorded on this machine, and the board wrote the script files beside the rules file', scriptState?.scripts?.['r-script-block']?.approvedAt !== undefined && scriptState?.scripts?.['r-script-slow']?.approvedAt !== undefined && scriptState?.rules?.['r-script-block']?.status === 'active' && scriptState?.rules?.['r-script-slow']?.status === 'active' && existsSync(join(scriptProject.ws, 'docs', 'rules', 'scripts', 'r-script-block.mjs')) && existsSync(join(scriptProject.ws, 'docs', 'rules', 'scripts', 'r-script-slow.mjs')), `pins ${JSON.stringify(Object.keys(scriptState?.scripts ?? {}))}, rules ${JSON.stringify(Object.keys(scriptState?.rules ?? {})).slice(0, 120)}`],
+  ['rules-script: the blocked command is refused with the script\'s own reason and journaled as an enforce block of rules:r-script-block', lastToolResult(rulesScript.steps[7])?.isError === true && (lastToolResult(rulesScript.steps[7])?.text ?? '').includes('which blocked the call: "the probe script forbids this word"') && rulesRecordOf(scriptRecords, 'rules:r-script-block')?.mode === 'enforce' && rulesRecordOf(scriptRecords, 'rules:r-script-block')?.effect === 'block', (lastToolResult(rulesScript.steps[7])?.text ?? 'no result').slice(0, 200)],
+  ['rules-script: the slow command ran and printed its word: allowed by the rule\'s timeout setting while its script was still going', lastToolResult(rulesScript.steps[8])?.isError !== true && (lastToolResult(rulesScript.steps[8])?.text ?? '').includes('rules-probe-slow') && scriptRecords.every(record => !(record.rule === 'rules:r-script-slow' && record.mode === 'enforce')), (lastToolResult(rulesScript.steps[8])?.text ?? 'no result').slice(0, 120)],
+  ['rules-script: the late verdict lands as a journal line with mode late, effect block, the script\'s record (exited, about 9 s) and the script\'s reason as the correction', scriptLate?.rule === 'rules:r-script-slow' && scriptLate?.effect === 'block' && scriptLate?.script?.outcome === 'exited' && typeof scriptLate?.script?.ms === 'number' && scriptLate.script.ms >= 8000 && typeof scriptLate?.script?.sha256 === 'string' && (scriptLate?.correction ?? '').includes('the probe slow script would block this'), JSON.stringify(scriptLate ?? null).slice(0, 220)],
+  ['rules-script: the main agent is told on the spot: the request after the wait carries one Late block word naming the script, the timeout and what the script would have said, and no request carries a second', scriptLateByRequest.slice(0, 9).every(count => count === 0) && scriptLateByRequest[9] === 1 && scriptLateByRequest[10] === 1 && /^\[rules board\] Late block: rule r-script-slow's script /.test(scriptFirstLateWord?.text ?? '') && (scriptFirstLateWord?.text ?? '').includes('did not answer within 5 s on pwsh "Write-Output rules-probe-slow"') && (scriptFirstLateWord?.text ?? '').includes('would have blocked it: "the probe slow script would block this"'), `${scriptLateByRequest.join(', ')} word(s) per request; ${(scriptFirstLateWord?.text ?? 'none').slice(0, 160).replace(/\n/g, ' ')}`],
+  ['rules-script: one rules.late-verdict event for the exited script, told, the late wait about 4 s', scriptVerdicts.length === 1 && scriptVerdicts[0]?.body?.rule === 'r-script-slow' && scriptVerdicts[0]?.body?.result === 'exited' && scriptVerdicts[0]?.body?.told === true && (scriptVerdicts[0]?.body?.afterMs ?? 0) >= 3000, JSON.stringify(scriptVerdicts.map(event => event.body))],
+  ['rules-script: nothing is written in the scenario\'s user-level directory', !existsSync(join(runDir, 'rules-script', 'dsh-home', 'glm-hourness', 'rules')), ''],
   ['rules-peak-stop: the stop level in a GLM peak: the GLM main agent runs the probe tool, a subagent session with a goal is made, and the run exits clean with nothing from the row on stderr', stopProject.ready && rulesPeakStop.status === 0 && stopCreated?.origin === 'subagent' && lastToolResult(stopMain.at(-1))?.isError !== true && pluginStderrClean('rules-peak-stop'), `exit ${rulesPeakStop.status}, ${rulesPeakStop.steps.length} step(s), git ${stopProject.ready}; ${JSON.stringify(stopCreated ?? null)}; ${stderrOf('rules-peak-stop').split('\n').find(line => line.includes('rules')) ?? 'no stderr line mentions rules'}`],
   ['rules-peak-stop: the subagent\'s first tool call is refused with the ticket, the words of the stop level and the sentence that its goal is paused, so it never ran', stopChild.length >= 2 && lastToolResult(stopChild[1])?.isError === true && STOP_REFUSAL.test(lastToolResult(stopChild[1]).text), lastToolResult(stopChild[1])?.text ?? 'no result'],
   ['rules-peak-stop: V12, the goal is paused from inside the subagent\'s own tool call: the pause came while the agent ran, the same step finished (its next request has the refusal), and the turn ended on the paused goal', isDeepStrictEqual(stopOps.slice(0, 2).map(entry => [entry.operation, entry.status]), [['create', 'idle'], ['pause', 'running']]) && stopOps[1]?.goal?.phase === 'paused' && stopNote('stop-paused')?.ok === true && stopNote('stop-paused').status === 'idle', JSON.stringify(stopOps.map(entry => [entry.operation, entry.status, entry.goal?.phase, entry.goal?.roundsStarted]))],

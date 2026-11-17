@@ -168,6 +168,29 @@ function withTakeover(ctx, request, call) {
 }
 
 /**
+ * `{proposal:<n>}` in a scripted command's input becomes the id of the nth
+ * proposal of the session's project (`<cwd>/.llm/rules/state.json`, in the
+ * order rules_propose made them), so the person's `/rules accept` can name a
+ * proposal whose id the board drew at runtime (rules-script). No nth
+ * proposal leaves the text as it was.
+ */
+function withProposals(ctx, request, input) {
+  if (!/\{proposal:\d+\}/.test(input)) return input
+  const cwd = ctx.get('agents')?.get(request.sessionId)?.session?.header?.cwd
+  const file = typeof cwd === 'string' ? join(cwd, '.llm', 'rules', 'state.json') : undefined
+  if (file === undefined || !existsSync(file)) return input
+  let state
+  try {
+    state = JSON.parse(readFileSync(file, 'utf8'))
+  }
+  catch {
+    return input
+  }
+  const made = Object.keys(state?.proposals ?? {})
+  return input.replace(/\{proposal:(\d+)\}/g, (whole, nth) => made[Number(nth) - 1] ?? whole)
+}
+
+/**
  * `{confirm-page:<goal id>}` and `{user-page:<goal id>}` in a scripted
  * reply's text become the user page the harness appends to a confirm and to
  * a release of that goal right now — the body the harness composes (stable,
@@ -650,7 +673,7 @@ class ProbeAdapter {
     }
     const command = step.command === undefined
       ? undefined
-      : { name: step.command.name, ...await runCommand(this.ctx, request, step.command.name, step.command.input ?? '').catch(error => ({ kind: 'error', text: `probe: /${step.command.name} threw: ${error instanceof Error ? error.message : String(error)}` })) }
+      : { name: step.command.name, ...await runCommand(this.ctx, request, step.command.name, withProposals(this.ctx, request, step.command.input ?? '')).catch(error => ({ kind: 'error', text: `probe: /${step.command.name} threw: ${error instanceof Error ? error.message : String(error)}` })) }
     // A step with `line` types that command line for the session as the
     // person does, one with `other: { line }` into a second root session; the
     // results and the events they logged are recorded.
