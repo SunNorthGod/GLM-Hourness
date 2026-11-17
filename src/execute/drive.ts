@@ -63,6 +63,7 @@ import type { ViolationRecord } from '../guard/records.ts'
 import { requestsService } from '../guard/request-service.ts'
 import type { HarnessResult, LoopEventRecord } from '../loops/service.ts'
 import { createUserNotice, type AgentLike, type GoalChangedPayload, type GoalsService, type GoalView as DshGoalView, type LiveAgentLike, type PostExecuteListener, type PreExecuteListener, type ServiceLookup, type SessionEventDocumentLike, type SessionLike, type SessionObservationLike, type SessionQueryService, type ToolDefinitionLike } from '../shared/dsh-min.ts'
+import { toMetricsId } from '../shared/metrics.ts'
 import { peakModeService, type PeakHold } from '../shared/peak-mode.ts'
 import { shownProposalOf } from '../shared/tool-names.ts'
 import { latestDispatch, lostChildOf, registeredAttempt, registeredDispatches, renderLostComment, type Attempt, type DispatchRecord } from './attempts.ts'
@@ -73,7 +74,7 @@ import { appendDrive, appendDriveSync, appendReconcile, readDrive, reconciledKey
 import type { Git } from './git.ts'
 import { alreadyProcessed, HANDBACK_PROJECTION, type Settlement } from './handback.ts'
 import { PROC, unrefDelay, type LoopEmit } from './loop-link.ts'
-import { emitMetric, onMetricEvent } from './metrics.ts'
+import { emitMetric, executeMetricWhere, onMetricEvent } from './metrics.ts'
 import { writeWithRetry } from './retry.ts'
 import { batchSince, DRIVE_START_MARK, driveDecision, nextCounters, pendingRelease, pendingReport, RELEASE_MARK, returnsOf, type DriveCounters, type DriveDecision, type GoalView } from './tiers.ts'
 import { buildCovers, reconcileWalks, walkCommitsOf } from './walk.ts'
@@ -445,7 +446,15 @@ export function createDrive(deps: DriveDeps): Drive {
       const written = await comment(place.graphDir, item.node, text)
       if (written.ok) wrote = true
       else deps.report(undefined, 'degraded', `退回设计的批注写不进图（${item.node}）：${written.why ?? ''}`)
-      emitMetric({ event: 'execute.tier', tier: item.tier, node: item.node, running: running.length, stale })
+      emitMetric({
+        event: 'execute.tier',
+        tier: item.tier,
+        node: toMetricsId(item.node),
+        running: running.length,
+        stale,
+        told: 0,
+        handed: 0,
+      }, executeMetricWhere(place.project, holderOf(place.graphDir)))
       state.returns = [...state.returns.filter(entry => entry.node !== item.node), { node: item.node, tier: item.tier, at: item.at, running }]
     }
     return wrote
@@ -495,7 +504,7 @@ export function createDrive(deps: DriveDeps): Drive {
     }
     resetCounters(state)
     await drive(place.exec, { op: 'resume', goal: view.id, reason }, session)
-    emitMetric({ event: 'execute.goal', goal: goal.id, op: 'resume', reason })
+    emitMetric({ event: 'execute.goal', goal: toMetricsId(goal.id), op: 'resume', resumeWhy: toMetricsId(reason) }, executeMetricWhere(place.project, session))
     if (reason === 'restart-pause') {
       const pause = (await readDrive(place.exec)).filter(line => line.op === 'pause' && line.goal === view.id).at(-1)
       const exit = pause === undefined ? undefined : (await readDrive(place.exec)).find(line => line.op === 'exit' && line.proc === pause.proc && line.at >= pause.at)
@@ -518,7 +527,7 @@ export function createDrive(deps: DriveDeps): Drive {
       deps.report(session, 'degraded', `自动推进没停住（${code}）：${errorText(error)}`)
       return false
     }
-    emitMetric({ event: 'execute.goal', goal: goal.id, op: 'block', code })
+    emitMetric({ event: 'execute.goal', goal: toMetricsId(goal.id), op: 'block', code: toMetricsId(code) }, executeMetricWhere(place.project, session))
     if (code === 'hourness-design-wait') await drive(place.exec, { op: 'design-wait', goal: view.id }, session)
     return true
   }
@@ -543,7 +552,7 @@ export function createDrive(deps: DriveDeps): Drive {
     const result = await resumeAfterPeak(place, session)
     if (result.outcome !== 'done') return
     const key = `peak-end:${session}:${hold.until}`
-    emitMetric({ event: 'execute.loop-fallback', entry: 'loops.peak-end', key, reason: 'peak-end-missed' })
+    emitMetric({ event: 'execute.loop-fallback', entry: 'loops.peak-end', key: toMetricsId(key), why: 'peak-end-missed', waitedS: 0 }, executeMetricWhere(place.project, session))
     const why = toHolder(deps.lookup, place.graphDir, createUserNotice('glm-hourness-loop', '高峰结束之后：接上推进', `GLM peak hours ended at ${clockOf(hold.until)}. Work you moved to after peak can start now.`, { hournessLoop: { entry: 'loops.peak-end', key } }))
     if (why !== undefined) deps.report(session, 'degraded', `高峰结束的提醒没送到主 Agent：${why}`)
     if (deps.boardAttached()) setNote(PEAK_TAKEOVER, true)
@@ -571,7 +580,7 @@ export function createDrive(deps: DriveDeps): Drive {
     state.cancelPeak?.()
     state.cancelPeak = undefined
     await drive(place.exec, { op: 'resume', goal: view.id, reason: 'peak-end' }, session)
-    emitMetric({ event: 'execute.goal', goal: graphGoalOf(view.objective) ?? view.id, op: 'resume', reason: 'peak-end' })
+    emitMetric({ event: 'execute.goal', goal: toMetricsId(graphGoalOf(view.objective) ?? view.id), op: 'resume', resumeWhy: 'peak-end' }, executeMetricWhere(place.project, session))
     return { outcome: 'done' }
   }
 
@@ -633,11 +642,11 @@ export function createDrive(deps: DriveDeps): Drive {
       text = input.move === true
         ? `${MOVED_MARK}${holder} · ${mark}`
         : `${DRIVE_START_MARK} · ${mark} · ${module === undefined ? '' : `模块 ${module.id} · `}goal ${view?.id ?? '?'} · 会话 ${holder}${trunk === undefined ? '' : ` · 主干 ${trunk}`}`
-      emitMetric({ event: 'execute.goal', goal: goal.id, ...(module === undefined ? {} : { module: module.id }), op: input.move === true ? 'move' : 'start' })
+      emitMetric({ event: 'execute.goal', goal: toMetricsId(goal.id), ...(module === undefined ? {} : { module: toMetricsId(module.id) }), op: input.move === true ? 'move' : 'start' }, executeMetricWhere(place.project, holder))
     }
     else {
       text = `模块 ${input.module} 已放行 · ${mark}`
-      emitMetric({ event: 'execute.goal', goal: goal.id, module: input.module, op: 'module-released' })
+      emitMetric({ event: 'execute.goal', goal: toMetricsId(goal.id), module: toMetricsId(input.module), op: 'module-released' }, executeMetricWhere(place.project, holder))
     }
     const written = await comment(place.graphDir, goal.id, text)
     if (!written.ok) {
@@ -891,7 +900,7 @@ export function createDrive(deps: DriveDeps): Drive {
     const goal = named === undefined ? focusGoal(session, graph) : graph.nodes.get(named)
     if (goal?.type !== 'goal') return undefined
     const { verdict, latest } = await completionOf(place, graph, goal)
-    emitMetric({ event: 'execute.completion-gate', goal: goal.id, passed: verdict.ok, gaps: verdict.gaps.length })
+    emitMetric({ event: 'execute.completion-gate', goal: toMetricsId(goal.id), ok: verdict.ok, gaps: verdict.gaps.length }, executeMetricWhere(place.project, session.id))
     if (!verdict.ok) {
       const shown = verdict.gaps.slice(0, 10)
       const reason = [`The completion gate keeps goal ${goal.id} open. What is missing:`, ...shown.map(gap => `- ${gap}`), ...(verdict.gaps.length > shown.length ? [`- and ${verdict.gaps.length - shown.length} more`] : [])].join('\n')
@@ -1082,7 +1091,7 @@ export function createDrive(deps: DriveDeps): Drive {
             })
             if (done.ok) {
               evidence += 1
-              emitMetric({ event: 'execute.goal', goal: goal.id, op: 'complete' })
+              emitMetric({ event: 'execute.goal', goal: toMetricsId(goal.id), op: 'complete' }, executeMetricWhere(place.project, session))
             }
             else deps.report(session, 'degraded', `对账时目标的完成写不进图（${goal.id}）：${done.why ?? ''}`)
           }
@@ -1107,7 +1116,7 @@ export function createDrive(deps: DriveDeps): Drive {
     await appendReconcile(place.exec, { key, at: now().toISOString(), ...count }).catch((error: unknown) => {
       deps.report(session, 'degraded', `reconcile.jsonl 写不进去：${errorText(error)}`)
     })
-    emitMetric({ event: 'execute.reconcile', ...count })
+    emitMetric({ event: 'execute.reconcile', lost: count.lost, redone: count.replayed, evidence: count.evidence }, executeMetricWhere(place.project, session))
     const tell = [
       ...(lost.length === 0 ? [] : [`Lost when the app restarted, with nothing handed back: ${named(lost)}. Their tasks stay in progress; dispatch each again when you decide to, and its brief lists the commits its branch already has.`]),
       ...(replayed.length === 0 ? [] : [`Handed back from the session log after the restart: ${named(replayed)}; their handback notices came on their own.`]),
@@ -1148,7 +1157,7 @@ export function createDrive(deps: DriveDeps): Drive {
           const current = await engine.load()
           return engine.apply('harness', { op: 'status', id: graphGoal, rev: current.revisions.get(graphGoal) ?? '', to: 'done', evidence: [{ kind: 'check', ref: 'hourness completion gate', exit: 0, note: credential.note }], reason: `the completion gate passed (call ${credential.callId})` })
         })
-        if (done.ok) emitMetric({ event: 'execute.goal', goal: graphGoal, op: 'complete' })
+        if (done.ok) emitMetric({ event: 'execute.goal', goal: toMetricsId(graphGoal), op: 'complete' }, executeMetricWhere(place.project, agent.session?.id ?? agent.id))
         else deps.report(agent.id, 'degraded', `目标的完成写不进图（${graphGoal}）：${done.why ?? ''}`)
         return
       }
@@ -1218,7 +1227,7 @@ export function createDrive(deps: DriveDeps): Drive {
       catch (error) {
         refuse('invalid', `the goal cannot be blocked: ${errorText(error)}`, 'read the goal again and call await_human once more')
       }
-      emitMetric({ event: 'execute.goal', goal: goal.id, op: 'block', code: 'hourness-waiting-human' })
+      emitMetric({ event: 'execute.goal', goal: toMetricsId(goal.id), op: 'block', code: 'hourness-waiting-human' }, executeMetricWhere(place.project, session.id))
       return { goal: goal.id, blocked: true, questions: ids }
     },
   }
@@ -1234,7 +1243,7 @@ export function createDrive(deps: DriveDeps): Drive {
     const n = commentsOf(goal).filter(text => /^批次 \d+ · /.test(text)).length + 1
     const written = await comment(place.graphDir, goal.id, `批次 ${n} · 交给你 ${k} 件 · 告知 agent 自己定的 ${decided.length} 件 · ${callId}`)
     if (!written.ok) deps.report(session.id, 'degraded', `批次的批注写不进图（${goal.id}）：${written.why ?? ''}`)
-    emitMetric({ event: 'execute.tier', tier: 1, node: goal.id, reported: decided.length, batched: k })
+    emitMetric({ event: 'execute.tier', tier: 1, node: toMetricsId(goal.id), running: 0, stale: 0, told: decided.length, handed: k }, executeMetricWhere(place.project, session.id))
     stateOf(session.id).batchTell = decided.length === 0 ? undefined : `Say in one line each, in this same reply, what you decided yourself since the last batch: ${decided.map(item => `${item.id} ${item.title}`).join(', ')}.`
   }
 

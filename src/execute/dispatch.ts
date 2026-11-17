@@ -51,7 +51,8 @@ import { HANDBACK_SCHEMA, REVIEW_SCHEMA, mergeHandbackSchema } from './schemas.t
 import { DEFAULT_WATCHED, parseGateNorm } from './gate-norm.ts'
 import { buildCovers, modelTakesImages, pendingWalks, startWalkJob, walkBlockers, walkBriefLines, walkCommitsOf, type WalkDeps, type WalkDispatch, type WalkStart } from './walk.ts'
 import { createGit, watchedDigest, type Git } from './git.ts'
-import { emitMetric } from './metrics.ts'
+import { emitMetric, executeMetricWhere } from './metrics.ts'
+import { toMetricsId } from '../shared/metrics.ts'
 import { errorText, isRecord, refuse, toolShell } from '../design/tool-support.ts'
 
 /** A shell command run in a directory, with its own cap; tests inject it. The handback processing takes one through the row's deps. */
@@ -442,7 +443,14 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         ...(node.type === 'goal' ? { acceptedAtTrunk: trunk !== undefined && latestRound !== undefined && trunk.sha.startsWith(latestRound.commit) } : {}),
       })
       if (!verdict.ok) {
-        if (verdict.peakCap !== undefined) emitMetric({ event: 'execute.peak-cap', model: rawModel ?? '', ...verdict.peakCap })
+        if (verdict.peakCap !== undefined) {
+          emitMetric({
+            event: 'execute.peak-cap',
+            model: toMetricsId(rawModel),
+            cap: Math.max(0, Math.round(verdict.peakCap.cap)),
+            running: Math.max(0, Math.round(verdict.peakCap.running)),
+          }, executeMetricWhere(project, agent.session?.id))
+        }
         refuse(verdict.code, verdict.message, verdict.hint)
       }
       const reviewedTrunk = verdict.subject !== 'goal' ? undefined
@@ -504,7 +512,13 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
               sessionId: agent.session?.id,
               parent: agent as unknown as LiveAgentLike,
             }, exec.signal)
-            emitMetric({ event: 'execute.walk', phase: 'start', goal: node.id, job, flows: pending.auto.map(flow => flow.flow.id) })
+            emitMetric({
+              event: 'execute.walk',
+              phase: 'start',
+              goal: toMetricsId(node.id),
+              job: toMetricsId(job),
+              flows: pending.auto.slice(0, 32).map(flow => toMetricsId(flow.flow.id)),
+            }, executeMetricWhere(project, agent.session?.id))
           }
           return {
             task: node.id,
@@ -566,7 +580,16 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         }
         // The main agent changed the depth the handback recorded (§3.16 `execute.review-depth`).
         const recorded = reviewHandback?.depth === '轻审' ? 'light' : 'full'
-        if (depth !== recorded) emitMetric({ event: 'execute.review-depth', task: reviewed.id, declared: recorded, effective: depth })
+        if (depth !== recorded) {
+          emitMetric({
+            event: 'execute.review-depth',
+            task: toMetricsId(reviewed.id),
+            declared: recorded,
+            effective: depth,
+            floors: [],
+            unparsed: false,
+          }, executeMetricWhere(project, agent.session?.id))
+        }
       }
 
       const attempt = nextAttempt(target)
@@ -735,16 +758,16 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
       emitMetric({
         event: 'execute.dispatch',
         role: summary.role,
-        node: summary.task,
-        attempt,
-        childId,
-        provider,
-        model: parsed.model,
-        ...(parsed.reasoningEffort === undefined ? {} : { reasoningEffort: parsed.reasoningEffort }),
+        target: toMetricsId(target.id),
+        n: Math.max(0, attempt),
+        child: toMetricsId(childId),
+        provider: toMetricsId(provider),
+        model: toMetricsId(parsed.model),
+        think: toMetricsId(parsed.reasoningEffort ?? 'default'),
         sameAsMain: parsed.model === mainModelOf(agent),
         ...(isWorkerRole && parsed.review !== undefined ? { depth: parsed.review.depth } : {}),
-        whyRef: `${target.id}#${attempt}`,
-      })
+        whyRef: { node: toMetricsId(target.id), hi: Math.max(0, written?.ok === true ? written.node.history.length - 1 : target.history.length) },
+      }, executeMetricWhere(project, agent.session?.id))
       return summary
     },
   }
@@ -756,7 +779,10 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         return await tool.execute(args, exec)
       }
       catch (error) {
-        emitMetric({ event: 'execute.dispatch-refused', code: /^\{"code":"([a-z_]+)"/.exec(errorText(error))?.[1] ?? 'invalid' })
+        const cwd = exec.agent?.session?.header.cwd
+        const dir = cwd === undefined ? undefined : deps.graphDir(cwd)
+        const project = dir === undefined ? (cwd === undefined ? undefined : projectOf(cwd)?.root) : projectRootOf(dir, cwd)
+        emitMetric({ event: 'execute.dispatch-refused', code: toMetricsId(/^\{"code":"([a-z_]+)"/.exec(errorText(error))?.[1] ?? 'invalid') }, executeMetricWhere(project, exec.agent?.session?.id))
         throw error
       }
     },

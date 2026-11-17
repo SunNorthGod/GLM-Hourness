@@ -236,6 +236,7 @@ export interface ExecuteBodies {
   'execute.review': { readonly task: string, readonly round: number, readonly depth: string, readonly model: string, readonly blocking: number, readonly nonBlocking: number, readonly downgraded: number }
   'execute.stop': { readonly node: string, readonly kind: string, readonly rounds: number }
   'execute.check': { readonly commit: string, readonly task?: string, readonly ok: boolean, readonly kind: string, readonly cmds: readonly number[], readonly exits: readonly number[], readonly ms: readonly number[], readonly setup: boolean, readonly lockMs: number }
+  'execute.walk': { readonly phase: string, readonly goal: string, readonly job: string, readonly commit?: string, readonly flows?: readonly string[], readonly passed?: number, readonly failed?: number, readonly outcomes?: readonly string[] }
   'execute.advance': { readonly ref: string, readonly how: string, readonly from: string, readonly to: string, readonly task?: string, readonly by: string, readonly checkAfter: boolean, readonly reviewPending: readonly string[], readonly incomingFloor: number, readonly external?: boolean }
   'execute.advance-refused': { readonly missing: string }
   'execute.unchecked-advance': { readonly ref: string, readonly from: string, readonly to: string, readonly missing: string }

@@ -1,54 +1,36 @@
 /**
- * The one exit of the execution layer's metrics (M7 design 0.6 §3.16): call
- * sites hand each fact over as an event the moment it happens; the numbers
- * are harness-recorded counts and references, never conversation text and
- * never a model's self-report.
+ * The one exit of the execution layer's metrics (M7 design 0.6 §3.16; metrics
+ * design §4.5, §6.2): call sites hand each fact over as an event the moment
+ * it happens; the numbers are harness-recorded counts and references, never
+ * conversation text and never a model's self-report.
  *
- * The metrics pipeline that would store these events is not built (it is not
- * on the bootstrap path, `d-dogfood-scope`), and its write interface is its
- * design's to fix — including the envelope every event gets (the time, the
- * project, the session, the row). Until it lands the sink is `undefined` and
- * `emitMetric` is a no-op: the facts stay where §3.16's second table says
- * they live (dispatch comments, evidence, checks.jsonl, advances.jsonl, the
- * violation journal, the usage journal), and the reports compute from those.
- * Tests and the real pipeline inject a sink; when the pipeline arrives, only
- * this file changes.
+ * When `glm-hourness/execute` is active, it installs the default sink that
+ * forwards every event through `glmHournessMetrics`. Outside an activated row
+ * (standalone tools or unit tests without a custom sink), `emitMetric` is a
+ * no-op unless a test installs a sink with `setMetricSink`.
  */
+import type { ExecuteBodies, MetricsWhere } from '../shared/metrics.ts'
 
-/** Every event the execution layer hands over, with the fields of §3.16's table. */
-export type MetricEvent =
-  | { readonly event: 'execute.dispatch', readonly role: string, readonly node: string, readonly attempt: number, readonly childId: string, readonly provider: string, readonly model: string, readonly reasoningEffort?: string, readonly sameAsMain: boolean, readonly sameAsWorker?: boolean, readonly depth?: 'full' | 'light' | 'skip', readonly whyRef: string }
-  | { readonly event: 'execute.dispatch-refused', readonly code: string }
-  | { readonly event: 'execute.plan', readonly task: string, readonly version: number, readonly outcome: 'revise' | 'to-main' | 'approved' | 'rejected' | 'timeout', readonly steps: number, readonly waitedMs: number }
-  | { readonly event: 'execute.ask', readonly task: string, readonly waitedMs: number, readonly outcome: 'answered' | 'timeout' }
-  | { readonly event: 'execute.handback', readonly task: string, readonly attempt: number, readonly status: string, readonly stopReason?: string, readonly commits: number, readonly files: number, readonly ms: number, readonly outside: number }
-  | { readonly event: 'execute.review-depth', readonly task: string, readonly declared: 'full' | 'light' | 'skip', readonly effective: 'full' | 'light' | 'skip', readonly hit?: string, readonly unparsed?: boolean }
-  | { readonly event: 'execute.policy-drift', readonly task: string, readonly attempt: number, readonly classes: readonly string[] }
-  | { readonly event: 'execute.review', readonly task: string, readonly round: number, readonly depth: 'full' | 'light', readonly model: string, readonly blocking: number, readonly nonBlocking: number, readonly demoted: number }
-  | { readonly event: 'execute.stop', readonly node: string, readonly kind: 'review' | 'check' | 'acceptance', readonly rounds: number }
-  | { readonly event: 'execute.check', readonly commit: string, readonly tasks: readonly string[], readonly passed: boolean, readonly kind: 'commands' | 'only' | 'trunk', readonly commands: readonly { readonly line: string, readonly exit: number, readonly ms: number }[], readonly setup: boolean, readonly lockWaitMs: number }
-  | { readonly event: 'execute.walk', readonly phase: 'start' | 'end', readonly goal: string, readonly job: string, readonly commit?: string, readonly flows?: readonly string[], readonly passed?: number, readonly failed?: number, readonly outcomes?: readonly string[] }
-  | { readonly event: 'execute.advance', readonly ref: 'local' | 'remote', readonly way: 'advance' | 'push' | 'fetch' | 'outside', readonly from: string, readonly to: string, readonly tasks: readonly string[], readonly byCheck?: boolean, readonly byPaths?: boolean, readonly checkedAfter?: boolean, readonly reviewPending?: readonly string[], readonly incomingFloor?: number, readonly external?: boolean }
-  | { readonly event: 'execute.advance-refused', readonly missing: string }
-  | { readonly event: 'execute.unchecked-advance', readonly ref: 'local' | 'remote', readonly from: string, readonly to: string, readonly missing: string }
-  | { readonly event: 'execute.goal', readonly goal: string, readonly module?: string, readonly op: 'start' | 'module-released' | 'move' | 'resume' | 'block' | 'complete', readonly code?: string, readonly reason?: string }
-  | { readonly event: 'execute.tier', readonly tier: 1 | 2 | 3, readonly node: string, readonly running?: number, readonly stale?: number, readonly reported?: number, readonly batched?: number }
-  | { readonly event: 'execute.completion-gate', readonly goal: string, readonly passed: boolean, readonly gaps: number }
-  | { readonly event: 'execute.acceptance-review', readonly goal: string, readonly round: number, readonly model: string, readonly verdict: 'APPROVED' | 'CHANGES_REQUESTED', readonly blocking: number }
-  | { readonly event: 'execute.reconcile', readonly lost: number, readonly replayed: number, readonly evidence: number }
-  | { readonly event: 'execute.loop-entry', readonly entry: string, readonly key: string, readonly delivered: boolean, readonly deferred?: string }
-  | { readonly event: 'execute.loop-fallback', readonly entry: string, readonly key: string, readonly reason: 'unclaimed' | 'emit-failed' | 'interrupted' | 'peak-end-missed', readonly waitedS?: number }
-  | { readonly event: 'execute.loop-contribute', readonly row: string, readonly accepted: readonly string[], readonly dropped: readonly { readonly id: string, readonly reason: string }[] }
-  | { readonly event: 'execute.peak-cap', readonly model: string, readonly cap: number, readonly running: number }
-  | { readonly event: 'operate.report', readonly kind: 'morning' | 'weekly' | 'patrol', readonly lines: number, readonly characters: number }
-  | { readonly event: 'operate.patrol', readonly findings: Readonly<Record<string, number>>, readonly done: readonly string[], readonly trunkCheck?: 'passed' | 'failed' | 'skipped' }
+/** Every event the execution layer hands over, derived from the closed `ExecuteBodies` contract. */
+export type MetricEvent = {
+  [K in keyof ExecuteBodies]: { readonly event: K } & ExecuteBodies[K]
+}[keyof ExecuteBodies]
 
 /** Where a handed-over event goes: the metrics pipeline when it is there, a test's recorder otherwise. */
-export type MetricSink = (event: MetricEvent) => void
+export type MetricSink = (event: MetricEvent, where?: MetricsWhere) => void
 
 let sink: MetricSink | undefined
+let defaultSink: MetricSink | undefined
 
 const observers = new Set<MetricSink>()
+
+/** Build a `MetricsWhere` from optional project directory and session id, omitting empty values. */
+export function executeMetricWhere(dir?: string, sessionId?: string): MetricsWhere {
+  return {
+    ...(dir !== undefined && dir !== '' ? { dir } : {}),
+    ...(sessionId !== undefined && sessionId !== '' ? { sessionId } : {}),
+  }
+}
 
 /**
  * Watch every event handed over, after the sink: the drive counts the
@@ -60,7 +42,7 @@ export function onMetricEvent(listener: MetricSink): () => void {
   return () => { observers.delete(listener) }
 }
 
-/** Install the exit, or `undefined` to go back to recording nothing. Returns the previous sink. */
+/** Install the exit, or `undefined` to go back to the default sink (no-op when standalone). Returns the previous custom sink. */
 export function setMetricSink(next: MetricSink | undefined): MetricSink | undefined {
   const previous = sink
   sink = next
@@ -68,16 +50,28 @@ export function setMetricSink(next: MetricSink | undefined): MetricSink | undefi
 }
 
 /**
+ * Install the row-level default exit used when no custom `setMetricSink`
+ * overrides it; returns a disposer that restores the previous default.
+ */
+export function setDefaultMetricSink(next: MetricSink | undefined): () => void {
+  const previous = defaultSink
+  defaultSink = next
+  return () => {
+    if (defaultSink === next) defaultSink = previous
+  }
+}
+
+/**
  * Hand one fact over. Without a sink this records nothing and costs nothing
  * but the call. It never throws and never blocks the caller: what a write
- * failure means (§3.16's health and gap journal) belongs to the exit, which
- * is the pipeline's once it lands.
+ * failure means (§3.16's health and gap journal) belongs to the metrics row.
  */
-export function emitMetric(event: MetricEvent): void {
-  if (sink !== undefined) sink(event)
+export function emitMetric(event: MetricEvent, where?: MetricsWhere): void {
+  const active = sink ?? defaultSink
+  if (active !== undefined) active(event, where)
   for (const observer of observers) {
     try {
-      observer(event)
+      observer(event, where)
     }
     catch {
       // An observer is not the exit: its failure does not reach the caller.

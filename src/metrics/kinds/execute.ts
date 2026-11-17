@@ -1,6 +1,7 @@
 /**
- * The execution row's twenty-two kinds (M7 0.6 §3.16, §4.5; the
- * `execute.policy-drift` kind from the reval design §4.5): field names
+ * The execution row's twenty-three kinds (M7 0.6 §3.16, §4.5; the
+ * `execute.policy-drift` kind from the reval design §4.5; `execute.walk`
+ * from user graph design 0.4.1 §2.7): field names
  * from that section; the value lists of roles, operations, codes and stop
  * reasons stay in the M7 design, so those fields are ids.
  */
@@ -85,6 +86,16 @@ const TABLES = [
     { name: 'ms', type: 'int[]' },
     { name: 'setup', type: 'bool' },
     { name: 'lockMs', type: 'int' },
+  ] },
+  { name: 'execute.walk', fields: [
+    { name: 'phase', type: 'id' },
+    { name: 'goal', type: 'id' },
+    { name: 'job', type: 'id' },
+    { name: 'commit', type: 'id', optional: true },
+    { name: 'flows', type: 'id[]', optional: true },
+    { name: 'passed', type: 'int', optional: true },
+    { name: 'failed', type: 'int', optional: true },
+    { name: 'outcomes', type: 'id[]', optional: true },
   ] },
   { name: 'execute.advance', fields: [
     { name: 'ref', type: 'id' },

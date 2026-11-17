@@ -17,19 +17,22 @@
  * re-read from the holder record on every send, never taken from the
  * dispatch's parent.
  */
+import { dirname } from 'node:path'
 import { openEngine } from '../graph/engine.ts'
 import { holderHome, mainAgentOf } from '../graph/main-agent-holder.ts'
 import { staleness } from '../graph/pins.ts'
+import { projectOf } from '../data/project-root.ts'
 import { mainAgentCall, isRecord, refuse, toolShell } from '../design/tool-support.ts'
 import type { AgentLike, ServiceLookup, ToolDefinitionLike, ToolExecutionContext, UserNotice } from '../shared/dsh-min.ts'
 import { createUserNotice } from '../shared/dsh-min.ts'
+import { toMetricsId } from '../shared/metrics.ts'
 import { deliver } from '../rules/wake.ts'
 import type { Attempt } from './attempts.ts'
 import { recordCommunication, registeredAttempt, updateAttempt } from './attempts.ts'
 import type { GraphCache } from './dispatch.ts'
 import { writeWithRetry } from './retry.ts'
 import { sha256Hex } from './digest.ts'
-import { emitMetric } from './metrics.ts'
+import { emitMetric, executeMetricWhere } from './metrics.ts'
 import { checkPlan, planDigest, planPathsOfSection, readPlanSection, approvePlanSection, renderPlanSection, withPlanSection, renderApprovalComment, type Plan } from './plan.ts'
 
 /** The plan wait (§3.3.2 step 3) and the ask wait (§3.4.2). */
@@ -261,6 +264,7 @@ export function submitPlanTool(deps: RequestsDeps): ToolDefinitionLike {
       const attempt = callerAttempt(agent)
       if (attempt.role !== 'worker') refuse('forbidden', 'only a worker submits a plan', 'a reviewer has no plan; ask_main reaches the main agent')
       const dir = dirFor(deps, agent)
+      const where = executeMetricWhere(projectOf(agent.session?.header.cwd ?? dir)?.root ?? dirname(dirname(dir)), agent.session?.id)
       const graph = await deps.cache.load(dir)
       const node = graph.nodes.get(attempt.node)
       if (node === undefined) refuse('invalid', `the task "${attempt.node}" is not in the graph any more`, 'hand the task back with status blocked')
@@ -269,7 +273,7 @@ export function submitPlanTool(deps: RequestsDeps): ToolDefinitionLike {
         const rejects = (planRejects.get(attempt.childId) ?? 0) + 1
         planRejects.set(attempt.childId, rejects)
         // §3.16's 退回: the check sends the plan back to the worker; nobody waited.
-        emitMetric({ event: 'execute.plan', task: attempt.node, version: (readPlanSection(node.body)?.version ?? 0) + 1, outcome: 'revise', steps: isRecord(args) && Array.isArray(args.steps) ? args.steps.length : 0, waitedMs: 0 })
+        emitMetric({ event: 'execute.plan', task: toMetricsId(attempt.node), version: Math.max(0, (readPlanSection(node.body)?.version ?? 0) + 1), result: 'revise', steps: isRecord(args) && Array.isArray(args.steps) ? Math.max(0, args.steps.length) : 0, waitedMs: 0 }, where)
         if (rejects >= PLAN_REJECT_LIMIT) {
           planRejects.delete(attempt.childId)
           refuse('plan_rejected', 'plan rejected 4 times; hand back with status blocked', 'hand the task back; the main agent can dispatch it again with better instructions')
@@ -313,12 +317,12 @@ export function submitPlanTool(deps: RequestsDeps): ToolDefinitionLike {
         `${renderPlanSection(plan, version, 'pending')}\n\nReview it: answer_worker {"request": "${id}", "verdict": "approve"} approves this version; {"request": "${id}", "verdict": "revise", "text": "what to change"} sends it back to the worker. The worker's call stays open for 30 minutes.`,
         agent.session?.id,
       )
-      const planMetric = { event: 'execute.plan', task: attempt.node, version, steps: plan.steps.length } as const
-      emitMetric({ ...planMetric, outcome: 'to-main', waitedMs: 0 })
+      const planMetric = { event: 'execute.plan', task: toMetricsId(attempt.node), version: Math.max(0, version), steps: Math.max(0, plan.steps.length) } as const
+      emitMetric({ ...planMetric, result: 'to-main', waitedMs: 0 }, where)
       const asked = Date.now()
       const outcome = await awaitAnswer<PlanOutcome>(request, plan, deps.planWaitMs ?? PLAN_WAIT_MS, { status: 'timeout', hint: PLAN_TIMEOUT_HINT }, exec.signal)
       // 批准, 打回 (the main agent's revise) and 超时 of §3.16's table.
-      emitMetric({ ...planMetric, outcome: outcome.status === 'revise' ? 'rejected' : outcome.status, waitedMs: Date.now() - asked })
+      emitMetric({ ...planMetric, result: outcome.status === 'revise' ? 'rejected' : outcome.status, waitedMs: Math.max(0, Math.round(Date.now() - asked)) }, where)
       if (outcome.status === 'approved') return { status: 'approved', version }
       if (outcome.status === 'revise') return { status: 'revise', version, text: outcome.text }
       return { status: 'timeout', version, hint: outcome.hint }
@@ -384,7 +388,8 @@ export function askMainTool(deps: RequestsDeps): ToolDefinitionLike {
       )
       const asked = Date.now()
       const outcome = await awaitAnswer<QuestionOutcome>(request, undefined, deps.askWaitMs ?? ASK_WAIT_MS, { status: 'timeout', hint: ASK_TIMEOUT_HINT }, exec.signal)
-      emitMetric({ event: 'execute.ask', task: attempt.node, waitedMs: Date.now() - asked, outcome: outcome.status })
+      const where = executeMetricWhere(projectOf(agent.session?.header.cwd ?? dir)?.root ?? dirname(dirname(dir)), agent.session?.id)
+      emitMetric({ event: 'execute.ask', task: toMetricsId(attempt.node), waitedMs: Math.max(0, Math.round(Date.now() - asked)), result: outcome.status }, where)
       if (outcome.status === 'answered') {
         recordCommunication(attempt.childId, 'answered')
         return { status: 'answered', text: outcome.text }

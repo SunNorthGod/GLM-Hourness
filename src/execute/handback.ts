@@ -46,6 +46,7 @@ import type { Evidence, GraphNode } from '../graph/schema.ts'
 import { errorText, isRecord } from '../design/tool-support.ts'
 import type { ServiceLookup, UserNotice } from '../shared/dsh-min.ts'
 import { createUserNotice } from '../shared/dsh-min.ts'
+import { toMetricsId } from '../shared/metrics.ts'
 import { deliver } from '../rules/wake.ts'
 import { looksSecret } from '../data/secret-shape.ts'
 import { LESSONS_SERVICE } from '../lessons/service.ts'
@@ -59,7 +60,7 @@ import { sha256Hex } from './digest.ts'
 import { floorHits, parseFloor, type FloorCall, type FloorChange } from './floor.ts'
 import { policyDigests, policyStaleness, type RulesRead } from './policy-digest.ts'
 import { rulesPaths } from '../rules/store.ts'
-import { emitMetric } from './metrics.ts'
+import { emitMetric, executeMetricWhere } from './metrics.ts'
 import { acceptanceRounds, isDesignReview } from '../graph/execute-stage.ts'
 import { converge, normalizeVerdict, renderAcceptanceComment, renderRoundComment, roundsOf, roundsSinceHuman, latestHumanAt, type Round } from './review.ts'
 import { handbackProblems, reviewProblems } from './schemas.ts'
@@ -320,7 +321,17 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
     // A settled activation without the structured handback: the runtime counts it as an error, the handback is lost (§3.6.2 step 1).
     await comment(deps, attempt.graphDir, node.id, `第 ${attempt.attempt} 次结束：${stopReason} · ${attempt.childId}`)
     notify(deps, attempt.graphDir, 'handback', attempt, `Task ${node.id} ended without a handback (${stopReason}).`, `The activation settled as ${stopReason} and brought no structured handback; the task stays in progress. Dispatch it again: the new attempt carries what this one did in its brief.`)
-    emitMetric({ event: 'execute.handback', task: node.id, attempt: attempt.attempt, status: 'ended', stopReason, commits: 0, files: 0, ms: Date.now() - started, outside: 0 })
+    emitMetric({
+      event: 'execute.handback',
+      task: toMetricsId(node.id),
+      n: Math.max(0, attempt.attempt),
+      status: 'ended',
+      stopReason: toMetricsId(stopReason),
+      commits: 0,
+      files: 0,
+      ms: Math.max(0, Math.round(Date.now() - started)),
+      outside: 0,
+    }, executeMetricWhere(projectRoot ?? dirname(dirname(attempt.graphDir)), attempt.parentSession))
     return
   }
   // Semantic validation (§3.6.2 step 2): commits 7-40 hex, on the task's branch, on top of the base; files repository-relative.
@@ -413,12 +424,12 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
     if (gitReason !== undefined) deps.report(attempt.parentSession, 'degraded', `文档缺口没算成（${node.id}，${attempt.childId}）：${gitReason}`)
     emitMetric({
       event: 'execute.review-depth',
-      task: node.id,
+      task: toMetricsId(node.id),
       declared,
       effective: depth === '全审' ? 'full' : depth === '轻审' ? 'light' : 'skip',
-      ...(hitClass === '' || hitClass === 'unparsed' ? {} : { hit: hitClass }),
-      ...(hitClass === 'unparsed' ? { unparsed: true } : {}),
-    })
+      floors: hitClass === '' || hitClass === 'unparsed' ? [] : [...new Set(hits.map(hit => toMetricsId(hit.index)))].slice(0, 32),
+      unparsed: hitClass === 'unparsed',
+    }, executeMetricWhere(projectRoot, attempt.parentSession))
   }
   const counts = communicationOf(attempt.childId)
   const summary: HandbackComment = {
@@ -456,18 +467,37 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
   if (drift.length > 0) {
     const classes = drift.map(change => change.id)
     notify(deps, attempt.graphDir, 'policy', attempt, `Task ${node.id} handed back under a changed policy: ${classes.join(', ')}.`, `The policy the task was dispatched under changed while it ran: ${classes.join(', ')}. The handback comment names the classes; the next review brief carries the same note. Judge the work against the forms as they stand now — a review dispatch is not refused for this, and the task does not restart.`)
-    emitMetric({ event: 'execute.policy-drift', task: node.id, attempt: attempt.attempt, classes })
+    emitMetric({
+      event: 'execute.policy-drift',
+      task: toMetricsId(node.id),
+      attempt: Math.max(0, attempt.attempt),
+      classes: classes.slice(0, 32).map(toMetricsId),
+    }, executeMetricWhere(projectRoot, attempt.parentSession))
+  }
+  const handbackWhere = executeMetricWhere(projectRoot, attempt.parentSession)
+  const emitHandback = (outside: number): void => {
+    emitMetric({
+      event: 'execute.handback',
+      task: toMetricsId(node.id),
+      n: Math.max(0, attempt.attempt),
+      status: toMetricsId(status),
+      stopReason: toMetricsId(stopReason),
+      commits: commits.length,
+      files: files.length,
+      ms: Math.max(0, Math.round(Date.now() - started)),
+      outside,
+    }, handbackWhere)
   }
   if (stale.length > 0) {
     // Step 6: the pins went stale — the work cannot reach the trunk, stop here.
     notify(deps, attempt.graphDir, 'stale', attempt, `Task ${node.id} went stale since the dispatch.`, `The graph moved under the task since it was dispatched: ${stale.map(change => `${change.id} ${change.change}`).join(', ')}. The handback is on the task, but its work cannot reach the trunk; dispatch the task again.`)
-    emitMetric({ event: 'execute.handback', task: node.id, attempt: attempt.attempt, status, commits: commits.length, files: files.length, ms: Date.now() - started, outside: 0 })
+    emitHandback(0)
     return
   }
   if (status !== 'done') {
     // Steps 7-8 for the statuses that go back to the main agent as facts.
     notify(deps, attempt.graphDir, 'handback', attempt, `Task ${node.id} handed back ${status}.`, `Attempt ${attempt.attempt} handed back with status ${status}: ${typeof structured.summary === 'string' ? structured.summary.slice(0, 400) : 'no summary'}. Decide: dispatch it again, change the task, or ask the person.`)
-    emitMetric({ event: 'execute.handback', task: node.id, attempt: attempt.attempt, status, commits: commits.length, files: files.length, ms: Date.now() - started, outside: await outsideCount(join(deps.execDir(projectRoot), 'tasks', node.id, `${attempt.childId}.commands.jsonl`)) })
+    emitHandback(await outsideCount(join(deps.execDir(projectRoot), 'tasks', node.id, `${attempt.childId}.commands.jsonl`)))
     return
   }
   // The done flow: the effective depth decides whether the task has a review task (§3.7.1).
@@ -492,7 +522,7 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
       else deps.report(attempt.parentSession, 'degraded', `审查任务提议不上（任务 ${node.id}）：${proposed.error.message}`)
     }
   }
-  emitMetric({ event: 'execute.handback', task: node.id, attempt: attempt.attempt, status, commits: commits.length, files: files.length, ms: Date.now() - started, outside: await outsideCount(join(deps.execDir(projectRoot), 'tasks', node.id, `${attempt.childId}.commands.jsonl`)) })
+  emitHandback(await outsideCount(join(deps.execDir(projectRoot), 'tasks', node.id, `${attempt.childId}.commands.jsonl`)))
   const depthWord = depth === undefined ? '不审' : depth
   const summaryText = `Task ${node.id} attempt ${attempt.attempt} handed back done: ${commits.length} commit(s), ${files.length} file(s), effective review depth ${depth === undefined ? 'none (skip)' : depthWord}${depth === undefined ? '' : reviewTask === undefined ? ', but its review task could not be created' : `, waiting for your review dispatch of ${reviewTask.id}`}.`
   notify(deps, attempt.graphDir, 'handback', attempt, `Task ${node.id} handed back done.`, `${summaryText}${problems.length > 0 ? `\nSemantic problems of the handback: ${problems.join('; ')}` : ''}${docs.length > 0 ? `\n${docs.map(line => `Docs: ${line}`).join('\n')}` : ''}`)
@@ -777,6 +807,7 @@ async function taskReviewHandback(deps: HandbackDeps, attempt: Attempt, graph: L
     deps.report(attempt.parentSession, 'degraded', `停下的标记写不进图（${node.id}）：本进程内照样拒绝派发，图恢复可写后补写`)
   }
   const projectRoot = (attempt.worktree === undefined ? undefined : projectOf(attempt.worktree)?.root) ?? dirname(dirname(attempt.graphDir))
+  const reviewWhere = executeMetricWhere(projectRoot, attempt.parentSession)
   if (convergence.action === 'pass') {
     // §3.7.3: the review task is done, with the evidence the trunk check later reads; a reviewed task that already reached the trunk goes with it.
     const patchId = await patchIdOf(deps, attempt, handback)
@@ -806,13 +837,13 @@ async function taskReviewHandback(deps: HandbackDeps, attempt: Attempt, graph: L
       }
     }
     notify(deps, attempt.graphDir, 'review', attempt, `Task ${reviewed.id} round ${k}: APPROVED.`, `The review of ${reviewed.id} passed in round ${k} (${depth}); the review task ${node.id} is done. Continue with the merge checks.`)
-    emitMetric({ event: 'execute.review', task: reviewed.id, round: k, depth: depth === '全审' ? 'full' : 'light', model: attempt.model, blocking: 0, nonBlocking: nonBlocking.length, demoted: normalized.demoted })
+    emitMetric({ event: 'execute.review', task: toMetricsId(reviewed.id), round: k, depth: depth === '全审' ? 'full' : 'light', model: toMetricsId(attempt.model), blocking: 0, nonBlocking: nonBlocking.length, downgraded: normalized.demoted }, reviewWhere)
     deps.emit?.(projectRoot, attempt.parentSession, { event: 'hourness.review-passed', key: `review-passed:${reviewed.id}:${attempt.childId}`, payload: { task: reviewed.id, round: k } })
     return
   }
   if (stopping) {
     // §3.7.3: the marker is on this round's comment (written above); the stop draft goes to the person through `hourness.stopped`, keyed with that comment's time (D11).
-    emitMetric({ event: 'execute.stop', node: reviewed.id, kind: 'review', rounds: k })
+    emitMetric({ event: 'execute.stop', node: toMetricsId(reviewed.id), kind: 'review', rounds: k }, reviewWhere)
     const roundText = renderRoundComment(k, blocking.length, nonBlocking.length, depth, attempt.childId, true)
     const stoppedAt = roundWritten ? await commentAt(attempt.graphDir, node.id, roundText) : undefined
     deps.emit?.(projectRoot, attempt.parentSession, { event: 'hourness.stopped', key: `stopped:${node.id}:review-${stoppedAt ?? current.at}`, payload: { node: node.id, kind: 'review', rounds: k } })
@@ -824,10 +855,10 @@ async function taskReviewHandback(deps: HandbackDeps, attempt: Attempt, graph: L
       await comment(deps, attempt.graphDir, reviewed.id, `不挡路 · ${attempt.childId}（第 ${k} 轮）\n${nonBlocking.map(finding => `- ${finding.criterion} at ${finding.where}: ${finding.what} (fix: ${finding.fix})`).join('\n')}`)
     }
     notify(deps, attempt.graphDir, 'review', attempt, `Task ${reviewed.id} round ${k}: ${blocking.length} blocking finding(s).`, `Round ${k} of the review (${depth}) found ${blocking.length} blocking:\n${blocking.map(finding => `- ${finding.criterion} at ${finding.where}: ${finding.what} (fix: ${finding.fix})`).join('\n')}\nAddress them and dispatch the task again: dispatch_task {id: "${reviewed.id}"}; the next review round carries these findings.`)
-    emitMetric({ event: 'execute.review', task: reviewed.id, round: k, depth: depth === '全审' ? 'full' : 'light', model: attempt.model, blocking: blocking.length, nonBlocking: nonBlocking.length, demoted: normalized.demoted })
+    emitMetric({ event: 'execute.review', task: toMetricsId(reviewed.id), round: k, depth: depth === '全审' ? 'full' : 'light', model: toMetricsId(attempt.model), blocking: blocking.length, nonBlocking: nonBlocking.length, downgraded: normalized.demoted }, reviewWhere)
     return
   }
-  emitMetric({ event: 'execute.review', task: reviewed.id, round: k, depth: depth === '全审' ? 'full' : 'light', model: attempt.model, blocking: 0, nonBlocking: nonBlocking.length, demoted: normalized.demoted })
+  emitMetric({ event: 'execute.review', task: toMetricsId(reviewed.id), round: k, depth: depth === '全审' ? 'full' : 'light', model: toMetricsId(attempt.model), blocking: 0, nonBlocking: nonBlocking.length, downgraded: normalized.demoted }, reviewWhere)
 }
 
 function taskReviewHandbackBlocked(deps: HandbackDeps, attempt: Attempt, node: GraphNode): void {
@@ -883,7 +914,8 @@ async function designReviewHandback(deps: HandbackDeps, attempt: Attempt, graph:
   }
   const k = roundsOf(node.history).length + 1
   await comment(deps, attempt.graphDir, node.id, renderRoundComment(k, blocking.length, nonBlocking.length, '全审', attempt.childId))
-  emitMetric({ event: 'execute.review', task: module.id, round: k, depth: 'full', model: attempt.model, blocking: blocking.length, nonBlocking: nonBlocking.length, demoted: normalized.demoted })
+  const designProjectRoot = (attempt.worktree === undefined ? undefined : projectOf(attempt.worktree)?.root) ?? dirname(dirname(attempt.graphDir))
+  emitMetric({ event: 'execute.review', task: toMetricsId(module.id), round: k, depth: 'full', model: toMetricsId(attempt.model), blocking: blocking.length, nonBlocking: nonBlocking.length, downgraded: normalized.demoted }, executeMetricWhere(designProjectRoot, attempt.parentSession))
   const line = normalized.verdict === 'APPROVED' ? `Module ${module.id} design review round ${k}: APPROVED` : `Module ${module.id} design review round ${k}: CHANGES_REQUESTED, ${blocking.length} blocking`
   notify(deps, attempt.graphDir, 'review', attempt, line, `${line}.\n${blocking.map(finding => `- ${finding.criterion} at ${finding.where}: ${finding.what} (fix: ${finding.fix})`).join('\n')}`)
 }
@@ -963,11 +995,12 @@ async function acceptanceHandback(deps: HandbackDeps, attempt: Attempt, goal: Gr
     if (stopping) markStoppedInMemory(goal.id)
     deps.report(attempt.parentSession, 'degraded', `验收审查的轮次批注写不进图（${goal.id}，${attempt.childId}）：完成门禁读不到这一轮${stopping ? '；本进程内照样拒绝派发，图恢复可写后补写' : ''}`)
   }
-  emitMetric({ event: 'execute.acceptance-review', goal: goal.id, round: k, model: attempt.model, verdict: normalized.verdict, blocking: blocking.length })
   const projectRoot = (attempt.worktree === undefined ? undefined : projectOf(attempt.worktree)?.root) ?? dirname(dirname(attempt.graphDir))
+  const acceptanceWhere = executeMetricWhere(projectRoot, attempt.parentSession)
+  emitMetric({ event: 'execute.acceptance-review', goal: toMetricsId(goal.id), round: k, model: toMetricsId(attempt.model), verdict: normalized.verdict, blocking: blocking.length }, acceptanceWhere)
   if (stopping) {
     // §3.7.3 for the goal: the marker is on this round's comment; the stop draft goes to the person through `hourness.stopped` (D11).
-    emitMetric({ event: 'execute.stop', node: goal.id, kind: 'acceptance', rounds: k })
+    emitMetric({ event: 'execute.stop', node: toMetricsId(goal.id), kind: 'acceptance', rounds: k }, acceptanceWhere)
     const stoppedAt = written ? await commentAt(attempt.graphDir, goal.id, roundText) : undefined
     deps.emit?.(projectRoot, attempt.parentSession, { event: 'hourness.stopped', key: `stopped:${goal.id}:acceptance-${stoppedAt ?? current.at}`, payload: { node: goal.id, kind: 'acceptance', rounds: k } })
     return

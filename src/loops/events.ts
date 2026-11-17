@@ -7,8 +7,10 @@
  *
  * A key says "this occurrence": `<event name without its namespace>:<subject>:
  * <what makes this occurrence this one>`. Replaying the same occurrence gives
- * the same key; a real second occurrence gives another. Pure; no Node built-in.
+ * the same key; a real second occurrence gives another.
  */
+import { createHash } from 'node:crypto'
+import { METRICS_ID_PATTERN } from '../shared/metrics.ts'
 import type { LoopEventDeclaration } from './trigger.ts'
 
 export const LOOP_EVENTS: readonly LoopEventDeclaration[] = [
@@ -55,12 +57,30 @@ export function hostRestartedKey(projectKey: string, startedAt: string): string 
   return `host-restarted:${projectKey}:${startedAt}`
 }
 
+const MAX_METRICS_ID_LEN = 120
+
 /**
  * `loops.file-changed`: the file's size and modification time in milliseconds. A deleted file has the size `gone`;
  * its time is that of the last version seen, so a file deleted, written again and deleted again is two occurrences.
+ * Keys that would violate `METRICS_ID_PATTERN` (Windows backslashes, spaces, non-ASCII, or >120 chars) keep full
+ * path specificity via a short SHA-256 digest of `path`.
  */
 export function fileChangedKey(path: string, size: number | 'gone', mtimeMs: number): string {
-  return `file-changed:${path}:${size}-${mtimeMs}`
+  const safeMtime = Number.isFinite(mtimeMs) ? Math.max(0, Math.round(mtimeMs)) : 0
+  const safeSize = size === 'gone' ? 'gone' : (Number.isFinite(size) && size >= 0 ? Math.round(size) : 0)
+  const suffix = `${safeSize}-${safeMtime}`
+  const direct = `file-changed:${path}:${suffix}`
+  if (path.length > 0 && !path.startsWith(':') && !path.endsWith(':') && !path.includes('::') && METRICS_ID_PATTERN.test(direct)) {
+    return direct
+  }
+  const digest = createHash('sha256').update(path, 'utf8').digest('hex').slice(0, 16)
+  const base = (path.split(/[/\\]/).at(-1) ?? '').replace(/[^A-Za-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '')
+  const prefix = /[A-Za-z0-9]/.test(base) ? base.slice(0, 32) : ''
+  const budget = Math.max(8, MAX_METRICS_ID_LEN - 'file-changed:'.length - 1 - suffix.length)
+  const subject = prefix !== '' && prefix.length + 1 + digest.length <= budget
+    ? `${prefix}-${digest}`
+    : digest.slice(0, budget)
+  return `file-changed:${subject}:${suffix}`.slice(0, MAX_METRICS_ID_LEN)
 }
 
 /** The hour of `at` in `timeZone` as `YYYY-MM-DDTHH`. `timeZone` is a name Intl knows (the host's own zone). */

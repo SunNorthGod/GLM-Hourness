@@ -29,7 +29,7 @@ import type { AgentsService, AgentLike, InjectHost, LlmStreamListener, PreExecut
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
 import { PRICING_SERVICE, pricingService, type UsagePricing } from '../shared/pricing.ts'
-import { METRICS_SERVICE, type MetricsService, type QueuedEvent } from '../shared/metrics.ts'
+import { METRICS_SERVICE, toMetricsId, type MetricsService, type QueuedEvent } from '../shared/metrics.ts'
 import type { MetricsBoardView } from '../shared/metrics-board.ts'
 import { setEngineObserver } from '../graph/engine.ts'
 import { engineEventsOf } from '../graph/metrics-events.ts'
@@ -167,6 +167,10 @@ const realTimer = (body: () => void, ms: number): (() => void) => {
 
 const message = (error: unknown): string => error instanceof Error ? error.message : String(error)
 
+/** Normalize Windows drive-letter case so `c:\...` and `C:\...` share one Map key while filesystem calls keep original casing. */
+const rootKey = (root: string): string =>
+  /^[A-Za-z]:/.test(root) ? `${root[0].toLowerCase()}${root.slice(1)}` : root
+
 /** The UTC day strings the self-check window covers: yesterday and today, as `[from, to)` (§6.4). */
 function selfcheckWindow(now: () => number): { readonly from: string, readonly to: string } {
   const at = now()
@@ -236,7 +240,7 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
   // ratio groups are never handed (§4.3); they stay on the board for the person.
   const status = provideRowStatus(ctx, 'metrics', sessionId => {
     const root = sessionId === undefined ? undefined : projectOfWhere({ sessionId })
-    const view = root === undefined ? undefined : boardViews.get(root)
+    const view = root === undefined ? undefined : boardViews.get(rootKey(root))
     return root === undefined || view === undefined ? [] : metricsStatusItems(view, viewFileOf(root))
   })
   disposers.push(() => { status.dispose() })
@@ -283,9 +287,22 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
   /** The path-hash keys per project (§4.3), settled by the async loads; `keyOf` reads settled values only. */
   const keys = new Map<string, string | undefined>()
   const keyLoads = new Map<string, Promise<void>>()
+  /** Canonical writer destination per normalized root key so drive-letter casing differences share one queue. */
+  const dests = new Map<string, string>()
+
+  const destOf = (root: string): string => {
+    const key = rootKey(root)
+    let dest = dests.get(key)
+    if (dest === undefined) {
+      dest = root
+      dests.set(key, dest)
+    }
+    return dest
+  }
 
   function loadKey(root: string): Promise<void> {
-    const inflight = keyLoads.get(root)
+    const key = rootKey(root)
+    const inflight = keyLoads.get(key)
     if (inflight !== undefined) return inflight
     const load = (async (): Promise<void> => {
       const file = join(root, '.llm', 'metrics-key')
@@ -294,19 +311,19 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
         await ensureIgnoredOf(root, '.llm')
       }
       catch (error) {
-        keys.set(root, undefined)
+        keys.set(key, undefined)
         say(`路径散列的密钥没建上：${message(error)}`, true)
         return
       }
       try {
-        keys.set(root, await readKey(file))
+        keys.set(key, await readKey(file))
       }
       catch (error) {
-        keys.set(root, undefined)
+        keys.set(key, undefined)
         problem(`路径散列的密钥读不出：${message(error)}`)
       }
     })()
-    keyLoads.set(root, load)
+    keyLoads.set(key, load)
     return load
   }
 
@@ -348,11 +365,12 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
 
   /** One project's report (§9.6): the state, then the active line, the notes and everything wrong with the row or the project. */
   function reportOf(root: string): { readonly state: HealthState, readonly text: string } {
-    const found = checked.get(root)
+    const key = rootKey(root)
+    const found = checked.get(key)
     const findings = found === undefined ? undefined : findingsOf(found)
-    const counted = today.get(root)
+    const counted = today.get(key)
     const todayLine = counted?.day === new Date(now()).toISOString().slice(0, 10) ? counted.count : 0
-    const status = writers.status().get(root)
+    const status = writers.status().get(dests.get(key) ?? root)
     const destProblems = [
       ...(status?.error !== undefined ? [`写入失败（${status.error}${status.queued > 0 ? `，排队 ${status.queued} 条` : ''}${status.dropped > 0 ? `，丢 ${status.dropped} 条` : ''}）`] : []),
       ...(status !== undefined && status.rejected > 0 ? [`拒收 ${status.rejected} 条`] : []),
@@ -380,9 +398,10 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
     }
     const report = reportOf(root)
     health.report(sessionId, report.state, report.text)
-    const seen = reported.get(root) ?? new Set<string>()
+    const key = rootKey(root)
+    const seen = reported.get(key) ?? new Set<string>()
     seen.add(sessionId)
-    reported.set(root, seen)
+    reported.set(key, seen)
   }
 
   /** The envelope's `sid` is the sink's business (§4): the `where` a caller carries decides, when it holds a well-formed id. */
@@ -398,16 +417,18 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
       reportSession(where.sessionId, undefined)
       return
     }
+    const key = rootKey(root)
+    const dest = destOf(root)
     void loadKey(root)
-    const before = writers.status().get(root)
-    writers.record(root, stampSid(event, where.sessionId))
-    const after = writers.status().get(root)
+    const before = writers.status().get(dest)
+    writers.record(dest, stampSid(event, where.sessionId))
+    const after = writers.status().get(dest)
     if ((after?.rejected ?? 0) !== (before?.rejected ?? 0)) say(`拒收 ${after?.rejected ?? 0} 条`, true)
     const day = new Date(now()).toISOString().slice(0, 10)
-    const counted = today.get(root)
-    today.set(root, counted?.day === day ? { day, count: counted.count + 1 } : { day, count: 1 })
-    if (!scheduled.has(root)) {
-      scheduled.add(root)
+    const counted = today.get(key)
+    today.set(key, counted?.day === day ? { day, count: counted.count + 1 } : { day, count: 1 })
+    if (!scheduled.has(key)) {
+      scheduled.add(key)
       scheduleSelfcheck(root)
     }
     scheduleBoard(root)
@@ -418,8 +439,9 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
   const service: MetricsService = {
     emit: sink,
     coverage: root => {
-      const status = writers.status().get(root)
-      const checkedFindings = checked.get(root)
+      const key = rootKey(root)
+      const status = writers.status().get(dests.get(key) ?? root)
+      const checkedFindings = checked.get(key)
       const findings = checkedFindings === undefined ? undefined : findingsOf(checkedFindings)
       return {
         dropped: status?.dropped ?? 0,
@@ -490,7 +512,7 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
     now,
     pricing: (): UsagePricing | undefined => pricingService(ctx, text => say(text, true)),
     rootOf: cwd => projectOf(cwd)?.root,
-    keyOf: root => keys.get(root),
+    keyOf: root => keys.get(rootKey(root)),
   })
 
   /** The seams, each one its own guard (§9.1): one that throws is skipped and the health names it. */
@@ -517,7 +539,7 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
       if (session !== undefined && root !== undefined) {
         const header = session.header
         sink(
-          { k: 'session', by: 'host', body: { ...(header.parentSession === undefined ? {} : { parent: header.parentSession }), ...(header.origin === undefined ? {} : { origin: header.origin }) } },
+          { k: 'session', by: 'host', body: { ...(header.parentSession === undefined ? {} : { parent: toMetricsId(header.parentSession) }), ...(header.origin === undefined ? {} : { origin: header.origin }) } },
           { sessionId: session.id, ...(cwd === undefined ? {} : { dir: cwd }) },
         )
       }
@@ -544,7 +566,7 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
       try {
         const found = await (config.selfcheck ?? defaultSelfcheck)(event.project)
         const findings = findingsOf(found)
-        checked.set(event.project, found)
+        checked.set(rootKey(event.project), found)
         void refreshBoard(event.project)
         return findings === undefined ? { outcome: 'skipped', reason: 'clean' } : { outcome: 'done' }
       }
@@ -649,20 +671,21 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
 
   /** The one background self-check of a project (§6.4): after the first write succeeded; a write that has not landed yet tries again shortly. */
   function scheduleSelfcheck(root: string, attempt = 0): void {
+    const key = rootKey(root)
     const timer = config.timer ?? realTimer
     timer(() => {
       void (async () => {
-        if ((writers.status().get(root)?.written ?? 0) === 0 && attempt < 3) {
+        if ((writers.status().get(dests.get(key) ?? root)?.written ?? 0) === 0 && attempt < 3) {
           scheduleSelfcheck(root, attempt + 1)
           return
         }
         try {
           const found = await (config.selfcheck ?? defaultSelfcheck)(root)
-          checked.set(root, found)
+          checked.set(key, found)
           const findings = findingsOf(found)
           if (findings !== undefined) say(`自查有发现：${findings}`, true)
           health.reactivate(...activation())
-          for (const sessionId of reported.get(root) ?? []) reportSession(sessionId, root)
+          for (const sessionId of reported.get(key) ?? []) reportSession(sessionId, root)
           void refreshBoard(root)
         }
         catch (error) {
@@ -721,8 +744,9 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
 
   /** One project's board view (§7.6.2): compute from the last 14 local days, keep the last good content on a failure, write atomically. */
   async function refreshBoard(root: string): Promise<void> {
-    if (boardBusy.has(root)) return
-    boardBusy.add(root)
+    const key = rootKey(root)
+    if (boardBusy.has(key)) return
+    boardBusy.add(key)
     try {
       const tz = tzOffset(now)
       const windows = boardWindows(new Date(now()).toISOString(), tz)
@@ -731,16 +755,16 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
       try {
         const read = await (config.boardRead ?? defaultBoardRead)(root, { from: windows.from, to: windows.to })
         const shaped = boardView({ events: read.events, current: windows.current, previous: windows.previous, tz, findings: read.findings, basis: read.basis })
-        atGood.set(root, tried)
-        lastGood.set(root, shaped)
+        atGood.set(key, tried)
+        lastGood.set(key, shaped)
         view = { version: 1, at: tried, tried, problem: null, basis: shaped.basis, windows: windows.labels, groups: shaped.groups }
       }
       catch (error) {
         const reason = oneLine(message(error))
-        const good = lastGood.get(root)
+        const good = lastGood.get(key)
         view = {
           version: 1,
-          at: atGood.get(root) ?? null,
+          at: atGood.get(key) ?? null,
           tried,
           problem: reason,
           basis: good?.basis ?? '',
@@ -750,10 +774,10 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
         warn('board-compute', `the board view of ${root} failed: ${reason}`)
         say(`指标板没能更新：${reason}`, true)
       }
-      boardDay.set(root, windows.day)
-      lastBoardAt.set(root, now())
+      boardDay.set(key, windows.day)
+      lastBoardAt.set(key, now())
       const capped = capView(view)
-      boardViews.set(root, capped)
+      boardViews.set(key, capped)
       const io: StoreIo = { rename: config.rename ?? realStoreIo.rename, sleep: realStoreIo.sleep, now }
       try {
         // The view is runtime state beside the journal: the exclude line comes first, like the writer's prepare (§9.1).
@@ -769,15 +793,16 @@ export function apply(ctx: MetricsContext, config: MetricsConfig = {}): () => vo
       }
     }
     finally {
-      boardBusy.delete(root)
+      boardBusy.delete(key)
     }
   }
 
   /** The board's next compute for a project (§7.6.2): at most hourly while events arrive, sooner when the local day changed. */
   function scheduleBoard(root: string): void {
-    if (boardBusy.has(root)) return
+    const key = rootKey(root)
+    if (boardBusy.has(key)) return
     const day = localDate(new Date(now()).toISOString(), tzOffset(now))
-    if (boardDay.get(root) === day && now() - (lastBoardAt.get(root) ?? 0) < BOARD_EVERY_MS) return
+    if (boardDay.get(key) === day && now() - (lastBoardAt.get(key) ?? 0) < BOARD_EVERY_MS) return
     ;(config.timer ?? realTimer)(() => { void refreshBoard(root) }, 0)
   }
 

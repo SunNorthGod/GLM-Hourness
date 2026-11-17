@@ -42,11 +42,12 @@ import type { LoopEntryDefinition } from '../loops/model.ts'
 import type { Contribution, HarnessResult, LoopEventRecord, LoopsService } from '../loops/service.ts'
 import { deliver } from '../rules/wake.ts'
 import { createUserNotice, type ServiceLookup, type UserNotice } from '../shared/dsh-min.ts'
+import { toMetricsId } from '../shared/metrics.ts'
 import { stopDraftOf } from './asks.ts'
 import type { GraphCache } from './dispatch.ts'
 import { EXECUTE_ACTIONS, EXECUTE_ENTRIES, EXECUTE_EVENTS } from './entries.ts'
 import { ensureExecDir } from './gate-lock.ts'
-import { emitMetric } from './metrics.ts'
+import { emitMetric, executeMetricWhere } from './metrics.ts'
 
 /** This process, as the claim lines and drive.jsonl name it (§2.5 point 2, §3.9.1). */
 export const PROC = Math.round(performance.timeOrigin)
@@ -244,23 +245,23 @@ export function createLoopLink(deps: LoopLinkDeps): LoopLink {
     const holder = mainAgentOf(holderHome(deps.lookup), deps.graphDirOfRoot(record.project))
     if (holder === undefined) {
       deps.report(sessionId, 'degraded', `「${entry.title}」的提醒送不到主 Agent（${record.key}）：项目没有主 Agent 记录`)
-      emitMetric({ event: 'execute.loop-entry', entry: entry.id, key: record.key, delivered: false })
+      emitMetric({ event: 'execute.loop-entry', entry: toMetricsId(entry.id), key: toMetricsId(record.key), sent: false }, executeMetricWhere(record.project, sessionId))
       return
     }
     const notice = createUserNotice('glm-hourness-loop', entry.title, text, { hournessLoop: { entry: entry.id, key: record.key } })
     const way = deliver(deps.lookup, holder.sessionId, notice)
     if (way.kind === 'sent') {
-      emitMetric({ event: 'execute.loop-entry', entry: entry.id, key: record.key, delivered: true })
+      emitMetric({ event: 'execute.loop-entry', entry: toMetricsId(entry.id), key: toMetricsId(record.key), sent: true }, executeMetricWhere(record.project, holder.sessionId))
       return
     }
     if (way.kind === 'failed') {
       deps.report(sessionId, 'degraded', `「${entry.title}」的提醒没送出（${record.key}）：${way.why}`)
-      emitMetric({ event: 'execute.loop-entry', entry: entry.id, key: record.key, delivered: false })
+      emitMetric({ event: 'execute.loop-entry', entry: toMetricsId(entry.id), key: toMetricsId(record.key), sent: false }, executeMetricWhere(record.project, sessionId))
       return
     }
     // The holder is not live in this process (or there is no registry yet): its next step gets it (§2.5 point 6).
     held.set(holder.sessionId, [...held.get(holder.sessionId) ?? [], notice])
-    emitMetric({ event: 'execute.loop-entry', entry: entry.id, key: record.key, delivered: false, deferred: 'holder-not-live' })
+    emitMetric({ event: 'execute.loop-entry', entry: toMetricsId(entry.id), key: toMetricsId(record.key), sent: false, deferred: 'holder-not-live' }, executeMetricWhere(record.project, sessionId))
   }
 
   /** The fallback executor: one entry, the way the board runs it (§2.5 point 6). */
@@ -277,7 +278,7 @@ export function createLoopLink(deps: LoopLinkDeps): LoopLink {
       }
     }
     if (text === undefined) {
-      emitMetric({ event: 'execute.loop-entry', entry: entry.id, key: record.key, delivered: false })
+      emitMetric({ event: 'execute.loop-entry', entry: toMetricsId(entry.id), key: toMetricsId(record.key), sent: false }, executeMetricWhere(record.project, sessionId))
       return
     }
     tell(record, entry, text, sessionId)
@@ -343,7 +344,13 @@ export function createLoopLink(deps: LoopLinkDeps): LoopLink {
       const overdue = start === undefined ? at - claim.emittedAt >= CLAIM_MS : at - Date.parse(start.at) > maxMsOf(claim.action)
       if (!overdue) continue
       claims.delete(id)
-      emitMetric({ event: 'execute.loop-fallback', entry: claim.entry.id, key: claim.record.key, reason: 'unclaimed', waitedS: Math.round((at - claim.emittedAt) / 1000) })
+      emitMetric({
+        event: 'execute.loop-fallback',
+        entry: toMetricsId(claim.entry.id),
+        key: toMetricsId(claim.record.key),
+        why: 'unclaimed',
+        waitedS: Math.max(0, Math.round((at - claim.emittedAt) / 1000)),
+      }, executeMetricWhere(claim.record.project, claim.sessionId))
       const text = `循环板没有在 5 分钟内执行『${actionTitle(claim.action)}』（${claim.record.event}）：M7 自己执行了`
       deps.report(claim.sessionId, 'degraded', text)
       takeover(text)
@@ -368,7 +375,13 @@ export function createLoopLink(deps: LoopLinkDeps): LoopLink {
     if (lines.some(line => line.phase === 'end')) return
     const start = lines.find(line => line.phase === 'start')
     if (start !== undefined && (start.proc === PROC || now().getTime() - Date.parse(start.at) <= maxMsOf(action))) return
-    emitMetric({ event: 'execute.loop-fallback', entry: entry.id, key: record.key, reason: start === undefined ? 'unclaimed' : 'interrupted' })
+    emitMetric({
+      event: 'execute.loop-fallback',
+      entry: toMetricsId(entry.id),
+      key: toMetricsId(record.key),
+      why: start === undefined ? 'unclaimed' : 'interrupted',
+      waitedS: 0,
+    }, executeMetricWhere(record.project, sessionId))
     await runEntry(entry, record, sessionId)
   }
 
@@ -386,7 +399,13 @@ export function createLoopLink(deps: LoopLinkDeps): LoopLink {
     void Promise.resolve().then(() => service.emit({ event: event.event, cwd: project, ...(session === undefined ? {} : { session }), key: event.key, payload: event.payload })).then((result) => {
       if (!result.ok) {
         for (const entry of boardRun) {
-          emitMetric({ event: 'execute.loop-fallback', entry: entry.id, key: event.key, reason: 'emit-failed' })
+          emitMetric({
+            event: 'execute.loop-fallback',
+            entry: toMetricsId(entry.id),
+            key: toMetricsId(event.key),
+            why: 'emit-failed',
+            waitedS: 0,
+          }, executeMetricWhere(project, sessionId))
           runInFallback(entry, record, sessionId)
         }
         if (boardRun.length > 0) {
@@ -442,11 +461,24 @@ export function createLoopLink(deps: LoopLinkDeps): LoopLink {
         }
         if (result.ok) {
           attachment = { kind: 'board', service, accepted: new Set(result.accepted), dropped: result.dropped, dispose: result.dispose }
-          emitMetric({ event: 'execute.loop-contribute', row: SOURCE.row, accepted: result.accepted, dropped: result.dropped })
+          const cappedDropped = result.dropped.slice(0, 32)
+          emitMetric({
+            event: 'execute.loop-contribute',
+            row: toMetricsId(SOURCE.row),
+            accepted: result.accepted.slice(0, 32).map(toMetricsId),
+            dropped: cappedDropped.map(item => toMetricsId(item.id)),
+            reasons: cappedDropped.map(item => toMetricsId(item.reason)),
+          })
         }
         else {
           attachment = { kind: 'refused', service, reason: result.reason }
-          emitMetric({ event: 'execute.loop-contribute', row: SOURCE.row, accepted: [], dropped: [{ id: SOURCE.row, reason: result.reason }] })
+          emitMetric({
+            event: 'execute.loop-contribute',
+            row: toMetricsId(SOURCE.row),
+            accepted: [],
+            dropped: [toMetricsId(SOURCE.row)],
+            reasons: [toMetricsId(result.reason)],
+          })
         }
       }
       deps.notesChanged()
@@ -473,7 +505,13 @@ export function createLoopLink(deps: LoopLinkDeps): LoopLink {
         replayed.add(id)
         const entry = EXECUTE_ENTRIES.find(candidate => candidate.action.kind === 'harness' && candidate.action.action === line.action)
         const record: LoopEventRecord = { id: `ev-${randomBytes(8).toString('hex')}`, event: line.event, at: line.at, project, ...(session === undefined ? {} : { session }), key: line.key, payload: line.payload ?? {}, merged: [] }
-        emitMetric({ event: 'execute.loop-fallback', entry: entry?.id ?? line.action, key: line.key, reason: 'interrupted' })
+        emitMetric({
+          event: 'execute.loop-fallback',
+          entry: toMetricsId(entry?.id ?? line.action),
+          key: toMetricsId(line.key),
+          why: 'interrupted',
+          waitedS: 0,
+        }, executeMetricWhere(project, session))
         count += 1
         if (entry === undefined) await runAction(line.action, record)
         else await runEntry(entry, record, session)

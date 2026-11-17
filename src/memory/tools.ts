@@ -17,7 +17,8 @@
 import { secretRefusal } from '../data/secret-shape.ts'
 import { invalid, isObject, isRefusal, refuse, type Refusal } from '../data/refusal.ts'
 import type { AgentLike, SessionLike, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
-import { metricsWhereOf } from '../shared/metrics.ts'
+import { metricsWhereOf, toMetricsId } from '../shared/metrics.ts'
+import { MAX_ENTRIES } from '../metrics/schema.ts'
 import { MEMORY_HABIT } from '../shared/tool-names.ts'
 import { checkSourceKnown, checkStore, classify, forgetProposalRecord, judgeStore, revokeRecord, revokeRefusal, reviewRecord, storeRecord, strength, askRecord, declineRecord, HABIT_DECLINE_DAYS, type MemoryEntry, type MemoryState, type MemoryType, type Scope, type HabitFields } from './model.ts'
 import { firstReply, saidInReply, saidLatest, shownSinceLastPerson } from './answers.ts'
@@ -444,6 +445,18 @@ async function bothStates(env: MemoryEnv, session: SessionLike | undefined): Pro
 
 const noStore = (scope: Scope): Failure => scope === 'project' ? NO_PROJECT : NO_USER_DIR
 
+/** Shape and cap `habit-not-same` `byKey` entries to valid metrics ids (summing collisions, at most `MAX_ENTRIES`). */
+export function habitNotSameByKey(overrides: readonly string[]): Record<string, number> {
+  const byKey = new Map<string, number>()
+  for (const id of overrides) {
+    const key = toMetricsId(id)
+    const current = byKey.get(key)
+    if (current !== undefined) byKey.set(key, current + 1)
+    else if (byKey.size < MAX_ENTRIES) byKey.set(key, 1)
+  }
+  return Object.fromEntries(byKey)
+}
+
 async function habitAsk(env: MemoryEnv, args: Record<string, unknown>, caller: Caller): Promise<Record<string, unknown>> {
   const { action: _action, notSame, ...ask } = args
   if (notSame !== undefined && typeof notSame !== 'boolean') fail(invalid('notSame', 'notSame must be true or false'))
@@ -469,7 +482,7 @@ async function habitAsk(env: MemoryEnv, args: Record<string, unknown>, caller: C
   settle(env, caller, result)
   // An ask that set a no aside is counted in the metrics journal too (the ask record above is the fact).
   if (overrides.length > 0) {
-    env.emit?.({ k: 'count', by: 'memory', body: { what: HABIT_NOT_SAME, value: overrides.length, byKey: Object.fromEntries(overrides.map(id => [id, 1])) } }, {
+    env.emit?.({ k: 'count', by: 'memory', body: { what: HABIT_NOT_SAME, value: overrides.length, byKey: habitNotSameByKey(overrides) } }, {
       ...(caller.session === undefined ? {} : { sessionId: caller.session.id }),
       ...(caller.session?.header.cwd === undefined ? {} : { dir: caller.session.header.cwd }),
     })

@@ -242,7 +242,19 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
     }
     return items
   })
-  const unregister = ctx.commands.register({
+  const failures: string[] = []
+  const registerCommand = (definition: CommandDefinitionLike): (() => void) => {
+    try {
+      return ctx.commands.register(definition)
+    }
+    catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      console.warn(`${name}: registering /${definition.name} failed: ${reason}`)
+      failures.push(`/${definition.name} 注册失败：${reason}`)
+      return () => {}
+    }
+  }
+  const unregister = registerCommand({
     definitionId: 'dsh-glm-hourness/hourness',
     name: 'hourness',
     description: '晨报与积分用量（读审计流水）',
@@ -270,7 +282,11 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
         const text = await renderHourness(homes, { pricing, problem, graph: graphReader(ctx, headerCwd), ...(config.offsetMinutes === undefined ? {} : { offsetMinutes: config.offsetMinutes }), status: { lookup: ctx, sessionId: sessionIdOf(invocation.agent) }, ...(root === undefined ? {} : { root }), metrics })
         // The report itself is one report event of the project it was made for (§7.3).
         const sessionId = sessionIdOf(invocation.agent)
-        if (root !== undefined && typeof headerCwd === 'string' && sessionId !== undefined) metricsOf(ctx)?.emit({ k: 'report', by: 'host', body: { kind: 'status', units: [...text].length, ms: clock().getTime() - started } }, { sessionId, dir: headerCwd })
+        if (root !== undefined && typeof headerCwd === 'string' && sessionId !== undefined) {
+          const elapsed = clock().getTime() - started
+          const ms = Number.isFinite(elapsed) ? Math.max(0, Math.round(elapsed)) : 0
+          metricsOf(ctx)?.emit({ k: 'report', by: 'host', body: { kind: 'status', units: [...text].length, ms } }, { sessionId, dir: headerCwd })
+        }
         return { kind: 'success', text }
       }
       catch (error) {
@@ -278,7 +294,8 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
       }
     },
   })
-  const unregisterStatus = ctx.commands.register(statusCommand(ctx))
+  const unregisterStatus = registerCommand(statusCommand(ctx))
+  if (failures.length > 0) health.reactivate('degraded', failures.join('；'))
   return () => {
     unregisterStatus()
     unregister()

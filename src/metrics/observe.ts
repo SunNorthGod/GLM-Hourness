@@ -37,7 +37,7 @@ import { asRecord } from '../shared/json.ts'
 import { textUnits } from '../shared/text-units.ts'
 import { toolCategory } from '../shared/tool-names.ts'
 import type { UsagePricing } from '../shared/pricing.ts'
-import type { QueuedEvent } from '../shared/metrics.ts'
+import { METRICS_ID_PATTERN, toMetricsId, type QueuedEvent } from '../shared/metrics.ts'
 
 /** Where an observed event happened: what the row resolves the project from (§3.3). */
 export interface ObservedWhere {
@@ -83,11 +83,21 @@ function text(value: unknown): string | undefined {
 }
 
 function count(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+}
+
+function nonNegativeNum(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
 }
 
+function msInt(delta: number): number {
+  if (!Number.isFinite(delta) || delta <= 0) return 0
+  const rounded = Math.round(delta)
+  return Number.isSafeInteger(rounded) && rounded >= 0 ? rounded : Number.MAX_SAFE_INTEGER
+}
+
 function idShaped(value: string): boolean {
-  return /^[A-Za-z0-9_.:@+/-]{1,120}$/.test(value)
+  return METRICS_ID_PATTERN.test(value)
 }
 
 /** The outcomes a decided approval can name (metrics design §4.2, F14). */
@@ -122,7 +132,7 @@ function finOf(reason: FinishReason | undefined, failed: boolean): 'stop' | 'too
 /** The credits one call was charged, to four decimals, when the plan prices the model (§4.3). */
 function creditsOf(plan: UsagePricing, model: string, usage: TokenUsage, atMs: number, problem: (text: string) => void): number | undefined {
   try {
-    const charged = count(plan.charged(model, usage, atMs))
+    const charged = nonNegativeNum(plan.charged(model, usage, atMs))
     return charged === undefined ? undefined : Number(charged.toFixed(4))
   }
   catch (error) {
@@ -141,6 +151,9 @@ function peakOf(plan: UsagePricing, atMs: number, problem: (text: string) => voi
   }
 }
 
+const normalizeDrive = (path: string): string =>
+  /^[A-Za-z]:/.test(path) ? `${path[0].toLowerCase()}${path.slice(1)}` : path
+
 /** The path the metrics journal hashes for a file tool's target: inside the project relative, outside absolute, forward slashes, lowercased on Windows (§4.3). */
 function targetPathOf(root: string, cwd: string | undefined, raw: string): string {
   let absolute: string | undefined
@@ -150,8 +163,10 @@ function targetPathOf(root: string, cwd: string | undefined, raw: string): strin
   catch {
     absolute = undefined
   }
-  const inside = absolute !== undefined && (absolute === root || absolute.startsWith(`${root}\\`) || absolute.startsWith(`${root}/`))
-  const path = inside ? (absolute as string).slice(root.length + 1) : absolute ?? raw
+  const normRoot = normalizeDrive(root)
+  const normAbsolute = absolute === undefined ? undefined : normalizeDrive(absolute)
+  const inside = normAbsolute !== undefined && (normAbsolute === normRoot || normAbsolute.startsWith(`${normRoot}\\`) || normAbsolute.startsWith(`${normRoot}/`))
+  const path = inside ? normAbsolute.slice(normRoot.length + 1) : absolute ?? raw
   const forward = path.replaceAll('\\', '/')
   return process.platform === 'win32' ? forward.toLowerCase() : forward
 }
@@ -284,7 +299,7 @@ export function createObserve(options: MetricsObserveOptions): MetricsObserver {
         const turn = count(data.turn)
         if (turn !== undefined) {
           const end = text(asRecord(data.reason).kind)
-          sink({ k: 'turn', by: 'host', at: atOf(event), body: { turn, phase: 'end', ...(end === undefined ? {} : { end }) } }, where)
+          sink({ k: 'turn', by: 'host', at: atOf(event), body: { turn, phase: 'end', ...(end === undefined ? {} : { end: toMetricsId(end) }) } }, where)
         }
         flushUnfinished(session.id, atOf(event), where)
         return
@@ -318,9 +333,9 @@ export function createObserve(options: MetricsObserveOptions): MetricsObserver {
         sink({
           k: 'tool', by: 'host', at: atOf(event),
           body: {
-            turn, step, call: callId, name: pending.name, cat: toolCategory(pending.name),
+            turn, step, call: toMetricsId(callId), name: toMetricsId(pending.name), cat: toolCategory(pending.name),
             out: outcomeOf(session.id, callId, message.isError === true, data.error),
-            ms: Math.max(0, event.time - pending.time),
+            ms: msInt(event.time - pending.time),
             ...charsOf(message.content),
             ...(target === undefined ? {} : { target }),
             ...(pending.cmd === undefined ? {} : { cmd: pending.cmd }),
@@ -331,11 +346,13 @@ export function createObserve(options: MetricsObserveOptions): MetricsObserver {
       case 'approval/asked': {
         const id = text(data.id)
         if (id === undefined) return
-        const asked: { call?: string, decided?: string } = { ...(text(data.callId) === undefined ? {} : { call: text(data.callId) as string }) }
+        const tool = text(data.toolName)
+        const call = text(data.callId)
+        const asked: { call?: string, decided?: string } = { ...(call === undefined ? {} : { call }) }
         boundBy(approvals, session.id).set(id, asked)
         sink({
           k: 'approval', by: 'host', at: atOf(event),
-          body: { id, phase: 'asked', ...(text(data.toolName) === undefined ? {} : { tool: text(data.toolName) as string }), ...(asked.call === undefined ? {} : { call: asked.call }) },
+          body: { id: toMetricsId(id), phase: 'asked', ...(tool === undefined ? {} : { tool: toMetricsId(tool) }), ...(asked.call === undefined ? {} : { call: toMetricsId(asked.call) }) },
         }, where)
         return
       }
@@ -350,8 +367,8 @@ export function createObserve(options: MetricsObserveOptions): MetricsObserver {
         sink({
           k: 'approval', by: 'host', at: atOf(event),
           body: {
-            id, phase: 'decided',
-            ...(asked?.call === undefined ? {} : { call: asked.call }),
+            id: toMetricsId(id), phase: 'decided',
+            ...(asked?.call === undefined ? {} : { call: toMetricsId(asked.call) }),
             ...(outcome === undefined ? {} : { outcome }),
           },
         }, where)
@@ -362,7 +379,7 @@ export function createObserve(options: MetricsObserveOptions): MetricsObserver {
         const name = text(data.name)
         if (cid === undefined || name === undefined) return
         boundBy(commands, session.id).set(cid, name)
-        sink({ k: 'command', by: 'host', at: atOf(event), body: { cid, name, phase: 'run' } }, where)
+        sink({ k: 'command', by: 'host', at: atOf(event), body: { cid: toMetricsId(cid), name: toMetricsId(name), phase: 'run' } }, where)
         return
       }
       case 'command/done': {
@@ -373,7 +390,7 @@ export function createObserve(options: MetricsObserveOptions): MetricsObserver {
         const kind = text(data.kind)
         sink({
           k: 'command', by: 'host', at: atOf(event),
-          body: { cid, name, phase: 'done', ...(kind === 'success' || kind === 'error' ? { result: kind } : {}) },
+          body: { cid: toMetricsId(cid), name: toMetricsId(name), phase: 'done', ...(kind === 'success' || kind === 'error' ? { result: kind } : {}) },
         }, where)
         return
       }
@@ -417,7 +434,7 @@ export function createObserve(options: MetricsObserveOptions): MetricsObserver {
       sink({
         k: 'tool', by: 'host', at,
         body: {
-          turn: call.turn, step: call.step, call: callId, name: call.name, cat: toolCategory(call.name), out: 'none',
+          turn: call.turn, step: call.step, call: toMetricsId(callId), name: toMetricsId(call.name), cat: toolCategory(call.name), out: 'none',
           ...(target === undefined ? {} : { target }),
           ...(call.cmd === undefined ? {} : { cmd: call.cmd }),
         },
@@ -468,11 +485,11 @@ export function createObserve(options: MetricsObserveOptions): MetricsObserver {
       k: 'llm', by: 'host',
       body: {
         ...(step === undefined || step.turn === 0 ? {} : { turn: step.turn, step: step.step }),
-        provider: call.provider,
-        model: call.model,
-        ...(call.purpose === undefined ? {} : { purpose: call.purpose }),
+        provider: toMetricsId(call.provider),
+        model: toMetricsId(call.model),
+        ...(call.purpose === undefined ? {} : { purpose: toMetricsId(call.purpose) }),
         ...usage,
-        ms: Math.max(0, atMs - read.startedAt),
+        ms: msInt(atMs - read.startedAt),
         ...(read.ttft === undefined ? {} : { ttft: read.ttft }),
         fin: finOf(read.finish, read.failed),
         calls: read.callsOut,
@@ -504,7 +521,7 @@ export function createObserve(options: MetricsObserveOptions): MetricsObserver {
       return (async function* () {
         try {
           for await (const chunk of next()) {
-            if (ttft === undefined && (chunk.type === 'text-delta' || chunk.type === 'reasoning-delta' || chunk.type === 'tool-call-delta')) ttft = Math.max(0, now() - startedAt)
+            if (ttft === undefined && (chunk.type === 'text-delta' || chunk.type === 'reasoning-delta' || chunk.type === 'tool-call-delta')) ttft = msInt(now() - startedAt)
             if (chunk.type === 'usage') usage = chunk.usage
             if (chunk.type === 'finish') finish = chunk.reason
             if (chunk.type === 'block-end') {
@@ -599,7 +616,7 @@ export function createObserve(options: MetricsObserveOptions): MetricsObserver {
         const pick = pickOf(answer)
         safely(() => sink({
           k: 'answer', by: 'host',
-          body: { q: id, ms: Math.max(0, now() - startedAt), end: 'answered', ...(pick === undefined ? {} : { pick }) },
+          body: { q: id, ms: msInt(now() - startedAt), end: 'answered', ...(pick === undefined ? {} : { pick }) },
         }, where), 'the record of a question answer')
         return answer
       }
@@ -610,7 +627,7 @@ export function createObserve(options: MetricsObserveOptions): MetricsObserver {
           : code === 'ASK_TIMED_OUT'
             ? 'timed-out'
             : code === 'ASK_ABORTED' || request.signal?.aborted === true ? 'aborted' : 'error'
-        safely(() => sink({ k: 'answer', by: 'host', body: { q: id, ms: Math.max(0, now() - startedAt), end } }, where), 'the record of a question failure')
+        safely(() => sink({ k: 'answer', by: 'host', body: { q: id, ms: msInt(now() - startedAt), end } }, where), 'the record of a question failure')
         throw error
       }
     },

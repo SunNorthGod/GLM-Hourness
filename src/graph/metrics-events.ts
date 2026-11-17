@@ -9,8 +9,10 @@
  * map through this, then record for the project the note's graph directory
  * belongs to.
  */
-import type { EmittedEvent, HostBodies } from '../shared/metrics.ts'
+import { toMetricsId, type EmittedEvent, type HostBodies } from '../shared/metrics.ts'
 import type { EngineEntry, EngineNote } from './engine.ts'
+
+const normalizeField = (field: string): string => field.replace(/\[(\d+)\]/g, '.$1')
 
 /** The events one engine note carries, in the note's own order. */
 export function engineEventsOf(note: EngineNote): readonly EmittedEvent[] {
@@ -22,8 +24,8 @@ export function engineEventsOf(note: EngineNote): readonly EmittedEvent[] {
         actor: note.actor,
         err: note.err,
         ...(note.op === undefined ? {} : { op: note.op }),
-        ...(note.node === undefined ? {} : { node: note.node }),
-        ...(note.field === undefined ? {} : { field: note.field }),
+        ...(note.node === undefined ? {} : { node: toMetricsId(note.node) }),
+        ...(note.field === undefined ? {} : { field: toMetricsId(normalizeField(note.field)) }),
       },
     }]
   }

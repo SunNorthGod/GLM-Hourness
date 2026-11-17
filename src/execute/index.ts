@@ -77,7 +77,8 @@ import { LOOPS_SERVICE, loopsService } from '../loops/service.ts'
 import { EXECUTE_SERVICE, type ExecuteService } from '../shared/execute-service.ts'
 import { FACES_NOTE, registerFaceSource } from '../shared/face-policy.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
-import { disposerList } from '../shared/row-support.ts'
+import { emitMetric as emitSharedMetric, type EmittedEvent } from '../shared/metrics.ts'
+import { disposerList, registerSessionProjection } from '../shared/row-support.ts'
 import Schema from '../shared/schemastery.ts'
 import { installExecuteRules, type ExecuteRulesDeps } from '../guard/execute-rules.ts'
 import { latestDispatch, registeredAttempt, recordCommunication, reviewTargetOf, writesPlannedFile } from './attempts.ts'
@@ -95,6 +96,7 @@ import { createGateLauncher, GATE_PROVIDER } from './gate-provider.ts'
 import type { WalkDeps, WalkStart } from './walk.ts'
 import { installTrunkGate } from './advance.ts'
 import { floorHits, parseFloor } from './floor.ts'
+import { setDefaultMetricSink } from './metrics.ts'
 
 /** Row config: the parallel write slots. */
 export interface ExecuteConfig {
@@ -139,6 +141,27 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   let facesNote: string | undefined = FACES_NOTE
   const health = provideRowHealth(ctx, 'execute', 'active', '已加载；派发与派发链的写入边界在本行的会话里生效')
   disposers.push(() => { health.dispose() })
+  const startupMetrics: EmittedEvent[] = []
+  const contributedProjects = new Set<string>()
+  disposers.push(setDefaultMetricSink((event, where) => {
+    const { event: k, ...body } = event
+    const emitted = { k, by: 'execute', body } as EmittedEvent
+    if (where?.dir === undefined && where?.sessionId === undefined) {
+      if (startupMetrics.length < 8) startupMetrics.push(emitted)
+      return
+    }
+    if (startupMetrics.length > 0 && where.dir !== undefined && where.dir !== '') {
+      const root = projectOf(where.dir)?.root
+      if (root !== undefined) {
+        const key = process.platform === 'win32' || process.platform === 'darwin' ? root.toLowerCase() : root
+        if (!contributedProjects.has(key)) {
+          contributedProjects.add(key)
+          for (const pending of startupMetrics) emitSharedMetric(ctx, pending, { dir: root })
+        }
+      }
+    }
+    emitSharedMetric(ctx, emitted, where)
+  }))
   const report = (sessionId: string | undefined, state: HealthState, reason: string): void => {
     health.report(sessionId, state, reason)
   }
@@ -405,18 +428,25 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
 
   // The handback projection (§3.9.6 step 3): what the reconcile reads back of a dispatch the host lost. Without it a lost dispatch is commented lost.
   if (typeof ctx.inject === 'function') {
+    const projectionFailed = (error: unknown): void => {
+      projectionNote = `会话投影 ${HANDBACK_PROJECTION} 没注册上（${error instanceof Error ? error.message : String(error)}）：宿主重启时丢的交回读不回来，只记为丢失`
+      reactivate()
+    }
     try {
       ctx.inject(['sessionProjections'], (projectionCtx) => {
-        try {
-          const undo = projectionCtx.sessionProjections.register(handbackProjection)
-          projectionNote = undefined
-          reactivate()
-          return undo
-        }
-        catch (error) {
-          projectionNote = `会话投影 ${HANDBACK_PROJECTION} 没注册上（${error instanceof Error ? error.message : String(error)}）：宿主重启时丢的交回读不回来，只记为丢失`
-          reactivate()
-          return undefined
+        let active = true
+        const reg = registerSessionProjection(projectionCtx.sessionProjections, handbackProjection, {
+          onError: (error) => {
+            if (!active) return
+            projectionFailed(error)
+          },
+        })
+        if (!reg.ok) return undefined
+        projectionNote = undefined
+        reactivate()
+        return () => {
+          active = false
+          reg.dispose()
         }
       })
     }
