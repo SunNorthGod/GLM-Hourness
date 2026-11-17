@@ -508,6 +508,28 @@ export interface InjectableServices {
   readonly sessionQuery: SessionQueryService
 }
 
+/** Handle resolved from `rc.1` `sessionProjections.register(definition)`. */
+export interface SessionProjectionHandle<S = unknown> {
+  readonly dispose: () => Promise<void>
+  readonly stateOf: (session: SessionLike) => S
+  readonly readerFor?: (session: SessionLike) => () => S
+}
+
+/** Definition passed to `sessionProjections.register(definition)`. */
+export interface SessionProjectionDefinition {
+  readonly key: string
+  readonly stateVersion: number
+  readonly stateSchema: { parse(value: unknown): unknown }
+  init(header: unknown, inheritedEventCount: number): unknown
+  apply(state: never, event: never): unknown
+  readonly wire?: { readonly viewSchema: { parse(value: unknown): unknown }, view(state: never): unknown, readonly summary?: boolean }
+}
+
+/** Return type of `sessionProjections.register`: legacy sync disposer or `rc.1` callable thenable resolving to a handle. */
+type SessionProjectionRegistration<S = unknown> =
+  | (() => void | Promise<void>)
+  | ((() => void | Promise<void>) & PromiseLike<SessionProjectionHandle<S>>)
+
 /**
  * The `sessionProjections` service members the graph-panel row calls
  * (rc.3 dsh-session-projection): `register` adds a unit as an effect of the
@@ -517,14 +539,7 @@ export interface InjectableServices {
  * registered is absent from `values` (session-projection:141).
  */
 export interface SessionProjectionsService {
-  register(definition: {
-    readonly key: string
-    readonly stateVersion: number
-    readonly stateSchema: { parse(value: unknown): unknown }
-    init(header: unknown, inheritedEventCount: number): unknown
-    apply(state: never, event: never): unknown
-    readonly wire?: { readonly viewSchema: { parse(value: unknown): unknown }, view(state: never): unknown }
-  }): () => void
+  register(definition: SessionProjectionDefinition): SessionProjectionRegistration<unknown>
   snapshot(session: SessionLike, keys: readonly string[]): { readonly values: Readonly<Record<string, unknown>> }
   /**
    * One unit's current host state after every registered unit is folded up

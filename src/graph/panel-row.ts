@@ -24,6 +24,7 @@
  */
 import type { AgentCommandInvocationLike, CommandDefinitionLike, CommandsHost, InjectableServices, InjectHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 import { provideRowHealth } from '../shared/health.ts'
+import { registerSessionProjection, type ProjectionRegistration } from '../shared/row-support.ts'
 import { createStepMailbox } from '../shared/step-mailbox.ts'
 import { LIVE_KEY, liveProjection } from './live.ts'
 import { holderFileOf, holderHome } from './main-agent-holder.ts'
@@ -120,24 +121,34 @@ function installLive(ctx: Partial<InjectHost>, services: RunServices, settled: (
   }
   try {
     ctx.inject(['sessionProjections'], projectionCtx => {
-      try {
-        projectionCtx.sessionProjections.register(liveProjection)
-      }
-      catch (error) {
-        off(error)
-        return undefined
-      }
+      let active = true
+      let projectReg: ProjectionRegistration | undefined
+      const liveReg = registerSessionProjection(projectionCtx.sessionProjections, liveProjection, {
+        onError: (error) => {
+          if (!active) return
+          active = false
+          projectReg?.dispose()
+          projectReg = undefined
+          services.projections = undefined
+          off(error)
+        },
+      })
+      if (!liveReg.ok) return undefined
       let projectProblem: string | undefined
-      try {
-        projectionCtx.sessionProjections.register(projectProjection(projectionCtx))
-      }
-      catch (error) {
-        console.warn(`${name}: the project projection is off: ${message(error)}`)
-        projectProblem = `位置投影 ${PROJECT_KEY} 未注册：${message(error)}`
-      }
+      projectReg = registerSessionProjection(projectionCtx.sessionProjections, projectProjection(projectionCtx), {
+        onError: (error) => {
+          if (!active) return
+          console.warn(`${name}: the project projection is off: ${message(error)}`)
+          projectProblem = `位置投影 ${PROJECT_KEY} 未注册：${message(error)}`
+          settled(projectProblem)
+        },
+      })
       services.projections = projectionCtx.sessionProjections
       settled(projectProblem)
       return () => {
+        active = false
+        projectReg?.dispose()
+        liveReg.dispose()
         services.projections = undefined
         settled(WAITING_LIVE)
       }

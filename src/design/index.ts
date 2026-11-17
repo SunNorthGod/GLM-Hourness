@@ -48,13 +48,13 @@ import { FACES_NOTE, registerFaceSource } from '../shared/face-policy.ts'
 import { createUserNotice, type AgentLike, type CommandDefinitionLike, type CommandsExecutor, type DesignAgentLike, type DesignAgentsService, type DesignInvocationLike, type InjectHost, type PreExecuteListener, type ProvideHost, type ServiceLookup, type SessionLike, type SessionPersistenceLike, type SessionProjectionsService } from '../shared/dsh-min.ts'
 import { executeService } from '../shared/execute-service.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
-import { disposerList } from '../shared/row-support.ts'
+import { disposerList, registerSessionProjection, type ProjectionRegistration } from '../shared/row-support.ts'
 import Schema from '../shared/schemastery.ts'
 import { ATTACH_BOARDS } from './attach.ts'
 import { MAIN_AGENT_IDENTITY, MAIN_AGENT_SECTION } from './identity.ts'
 import { toMetricsId } from '../shared/metrics.ts'
 import { designMetricSink, emitDesign, holderMoved, type HolderMove } from './metrics.ts'
-import { localTime, mainAgentProjection, modeOf, roleOf, staleRecordKept, wishHandler, type RoleDeps, type RoleReading, type WishDeps } from './mode.ts'
+import { localTime, mainAgentProjection, modeOf, roleOf, staleRecordKept, wishHandler, type MainAgentState, type RoleDeps, type RoleReading, type WishDeps } from './mode.ts'
 import { DEFAULT_PERSONA_NAME, PERSONA_NAME_LIMIT, PERSONA_TEXT_LIMIT, readPersona } from './persona.ts'
 import { proposeTool, type DesignToolDeps } from './propose.ts'
 import { recordTool } from './record.ts'
@@ -129,7 +129,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
   // The person's persona, read once: it does not change within a session (docs/ORCHESTRATION.md §3.1).
   const persona = readPersona(config)
   for (const text of persona.warnings) console.warn(`${name}: ${text}`)
-  let projections: SessionProjectionsService | undefined
+  let projections: Pick<SessionProjectionsService, 'stateOf'> | undefined
   let waiting: string | undefined = WAITING_STATE
   let registration: string | undefined
   // Why the execution-boundary rules of the main agent are not installed (docs/ORCHESTRATION.md §6.1).
@@ -461,29 +461,47 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
   if (typeof ctx.inject === 'function') {
     try {
       ctx.inject(['sessionProjections'], projectionCtx => {
-        try {
-          projectionCtx.sessionProjections.register(mainAgentProjection)
-        }
-        catch (error) {
-          console.warn(`${name}: the main agent projection is off: ${message(error)}`)
-          waiting = `主 Agent 状态注册失败：${message(error)}`
-          health.reactivate(...status())
-          return undefined
-        }
-        projections = projectionCtx.sessionProjections
+        let active = true
+        let talkReg: ProjectionRegistration<TalkState> | undefined
+        const mainReg = registerSessionProjection<MainAgentState>(projectionCtx.sessionProjections, mainAgentProjection, {
+          onError: (error) => {
+            if (!active) return
+            active = false
+            console.warn(`${name}: the main agent projection is off: ${message(error)}`)
+            talkReg?.dispose()
+            talkReg = undefined
+            projections = undefined
+            talkNote = undefined
+            waiting = `主 Agent 状态注册失败：${message(error)}`
+            health.reactivate(...status())
+          },
+        })
+        if (!mainReg.ok) return undefined
         waiting = undefined
         // What the human said is read from this projection; without it the main agent's tools and rules read the session log (rc.3 marks that deprecated).
-        try {
-          projectionCtx.sessionProjections.register(talkProjection)
-          talkNote = undefined
-        }
-        catch (error) {
-          console.warn(`${name}: the talk projection ${TALK_PROJECTION} is off, the human's messages are read from the session log: ${message(error)}`)
-          talkNote = `人的消息改从会话日志读（会话投影 ${TALK_PROJECTION} 没注册上：${message(error)}）`
+        talkNote = undefined
+        talkReg = registerSessionProjection<TalkState>(projectionCtx.sessionProjections, talkProjection, {
+          onError: (error) => {
+            if (!active) return
+            console.warn(`${name}: the talk projection ${TALK_PROJECTION} is off, the human's messages are read from the session log: ${message(error)}`)
+            talkNote = `人的消息改从会话日志读（会话投影 ${TALK_PROJECTION} 没注册上：${message(error)}）`
+            health.reactivate(...status())
+          },
+        })
+        projections = {
+          stateOf: (session, key) => {
+            if (key === mainAgentProjection.key) return mainReg.stateOf(session)
+            if (key === TALK_PROJECTION) return talkReg?.stateOf(session)
+            return projectionCtx.sessionProjections.stateOf(session, key)
+          },
         }
         health.reactivate(...status())
         return () => {
+          active = false
+          talkReg?.dispose()
+          mainReg.dispose()
           projections = undefined
+          talkNote = undefined
           waiting = WAITING_STATE
           health.reactivate(...status())
         }

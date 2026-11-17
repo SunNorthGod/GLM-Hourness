@@ -134,11 +134,11 @@ export function installToolSearch(agent: AgentLike, options: { readonly policy?:
       schema: SEARCH_OUTPUT_SCHEMA,
       render: (_args, value) => (value as SearchValue).content.map(text => ({ type: 'text', text })),
     },
-    async execute(args) {
+    execute(args) {
       const exposure = current
-      if (exposure?.enabled !== true) throw new Error(TOOL_SEARCH_NOT_ENABLED)
+      if (exposure?.enabled !== true) return Promise.reject(new Error(TOOL_SEARCH_NOT_ENABLED))
       const input = parseSearchInput(args)
-      if (input === undefined) throw new Error(`Invalid ${LOCAL_TOOL_SEARCH_NAME} input: query must be a string and max_results a number.`)
+      if (input === undefined) return Promise.reject(new Error(`Invalid ${LOCAL_TOOL_SEARCH_NAME} input: query must be a string and max_results a number.`))
       const matches = searchTools(input.query, exposure.catalog, input.maxResults)
       const value: SearchValue = {
         query: input.query,
@@ -146,7 +146,7 @@ export function installToolSearch(agent: AgentLike, options: { readonly policy?:
         total_deferred_tools: exposure.catalog.filter(tool => tool.deferred).length,
         content: projectSearchResult(matches, exposure, loadedDefinitions(history())),
       }
-      return value
+      return Promise.resolve(value)
     },
   }
 

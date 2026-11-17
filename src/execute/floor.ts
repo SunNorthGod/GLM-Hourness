@@ -17,6 +17,7 @@
  * case-insensitive: Windows and macOS treat the two spellings as one file,
  * and over-matching sends work to a full review, under-matching would not.
  */
+import { isAbsolute, relative } from 'node:path'
 import type { GraphNode } from '../graph/schema.ts'
 
 /** The four judgement forms a backtick segment may take. */
@@ -162,6 +163,8 @@ export function floorPathIn(prefixes: readonly string[], path: string): boolean 
 }
 
 const HOME_LIKE = /^~|^%USERPROFILE%|^\$HOME|^\$env:USERPROFILE/i
+const foldPath = (value: string): string =>
+  process.platform === 'win32' || process.platform === 'darwin' ? value.toLowerCase() : value
 
 /**
  * What one change hits (§3.8.5): a touched path under a `files` path, a
@@ -176,7 +179,12 @@ const HOME_LIKE = /^~|^%USERPROFILE%|^\$HOME|^\$env:USERPROFILE/i
 export function floorHits(floor: ParsedFloor, change: FloorChange, calls: readonly FloorCall[], worktree: string): readonly FloorHit[] {
   if (floor.unparsed.length > 0) return [{ index: floor.unparsed.join(','), reason: 'unparsed' }]
   const hits: FloorHit[] = []
-  const outside = (path: string): boolean => HOME_LIKE.test(path) || !path.startsWith(worktree)
+  const foldedWorktree = foldPath(worktree)
+  const outside = (path: string): boolean => {
+    if (HOME_LIKE.test(path)) return true
+    const rel = relative(foldedWorktree, foldPath(path))
+    return rel !== '' && (rel.startsWith('..') || isAbsolute(rel))
+  }
   for (const entry of floor.entries) {
     for (const test of entry.tests) {
       if (test.form === 'files') {

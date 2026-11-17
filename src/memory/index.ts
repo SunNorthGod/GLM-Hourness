@@ -10,11 +10,12 @@
  * Memory is per session: the project directory follows the working
  * directory of the session (the row's old `home` setting is ignored and the
  * health says so), what is about the person is in the user-level directory.
- * A delegated child gets neither the tools nor the index nor the reminder: a
- * listener on the child's own scope removes the tools from its request (it does not
- * `prepend`, so the dialect's section decision, which runs outside it, sees
- * the tools that are left), and the tool bodies refuse a child that calls
- * one by name. The row has one code rule, `habit-ask-first`
+ * A delegated child gets neither the tools nor the index nor the reminder:
+ * `registerSubagentRemovals` registers the five tools on `glmHournessFaces`
+ * so the wire layer removes them from the child's request (`wireFace` /
+ * `wireFaceProjection`, letting the dialect see what is left), `DeferredToolCall`
+ * rejects removed tools on the GLM route before `tools/pre-execute`, and the
+ * tool bodies refuse a child that reaches them directly by name. The row has one code rule, `habit-ask-first`
  * (src/memory/habit-rule.ts), installed through the guard framework's gate:
  * its denials go to the violation journal of the session's project.
  *
@@ -48,7 +49,7 @@ import { provideRowHealth, type HealthState, type RowHealth } from '../shared/he
 import type { TokenUsage } from '../shared/lm-min.ts'
 import { MEMORY_SERVICE } from '../shared/memory-service.ts'
 import { emitMetric, metricsWhereOf } from '../shared/metrics.ts'
-import { sessionNotebook, warnOnceFor, whenPresent } from '../shared/row-support.ts'
+import { sessionNotebook, warnOnceFor, whenPresent, whenSessionProjection } from '../shared/row-support.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { LEARNING_TOOL_NAMES, MEMORY_TOOL_NAMES } from '../shared/tool-names.ts'
 import type { AppendOptions } from '../data/journal.ts'
@@ -383,7 +384,7 @@ export function apply(ctx: MemoryContext, config: MemoryConfig = {}): () => void
   // The commands and the projection arrive when their services do; without them the tools and the index work all the same.
   const optional = { name, ctx, waiting, health, activation }
   whenPresent(optional, 'commands', 'commands', WAITING_COMMANDS, '命令 /memory', ({ commands }) => commands.register(memoryCommand(env)))
-  whenPresent(optional, 'sessionProjections', 'projection', WAITING_PROJECTION, '会话投影 hournessMemory', ({ sessionProjections }) => sessionProjections.register(projectionFor(placesFor)))
+  whenSessionProjection(optional, 'projection', WAITING_PROJECTION, '会话投影 hournessMemory', projectionFor(placesFor))
 
   health.reactivate(...activation())
   return () => { for (const dispose of disposers.splice(0).reverse()) dispose() }

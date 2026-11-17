@@ -233,7 +233,17 @@ export function apply(ctx: OperateContext, _config = {}): () => void {
   if (typeof ctx.inject === 'function') {
     try {
       ctx.inject(['tools'], toolsCtx => {
-        const undo = toolsCtx.tools.register(hournessReportTool({ lookup: ctx, isMain, graphDirOf }))
+        let undo: () => void
+        try {
+          undo = toolsCtx.tools.register(hournessReportTool({ lookup: ctx, isMain, graphDirOf }))
+        }
+        catch (error) {
+          const reason = errorText(error)
+          console.warn(`${name}: registering hourness_report failed: ${reason}`)
+          toolsNote = `报告行的工具没注册上：${reason}`
+          reactivate()
+          return undefined
+        }
         toolsNote = undefined
         reactivate()
         return () => {
@@ -244,7 +254,9 @@ export function apply(ctx: OperateContext, _config = {}): () => void {
       })
     }
     catch (error) {
-      toolsNote = `报告行的工具没注册上：${error instanceof Error ? error.message : String(error)}`
+      const reason = errorText(error)
+      console.warn(`${name}: registering hourness_report failed: ${reason}`)
+      toolsNote = `报告行的工具没注册上：${reason}`
     }
   }
   else toolsNote = '宿主没有 inject，报告行的工具拿不到工具服务'

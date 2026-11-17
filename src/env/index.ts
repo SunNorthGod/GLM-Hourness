@@ -159,7 +159,13 @@ export function apply(ctx: EnvContext, config: EnvConfig = {}): () => void {
   const notProvided = typeof provided === 'string' ? provided : undefined
   if (notProvided !== undefined) console.warn(`${name}: ${notProvided}`)
   const loaded = '已加载；环境提醒在会话第一步与环境分支变化后的下一步注入'
-  const health = provideRowHealth(ctx, 'env', notProvided === undefined ? 'active' : 'degraded', notProvided === undefined ? loaded : `${loaded}；${notProvided}`)
+  let toolFailure: string | undefined
+  let boardFailure: string | undefined
+  const activation = (): [HealthState, string] => {
+    const problems = [notProvided, toolFailure, boardFailure].filter((text): text is string => text !== undefined)
+    return problems.length === 0 ? ['active', loaded] : ['degraded', `${loaded}；${problems.join('；')}`]
+  }
+  const health = provideRowHealth(ctx, 'env', ...activation())
   const disposers: Array<() => void> = [() => { health.dispose() }]
   if (typeof provided === 'function') disposers.push(provided)
   const checker = createChecker({
@@ -233,27 +239,36 @@ export function apply(ctx: EnvContext, config: EnvConfig = {}): () => void {
   }))
   // The main agent's ceiling of one check (design §6.3.1): every route; the body refuses a subagent.
   if (ctx.tools !== undefined) {
-    disposers.push(ctx.tools.register({
-      name: 'check_limit',
-      description: CHECK_LIMIT_DESCRIPTION,
-      parameters: CHECK_LIMIT_PARAMETERS,
-      output: { schema: { type: 'object', properties: { outcome: { type: 'string' }, check: { type: 'string' }, capS: { type: 'number' }, previousCapS: { type: 'number' }, message: { type: 'string' } } }, render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] },
-      execute: (args, exec) => {
-        const { agent } = (exec ?? {}) as ToolExecutionContext
-        const cwd = typeof agent?.session?.header.cwd === 'string' && agent.session.header.cwd.length > 0 ? agent.session.header.cwd : undefined
-        return checkLimit(args, {
-          agent,
-          home: projectHomeFor(ctx, undefined, cwd),
-          checks: async () => cwd === undefined ? undefined : (await readOwnChecks(ctx, cwd))?.checks.map(check => check.key),
-          now: () => new Date(),
-        })
-      },
-    }))
+    try {
+      disposers.push(ctx.tools.register({
+        name: 'check_limit',
+        description: CHECK_LIMIT_DESCRIPTION,
+        parameters: CHECK_LIMIT_PARAMETERS,
+        output: { schema: { type: 'object', properties: { outcome: { type: 'string' }, check: { type: 'string' }, capS: { type: 'number' }, previousCapS: { type: 'number' }, message: { type: 'string' } } }, render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] },
+        execute: (args, exec) => {
+          const { agent } = (exec ?? {}) as ToolExecutionContext
+          const cwd = typeof agent?.session?.header.cwd === 'string' && agent.session.header.cwd.length > 0 ? agent.session.header.cwd : undefined
+          return checkLimit(args, {
+            agent,
+            home: projectHomeFor(ctx, undefined, cwd),
+            checks: async () => cwd === undefined ? undefined : (await readOwnChecks(ctx, cwd))?.checks.map(check => check.key),
+            now: () => new Date(),
+          })
+        },
+      }))
+    }
+    catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      console.warn(`${name}: registering check_limit failed: ${reason}`)
+      toolFailure = `check_limit 注册失败：${reason}`
+      health.reactivate(...activation())
+    }
   }
   // The event of changed files and the checker's entry on the loop board (design §6.8): warned once and kept on the activation line when refused.
   disposers.push(installContribution(ctx, ENV_ROW_SOURCE, () => envContribution(checker), CHECKS_ENTRY_ID, (message) => {
     console.warn(`${name}: ${message}`)
-    health.reactivate('degraded', message)
+    boardFailure = message
+    health.reactivate(...activation())
   }))
   return () => {
     for (const disposer of disposers.splice(0).reverse()) disposer()

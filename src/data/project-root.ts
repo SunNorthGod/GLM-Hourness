@@ -63,9 +63,12 @@ function rootOfWorkTree(dir: string, text: string): string {
 
 const located = new Map<string, ProjectLocation>()
 
+const cacheKey = (path: string): string => process.platform === 'win32' ? path.toLowerCase() : path
+
 function locate(cwd: string): ProjectLocation {
   const start = resolve(cwd)
-  const known = located.get(start)
+  const key = cacheKey(start)
+  const known = located.get(key)
   if (known !== undefined) return known
   let found: ProjectLocation = { root: start, git: false }
   for (let dir = start; ; dir = dirname(dir)) {
@@ -76,7 +79,7 @@ function locate(cwd: string): ProjectLocation {
     }
     if (dirname(dir) === dir) break
   }
-  if (found.git) located.set(start, found)
+  if (found.git) located.set(key, found)
   return found
 }
 
@@ -172,10 +175,11 @@ const WORK_TREES_FRESH_MS = 60_000
 export function cachedWorktrees(now: () => number): (root: string) => readonly string[] {
   const kept = new Map<string, { readonly at: number, readonly trees: readonly string[] }>()
   return (root) => {
-    const known = kept.get(root)
+    const key = cacheKey(resolve(root))
+    const known = kept.get(key)
     if (known !== undefined && now() - known.at < WORK_TREES_FRESH_MS) return known.trees
     const trees = worktreesOf(root)
-    kept.set(root, { at: now(), trees })
+    kept.set(key, { at: now(), trees })
     return trees
   }
 }

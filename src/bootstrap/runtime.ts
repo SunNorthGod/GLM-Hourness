@@ -41,7 +41,7 @@ import { listFull, questionsDraft, questionsMarkdown, type Thing } from './prese
 import { writeScan, type ScanResult } from './scan.ts'
 import { hasProjectGraph } from './path.ts'
 import { listConclusion } from './review.ts'
-import { applyAgreement, appliedMessage, baselineComment, baselineOf, bootstrapReviewTool, formatOf, questionStatus, trackedGraphFiles, type ApplyDeps, type ReviewDeps, type RulesLookup, type TrialFacts } from './review.ts'
+import { applyAgreement, appliedMessage, baselineComment, baselineOf, bootstrapReviewTool, formatOf, graphRelativeDir, questionStatus, trackedGraphFiles, type ApplyDeps, type ReviewDeps, type RulesLookup, type TrialFacts } from './review.ts'
 import { ATTACH_PATTERN, TAKEOVER_ATTACH_PREFIX, takeoverAttachLine, takeoverAttachOf, type WishSeam } from './service.ts'
 import { settleWorkspace } from './setup.ts'
 import { appendClosed, appendTakeover, closedTakeoverOf, openTakeover, openTakeoverOf, recordAsked, takeoverDir, type OpenTakeover, type TakeoverPath, type TakeoverRecord } from './takeover.ts'
@@ -621,7 +621,7 @@ export function bootstrapRuntime(deps: BootstrapDeps): BootstrapRuntime {
       await appendClosed(root, closed.id, [{ op: 'graph-tracked', data: {} }]).catch(() => false)
       return undefined
     }
-    const rel = closed.graphDir.toLowerCase().startsWith(root.toLowerCase()) ? closed.graphDir.slice(root.length).replaceAll('\\', '/').replace(/^\//, '') : closed.graphDir
+    const rel = graphRelativeDir(root, closed.graphDir)
     if (closed.graphReminders >= 2) {
       deps.report(agent, 'degraded', `项目图还没进 git：${rel}`)
       return undefined

@@ -81,19 +81,27 @@ export function apply(ctx: (LlmContextLike | { llm?: LlmContextLike }) & Service
   const activation = `已注册路由 ${provider}（套餐 ${plan}，凭证目录 ${home}，上下文窗口 ${window.value}）`
   const refused = window.refused === undefined ? provided.failure : provided.failure === undefined ? window.refused : `${window.refused}；${provided.failure}`
   const health = provideRowHealth(ctx, 'glm-llm', refused === undefined ? 'active' : 'degraded', `${activation}${refused === undefined ? '' : `；${refused}`}`)
-  const unregister = registrarOf(ctx)([provider], new ZcodeAdapter({
-    home,
-    ...(config.plan === undefined ? {} : { plan: config.plan }),
-    contextWindow: window.value,
-    ...imageServices(ctx),
-    sessionHeader: sessionHeaders(ctx),
-    facePolicy: () => facePolicyOf(ctx),
-    // A session's report replaces the activation text, so a refused window rides on each report and keeps an answered request partly in effect.
-    report: (sessionId, state, reason) => refused === undefined
-      ? health.report(sessionId, state, reason)
-      : health.report(sessionId, state === 'active' ? 'degraded' : state, `${reason}；${refused}`),
-    metric: glmMetricSink(ctx),
-  }))
+  let unregister = (): void => {}
+  try {
+    unregister = registrarOf(ctx)([provider], new ZcodeAdapter({
+      home,
+      ...(config.plan === undefined ? {} : { plan: config.plan }),
+      contextWindow: window.value,
+      ...imageServices(ctx),
+      sessionHeader: sessionHeaders(ctx),
+      facePolicy: () => facePolicyOf(ctx),
+      // A session's report replaces the activation text, so a refused window rides on each report and keeps an answered request partly in effect.
+      report: (sessionId, state, reason) => refused === undefined
+        ? health.report(sessionId, state, reason)
+        : health.report(sessionId, state === 'active' ? 'degraded' : state, `${reason}；${refused}`),
+      metric: glmMetricSink(ctx),
+    }))
+  }
+  catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    console.warn(`${name}: registering adapter for ${provider} failed: ${reason}`)
+    health.reactivate('degraded', `路由 ${provider} 注册失败：${reason}${refused === undefined ? '' : `；${refused}`}`)
+  }
   return () => {
     unregister()
     provided.withdraw?.()

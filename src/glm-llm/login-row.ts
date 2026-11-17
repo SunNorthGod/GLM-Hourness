@@ -90,11 +90,26 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
     noteQuotaHealth()
     return view
   }
+  const registered: string[] = []
+  const failed: string[] = []
   const pricing = providePricing(ctx, Object.freeze({ ...creditPricing, quota, loopDefaults: GLM_LOOP_DEFAULTS }))
-  const base: { readonly state: HealthState, readonly reason: string } = pricing.withdraw !== undefined
-    ? { state: 'active', reason: commands }
-    : { state: 'degraded', reason: `${commands}；积分口径未提供：${pricing.failure ?? ''}` }
-  const health = provideRowHealth(ctx, 'glm-login', base.state, base.reason)
+  const health = provideRowHealth(ctx, 'glm-login', 'active', commands)
+  const disposers: Array<() => void> = [
+    () => health.dispose(),
+    ...(pricing.withdraw === undefined ? [] : [pricing.withdraw]),
+  ]
+  let base: { state: HealthState, reason: string } = { state: 'active', reason: commands }
+  const refreshBase = (): void => {
+    const cmdPart = failed.length === 0
+      ? commands
+      : [...(registered.length > 0 ? [`${registered.join('、')} 已注册`] : []), ...failed].join('；')
+    const parts = [cmdPart, ...(pricing.withdraw !== undefined ? [] : [`积分口径未提供：${pricing.failure ?? ''}`])]
+    base = {
+      state: failed.length === 0 && pricing.withdraw !== undefined ? 'active' : 'degraded',
+      reason: parts.join('；'),
+    }
+    health.reactivate(base.state, base.reason)
+  }
   /** The quota note after the row's own words; the quota never lowers the row's state, it is data for people. */
   function noteQuotaHealth(): void {
     const note = quotaHealthText(reader.health(), now(), zone)
@@ -115,8 +130,16 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
     const at = now()
     return [peakLine(creditPricing.plan, atMs => creditPricing.peak(atMs), at, zone), ...quotaLines(view, at, zone)].join('\n')
   }
-  const disposers = [
-    ctx.commands.register({
+  const reportIoError = (invocation: CommandInvocationLike, prefix: string, error: unknown): string => {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn(`${name}: ${prefix}: ${message}`)
+    health.reactivate('degraded', `${base.reason}；${prefix}：${message}`)
+    const sessionId = sessionIdOf(invocation.agent)
+    if (sessionId !== undefined) health.report(sessionId, 'degraded', `${prefix}：${message}`)
+    return `${prefix}：${message}`
+  }
+  const definitions: readonly CommandDefinitionLike[] = [
+    {
       definitionId: 'dsh-glm-hourness/glm-login',
       name: 'glm-login',
       description: '通过浏览器 OAuth 登录原生 ZCode 通道',
@@ -129,34 +152,56 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
           return { kind: 'error', text: `登录失败：${(error as Error).message}` }
         }
       },
-    }),
-    ctx.commands.register(statusCommand(async invocation => {
+    },
+    statusCommand(async invocation => {
       const credential = await credentialText()
       const section = await quotaSection(invocation)
       return `${credential}\n\n${section}\n\n${healthText(ctx, invocation)}`
-    })),
-    ctx.commands.register({
+    }, (invocation, error) => reportIoError(invocation, '读取状态失败', error)),
+    {
       definitionId: 'dsh-glm-hourness/glm-logout',
       name: 'glm-logout',
       description: '清除本机保存的原生 ZCode 通道凭证',
       handler: async invocation => {
         if (invocation.rawInput.trim().length > 0) return { kind: 'error', text: '用法：/glm-logout（无需参数）' }
-        await logout(home)
-        return { kind: 'success', text: 'glm-zcode：凭证已清除' }
+        try {
+          await logout(home)
+          return { kind: 'success', text: 'glm-zcode：凭证已清除' }
+        }
+        catch (error) {
+          return { kind: 'error', text: reportIoError(invocation, '清除凭证失败', error) }
+        }
       },
-    }),
-    () => health.dispose(),
-    ...(pricing.withdraw === undefined ? [] : [pricing.withdraw]),
+    },
   ]
+  for (const definition of definitions) {
+    try {
+      disposers.push(ctx.commands.register(definition))
+      registered.push(`/${definition.name}`)
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn(`${name}: registering /${definition.name} failed: ${message}`)
+      failed.push(`/${definition.name} 注册失败：${message}`)
+    }
+  }
+  refreshBase()
   return () => { for (const dispose of disposers) dispose() }
 }
 
 /** `/glm-status`: the credential line (first, the settings page parses it), the peak line and quota section, and the health table. */
-function statusCommand(render: (invocation: CommandInvocationLike) => Promise<string>): CommandDefinitionLike {
+function statusCommand(render: (invocation: CommandInvocationLike) => Promise<string>, onError: (invocation: CommandInvocationLike, error: unknown) => string): CommandDefinitionLike {
   return {
     definitionId: 'dsh-glm-hourness/glm-status',
     name: 'glm-status',
     description: '查看原生 ZCode 通道的凭证状态与各行健康',
-    handler: async invocation => ({ kind: 'success', text: await render(invocation) }),
+    handler: async invocation => {
+      try {
+        return { kind: 'success', text: await render(invocation) }
+      }
+      catch (error) {
+        return { kind: 'error', text: onError(invocation, error) }
+      }
+    },
   }
 }

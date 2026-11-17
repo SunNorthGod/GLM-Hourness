@@ -14,6 +14,7 @@
  */
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { isAbsolute, relative, resolve } from 'node:path'
 import { openEngine } from '../graph/engine.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import type { GraphNode } from '../graph/schema.ts'
@@ -657,9 +658,26 @@ export function appliedMessage(takeover: Pick<OpenTakeover, 'id' | 'round'>, tot
 // ---------------------------------------------------------------------------
 // The project graph in git (§7.6)
 
+const foldPath = (value: string): string =>
+  process.platform === 'win32' || process.platform === 'darwin' ? value.toLowerCase() : value
+
+/** Graph directory relative to `root` (with forward slashes) when inside `root`, else `graphDir`. */
+export function graphRelativeDir(root: string, graphDir: string): string {
+  const base = resolve(root)
+  const target = resolve(graphDir)
+  const foldedRel = relative(foldPath(base), foldPath(target))
+  if (foldedRel === '') return ''
+  if (foldedRel.startsWith('..') || isAbsolute(foldedRel)) return graphDir
+  if (process.platform === 'darwin') {
+    const segments = foldedRel.split('/').length
+    return target.split('/').slice(-segments).join('/')
+  }
+  return relative(base, target).replaceAll('\\', '/')
+}
+
 /** The node files of the graph directory git tracks; undefined when git cannot say (the 5 s cap). */
 export function trackedGraphFiles(root: string, graphDir: string): Promise<readonly string[] | undefined> {
-  const rel = graphDir.toLowerCase().startsWith(root.toLowerCase()) ? graphDir.slice(root.length).replaceAll('\\', '/').replace(/^\//, '') : graphDir
+  const rel = graphRelativeDir(root, graphDir)
   return new Promise((resolve) => {
     const child = execFile('git', ['-c', 'core.fsmonitor=false', '-c', 'core.quotepath=false', 'ls-files', '--', `${rel}/nodes`], { cwd: root, timeout: 5000, windowsHide: true }, (error, stdout) => {
       resolve(error === null ? stdout.split('\n').filter(line => line !== '') : undefined)

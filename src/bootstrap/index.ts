@@ -205,7 +205,16 @@ export function trialMinutesOf(config: BootstrapConfig): number {
 export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () => void {
   // Why the row's wire-face source is not on the wire layer (face-migration design 0.1 §4.6): information only, it does not degrade — an install without the GLM channel row has no wire layer at all.
   let facesNote: string | undefined = FACES_NOTE
-  const activation = (): [HealthState, string] => ['active', `已加载；/hourness-init 开接管，接管开着时每步提醒主 Agent${facesNote === undefined ? '' : `；${facesNote}`}`]
+  let toolsNote: string | undefined
+  let sweepNote: string | undefined
+  const problems: string[] = []
+  const activation = (): [HealthState, string] => {
+    const notes = [...problems, ...toolsNote === undefined ? [] : [toolsNote], ...sweepNote === undefined ? [] : [sweepNote]]
+    return [
+      notes.length === 0 ? 'active' : 'degraded',
+      ['已加载；/hourness-init 开接管，接管开着时每步提醒主 Agent', ...notes, ...facesNote === undefined ? [] : [facesNote]].join('；'),
+    ]
+  }
   const health = provideRowHealth(ctx, 'bootstrap', ...activation())
   const disposers: Array<() => void> = [() => { health.dispose() }]
   const report = (agent: AgentLike, state: HealthState, reason: string): void => {
@@ -270,13 +279,30 @@ export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () =
   try {
     if (typeof ctx.inject === 'function') {
       ctx.inject(['tools'], toolsCtx => {
-        disposers.push(toolsCtx.tools.register(runtime.tool))
+        try {
+          const undo = toolsCtx.tools.register(runtime.tool)
+          toolsNote = undefined
+          health.reactivate(...activation())
+          return () => {
+            undo()
+          }
+        }
+        catch (error) {
+          const reason = message(error)
+          console.warn(`${name}: registering bootstrap_review failed: ${reason}`)
+          toolsNote = `bootstrap_review 注册失败：${reason}`
+          health.reactivate(...activation())
+          return undefined
+        }
       })
     }
     else console.warn(`${name}: the host has no inject, bootstrap_review cannot register (the takeover works without it: the command /hourness-init and the reminders stay)`)
   }
   catch (error) {
-    console.warn(`${name}: registering bootstrap_review failed: ${message(error)}`)
+    const reason = message(error)
+    console.warn(`${name}: registering bootstrap_review failed: ${reason}`)
+    toolsNote = `bootstrap_review 注册失败：${reason}`
+    health.reactivate(...activation())
   }
   // The wire face (face-migration design 0.1 §6 D): bootstrap_review stays only on the face of the main agent of a project with an open takeover. The judgment rides the reminder step (runtime.step records it per session, runtime.faceKeeps reads it back synchronously per request); the source rides the glmHournessFaces registry.
   registerFaceSource(ctx, {
@@ -293,15 +319,41 @@ export function apply(ctx: BootstrapContext, config: BootstrapConfig = {}): () =
   })
   // The residue of a host that died mid-round (§6.3): best effort, never in the way of activation.
   void sweepTrialDirs().then((swept) => {
-    if (swept.left.length > 0) health.reactivate('degraded', `试跑目录删不掉：${swept.left.join('、').slice(0, 200)}`)
-  }, () => undefined)
+    if (swept.left.length > 0) {
+      sweepNote = `试跑目录删不掉：${swept.left.join('、').slice(0, 200)}`
+      health.reactivate(...activation())
+    }
+  }, (error: unknown) => {
+    const reason = message(error)
+    console.warn(`${name}: sweeping trial dirs failed: ${reason}`)
+    sweepNote = `清理试跑目录失败：${reason}`
+    health.reactivate(...activation())
+  })
+  const recordProblem = (what: string, error: unknown): void => {
+    const reason = message(error)
+    console.warn(`${name}: ${what}: ${reason}`)
+    problems.push(`${what}：${reason}`)
+    health.reactivate(...activation())
+  }
+  if (typeof ctx.provide === 'function') {
+    try {
+      disposers.push(ctx.provide(BOOTSTRAP_SERVICE, runtime.service))
+    }
+    catch (error) {
+      recordProblem(`服务 ${BOOTSTRAP_SERVICE} 提供失败`, error)
+    }
+  }
   try {
-    if (typeof ctx.provide === 'function') disposers.push(ctx.provide(BOOTSTRAP_SERVICE, runtime.service))
     disposers.push(ctx.on('agent/created', ({ agent }) => { install(agent) }))
+  }
+  catch (error) {
+    recordProblem('监听 agent/created 失败', error)
+  }
+  try {
     disposers.push(ctx.commands.register(initCommand(ctx, runtime, homedir, rulesLookup)))
   }
   catch (error) {
-    console.warn(`${name}: activation incomplete: ${message(error)}`)
+    recordProblem(`命令 /${INIT_COMMAND} 注册失败`, error)
   }
   return () => {
     for (const disposer of disposers.splice(0).reverse()) disposer()

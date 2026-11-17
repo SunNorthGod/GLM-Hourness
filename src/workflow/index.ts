@@ -21,15 +21,30 @@ import type { PreExecuteHost, ProvideHost, ServiceLookup, ToolExecutionPayload }
 export const DISPATCH_TOOLS = ['spawn_teammate', 'team_task_create', 'team_task_update', 'send_message', 'subagent', 'subagent_fork', 'dispatch_task'] as const
 
 /** Observe root tool calls; dispatches are journaled, every root call reaches `observe` (row health). */
-export function applyOverJournal(ctx: PreExecuteHost, journal: Pick<AuditJournal, 'decision'>, observe?: (payload: ToolExecutionPayload) => void): () => void {
+export function applyOverJournal(
+  ctx: PreExecuteHost,
+  journal: Pick<AuditJournal, 'decision'>,
+  observe?: (payload: ToolExecutionPayload) => void,
+  onError?: (payload: ToolExecutionPayload, error: unknown) => void,
+): () => void {
   return ctx.on('tools/pre-execute', (payload, next) => {
     if (payload.parent === undefined) observe?.(payload)
     if (payload.parent === undefined && (DISPATCH_TOOLS as readonly string[]).includes(payload.name)) {
-      void journal.decision({
-        at: new Date().toISOString(),
-        kind: `dispatch:${payload.name}`,
-        subject: subjectOf(payload.arguments),
-      }).catch(() => {}) // journal failures never block dispatch
+      const fail = (error: unknown): void => {
+        const message = error instanceof Error ? error.message : String(error)
+        console.warn(`${name}: decision journal write failed: ${message}`)
+        onError?.(payload, error)
+      }
+      try {
+        void journal.decision({
+          at: new Date().toISOString(),
+          kind: `dispatch:${payload.name}`,
+          subject: subjectOf(payload.arguments),
+        }).catch(fail) // journal failures never block dispatch
+      }
+      catch (error) {
+        fail(error)
+      }
     }
     return next()
   })
@@ -71,9 +86,19 @@ export function apply(ctx: PreExecuteHost & ServiceLookup & Partial<ProvideHost>
   }
   const config = journalOrConfig as WorkflowConfig
   const health = provideRowHealth(ctx, 'workflow', 'active', '已加载，记录派遣类调用')
-  const dispose = applyOverJournal(ctx, rowJournal(name, () => dataHomes(ctx, config.home), config.fs), payload => {
-    health.report(sessionIdOf(payload.agent), ...workflowHealth(dataHomes(ctx, config.home).projectHome))
-  })
+  const dispose = applyOverJournal(
+    ctx,
+    rowJournal(name, () => dataHomes(ctx, config.home), config.fs),
+    payload => {
+      health.report(sessionIdOf(payload.agent), ...workflowHealth(dataHomes(ctx, config.home).projectHome))
+    },
+    (payload, error) => {
+      const message = error instanceof Error ? error.message : String(error)
+      const sessionId = sessionIdOf(payload.agent)
+      if (sessionId !== undefined) health.report(sessionId, 'degraded', `派遣决策记不进流水：${message}`)
+      else health.reactivate('degraded', `派遣决策记不进流水：${message}`)
+    },
+  )
   return () => {
     dispose()
     health.dispose()

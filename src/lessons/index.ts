@@ -16,14 +16,15 @@
  * the lessons that fit it and the component's document and decisions
  * (src/lessons/path.ts). A call is one or the other, and the call itself is
  * never refused or changed. A delegated child
- * gets `lessons_query` but not `lessons_merge`: a listener on the child's
- * own scope removes the tool from its request (it does not `prepend`, so the
- * dialect's decisions outside it see what is left), and the tool body
- * refuses a child that calls it by name.
+ * gets `lessons_query` but not `lessons_merge`: `registerSubagentRemovals`
+ * registers `lessons_merge` on `glmHournessFaces` so the wire layer removes it
+ * from the child's request (`wireFace` / `wireFaceProjection`), `DeferredToolCall`
+ * rejects it before `tools/pre-execute` on the GLM route, and the tool body
+ * refuses a child on non-GLM routes or direct calls.
  *
  * Everything belongs to the project of the session (the working directory of
  * the session decides it); there is no user-level lessons journal. The row
- * ships disabled until the probe and the first desktop pass (AGENTS.md). It
+ * ships enabled (packages/hourness/cordis.patch.yml). It
  * never throws on activation: a part that cannot be set up is a warning and
  * a line in the row health.
  */
@@ -32,7 +33,7 @@ import { dialectService, toNativeTool } from '../shared/dialect.ts'
 import type { AgentLike, InjectHost, PostExecuteHost, ProvideHost, ServiceLookup, SessionLike, SessionProjectionsService, ToolsLike } from '../shared/dsh-min.ts'
 import { provideRowHealth, type HealthState, type RowHealth } from '../shared/health.ts'
 import { FACES_NOTE, registerSubagentRemovals } from '../shared/face-policy.ts'
-import { sessionNotebook, warnOnceFor, whenPresent } from '../shared/row-support.ts'
+import { sessionNotebook, warnOnceFor, whenPresent, whenSessionProjection } from '../shared/row-support.ts'
 import { LESSONS_MERGE_TOOL } from '../shared/tool-names.ts'
 import type { AppendOptions } from '../data/journal.ts'
 import { lessonsCommand } from './commands.ts'
@@ -236,7 +237,7 @@ export function apply(ctx: LessonsContext, config: LessonsConfig = {}): () => vo
   // The commands and the projection arrive when their services do; without them the tools and the notices work all the same.
   const optional = { name, ctx, waiting, health, activation }
   whenPresent(optional, 'commands', 'commands', WAITING_COMMANDS, '命令 /lessons', ({ commands }) => commands.register(lessonsCommand(env)))
-  whenPresent(optional, 'sessionProjections', 'projection', WAITING_PROJECTION, '会话投影 hournessLessons', ({ sessionProjections }) => sessionProjections.register(projectionFor(dirOfCwd)))
+  whenSessionProjection(optional, 'projection', WAITING_PROJECTION, '会话投影 hournessLessons', projectionFor(dirOfCwd))
 
   // The wire face (face-migration design 0.1 §6 D): the row's face-policy source registered on the glmHournessFaces registry once it arrives — a delegated child's request loses lessons_merge at the wire layer.
   facesNote = registerSubagentRemovals(ctx, {

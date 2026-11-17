@@ -52,12 +52,12 @@
  *   same lists the service's readers hand out;
  * - reports its health: ready, or degraded with each thing that is wrong.
  *
- * It registers no tool yet (`loop_show`, `loop_propose` and `loop_note` come
- * with the path of a person's agreement) and binds no reminder of the DSH
- * schedule service yet. Activation never throws: a host without `provide`
- * leaves the row inactive with the reason, and a command, a gate, a projection
- * or a beat that cannot be set up degrades the row and says which. The row
- * ships disabled (packages/hourness/cordis.patch.yml).
+ * It registers no agreement tool yet (`loop_show`, `loop_propose` and `loop_note`
+ * come with the path of a person's agreement); it binds DSH `schedule` tasks
+ * (`bind.ts`, `remove.ts`) and installs `loops:schedule-tools`. Activation never
+ * throws: a host without `provide` leaves the row inactive with the reason, and
+ * a command, a gate, a projection or a beat that cannot be set up degrades the
+ * row and says which. The row ships enabled (packages/hourness/cordis.patch.yml).
  */
 import { projectOf } from '../data/project-root.ts'
 import { projectHomeFor } from '../data/project-home.ts'
@@ -67,6 +67,7 @@ import { projectJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
 import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventHost, SessionEventOn, WorkspaceRegistryService } from '../shared/dsh-min.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
+import { registerSessionProjection } from '../shared/row-support.ts'
 import type { StoreIo } from '../rules/store.ts'
 import { realStoreIo } from '../rules/store.ts'
 import { statSync } from 'node:fs'
@@ -182,16 +183,21 @@ function installProjection(ctx: Partial<InjectHost>, settled: (problem: string |
   }
   try {
     ctx.inject(['sessionProjections'], projectionCtx => {
-      try {
-        projectionCtx.sessionProjections.register(loopsProjection)
-      }
-      catch (error) {
-        console.warn(`${name}: the projection ${LOOPS_KEY} is off: ${message(error)}`)
-        settled(`会话投影未注册：${message(error)}`)
-        return undefined
-      }
+      let active = true
+      const reg = registerSessionProjection(projectionCtx.sessionProjections, loopsProjection, {
+        onError: (error) => {
+          if (!active) return
+          console.warn(`${name}: the projection ${LOOPS_KEY} is off: ${message(error)}`)
+          settled(`会话投影未注册：${message(error)}`)
+        },
+      })
+      if (!reg.ok) return undefined
       settled(undefined)
-      return () => { settled(WAITING_PROJECTION) }
+      return () => {
+        active = false
+        reg.dispose()
+        settled(WAITING_PROJECTION)
+      }
     })
   }
   catch (error) {
