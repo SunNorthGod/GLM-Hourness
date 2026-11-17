@@ -277,5 +277,23 @@ saved copy at either check (someone wrote during the dance), stop and
 report instead. The person's content is never handed to git's merge or
 stash machinery.
 
+### Landing
+
+- The dance ran as planned and every check held: the save copy matched
+  byte-for-byte, `git merge --ff-only lock-hard` fast-forwarded main
+  `6dd4f9eb..ae89addc` (rc 0), the write-back restored the saved bytes
+  byte-identically and the original mtime (`touch -d`), and
+  `git status --porcelain` afterwards shows exactly the one ` M
+  package.json` entry — the person's file, untouched by git's machinery.
+- One finding for the record: the person's overwrite was not the state the
+  earlier audit saw. Its handler rewrote the file at 2026-11-17 12:45:21
+  +0800 (18623 → 17481 bytes) while this lane ran the gates; the dance
+  captured that newest state and restored exactly it. Their latest content
+  is what sits in the working tree now, dirty against the new HEAD exactly
+  as their handler left it.
+- This commit (main `ae89addc` plus this record) is pushed to Gitee
+  `origin/main` and then to the GitHub mirror `github` (`main` only) in the
+  same step, per the repo's landing rule.
+
 
 
