@@ -31,6 +31,23 @@ export function agentsOf(ctx: ServiceLookup): MessageableAgentsService | undefin
 }
 
 /**
+ * The root of a dispatch chain: the session itself when it is not a subagent,
+ * else the first agent up the chain of parents that is not one. `get` is the
+ * registry's lookup; it answers `'failed'` when the registry cannot be asked,
+ * which the walk passes through, and the callers spell out what that means.
+ */
+export function walkToRoot<Agent extends { readonly session: { readonly header: { readonly origin?: 'subagent', readonly parentSession?: string } } }>(start: string | undefined, get: (sessionId: string) => Agent | undefined | 'failed'): Agent | undefined | 'failed' {
+  const seen = new Set<string>()
+  for (let id = start; id !== undefined && !seen.has(id);) {
+    seen.add(id)
+    const agent = get(id)
+    if (agent === 'failed' || agent === undefined || agent.session.header.origin !== 'subagent') return agent
+    id = agent.session.header.parentSession
+  }
+  return undefined
+}
+
+/**
  * The way to reach an agent so that it takes the message: a running one is
  * steered (its next step reads it); an idle one with a goal in the active
  * phase gets it injected (a followup would count as competing input and void

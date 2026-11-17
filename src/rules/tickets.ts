@@ -34,7 +34,7 @@ import type { MessageableAgentLike, ServiceLookup, SessionLike } from '../shared
 import type { RowHealth } from '../shared/health.ts'
 import { sessionRoute } from '../shared/route.ts'
 import { PEAK_STOP_SIGNATURE } from './builtin.ts'
-import type { DescribedCall } from './call.ts'
+import { callSummary, type DescribedCall } from './call.ts'
 import type { Caller } from './caller.ts'
 import { denialText, ticketLimitText, type DenialInput, type PeakSetting } from './denial.ts'
 import { openRulesBoard, type RulesBoard } from './engine.ts'
@@ -49,7 +49,7 @@ import type { HostRef } from './request.ts'
 import type { StoreIo } from './store.ts'
 import { runJudgedScripts, type ScriptOutcome } from './script-run.ts'
 import { clockReadings, tableOf } from './table.ts'
-import { agentsOf, clearedBecause, deliver, heartbeatLostText, isStopTicket, stopWakeText, wakeNotice, wakeText } from './wake.ts'
+import { agentsOf, clearedBecause, deliver, heartbeatLostText, isStopTicket, stopWakeText, walkToRoot, wakeNotice, wakeText } from './wake.ts'
 
 /** A session has at most this many open tickets (design §6.3). */
 const MAX_OPEN = 20
@@ -155,22 +155,12 @@ const labelOf = (sessionId: string): string => (sessionId.length <= 12 ? session
 const holderOf = (session: SessionLike): Holder => ({ sessionId: session.id, origin: session.header.origin, parentSession: session.header.parentSession })
 
 /** The first 12 hex digits of the SHA-256 of the native tool name and the arguments in their canonical form: the same call asks the same question (design §6.2 step 6). */
-function signatureOf(tool: string, args: unknown): string {
+export function signatureOf(tool: string, args: unknown): string {
   return createHash('sha256').update(`${tool}\n${canonicalJson(args ?? null)}`).digest('hex').slice(0, 12)
 }
 
 /** What a ticket says the call was: the shell text, the file written, else the arguments. */
-function summaryOf(call: DeferredCall): string {
-  if (call.described.command !== undefined) return call.described.command
-  const target = call.described.writes?.[0]
-  if (target !== undefined) return target
-  try {
-    return JSON.stringify(call.args) ?? ''
-  }
-  catch {
-    return ''
-  }
-}
+const summaryOf = (call: DeferredCall): string => callSummary(call.described, call.args)
 
 /** The tickets of this host for the row: opened here, judged here, told about here. */
 export function createTicketDesk(deps: DeskDeps): TicketDesk {
@@ -234,14 +224,11 @@ export function createTicketDesk(deps: DeskDeps): TicketDesk {
 
   /** The agent that dispatched the work: the first live agent up the chain of parents that is not a subagent. Undefined when there is none, `unknown` when the registry cannot be asked. */
   function dispatchRoot(parentSession: string | undefined): MessageableAgentLike | undefined | 'unknown' {
-    const seen = new Set<string>()
-    for (let id = parentSession; id !== undefined && !seen.has(id);) {
-      seen.add(id)
+    const root = walkToRoot(parentSession, id => {
       const agent = liveAgent(id)
-      if (agent === 'unknown' || agent === undefined || agent.session.header.origin !== 'subagent') return agent
-      id = agent.session.header.parentSession
-    }
-    return undefined
+      return agent === 'unknown' ? 'failed' as const : agent
+    })
+    return root === 'failed' ? 'unknown' : root
   }
 
   // ----------------------------------------------------------- the judgement

@@ -88,6 +88,7 @@ import { RULES_KEY, rulesProjection } from './projection.ts'
 import { rulesProposeTool } from './propose-tool.ts'
 import { gitOperationIn, readProject } from './repo.ts'
 import { installReminder } from './reminder.ts'
+import { REPO_CHECK_MS, watchRepoChanges } from './repo-changes.ts'
 import type { HostRef } from './request.ts'
 import { projectHealth } from './row-health.ts'
 import { RULES_SERVICE } from './service.ts'
@@ -221,6 +222,10 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
     warn: (text) => { console.warn(`${name}: ${text}`) },
   })
   const tickets = createTicketDesk({ ctx, rulesDir, now, io: config.io, host, project: read, peak: reading, health, heartbeat, warn })
+  /** The rules directory's uncommitted changes, for the main agent's reminder line (design §6.4). */
+  const repoChanges = watchRepoChanges({ warn })
+  /** The boards the notices that rode a reminder are struck out with (design §6.7: 发出后删). */
+  const noticeBoards = new Map<string, ReturnType<typeof openRulesBoard>>()
   const reminders = new Map<string, () => void>()
   // What is left to do once the goals are right: the heartbeat goes last, since the tickets are the host's only while it is there.
   const finish = (): void => {
@@ -373,7 +378,7 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
     },
   }
   try {
-    disposers.push(installRulesGate({ ctx, rulesDir, now, project: read, peak: reading, journal: gateJournal, health, tickets }))
+    disposers.push(installRulesGate({ ctx, rulesDir, now, project: read, peak: reading, journal: gateJournal, health, tickets, ...(config.io === undefined ? {} : { io: config.io }) }))
     gateInstalled = true
   }
   catch (error) {
@@ -417,7 +422,24 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
       const cwd = agent.session?.header.cwd
       if (sessionId !== undefined && cwd !== undefined) sessions.set(sessionId, cwd)
       if (sessionId !== undefined && !reminders.has(sessionId)) {
-        const off = installReminder(agent, { ctx, now, project: read, peak: reading, warn })
+        const off = installReminder(agent, {
+          ctx,
+          now,
+          project: read,
+          peak: reading,
+          warn,
+          repoLine: root => repoChanges.line(root),
+          delivered: (root, ids) => {
+            let board = noticeBoards.get(root)
+            if (board === undefined) {
+              board = openRulesBoard({ projectRoot: root, rulesDir, ...(config.io === undefined ? {} : { io: config.io }) })
+              noticeBoards.set(root, board)
+            }
+            for (const id of ids) {
+              void board.apply('harness', { op: 'notice-delivered', id, reason: `提醒 ${id} 已随主 Agent 的每步提醒带上` }).catch((error: unknown) => warn(`a delivered notice could not be struck out: ${message(error)}`))
+            }
+          },
+        })
         if (off !== undefined) reminders.set(sessionId, off)
       }
       if (sessionId !== undefined && cwd !== undefined) await heartbeat.join(sessionId, cwd)
@@ -465,10 +487,15 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
       warn(`a period of the row failed: ${message(error)}`)
     }
   }
+  /** The projects the row is watching for rules-directory changes no commit has taken in (design §6.4: once a minute after a write). */
+  const repoCheckAll = async (): Promise<void> => {
+    for (const root of new Set([...sessions.values()].flatMap(cwd => projectOf(cwd)?.root ?? []))) await repoChanges.check(root, rulesDir)
+  }
   disposers.push(
     every(guarded(() => tickets.reconcile()), PASS_MS),
     every(guarded(() => heartbeat.beat()), BEAT_MS),
     every(guarded(reconcileAll), RECONCILE_MS),
+    every(guarded(repoCheckAll), REPO_CHECK_MS),
     // The rules page's data follows what no event of this row announces: the guard's denials, the lifts, the clock.
     every(guarded(() => pageView.write()), BEAT_MS),
   )

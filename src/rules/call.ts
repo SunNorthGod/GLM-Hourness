@@ -49,6 +49,19 @@ function inWorkspace(target: string, cwd: string | undefined): string {
   return path === '' || path.startsWith('..') || isAbsolute(path) ? target : path.replaceAll('\\', '/')
 }
 
+/** What a call says it was, as a ticket and a message to the agent name it: the shell text, the file written, else the arguments. */
+export function callSummary(described: DescribedCall, args: unknown): string {
+  if (described.command !== undefined) return described.command
+  const target = described.writes?.[0]
+  if (target !== undefined) return target
+  try {
+    return JSON.stringify(args) ?? ''
+  }
+  catch {
+    return ''
+  }
+}
+
 /** The fields of a call (`tool` is the DSH native name) that rules read, and the sentence a refusal opens with. `cwd` is the session's workspace, when there is one. */
 export function describeCall(tool: string, args: unknown, cwd?: string): DescribedCall {
   const shell = shellCommandOf({ name: tool, arguments: args as JsonValue })

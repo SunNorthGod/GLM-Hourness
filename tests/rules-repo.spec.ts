@@ -9,56 +9,18 @@
  * stated, when git is not installed.
  */
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
 import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import test from 'node:test'
 import { acquireLock, realLockEnvironment } from '../src/data/lock.ts'
-import { openRulesBoard, type RulesBoard } from '../src/rules/engine.ts'
+import { openRulesBoard } from '../src/rules/engine.ts'
 import { effectivePeakMode, repoJson, repoPart, unapprovedScripts, type Change, type JournalRecord } from '../src/rules/model.ts'
 import { adoptRepoLocked, readProject, restoreRepoLocked, settleLocked, type ProjectRead } from '../src/rules/repo.ts'
 import { appendRecord, applyRecord, ensureRuntimeDir, loadState, stateDigest, textDigest, writeSnapshot, type RulesPaths } from '../src/rules/store.ts'
 import { FULL_RULES_FILE, scriptRef, SHA_OTHER } from './rules-fixtures.ts'
-import { quickIo } from './rules-helpers.ts'
-
-const SKIP = spawnSync('git', ['--version']).status === 0 ? false : 'git is not installed on this machine'
-
-/** Run git in a directory with no configuration of the machine or the user in the way. */
-function git(cwd: string, ...args: string[]): string {
-  const run = spawnSync('git', ['-c', 'user.name=Rules Test', '-c', 'user.email=rules@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false', ...args], {
-    cwd,
-    encoding: 'utf8',
-    env: { ...process.env, GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
-  })
-  assert.equal(run.status, 0, `git ${args.join(' ')}: ${run.stderr}`)
-  return run.stdout
-}
-
-interface Repository {
-  readonly root: string
-  readonly board: RulesBoard
-  readonly paths: RulesPaths
-  /** Commit the rules directory. */
-  readonly commit: (message: string) => void
-}
+import { git, gitTest, quickIo, type Repository } from './rules-helpers.ts'
 
 const RULES_FILE = 'docs/rules/rules.json'
-
-/** A git repository in a fresh temporary directory, with a board on it; removed afterwards. */
-function gitTest(name: string, body: (repository: Repository) => Promise<void>): void {
-  test(name, { skip: SKIP }, async () => {
-    const root = await mkdtemp(join(tmpdir(), 'rules-git-'))
-    try {
-      git(root, 'init', '-q')
-      const board = openRulesBoard({ projectRoot: root, io: quickIo() })
-      await body({ root, board, paths: board.paths, commit: (message) => { git(root, 'add', 'docs'); git(root, 'commit', '-q', '-m', message) } })
-    }
-    finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  })
-}
 
 const io = quickIo()
 const journal = async (paths: RulesPaths): Promise<JournalRecord[]> => (await readFile(paths.journal, 'utf8')).split('\n').filter(line => line !== '').map(line => JSON.parse(line) as JournalRecord)

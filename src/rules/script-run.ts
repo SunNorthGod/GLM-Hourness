@@ -15,9 +15,17 @@
  * lets the call through, `block` blocks it. Scripts run side by side; the first that blocks
  * ends the wait and the others are called off, and what ends after that is not read.
  * The output of a script is not kept anywhere but in the reason of a block or deferral.
+ *
+ * The gate asks for the late run (design §6.7 「超时之后」): a timeout is judged by the
+ * failure setting at once, and a timeout whose failure setting lets the call through
+ * carries the executor's `late` promise in its outcome, for the gate's late verdicts
+ * (src/rules/late.ts). In this mode the others are not called off when one blocks: they
+ * keep running to their own timeout or late end, and their outcomes are recorded all the
+ * same (the wait is bounded by the longest timeout). The other callers are told no late:
+ * the whole tree is ended before this returns, as it was before the late run existed.
  */
 import { randomBytes } from 'node:crypto'
-import { runScript, type HookEnvelope, type ScriptRequest, type ScriptResult } from '../loops/script.ts'
+import { runScript, type HookEnvelope, type LateScriptResult, type ScriptRequest, type ScriptResult } from '../loops/script.ts'
 import type { RulesEventRecord } from './events.ts'
 import type { JudgeResult, RuleHit } from './judge.ts'
 import type { BuiltinRule, Rule } from './model.ts'
@@ -36,6 +44,8 @@ export interface ScriptOutcome {
   readonly hit?: RuleHit
   /** A sentence for the person who reads the result of `checkCall`: what happened to the script, and what the rule's failure setting made of it. */
   readonly note?: string
+  /** The run that went on in the background after the timeout (design §6.7): the gate's late verdicts wait on it. Only for a timeout whose failure setting lets the call through. */
+  readonly late?: Promise<LateScriptResult>
 }
 
 /** What the run needs to know of a rule besides what `pending` says. */
@@ -49,7 +59,7 @@ const REASON_CODE_POINTS = 500
 const NO_REASON = 'the script gave no reason'
 
 /** What the script wrote on standard error as one line: control characters out, line breaks as `\n`, at most 500 code points. */
-function reasonOf(stderr: string): string {
+export function reasonOf(stderr: string): string {
   const cleaned = stderr
     .replace(/\r?\n/g, '\\n')
     // eslint-disable-next-line no-control-regex -- the point is to take the control characters of a script's output out of what a model reads
@@ -126,16 +136,22 @@ interface RunPendingOptions {
   readonly now: Date
   readonly session?: string
   readonly run: RunScript
+  /** The gate's late run: timeouts keep running in the background and their outcomes carry the `late` promise. */
+  readonly waitLate?: boolean
 }
 
 /**
  * Run the pending scripts of one call, side by side, and return what each made of it, in the order of `pending`.
- * The call is not held longer than the longest timeout; the first script that blocks ends the wait and the others
- * are called off (their processes ended, their endings not read). When this returns, no process of it is left.
+ * The call is not held longer than the longest timeout; in the ordinary mode the first script that blocks ends the
+ * wait and the others are called off (their processes ended, their endings not read), and when this returns no
+ * process of it is left. In the late mode nothing is called off: a timeout whose failure setting allows carries the
+ * background run's promise, and every ending is read.
  */
 async function runPendingScripts(options: RunPendingOptions): Promise<ScriptOutcome[]> {
   const controller = new AbortController()
   const read = new Map<string, ScriptOutcome | undefined>()
+  /** The background runs a timeout left going: the ordinary mode ends them and waits for their last word, so no process is left when this returns. */
+  const lateness: Array<Promise<LateScriptResult>> = []
   const runs = options.pending.map(async (pending): Promise<void> => {
     const event = options.events.find(entry => entry.event === pending.event)
     const envelope: HookEnvelope = {
@@ -150,14 +166,21 @@ async function runPendingScripts(options: RunPendingOptions): Promise<ScriptOutc
       payload: event?.payload ?? {},
     }
     const result = await options.run({ project: options.root, script: pending.script, envelope, purpose: 'gate', timeoutMs: pending.timeoutSeconds * 1000, signal: controller.signal })
+    if (result.kind === 'timeout' && result.late !== undefined) lateness.push(result.late)
     // What ends after another script blocked is not read: that run was called off.
     if (controller.signal.aborted) return
     const outcome = outcomeOf(pending, options.info(pending.rule), result)
-    read.set(pending.rule, outcome)
-    if (outcome?.hit?.effect === 'block') controller.abort()
+    read.set(pending.rule, outcome === undefined || !options.waitLate || result.kind !== 'timeout' || result.late === undefined || outcome.hit !== undefined
+      ? outcome
+      : { ...outcome, late: result.late })
+    if (outcome?.hit?.effect === 'block' && options.waitLate !== true) controller.abort()
   })
   await Promise.all(runs)
-  controller.abort()
+  if (options.waitLate !== true) {
+    controller.abort()
+    // The abort ends the trees; each background run's promise settles when its process is gone (or at the hard cap).
+    await Promise.allSettled(lateness)
+  }
   return options.pending.flatMap(pending => read.get(pending.rule) ?? [])
 }
 
@@ -176,7 +199,8 @@ function ruleInfoOf(table: readonly (Rule | BuiltinRule)[]): (rule: string) => R
  * Run the pending scripts of one judgement: the rule info comes from the table that
  * judged, the session is the calling one when there is one, and the executor is the
  * shared one unless the caller names another. `checkCall`, the tool-call gate and the
- * desk's re-feed of a script that queued a call all come through here.
+ * desk's re-feed of a script that queued a call all come through here. Only the gate
+ * names `late`, for the late verdicts of design §6.7.
  */
 export async function runJudgedScripts(table: readonly (Rule | BuiltinRule)[], judged: Pick<JudgeResult, 'pending'>, parts: {
   readonly root: string
@@ -185,6 +209,8 @@ export async function runJudgedScripts(table: readonly (Rule | BuiltinRule)[], j
   readonly session?: string
   /** Starts a script; default the shared executor's `runScript` (src/loops/script.ts). */
   readonly run?: RunScript
+  /** Timeouts keep running in the background, and the outcomes that let the call through carry the `late` promise (the tool-call gate). */
+  readonly late?: boolean
 }): Promise<ScriptOutcome[]> {
   return judged.pending.length === 0
     ? []
@@ -196,5 +222,6 @@ export async function runJudgedScripts(table: readonly (Rule | BuiltinRule)[], j
       now: parts.now,
       ...(parts.session === undefined ? {} : { session: parts.session }),
       run: parts.run ?? runScript,
+      ...(parts.late === true ? { waitLate: true } : {}),
     })
 }

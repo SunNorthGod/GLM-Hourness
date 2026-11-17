@@ -70,6 +70,10 @@ export interface ReminderDeps {
   readonly peak: () => PeakReading
   /** Told what went wrong with a step's reminder; the step goes on without it. */
   readonly warn: (message: string) => void
+  /** The main agent's reminder line about the rules directory a commit has not taken in yet (src/rules/repo-changes.ts); absent when the row does not watch. */
+  readonly repoLine?: (root: string) => string | undefined
+  /** The notices the reminder carried are marked delivered (design §6.7: 发出后删); the write is the row's. */
+  readonly delivered?: (root: string, noticeIds: readonly string[]) => void
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -151,10 +155,14 @@ function peakLineOf(mode: { readonly level: PeakLevel, readonly origin: 'default
 }
 
 /**
- * The text of the reminder for one agent: empty when nothing applies to it;
- * undefined when its session is not in a project the board can read.
+ * The text of the reminder for one agent, and the notices it carried: empty
+ * when nothing applies to it, undefined when its session is not in a project
+ * the board can read. The main agent is also told, before the rest, of the
+ * words the board still owes it (the late blocks and capped runs it was not
+ * on this host for, design §6.7) and of the rules-directory changes no commit
+ * has taken in yet (design §6.4).
  */
-function textFor(deps: ReminderDeps, agent: AgentLike, session: SessionLike): string | undefined {
+function textFor(deps: ReminderDeps, agent: AgentLike, session: SessionLike): { readonly body: string, readonly noticeIds: readonly string[] } | undefined {
   const cwd = session.header.cwd
   const project = typeof cwd === 'string' && cwd !== '' ? projectOf(cwd) : undefined
   const view = project === undefined || cwd === undefined ? undefined : deps.project(cwd)
@@ -166,6 +174,7 @@ function textFor(deps: ReminderDeps, agent: AgentLike, session: SessionLike): st
   const { readings } = clockReadings(state, reading, now)
   const mode = effectivePeakMode(state)
   const table = tableOf(state, mode.level)
+  const mainAgent = caller.role === 'main-agent'
   const why = (item: 'role' | 'model' | 'session'): string => caller.unknown[item] ?? `the ${item} of this step is not known`
   const input = judgeInput({
     now,
@@ -181,17 +190,24 @@ function textFor(deps: ReminderDeps, agent: AgentLike, session: SessionLike): st
   })
   const tickets = openTickets(state).filter(ticket => ticket.sessionId === session.id)
   const subagent = session.header.origin === 'subagent'
+  // The words the board still owes the main agent: they came while it was away, and this step carries them (design §6.7).
+  const noticeEntries = mainAgent ? Object.entries(state.notices ?? {}).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0) : []
+  const notices = noticeEntries.map(([, notice]) => notice.text)
   // The main agent is told where the peak stands and what the level asks of it, and so is a session the stop level holds. With no pricing service there is no peak to tell of.
   const peakLine = reading.noService !== true && (caller.role === 'main-agent' || tickets.some(isStopTicket)) ? peakLineOf(mode, reading) : undefined
-  // A line of tickets is worth more than a line of rules: it keeps its place when the rules are cut; the peak line comes first of all.
-  const room = MAX_ITEMS - (tickets.length > 0 ? 1 : 0) - (peakLine === undefined ? 0 : 1)
-  const rules = informing.slice(0, room).map(rule => `- [inform, not checked] ${rule.id}: "${rule.title}" (set by ${rule.origin.actor === 'human' ? 'the human' : 'an agent, with the human\'s agreement'})`)
+  const repoLine = mainAgent ? deps.repoLine?.(project.root) : undefined
+  // A line of tickets is worth more than a line of rules: it keeps its place when the rules are cut; the main agent's own lines come first of all.
+  const room = MAX_ITEMS - (tickets.length > 0 ? 1 : 0) - (peakLine === undefined ? 0 : 1) - (repoLine === undefined ? 0 : 1) - notices.length
+  const rules = informing.slice(0, Math.max(0, room)).map(rule => `- [inform, not checked] ${rule.id}: "${rule.title}" (set by ${rule.origin.actor === 'human' ? 'the human' : 'an agent, with the human\'s agreement'})`)
   const more = informing.length - rules.length
   const handedOver = tickets.some(ticket => ticket.handedFrom !== undefined && !subagent)
   const peakUntil = reading.peak === true ? reading.until : undefined
   const ticketLine = tickets.length === 0 ? [] : [`Your open tickets: ${tickets.map(ticket => ticketItem(ticket, subagent, heldByPeak(ticket, state) ? peakUntil : undefined)).join('; ')}.${handedOver ? ` ${HANDED_OVER_ADVICE}` : ''}`]
   const items = [...rules, ...(more > 0 ? [`and ${more} more: call rules_show`] : []), ...ticketLine]
-  return peakLine === undefined && items.length === 0 ? '' : [...(peakLine === undefined ? [] : [peakLine]), ...(informing.length > 0 ? [HEADING] : []), ...items].join('\n')
+  const body = peakLine === undefined && repoLine === undefined && notices.length === 0 && items.length === 0
+    ? ''
+    : [...(peakLine === undefined ? [] : [peakLine]), ...(repoLine === undefined ? [] : [repoLine]), ...notices, ...(informing.length > 0 ? [HEADING] : []), ...items].join('\n')
+  return { body, noticeIds: noticeEntries.map(([id]) => id) }
 }
 
 /**
@@ -202,13 +218,16 @@ function textFor(deps: ReminderDeps, agent: AgentLike, session: SessionLike): st
 export function installReminder(agent: AgentLike, deps: ReminderDeps): (() => void) | undefined {
   return installStepNotice(agent, 'rules reminder', () => true, (history, { admitted, session }) => {
     try {
-      const body = textFor(deps, agent, session)
-      if (body === undefined) return undefined
+      const built = textFor(deps, agent, session)
+      if (built === undefined) return undefined
+      const { body } = built
       const text = body === '' ? NOTHING : body
       const digest = createHash('sha256').update(text).digest('hex').slice(0, 12)
       const seen = scan(history)
       const reason = reasonFor(seen, digest, admitted.some(isGoalRound), body === '')
       if (reason === undefined) return undefined
+      // The notices this step really carries are the board's to strike out (design §6.7: 发出后删); the write never reaches the step.
+      if (built.noticeIds.length > 0) deps.delivered?.(session.header.cwd ?? '', built.noticeIds)
       const anchor = seen.checkpoint?.id
       const facts: Facts = { digest, ...(anchor === undefined ? {} : { anchor }), reason }
       return createUserNotice(REMINDER_SOURCE, `rules board reminder (${reason})`, wrapSystemReminder(text), { rulesReminder: facts })

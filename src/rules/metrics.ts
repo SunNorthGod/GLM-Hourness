@@ -56,8 +56,21 @@ export interface RulesJudgedEvent {
   readonly ms: number
 }
 
+/** `rules.late-verdict` (design §10.5, §6.7): how a gating script that outlived its timeout ended, one per late end. */
+export interface RulesLateVerdictEvent {
+  readonly event: 'rules.late-verdict'
+  readonly rule: string
+  /** The call's signature, as the waiting tickets compute it. */
+  readonly sig: string
+  readonly result: 'exited' | 'crashed' | 'capped'
+  /** From the timeout to the end. */
+  readonly afterMs: number
+  /** Whether the main agent was told on the spot (a late block or a capped run that was delivered). */
+  readonly told: boolean
+}
+
 /** Every event the rules board hands to the stream; the later steps add theirs here. */
-export type RulesMetricEvent = RulesCheckEvent | RulesJudgedEvent
+export type RulesMetricEvent = RulesCheckEvent | RulesJudgedEvent | RulesLateVerdictEvent
 
 /** Where an event goes: the event and the project root it concerns. */
 export type MetricExit = (event: RulesMetricEvent, project: string) => void | Promise<void>
@@ -83,6 +96,7 @@ export function toEmitted(event: RulesMetricEvent): EmittedEvent {
       },
     }
   }
+  if (event.event === 'rules.late-verdict') return toEmittedLate(event)
   return {
     k: 'rules.judged',
     by: 'rules',
@@ -99,6 +113,15 @@ export function toEmitted(event: RulesMetricEvent): EmittedEvent {
   }
 }
 
+/** The late-verdict event as the journal's closed vocabulary holds it (shared/metrics.ts). */
+function toEmittedLate(event: RulesLateVerdictEvent): EmittedEvent {
+  return {
+    k: 'rules.late-verdict',
+    by: 'rules',
+    body: { rule: event.rule, sig: event.sig, result: event.result, afterMs: event.afterMs, told: event.told },
+  }
+}
+
 /** The exit outside DSH: the library entry, the project located from the directory (metrics design §5.2). */
 export const libraryExit: MetricExit = (event, project) => {
   void appendEvents(project, [toEmitted(event)])
@@ -107,6 +130,11 @@ export const libraryExit: MetricExit = (event, project) => {
 /** Hand one event to the metrics row's service from a caller that also knows the session (the gate). Never throws. */
 export function emitJudged(ctx: ServiceLookup, event: RulesJudgedEvent, where: MetricsWhere): void {
   emitThroughService(ctx, toEmitted(event), where)
+}
+
+/** Hand a late verdict to the metrics row's service from the late handler, which knows the session too. Never throws. */
+export function emitLateVerdict(ctx: ServiceLookup, event: RulesLateVerdictEvent, where: MetricsWhere): void {
+  emitThroughService(ctx, toEmittedLate(event), where)
 }
 
 /** Hand an event to the exit and wait for it. Never rejects: an exit that throws or fails is swallowed. */

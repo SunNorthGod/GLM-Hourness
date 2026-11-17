@@ -52,6 +52,8 @@ export interface Fixture {
   readonly pass: () => Promise<void>
   /** Run the row's heartbeat (the 15-second timer) and wait for it. */
   readonly beat: () => Promise<void>
+  /** Run one of the row's other periods by its length in milliseconds (the 60-second ones). */
+  readonly period: (everyMs: number) => Promise<void>
   /** The repeating timers the row holds now. */
   readonly timers: () => number
   /** The tickets of the project's state now, by number. */
@@ -152,6 +154,8 @@ export async function withRow(body: (fixture: Fixture) => Promise<void>, options
       live,
       pass: () => timers.run(PASS_MS),
       beat: () => timers.run(BEAT_MS),
+      /** Run one period of the row by its length in milliseconds (the 60-second periods). */
+      period: (everyMs: number) => timers.run(everyMs),
       timers: timers.active,
       tickets: () => loadState(rulesPaths(root)).state.tickets ?? {},
       until: async (condition) => {

@@ -871,6 +871,17 @@ export function createGit(runner: GitRunner = realGitRunner) {
     return read(cwd, ['diff', '-U0', '--no-color', '--no-renames', '--ignore-submodules=none', `${from}..${to}`, '--'])
   }
 
+  /**
+   * Whether a repository path differs from `HEAD` (a `git diff --quiet`):
+   * exit 0 clean is `true`, exit 1 with differences is `false`, anything else
+   * a failure. Read-only; the rules row asks it of its directory in the
+   * repository (docs/ORCHESTRATION.md §16.16, design §6.4).
+   */
+  async function diffQuiet(cwd: string, path: string): Promise<Outcome<boolean>> {
+    if (!isRepoFile(path)) return failed('not a repository path')
+    return ask(cwd, ['diff', '--quiet', 'HEAD', '--', path])
+  }
+
   /** Every path in a commit's tree, for the files a `changed` line runs on (takeover design 0.6 §5.6). */
   async function treePaths(cwd: string, rev: string): Promise<Outcome<readonly string[]>> {
     if (!isRev(rev)) return failed('not a revision')
@@ -895,7 +906,7 @@ export function createGit(runner: GitRunner = realGitRunner) {
     toplevel, currentBranch, resolveCommit, treeOf, branchTip, mergeBase, isAncestor,
     changedFiles, entryAt, sameContent, taskTrailers, lastTaskCommit, commitsBetween, stagedPaths,
     listWorktrees, uncleanFiles, ensureWorktree, removeWorktree, discardWorktree, prepareGateWorktree,
-    trunkUpstream, trunkRefs, remoteUrl, remoteHeadBranch, reflogSubject, lsRemote, diffPatch, treePaths,
+    trunkUpstream, trunkRefs, remoteUrl, remoteHeadBranch, reflogSubject, lsRemote, diffPatch, diffQuiet, treePaths,
     commitDate, recentCommits, listBranches, trailerCommits,
   }
 }

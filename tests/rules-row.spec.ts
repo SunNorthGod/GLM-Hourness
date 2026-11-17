@@ -28,12 +28,13 @@ import type { HostHeartbeat } from '../src/rules/heartbeat.ts'
 import { openRulesBoard } from '../src/rules/engine.ts'
 import { repoJson, type JournalRecord, type RepoRules } from '../src/rules/model.ts'
 import { RULES_KEY } from '../src/rules/projection.ts'
+import { REPO_CHECK_MS } from '../src/rules/repo-changes.ts'
 import { loadState, rulesPaths } from '../src/rules/store.ts'
 import { parseRulesView, type RulesView } from '../src/rules/view.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
 import { FULL_RULES_FILE, OFFPEAK_CREDIT_RUNS, ruleOf } from './rules-fixtures.ts'
-import { fakeClock, MINUTE, quickIo, writeHeartbeat } from './rules-helpers.ts'
+import { fakeClock, git, MINUTE, quickIo, writeHeartbeat } from './rules-helpers.ts'
 import { health, PEAK_NOW, rowTest, withRow, type Fixture } from './rules-host.ts'
 import { skipIfTempInsideGit } from './temp-outside-git.ts'
 
@@ -752,71 +753,6 @@ rowTest('the reminder is injected again after a compaction took the earlier one 
   assert.equal((await stepOf(fixture)).length, 1, 'another checkpoint, another reminder')
 }, { rules: reminderFile(INFORM_FRIDAY) })
 
-rowTest('a goal round carries the reminder again, one beat of the goal driver', async (fixture) => {
-  await fixture.runtime.create()
-  assert.equal((await stepOf(fixture)).length, 1)
-  assert.deepEqual(await stepOf(fixture), [])
-  const round = { id: 'g-1', role: 'user', content: [{ type: 'text', text: 'Round: 2/3' }], source: { kind: 'goal', round: 2 } }
-  const [notice] = await stepOf(fixture, { messages: [round] })
-  assert.equal((notice?.source.rulesReminder as { reason: string }).reason, 'goal-round')
-}, { rules: reminderFile(INFORM_FRIDAY) })
-
-rowTest('a rule that asks about a role or a model other than the agent\'s is not in its reminder', async (fixture) => {
-  await fixture.runtime.create()
-  assert.deepEqual(await stepOf(fixture), [], 'the main agent has nothing to be told')
-}, { rules: reminderFile(ruleOf({ id: 'r-subagents', title: 'Subagents only', when: { kind: 'event', events: ['rules.step'] }, filter: { role: { in: ['subagent'] } }, action: { kind: 'inform' } })) })
-
-test('the reminder names the agent\'s own open tickets with the time, and what it should do about a ticket handed over from a subagent; the tickets of others are not in it', async () => {
-  const clock = fakeClock('2026-10-28T07:00:00.000Z')
-  await withRow(async (fixture) => {
-    await fixture.runtime.create()
-    await fixture.exec('pwsh', { command: 'npm run deploy' })
-    const [first] = await stepOf(fixture)
-    assert.match(bodyOf(first), /\nYour open tickets: q-1 pwsh "npm run deploy" \(deferred since \d\d:\d\d\)\.\n<\/system-reminder>$/)
-    assert.doesNotMatch(bodyOf(first), /Do not dispatch/)
-    // A ticket of another session is not this agent's.
-    const other = openRulesBoard({ projectRoot: fixture.root, io: quickIo({ now: clock.now }) })
-    const opened = await other.apply('harness', { op: 'ticket-open', sessionId: 'sub-9', agentLabel: 'sub-9', host: { pid: process.pid, startedAt: 1 }, signature: 'abc', tool: 'pwsh', summary: 'npm test', rules: ['r-hold'] })
-    assert.ok(opened.ok)
-    assert.deepEqual(await stepOf(fixture), [], 'the other session\'s ticket changes nothing for this agent')
-    const handed = await other.apply('harness', { op: 'ticket-handover', id: 'q-2', sessionId: 'agent-1', agentLabel: 'agent-1' })
-    assert.ok(handed.ok)
-    const [second] = await stepOf(fixture)
-    assert.match(bodyOf(second), /q-2 handed over from subagent "sub-9": pwsh "npm test"/)
-    assert.match(bodyOf(second), /Do not dispatch these tasks again before their tickets clear\./)
-  }, { clock, live: true, rules: reminderFile(HOLD_DEPLOY) })
-})
-
-test('a ticket that cleared is told as cleared, and one that closed is gone from the reminder', async () => {
-  const clock = fakeClock('2026-10-28T07:00:00.000Z')
-  const rules: RepoRules = { ...reminderFile(ruleOf({ ...HOLD_DEPLOY, condition: { signal: 'code-freeze', is: true } })), signals: { 'code-freeze': { type: { kind: 'boolean' }, manual: { value: true, at: '2026-10-28T06:40:00.000Z' } } } }
-  await withRow(async (fixture) => {
-    await fixture.runtime.create()
-    await fixture.exec('pwsh', { command: 'npm run deploy' })
-    assert.equal((await stepOf(fixture)).length, 1)
-    await fixture.run('off code-freeze')
-    const [cleared] = await stepOf(fixture)
-    assert.match(bodyOf(cleared), /Your open tickets: q-1 pwsh "npm run deploy" \(cleared at \d\d:\d\d, run it again\)\./)
-    assert.equal((await fixture.exec('pwsh', { command: 'npm run deploy' })).isError, false)
-    const [gone] = await stepOf(fixture)
-    assert.equal(bodyOf(gone), '<system-reminder>\nNo rules board item applies to you now.\n</system-reminder>')
-  }, { clock, live: true, rules })
-})
-
-rowTest('at most 12 items: the rest is counted and rules_show is named', async (fixture) => {
-  await fixture.runtime.create()
-  const [notice] = await stepOf(fixture)
-  const lines = bodyOf(notice).split('\n')
-  assert.equal(lines.filter(line => line.startsWith('- [inform')).length, 12)
-  assert.equal(lines.at(-2), 'and 3 more: call rules_show')
-}, { rules: reminderFile(...Array.from({ length: 15 }, (_, index) => ruleOf({ id: `r-note-${String(index).padStart(2, '0')}`, title: `Note ${index}`, when: { kind: 'event', events: ['rules.step'] }, action: { kind: 'inform' } }))) })
-
-rowTest('an agent created twice gets one reminder, not two', async (fixture) => {
-  await fixture.runtime.create()
-  await fixture.runtime.create()
-  assert.equal((await stepOf(fixture)).length, 1)
-}, { rules: reminderFile(INFORM_FRIDAY) })
-
 // ------------------------------------------------------ the main agent's peak line
 
 const MAIN_AGENT = { sessionProjections: { stateOf: (_session: unknown, key: string) => (key === MAIN_AGENT_KEY ? { active: true } : undefined) } }
@@ -828,6 +764,7 @@ const DEFAULT_MODE = 'Peak mode: reduce (the default; the human can change it)'
 const REDUCE_WORDS = (until: string): string => `Run at most 1 GLM subagent at a time until ${until}. Move optional work that spends many GLM credits (calibration runs, ablations, large reviews) to after ${until}, including work you dispatch; keep necessary work going.`
 const STOP_WORDS = `You keep working and answering the human; until ${END} no GLM subagents and no scripts that report GLM spending: such dispatches and scripts are deferred and you are told when they can run.`
 const reminderOf = (...lines: string[]): string => `<system-reminder>\n${lines.join('\n')}\n</system-reminder>`
+const HEADING = 'Rules board: for your information only; the harness does not check these.'
 const SILENT_PRICING = { basis: 'test', plan: 'test', charged: () => undefined, peak: () => { throw new Error('boom') } }
 
 rowTest('the main agent\'s reminder starts with a line about the peak and the level, in the words of the level and of where it came from', async (fixture) => {
@@ -1095,3 +1032,105 @@ test('a page write that fails warns once for the run of failures and degrades th
   }, { config: { io }, rules: BLOCKING_FILE }))
   assert.equal(warnings.filter(text => text.includes('view.json cannot be written')).length, 1, warnings.join('\n'))
 })
+
+rowTest('the words the board still owes the main agent ride the reminder once and are struck out (design §6.7)', async (fixture) => {
+  await fixture.runtime.create()
+  assert.equal((await stepOf(fixture)).length, 1)
+  const words = '[rules board] Late block: rule r-friday\'s script would have blocked it: "no". Check what the call did; fix or revert it, and tell the human.'
+  const written = await openRulesBoard({ projectRoot: fixture.root, io: quickIo({ now: () => NOW }) })
+    .apply('harness', { op: 'notice-add', kind: 'late-block', rule: 'r-friday', text: words })
+  assert.ok(written.ok, JSON.stringify(written))
+  const [withNotice] = await stepOf(fixture)
+  assert.equal(bodyOf(withNotice), reminderOf(`GLM peak: now until ${END}. ${DEFAULT_MODE}. ${REDUCE_WORDS(END)}`, words, HEADING, '- [inform, not checked] r-friday: "No release on Fridays" (set by the human)'))
+  // The strike-out is a write the step does not wait for.
+  await fixture.until(() => Object.keys(loadState(rulesPaths(fixture.root)).state.notices ?? {}).length === 0)
+  assert.deepEqual(Object.keys(loadState(rulesPaths(fixture.root)).state.notices ?? {}), [], 'the notice was struck out when the step carried it')
+  const [dropped, ...rest] = await stepOf(fixture)
+  assert.equal(rest.length, 0, 'the text changed once more')
+  assert.doesNotMatch(bodyOf(dropped), /Late block/)
+}, { services: MAIN_AGENT, rules: reminderFile(INFORM_FRIDAY) })
+
+rowTest('the main agent\'s reminder names the rules-directory changes no commit has taken in, until a commit does', async (fixture) => {
+  await fixture.runtime.create()
+  git(fixture.root, 'init', '-q')
+  git(fixture.root, 'add', 'docs')
+  git(fixture.root, '-c', 'user.name=Rules Test', '-c', 'user.email=rules@example.invalid', 'commit', '-q', '-m', 'the state the row started from')
+  assert.equal((await stepOf(fixture)).length, 1)
+  // The person decides something: the board writes the rules directory, and the write record lands with it.
+  assert.equal((await fixture.run('peak 不做')).kind, 'success')
+  await appendFile(`${fixture.root}/docs/rules/rules.json`, ' ')
+  await fixture.period(REPO_CHECK_MS)
+  const [line] = await stepOf(fixture)
+  assert.match(bodyOf(line), /Rules board: docs\/rules has changes the human made that are not committed yet; include them in your next commit\./)
+  git(fixture.root, 'add', 'docs')
+  git(fixture.root, '-c', 'user.name=Rules Test', '-c', 'user.email=rules@example.invalid', 'commit', '-q', '-m', 'taken in')
+  await fixture.period(REPO_CHECK_MS)
+  const [gone, ...rest] = await stepOf(fixture)
+  assert.equal(rest.length, 0)
+  assert.doesNotMatch(bodyOf(gone), /not committed yet/, 'the line goes once a commit has taken the changes in')
+}, { services: MAIN_AGENT, rules: reminderFile(INFORM_FRIDAY) })
+
+rowTest('a goal round carries the reminder again, one beat of the goal driver', async (fixture) => {
+  await fixture.runtime.create()
+  assert.equal((await stepOf(fixture)).length, 1)
+  assert.deepEqual(await stepOf(fixture), [])
+  const round = { id: 'g-1', role: 'user', content: [{ type: 'text', text: 'Round: 2/3' }], source: { kind: 'goal', round: 2 } }
+  const [notice] = await stepOf(fixture, { messages: [round] })
+  assert.equal((notice?.source.rulesReminder as { reason: string }).reason, 'goal-round')
+}, { rules: reminderFile(INFORM_FRIDAY) })
+
+rowTest('a rule that asks about a role or a model other than the agent\'s is not in its reminder', async (fixture) => {
+  await fixture.runtime.create()
+  assert.deepEqual(await stepOf(fixture), [], 'the main agent has nothing to be told')
+}, { rules: reminderFile(ruleOf({ id: 'r-subagents', title: 'Subagents only', when: { kind: 'event', events: ['rules.step'] }, filter: { role: { in: ['subagent'] } }, action: { kind: 'inform' } })) })
+
+test('the reminder names the agent\'s own open tickets with the time, and what it should do about a ticket handed over from a subagent; the tickets of others are not in it', async () => {
+  const clock = fakeClock('2026-10-28T07:00:00.000Z')
+  await withRow(async (fixture) => {
+    await fixture.runtime.create()
+    await fixture.exec('pwsh', { command: 'npm run deploy' })
+    const [first] = await stepOf(fixture)
+    assert.match(bodyOf(first), /\nYour open tickets: q-1 pwsh "npm run deploy" \(deferred since \d\d:\d\d\)\.\n<\/system-reminder>$/)
+    assert.doesNotMatch(bodyOf(first), /Do not dispatch/)
+    // A ticket of another session is not this agent's.
+    const other = openRulesBoard({ projectRoot: fixture.root, io: quickIo({ now: clock.now }) })
+    const opened = await other.apply('harness', { op: 'ticket-open', sessionId: 'sub-9', agentLabel: 'sub-9', host: { pid: process.pid, startedAt: 1 }, signature: 'abc', tool: 'pwsh', summary: 'npm test', rules: ['r-hold'] })
+    assert.ok(opened.ok)
+    assert.deepEqual(await stepOf(fixture), [], 'the other session\'s ticket changes nothing for this agent')
+    const handed = await other.apply('harness', { op: 'ticket-handover', id: 'q-2', sessionId: 'agent-1', agentLabel: 'agent-1' })
+    assert.ok(handed.ok)
+    const [second] = await stepOf(fixture)
+    assert.match(bodyOf(second), /q-2 handed over from subagent "sub-9": pwsh "npm test"/)
+    assert.match(bodyOf(second), /Do not dispatch these tasks again before their tickets clear\./)
+  }, { clock, live: true, rules: reminderFile(HOLD_DEPLOY) })
+})
+
+test('a ticket that cleared is told as cleared, and one that closed is gone from the reminder', async () => {
+  const clock = fakeClock('2026-10-28T07:00:00.000Z')
+  const rules: RepoRules = { ...reminderFile(ruleOf({ ...HOLD_DEPLOY, condition: { signal: 'code-freeze', is: true } })), signals: { 'code-freeze': { type: { kind: 'boolean' }, manual: { value: true, at: '2026-10-28T06:40:00.000Z' } } } }
+  await withRow(async (fixture) => {
+    await fixture.runtime.create()
+    await fixture.exec('pwsh', { command: 'npm run deploy' })
+    assert.equal((await stepOf(fixture)).length, 1)
+    await fixture.run('off code-freeze')
+    const [cleared] = await stepOf(fixture)
+    assert.match(bodyOf(cleared), /Your open tickets: q-1 pwsh "npm run deploy" \(cleared at \d\d:\d\d, run it again\)\./)
+    assert.equal((await fixture.exec('pwsh', { command: 'npm run deploy' })).isError, false)
+    const [gone] = await stepOf(fixture)
+    assert.equal(bodyOf(gone), '<system-reminder>\nNo rules board item applies to you now.\n</system-reminder>')
+  }, { clock, live: true, rules })
+})
+
+rowTest('at most 12 items: the rest is counted and rules_show is named', async (fixture) => {
+  await fixture.runtime.create()
+  const [notice] = await stepOf(fixture)
+  const lines = bodyOf(notice).split('\n')
+  assert.equal(lines.filter(line => line.startsWith('- [inform')).length, 12)
+  assert.equal(lines.at(-2), 'and 3 more: call rules_show')
+}, { rules: reminderFile(...Array.from({ length: 15 }, (_, index) => ruleOf({ id: `r-note-${String(index).padStart(2, '0')}`, title: `Note ${index}`, when: { kind: 'event', events: ['rules.step'] }, action: { kind: 'inform' } }))) })
+
+rowTest('an agent created twice gets one reminder, not two', async (fixture) => {
+  await fixture.runtime.create()
+  await fixture.runtime.create()
+  assert.equal((await stepOf(fixture)).length, 1)
+}, { services: MAIN_AGENT, rules: reminderFile(INFORM_FRIDAY) })

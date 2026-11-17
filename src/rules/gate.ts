@@ -83,13 +83,14 @@ import { describeCall } from './call.ts'
 import { denialText } from './denial.ts'
 import { gateEvents, type GateCall } from './events.ts'
 import { combine, judge, judgeInput, type RuleHit } from './judge.ts'
+import { handleLateVerdicts, type LateCall, type LateDeps, type LateScript } from './late.ts'
 import { emitJudged, type RulesJudgedEvent } from './metrics.ts'
 import { approvedScriptRules, effectivePeakMode, type BuiltinRule, type Rule } from './model.ts'
 import type { PeakReading, ProjectView } from './peak.ts'
 import { gitOperationIn } from './repo.ts'
 import { projectHealth } from './row-health.ts'
-import { runJudgedScripts } from './script-run.ts'
-import { rulesPaths, type RulesPaths } from './store.ts'
+import { runJudgedScripts, type ScriptOutcome } from './script-run.ts'
+import { rulesPaths, type RulesPaths, type StoreIo } from './store.ts'
 import { clockReadings, signalsRead, tableOf } from './table.ts'
 import type { TicketDesk } from './tickets.ts'
 
@@ -109,6 +110,15 @@ export interface GateDeps {
   readonly health: RowHealth
   /** The waiting tickets of the calls a rule queues. */
   readonly tickets: TicketDesk
+  /**
+   * Where the late verdicts of the gating scripts land (design §6.7): default
+   * `handleLateVerdicts` with the row's own pieces; a test names another to
+   * keep hold of the work. Never throws, never rejects; the gate does not wait
+   * for it.
+   */
+  readonly late?: (call: LateCall, scripts: readonly LateScript[]) => Promise<void>
+  /** The board's file operations, for a late word that has to wait as a notice. */
+  readonly io?: StoreIo
 }
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error)).slice(0, 80)
@@ -164,6 +174,19 @@ export function installRulesGate(deps: GateDeps): () => void {
   const warn = dialectWarner('rules')
   const warnFault = dialectWarner('rules')
   const trees = cachedWorktrees(deps.now)
+  /** Where the late verdicts land: the row's own handler, unless the caller named one (a test keeps hold of the work). */
+  const late = deps.late ?? ((call: LateCall, scripts: readonly LateScript[]): Promise<void> => {
+    const lateDeps: LateDeps = {
+      ctx: deps.ctx,
+      rulesDir: deps.rulesDir,
+      now: deps.now,
+      journal: { violation: (record, cwd) => deps.journal.violation(record as unknown as GuardRecord, cwd) },
+      health: deps.health,
+      warn: warnFault,
+      io: deps.io,
+    }
+    return handleLateVerdicts(lateDeps, call, scripts)
+  })
 
   /** A line for the violation journal; the journal never rejects into the call, the call does not wait for the write (the guard does not either), and a journal that cannot be reached never changes what the rules said about the call. Returns the line's record key, for the follow-up recorder. */
   function note(agent: AgentLike, exec: ToolExecutionPayload, claimed: boolean, line: Line): string {
@@ -303,18 +326,21 @@ export function installRulesGate(deps: GateDeps): () => void {
     // The scripts a person approved run here, through the shared executor's gate queue: the call is held
     // while they run, and what each ending makes of it joins the rules' own hits, block over queue
     // (docs/ORCHESTRATION.md §16.16). A script that is not approved was never handed over: judge lists it
-    // as refused and its failure setting made of the call what it makes.
+    // as refused and its failure setting made of the call what it makes. A timeout whose failure setting
+    // lets the call through keeps running in the background, and its later word is landed by the row's
+    // late handler, not by this call (docs/ORCHESTRATION.md §16.16, design §6.7).
     const ran = await runJudgedScripts(table, judged, {
       root: project.root,
       events,
       now,
       ...(caller.sessionId === undefined ? {} : { session: caller.sessionId }),
+      late: true,
     })
     const verdict = ran.length === 0 ? judged : { ...judged, ...combine([...judged.hits, ...ran.flatMap(outcome => outcome.hit ?? [])]) }
     report(sessionId, basename(project.root), view, reading, project.root)
 
-    const signalsOf = (hit: RuleHit): SignalValues => {
-      const rule = byId.get(hit.rule)
+    const signalsOf = (ruleId: string): SignalValues => {
+      const rule = byId.get(ruleId)
       return Object.fromEntries((rule === undefined ? [] : signalsRead(rule)).map(name => [name, readings.get(name)?.value ?? null]))
     }
     const peak = { ...level, ...(until === undefined ? {} : { until }) }
@@ -322,11 +348,33 @@ export function installRulesGate(deps: GateDeps): () => void {
       const rule = byId.get(hit.rule)
       return rule === undefined ? [] : [{ hit, rule }]
     })
+    // What runs past its timeout lands later (src/rules/late.ts): the call goes on now, whatever the late word will be.
+    const lateScripts = ran.flatMap((outcome): LateScript[] => {
+      if (outcome.late === undefined) return []
+      const pending = judged.pending.find(entry => entry.rule === outcome.rule)
+      return pending === undefined ? [] : [{ rule: outcome.rule, outcome: outcome as ScriptOutcome & { late: NonNullable<ScriptOutcome['late']> }, sha256: pending.script.sha256, timeoutSeconds: pending.timeoutSeconds, signals: signalsOf(outcome.rule) }]
+    })
+    if (lateScripts.length > 0) {
+      const lateCall: LateCall = {
+        root: project.root,
+        cwd,
+        at: now.toISOString(),
+        tool,
+        args: exec.arguments,
+        described,
+        ...(agent.id === undefined ? {} : { agentId: agent.id }),
+        ...(sessionId === undefined ? {} : { sessionId }),
+        origin: agent.session?.header.origin,
+        ...(agent.session?.header.parentSession === undefined ? {} : { parentSession: agent.session.header.parentSession }),
+        ran: verdict.effect !== 'block' && verdict.effect !== 'queue',
+      }
+      void late(lateCall, lateScripts).catch((error: unknown) => warnFault(`the late verdicts could not be landed: ${message(error)}`))
+    }
     if (verdict.effect === 'block') {
       const reason = denialText({ attempt: described.attempt, effect: 'block', rules: pairs(verdict.strongest), peak })
       for (const hit of verdict.strongest) {
-        noteFollowup(agent, exec, claimed, `rules:${hit.rule}`, call, note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'enforce', effect: 'block', correction: reason, signals: signalsOf(hit) }))
-        judgeEvent(hit.rule, 'block', signalsOf(hit), judgedMs)
+        noteFollowup(agent, exec, claimed, `rules:${hit.rule}`, call, note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'enforce', effect: 'block', correction: reason, signals: signalsOf(hit.rule) }))
+        judgeEvent(hit.rule, 'block', signalsOf(hit.rule), judgedMs)
       }
       if (agent.session !== undefined) {
         await deps.tickets.blocked?.({ session: agent.session, view, root: project.root, cwd, tool, args: exec.arguments, rules: verdict.strongest.map(hit => hit.rule) })
@@ -340,16 +388,16 @@ export function installRulesGate(deps: GateDeps): () => void {
       const deferral = await deps.tickets.defer({ session, caller, view, root: project.root, cwd, tool, args: exec.arguments, described, events, unreadable, nested: exec.parent !== undefined, rules: queued, peak })
       if (deferral.kind === 'deny') {
         for (const { hit } of queued) {
-          noteFollowup(agent, exec, claimed, `rules:${hit.rule}`, call, note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'enforce', effect: 'queue', correction: deferral.reason, ...(deferral.ticket === undefined ? {} : { ticket: deferral.ticket }), signals: signalsOf(hit) }))
-          judgeEvent(hit.rule, 'deferral', signalsOf(hit), judgedMs, deferral.ticket)
+          noteFollowup(agent, exec, claimed, `rules:${hit.rule}`, call, note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'enforce', effect: 'queue', correction: deferral.reason, ...(deferral.ticket === undefined ? {} : { ticket: deferral.ticket }), signals: signalsOf(hit.rule) }))
+          judgeEvent(hit.rule, 'deferral', signalsOf(hit.rule), judgedMs, deferral.ticket)
         }
         return { kind: 'deny', reason: deferral.reason }
       }
     }
     for (const hit of verdict.hits) {
       if (hit.effect === 'record') {
-        note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'record', effect: 'record', signals: signalsOf(hit) })
-        judgeEvent(hit.rule, 'rule-record', signalsOf(hit), judgedMs)
+        note(agent, exec, claimed, { rule: `rules:${hit.rule}`, mode: 'record', effect: 'record', signals: signalsOf(hit.rule) })
+        judgeEvent(hit.rule, 'rule-record', signalsOf(hit.rule), judgedMs)
       }
     }
     if (session !== undefined) {

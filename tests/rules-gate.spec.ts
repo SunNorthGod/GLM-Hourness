@@ -303,13 +303,59 @@ rowTest('a failed script goes by the rule\'s failure setting: allow by default, 
   assert.deepEqual(calls.map(call => call.name), ['pwsh'])
 }, { rules: file([]) })
 
-rowTest('a script that runs past its timeout is ended with its whole tree, and the failure setting decides', async ({ root, exec }) => {
-  await approveScript(root, 'r-long', 'case-long', nodeScript('setTimeout(() => {}, 30_000)'), { action: { kind: 'script', lang: 'node', text: nodeScript('setTimeout(() => {}, 30_000)'), timeoutSeconds: 1, onError: 'block' } })
+rowTest('a script that runs past its timeout is judged by the failure setting at once, and its background run goes on to its own end', async ({ root, exec }) => {
+  await approveScript(root, 'r-long', 'case-long', nodeScript('setTimeout(() => {}, 1_500)'), { action: { kind: 'script', lang: 'node', text: nodeScript('setTimeout(() => {}, 1_500)'), timeoutSeconds: 1, onError: 'block' } })
   const startedAt = Date.now()
   const reason = reasonOf(await exec('pwsh', shell('run case-long')))
   assert.ok(Date.now() - startedAt < 9_000, 'the timeout was 1 second')
   assert.match(reason, /ran its script docs\/rules\/scripts\/r-long\.mjs, which did not finish within 1 s, and the rule says to block when its script fails\./)
 }, { rules: file([]) })
+
+const LATE_SCRIPT = nodeScript('setTimeout(() => { process.stderr.write("the late word"); process.exit(2) }, 1_500)')
+
+rowTest('a script that answers 2 past its timeout lets the call run and lands late: the journal has mode late with the script, the main agent is told on the spot, the metric says told', async ({ root, exec, calls, violations, live, runtime }) => {
+  const metrics: EmittedEvent[] = []
+  runtime.services.set(METRICS_SERVICE, { emit: (event: EmittedEvent): void => { metrics.push(event) } })
+  await approveScript(root, 'r-late-block', 'case-late', LATE_SCRIPT, { action: { kind: 'script', lang: 'node', text: LATE_SCRIPT, timeoutSeconds: 1 } })
+  const result = await exec('pwsh', shell('run case-late'))
+  assert.equal(result.isError, false, 'the call was allowed by the rule\'s timeout setting')
+  assert.deepEqual(calls.map(call => call.name), ['pwsh'], 'the call ran')
+  let late: Record<string, unknown> | undefined
+  for (let wait = 0; wait < 60 && late === undefined; wait += 1) {
+    late = (await violations()).find(record => record.mode === 'late')
+    if (late === undefined) await new Promise(done => setTimeout(done, 100))
+  }
+  assert.ok(late !== undefined, 'the late line landed')
+  assert.deepEqual([late.rule, late.mode, late.effect, late.tool], ['rules:r-late-block', 'late', 'block', 'pwsh'])
+  assert.equal(late.correction, 'the late word')
+  const told = live.woken.filter(word => word.kind === 'hourness-rules-late')
+  assert.equal(told.length, 1, 'the main agent got the words on the spot')
+  assert.match(told[0].text, /^\[rules board\] Late block: rule r-late-block's script docs\/rules\/scripts\/r-late-block\.mjs did not answer within 1 s on pwsh "run case-late"/)
+  assert.match(told[0].text, /The script finished at \d\d:\d\d and would have blocked it: "the late word"\. Check what the call did; fix or revert it, and tell the human\.$/)
+  const verdicts = metrics.filter(event => event.k === 'rules.late-verdict')
+  assert.equal(verdicts.length, 1, 'one late-verdict event')
+  assert.equal(verdicts[0].body.told, true)
+  assert.equal(verdicts[0].body.result, 'exited')
+}, { rules: file([]), live: true })
+
+rowTest('the late word of a call the verdict queued is only recorded: no journal line, no words', async ({ root, exec, calls, violations, live, runtime }) => {
+  const metrics: EmittedEvent[] = []
+  runtime.services.set(METRICS_SERVICE, { emit: (event: EmittedEvent): void => { metrics.push(event) } })
+  await approveScript(root, 'r-late-hold', 'case-late-hold', LATE_SCRIPT, { action: { kind: 'script', lang: 'node', text: LATE_SCRIPT, timeoutSeconds: 1 } })
+  const reason = reasonOf(await exec('pwsh', shell('run case-late-hold')))
+  assert.match(reason, /Deferred as ticket q-1/, 'a plain rule queued the call')
+  assert.deepEqual(calls.map(call => call.name), [], 'the call never ran')
+  await new Promise(done => setTimeout(done, 2_500))
+  const records = await violations()
+  assert.equal(records.filter(record => record.mode === 'late').length, 0, 'no late line: the call did not run')
+  assert.equal(live.woken.filter(word => word.kind === 'hourness-rules-late').length, 0, 'nobody is told')
+  const verdicts = metrics.filter(event => event.k === 'rules.late-verdict')
+  assert.equal(verdicts.length, 1, 'the later end is still recorded')
+  assert.equal((verdicts[0].body).told, false)
+}, {
+  rules: file([ruleOf({ id: 'r-hold', title: 'Hold', filter: { command: { matches: 'case-late-hold' } }, action: { kind: 'queue' } })]),
+  live: true,
+})
 
 rowTest('a call a rule\'s own action already blocks starts no script', async ({ root, exec, calls }) => {
   await approveScript(root, 'r-first', 'case-both', nodeScript(`import { writeFileSync } from 'node:fs'\nwriteFileSync('seen.json', 'started')\nprocess.exit(0)`))
