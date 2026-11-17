@@ -378,14 +378,14 @@ test('a question already put is shown once more with its own words held to the s
 
 // ---------------------------------------------------------------- attach
 
-test('with no board in the table, attach is refused with the reason, and a prefix the table does not know too', async () => {
+test('a board whose service is not running is refused with the reason, and a prefix the table does not know too', async () => {
   const { host, agent, engine } = await mainAgentWithGoal()
   const before = (await engine.load()).revision
   for (const attach of ['rules:p-3f9a1c07', 'loops:lp-3f9a1c07', 'scripts:x']) {
     const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...exampleArgs('recommend'), attach }))
     assert.deepEqual([error?.code, error?.field], ['invalid', 'attach'], attach)
-    // The rules board has its row in the table; the host in this test does not run it. The loops board has none yet.
-    assert.match(error?.message ?? '', attach.startsWith('rules:') ? /the rules board is not running here/ : /no component in this composition takes attach (loops:|scripts:)/, attach)
+    // Both boards have their rows in the table; the host in this test runs neither. "scripts:" names no board.
+    assert.match(error?.message ?? '', attach === 'scripts:x' ? /no component in this composition takes attach scripts:/ : /not running here/, attach)
   }
   assert.equal((await engine.load()).revision, before)
 })
