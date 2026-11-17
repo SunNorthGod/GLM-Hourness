@@ -94,6 +94,7 @@ import { projectHealth } from './row-health.ts'
 import { RULES_SERVICE } from './service.ts'
 import { rulesStatusItems } from './status.ts'
 import { DEFAULT_RULES_DIR, realStoreIo, type RulesPaths, type StoreIo } from './store.ts'
+import { readTimingSync } from './timing.ts'
 import { createTicketDesk } from './tickets.ts'
 import { rulesShowTool } from './tool.ts'
 import { buildRulesView, VIEW_ROWS } from './view-build.ts'
@@ -275,6 +276,7 @@ export function apply(ctx: RulesContext, config: RulesConfig = {}): Unload {
           lifted: liftService(ctx)?.lifted(cwd) ?? [],
           liveHosts: liveHeartbeats(readHeartbeats(project.paths).heartbeats, at).map(heartbeat => heartbeat.host),
           missingScripts: new Set(scripts.filter(script => !existsSync(join(root, script.file))).map(script => script.id)),
+          timing: readTimingSync(root, rulesDir).lines,
           items: collected.items.filter(item => item.owner === 'rules'),
           statusProblems: collected.rows.flatMap(row => row.outcome === 'error' && (row.row === 'rules' || row.row === 'guard') ? [{ row: row.row, reason: row.reason ?? '' }] : []),
           host: { pid: host.pid },

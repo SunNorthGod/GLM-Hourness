@@ -112,7 +112,7 @@ clockedTest('a batch lands its runs, the timeout records, and value lines only f
   assert.deepEqual(lines.filter(line => line.kind === 'run').map(line => (line as { run: string }).run), ['rr-1', 'rr-2', 'rr-3'])
   const timeout = lines.find((line): line is Extract<ScriptTimingLine, { kind: 'timeout' }> => line.kind === 'timeout')
   assert.deepEqual(timeout, { kind: 'timeout', at: now.toISOString(), rule: 'r-a', limitSeconds: 5, elapsedSeconds: 5, outcome: 'allowed' })
-  let values = lines.filter((line): line is ValueLine => line.kind === 'value')
+  const values = lines.filter((line): line is ValueLine => line.kind === 'value')
   assert.deepEqual(values.map(line => line.rule), ['r-a'], 'a pinned rule keeps its own timeout: no value line')
   assert.deepEqual(values[0]?.source, { by: 'runs', runIds: ['rr-1', 'rr-2'], seconds: 5, factor: 3 })
   assert.equal(values[0]?.seconds, 15)

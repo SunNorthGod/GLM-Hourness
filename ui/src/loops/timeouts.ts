@@ -21,6 +21,21 @@ export interface PageTell {
   info(key: string, text: string): void
 }
 
+/** The pages' default tell: what the board's data lacks goes to the console once per key (plain-ui 1.3 §8.1). */
+const told = new Set<string>()
+export const CONSOLE_TELL: PageTell = {
+  warn(key, text) {
+    if (told.has(`warn:${key}`)) return
+    told.add(`warn:${key}`)
+    console.warn(`glm-hourness: ${text}`)
+  },
+  info(key, text) {
+    if (told.has(`info:${key}`)) return
+    told.add(`info:${key}`)
+    console.info(`glm-hourness: ${text}`)
+  },
+}
+
 /** One check's cell: the lines under the entry, and the lines 讲细点 adds. */
 interface CheckCell {
   readonly key: string

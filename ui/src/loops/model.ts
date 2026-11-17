@@ -12,7 +12,7 @@
  * command to type.
  */
 import { momentText, runLine, type LoopsView, type PeakView, type ViewEntry } from '../../../src/loops/view.ts'
-import { checkCell, type PageTell } from './timeouts.ts'
+import { CONSOLE_TELL, checkCell, type PageTell } from './timeouts.ts'
 
 /** One entry on the page. */
 export interface LoopItem {
@@ -85,21 +85,6 @@ const STATE_WORDS: Readonly<Record<string, string>> = {
 }
 
 const runs = (entry: ViewEntry): boolean => entry.state === 'active' || entry.state === 'ok'
-
-/** The page tells what the board's data lacks once per key, in the console (plain-ui 1.3 §8.1). */
-const told = new Set<string>()
-const CONSOLE_TELL: PageTell = {
-  warn(key, text) {
-    if (told.has(`warn:${key}`)) return
-    told.add(`warn:${key}`)
-    console.warn(`glm-hourness: ${text}`)
-  },
-  info(key, text) {
-    if (told.has(`info:${key}`)) return
-    told.add(`info:${key}`)
-    console.info(`glm-hourness: ${text}`)
-  },
-}
 
 /** The strings of a list the view hands over; anything else is no line. */
 const textsOf = (value: unknown): readonly string[] => Array.isArray(value) ? value.filter((line): line is string => typeof line === 'string') : []

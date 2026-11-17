@@ -17,6 +17,7 @@
  * says how each rule is lifted as the view gives it.
  */
 import { momentText } from '../../../src/loops/view.ts'
+import { CONSOLE_TELL, checkCell } from '../loops/timeouts.ts'
 import { RULES_EVENT_TABLE } from '../../../src/rules/events.ts'
 import { RECOVERED_TEXT, type Condition, type RowState, type SignalValue } from '../../../src/rules/model.ts'
 import type { RulesCodeView, RulesPersonView, RulesView } from '../../../src/rules/view.ts'
@@ -331,8 +332,8 @@ function setByWords(origin: RulesPersonView['origin']): string {
 
 const TRUTH_WORDS: Readonly<Record<string, string>> = { true: '此刻成立', false: '此刻不成立', unknown: '此刻读不出' }
 
-/** The script's lines (plain-ui 1.3 §4.7): its file, whether it is the version the person agreed to, the timeout and its source, what a failure does. */
-function scriptLines(script: NonNullable<RulesPersonView['script']>): string[] {
+/** The script's lines (plain-ui 1.3 §4.7): its file, whether it is the version the person agreed to, the timeout and its source, what a failure does. A timeout the rule writes is said here; one computed from an estimate or the runs is worded by the same cell the loop board's page reads (`checkCell`), so the two boards say it alike. */
+function scriptLines(script: NonNullable<RulesPersonView['script']>, rule: string, nowMs: number): { readonly lines: readonly string[], readonly details: readonly string[] } {
   const standing = script.missing
     ? '脚本文件不见了'
     : script.standing === 'approved'
@@ -340,12 +341,18 @@ function scriptLines(script: NonNullable<RulesPersonView['script']>): string[] {
       : script.standing === 'changed'
         ? `脚本 ${script.file} 和你同意的那一版不一样，没在跑；要用改过的这一版，跟主 Agent 说，它会把新的原文给你看`
         : '这台电脑上没有你看过原文的记录，先不跑'
-  const timeout = `超时 ${script.timeoutSeconds} 秒（${script.timeoutFrom === 'design' ? '设计里定的固定值' : '规则里写明的'}）`
   const onError = `超时或出错时${script.onError === 'block' ? '拦下' : '放行'}（${script.onErrorIsDefault ? '默认' : '写明的'}）`
-  return [`脚本：${script.file}`, standing, `${timeout} · ${onError}`]
+  if (script.timeoutFrom === 'entry' || script.timeout === undefined) {
+    return { lines: [`脚本：${script.file}`, standing, `超时 ${script.timeoutSeconds} 秒（规则里写明的） · ${onError}`], details: [] }
+  }
+  const cell = checkCell({ key: script.file, title: '脚本', timeout: script.timeout }, rule, nowMs, CONSOLE_TELL)
+  return {
+    lines: [`脚本：${script.file}`, standing, ...(cell?.lines ?? [`超时 ${script.timeoutSeconds} 秒（来源读不出）`]), onError],
+    details: cell?.details ?? [],
+  }
 }
 
-function personEntry(rule: RulesPersonView): RulesEntry {
+function personEntry(rule: RulesPersonView, nowMs: number): RulesEntry {
   const record = rule.action.kind === 'record'
   const what = [
     (rule.when.events as readonly string[]).map(id => RULES_EVENT_TABLE.get(id)?.title ?? id).join('或'),
@@ -356,6 +363,7 @@ function personEntry(rule: RulesPersonView): RulesEntry {
     ? `最近 7 天只记下 ${rule.record7d} 次 · 这是你选的做法，不是试运行阶段`
     : `最近 7 天挡下 ${rule.enforce7d} 次${rule.record7d > 0 ? `，只记下 ${rule.record7d} 次` : ''}`
   const notNow = rule.inForce ? [] : [rule.status === 'lifted' ? '已解除' : rule.status === 'expired' ? '已到期' : '时间到了，不再生效']
+  const scriptParts = rule.script === undefined ? { lines: [] as string[], details: [] as string[] } : scriptLines(rule.script, rule.id, nowMs)
   return entry(rule.id, rule.title, {
     small: rule.id,
     lines: [
@@ -364,7 +372,7 @@ function personEntry(rule: RulesPersonView): RulesEntry {
       `${rule.scope === 'session' ? `会话 ${rule.sessionId ?? ''}` : '这个项目'} · ${momentText(rule.origin.at)} 起 · ${lifetimeWords(rule.lifetime)} · ${setByWords(rule.origin)}`,
       counts,
       ...notNow,
-      ...(rule.script === undefined ? [] : scriptLines(rule.script)),
+      ...scriptParts.lines,
     ],
     grey: [rule.status === 'active'
       ? `要改：跟主 Agent 说「把这条改成……」；要解除：打 /rules lift ${rule.id}；要删掉：打 /rules delete ${rule.id}`
@@ -372,6 +380,7 @@ function personEntry(rule: RulesPersonView): RulesEntry {
     details: [
       `为什么有它：${rule.reason}`,
       ...(rule.condition !== undefined && rule.onUnknown === 'apply' ? ['条件读不出时照样按成立处理'] : []),
+      ...scriptParts.details,
     ],
     greyed: !rule.inForce,
     script: rule.script?.file ?? null,
@@ -385,7 +394,7 @@ function personGroup(view: RulesView): RulesGroup {
     grey: [],
     lines: view.rules.length === 0 ? ['还没有你定的规则'] : [],
     lists: [],
-    entries: view.rules.map(personEntry),
+    entries: view.rules.map(rule => personEntry(rule, Date.parse(view.at))),
     tail: ['要加一条：跟主 Agent 说你要的规矩，例如「今晚 21 点以后别推送」，它会把要写的规则作为一个方案给你看'],
   }
 }

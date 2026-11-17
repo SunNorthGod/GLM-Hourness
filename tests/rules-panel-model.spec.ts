@@ -16,7 +16,6 @@ import test from 'node:test'
 import ts from 'typescript'
 import { plainWordsIn } from '../src/graph/plain-question.ts'
 import type { GuardRecord } from '../src/guard/records.ts'
-import { effectiveTimeoutSeconds } from '../src/loops/trigger.ts'
 import { momentText } from '../src/loops/view.ts'
 import { GLM_PEAK_PRICING } from '../src/rules/builtin.ts'
 import { emptyState, type ProjectState, type Rule, type Ticket } from '../src/rules/model.ts'
@@ -252,11 +251,24 @@ test('a person\'s rule says 什么时候 · 筛选 · 动作, its condition now,
   assert.ok(noteEntry.lines.includes('最近 7 天只记下 2 次 · 这是你选的做法，不是试运行阶段'))
   const old = entryOf(page, 'mine', 'r-old')
   assert.deepEqual([old.greyed, old.lines.includes('时间到了，不再生效')], [true, true])
-  const design = effectiveTimeoutSeconds({ recent: [], purpose: 'gate' }).seconds
-  assert.deepEqual(entryOf(page, 'mine', 'r-s1').lines.slice(-3), ['脚本：docs/rules/scripts/r-s1.mjs', '这台电脑上没有你看过原文的记录，先不跑', `超时 ${design} 秒（设计里定的固定值） · 超时或出错时放行（默认）`])
+  assert.deepEqual(entryOf(page, 'mine', 'r-s1').lines.slice(-4), ['脚本：docs/rules/scripts/r-s1.mjs', '这台电脑上没有你看过原文的记录，先不跑', '脚本 · 超时 30 秒（上限 · 没写估计）', '超时或出错时放行（默认）'])
   assert.ok(entryOf(page, 'mine', 'r-s2').lines.includes('脚本 docs/rules/scripts/r-s2.mjs 和你同意的那一版不一样，没在跑；要用改过的这一版，跟主 Agent 说，它会把新的原文给你看'))
   assert.ok(entryOf(page, 'mine', 'r-s3').lines.includes('脚本文件不见了'))
   assert.deepEqual([entryOf(page, 'mine', 'r-s1').script, entryOf(page, 'mine', 'r-push').script], ['docs/rules/scripts/r-s1.mjs', null], 'a script rule hands 讲细点 its file to read when opened')
+  // A measured value held at the ceiling, worded by the same cell the loop board's page words (plain-ui 1.3 §4.7).
+  const hold: Rule = ruleOf({ id: 'r-hold', title: 'r-hold', action: { kind: 'script', script: scriptRef('r-hold'), estimateSeconds: 20 } })
+  const heldAt = minutesAgo(30)
+  const holdPage = pageOf(viewOf({
+    read: readWith({ rules: { 'r-hold': hold }, scripts: { 'r-hold': { ...scriptRef('r-hold'), approvedAt: minutesAgo(600) } } }),
+    timing: [
+      { kind: 'run', at: heldAt, rule: 'r-hold', run: 'rr-1', ms: 11000, outcome: 'allow' },
+      { kind: 'value', at: heldAt, rule: 'r-hold', seconds: 30, capped: { wantedSeconds: 33 }, source: { by: 'runs', runIds: ['rr-1'], seconds: 11, factor: 3 } },
+    ],
+  }))
+  const holdEntry = entryOf(holdPage, 'mine', 'r-hold')
+  assert.ok(holdEntry.lines.includes('脚本 · 超时 30 秒（系统按最近 1 次最慢的 11 秒算，3 倍本该是 33 秒，超过上限，保持上限 30 秒，已告诉主 Agent）'), holdEntry.lines.join(' | '))
+  assert.ok(holdEntry.details.some(line => line.includes('来历（新的在前）：')), holdEntry.details.join(' | '))
+  assert.ok(holdEntry.details.some(line => line.includes('按最近 1 次里最慢的 11 秒乘 3；想要 33 秒，被上限截在 30 秒')), holdEntry.details.join(' | '))
   assert.deepEqual(mine.tail, ['要加一条：跟主 Agent 说你要的规矩，例如「今晚 21 点以后别推送」，它会把要写的规则作为一个方案给你看'])
   assert.equal(JSON.stringify(page).includes('4 周没用过'), false, 'the weekly proposal is not on main')
   const empty = groupOf(pageOf(viewOf()), 'mine')

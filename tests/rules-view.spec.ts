@@ -9,12 +9,12 @@ import test from 'node:test'
 import { GUARD_RULES } from '../src/guard/catalog.ts'
 import { MAIN_AGENT_RULES } from '../src/guard/main-agent-rules.ts'
 import type { GuardRecord } from '../src/guard/records.ts'
-import { effectiveTimeoutSeconds } from '../src/loops/trigger.ts'
 import type { StatusItem } from '../src/shared/status.ts'
 import { BUILTIN_RULES, CATALOG } from '../src/rules/builtin.ts'
 import { emptyState, type ProjectState, type Rule, type Ticket } from '../src/rules/model.ts'
 import { buildRulesView, LIFT_BOARD_ONLY, LIFT_NOT_OFFERED, VIEW_ROWS, type RulesViewInput } from '../src/rules/view-build.ts'
 import { journalRuleOf, parseRulesView, RULES_VIEW_VERSION, type RulesView } from '../src/rules/view.ts'
+import type { ScriptTimingLine } from '../src/rules/timing.ts'
 import { projectReadOf as readOf, ruleOf, scriptRef, SHA_OTHER, VIEW_PEAK_END as PEAK_END, viewInputOf } from './rules-fixtures.ts'
 
 /** Wednesday 15:00 in UTC+8, inside GLM's peak hours; the peak ends at 18:00. */
@@ -124,12 +124,47 @@ test('a rule\'s script: the three standings and the approved one, the file that 
   }
   const built = view({ read: readOf({ ...emptyState(), seq: 2, rules, scripts }), missingScripts: new Set(['r-changed']) })
   const of = (id: string): RulesView['rules'][number]['script'] => built.rules.find(rule => rule.id === id)?.script
-  const design = effectiveTimeoutSeconds({ recent: [], purpose: 'gate' }).seconds
   assert.deepEqual(of('r-approved'), { file: 'docs/rules/scripts/r-approved.mjs', lang: 'node', standing: 'approved', missing: false, timeoutSeconds: 12, timeoutFrom: 'entry', onError: 'block', onErrorIsDefault: false })
-  assert.deepEqual([of('r-not-approved')?.standing, of('r-not-approved')?.timeoutSeconds, of('r-not-approved')?.timeoutFrom, of('r-not-approved')?.onError, of('r-not-approved')?.onErrorIsDefault], ['not-approved', design, 'design', 'allow', true])
+  const none = of('r-not-approved')
+  assert.deepEqual([none?.standing, none?.timeoutSeconds, none?.timeoutFrom, none?.onError, none?.onErrorIsDefault], ['not-approved', 30, 'ceiling', 'allow', true], 'no estimate and no run: the ceiling, and the page words it as one')
+  assert.deepEqual(none?.timeout, { seconds: 30, source: { kind: 'ceiling' } })
   assert.deepEqual([of('r-changed')?.standing, of('r-changed')?.missing], ['changed', true])
   assert.deepEqual([of('r-no-pin')?.standing, of('r-no-pin')?.onError, of('r-no-pin')?.onErrorIsDefault], ['no-pin', 'block', true], 'the trunk advance blocks by default')
   assert.equal(built.rules.find(rule => rule.id === 'r-approved')?.action.kind, 'script')
+})
+
+test('a script rule keeps a timeout the journal maintains (d-timeout-measured): the estimate seeds it, the runs take it over, both clamps hold, and the cell carries its history and its timeouts', () => {
+  const script = (id: string, estimateSeconds?: number): Rule => ruleOf({ id, title: id, action: { kind: 'script', script: scriptRef(id), ...(estimateSeconds === undefined ? {} : { estimateSeconds }) } })
+  const rules = { 'r-est': script('r-est', 4), 'r-run': script('r-run', 4), 'r-capped': script('r-capped', 20), 'r-plain': script('r-plain') }
+  const at = ago(0, 30)
+  const timing: ScriptTimingLine[] = [
+    { kind: 'estimate', at, rule: 'r-est', seconds: 4, session: 'session-writer' },
+    { kind: 'run', at, rule: 'r-run', run: 'rr-1', ms: 5000, outcome: 'allow' },
+    { kind: 'value', at, rule: 'r-run', seconds: 15, previousSeconds: 12, source: { by: 'runs', runIds: ['rr-1'], seconds: 5, factor: 3 } },
+    { kind: 'timeout', at, rule: 'r-run', limitSeconds: 12, elapsedSeconds: 12, outcome: 'allowed' },
+    { kind: 'run', at, rule: 'r-capped', run: 'rr-3', ms: 11000, outcome: 'allow' },
+    { kind: 'value', at, rule: 'r-capped', seconds: 30, capped: { wantedSeconds: 33 }, source: { by: 'runs', runIds: ['rr-3'], seconds: 11, factor: 3 } },
+  ]
+  const of = (id: string): RulesView['rules'][number]['script'] => view({ read: readOf({ ...emptyState(), seq: 2, rules }), timing }).rules.find(rule => rule.id === id)?.script
+  const estimate = of('r-est')
+  assert.deepEqual([estimate?.timeoutFrom, estimate?.timeoutSeconds], ['estimate', 12])
+  assert.deepEqual(estimate?.timeout, {
+    seconds: 12,
+    source: { kind: 'agent-estimate', estimateS: 4, at, session: 'writer' },
+    history: [{ at, seconds: 12, source: '写脚本的 agent 估 4 秒，还没跑过' }],
+    timeouts: [],
+    timeouts7d: 0,
+  })
+  const run = of('r-run')
+  assert.deepEqual([run?.timeoutFrom, run?.timeoutSeconds], ['measured', 15], 'the runs took the value over from the estimate')
+  assert.deepEqual(run?.timeout?.source, { kind: 'measured', runs: 1, slowestS: 5 })
+  assert.deepEqual(run?.timeout?.history, [{ at, seconds: 15, previousS: 12, source: '按最近 1 次里最慢的 5 秒乘 3' }])
+  assert.deepEqual(run?.timeout?.timeouts, [{ at, limitS: 12, elapsedS: 12, outcome: '这次调用放行了' }])
+  assert.equal(run?.timeout?.timeouts7d, 1)
+  const capped = of('r-capped')
+  assert.deepEqual([capped?.timeoutSeconds, capped?.timeout?.held], [30, { by: 'cap', wantedS: 33 }])
+  const plain = of('r-plain')
+  assert.deepEqual([plain?.timeoutFrom, plain?.timeoutSeconds, plain?.timeout], ['ceiling', 30, { seconds: 30, source: { kind: 'ceiling' } }], 'a ceiling owes no history and no timeout records')
 })
 
 test('a code rule: the denials of 7 days only, the last five of the whole journal newest first with what they touched, and a late denial as late', () => {

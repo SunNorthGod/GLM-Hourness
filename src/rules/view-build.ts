@@ -17,6 +17,7 @@ import { DESIGN_LIFTS } from '../guard/main-agent-rules.ts'
 import type { LiftService } from '../guard/lift-service.ts'
 import { ruleStats, sinceCutoff, SUBJECT_LIMIT } from '../guard/measure.ts'
 import { classifyRecord, type GuardRecord, type LateRecord, type RulesLateRecord, type ViolationRecord } from '../guard/records.ts'
+import type { ViewTimeout, ViewTimeoutChange } from '../loops/view.ts'
 import { effectiveTimeoutSeconds } from '../loops/trigger.ts'
 import type { HealthRow } from '../shared/health.ts'
 import type { StatusItem } from '../shared/status.ts'
@@ -25,6 +26,7 @@ import { RULES_EVENT_TABLE } from './events.ts'
 import { ended, evaluateCondition, judgeInput } from './judge.ts'
 import { openTickets, projectSignals, stateNotes } from './listing.ts'
 import { unapprovedScripts, type Rule, type RowState, type Ticket } from './model.ts'
+import { latestEstimateOf, recentRunsOf, valueSourceWords, type ScriptTimingLine } from './timing.ts'
 import { stateOf, type PeakReading } from './peak.ts'
 import type { ProjectRead } from './repo.ts'
 import { clockReadings, compare } from './table.ts'
@@ -64,6 +66,8 @@ export interface RulesViewInput {
   readonly liveHosts: ReadonlyArray<{ readonly pid: number, readonly startedAt: number }>
   /** The ids of the person's rules whose script file is not in the project. */
   readonly missingScripts: ReadonlySet<string>
+  /** The board's script timing journal (d-timeout-measured): what the script timeouts read. */
+  readonly timing: readonly ScriptTimingLine[]
   /** The collector's items with owner `rules`. */
   readonly items: readonly StatusItem[]
   readonly statusProblems: ReadonlyArray<{ readonly row: string, readonly reason: string }>
@@ -133,21 +137,69 @@ function liftOf(id: string, title: string, lifted: RulesViewInput['lifted']): Pi
 
 type Standing = RulesScriptView['standing']
 
-function scriptOf(rule: Rule, standings: ReadonlyMap<string, Standing>, missing: ReadonlySet<string>): RulesScriptView | undefined {
+/** How a timeout record reads to the person: what the rule's failure setting did to the call. */
+const TIMEOUT_OUTCOME: Readonly<Record<'allowed' | 'blocked', string>> = { allowed: '这次调用放行了', blocked: '这次调用拦下了' }
+/** The timeouts 讲细点 lists at most, as the loop board's page does. */
+const SHOWN_TIMEOUTS = 5
+const WEEK_MS = 7 * 24 * 3600 * 1000
+
+/** A script rule's timeout as the page shows it (d-timeout-measured): the rule's own is pinned; the rest is filled the way the judge fills it — the journal's recent runs over the writer's estimate, both clamped — with the source, the values it took and its last timeouts. Pure. */
+function scriptOf(rule: Rule, standings: ReadonlyMap<string, Standing>, missing: ReadonlySet<string>, timing: readonly ScriptTimingLine[], nowMs: number): RulesScriptView | undefined {
   const action = rule.action
   if (action.kind !== 'script') return undefined
   // The failure setting judge.ts uses when the rule does not say: the blocking default of an event first.
   const defaults = rule.when.events.map(event => RULES_EVENT_TABLE.get(event)?.gateOnErrorDefault)
   const fallback = defaults.find(value => value === 'block') ?? defaults.find(value => value !== undefined) ?? 'allow'
-  return {
+  const head = {
     file: action.script.file,
     lang: action.script.lang,
     standing: standings.get(rule.id) ?? 'approved',
     missing: missing.has(rule.id),
-    timeoutSeconds: action.timeoutSeconds ?? effectiveTimeoutSeconds({ recent: [], purpose: 'gate' }).seconds,
-    timeoutFrom: action.timeoutSeconds === undefined ? 'design' : 'entry',
     onError: action.onError ?? fallback,
     onErrorIsDefault: action.onError === undefined,
+  }
+  if (action.timeoutSeconds !== undefined) return { ...head, timeoutSeconds: action.timeoutSeconds, timeoutFrom: 'entry' }
+  const estimate = action.estimateSeconds
+  const recent = recentRunsOf(timing, rule.id)
+  const decision = effectiveTimeoutSeconds({ ...(estimate === undefined ? {} : { estimate }), recent, purpose: 'gate' })
+  const measured = recent.length > 0
+  const basisS = measured ? Math.max(...recent.map(run => run.seconds)) : estimate
+  const tripleS = basisS === undefined ? undefined : Math.ceil(3 * basisS)
+  const held = tripleS === undefined ? undefined
+    : decision.capped === true ? { by: 'cap' as const, wantedS: tripleS }
+      : tripleS < decision.seconds ? { by: 'floor' as const, wantedS: tripleS } : undefined
+  const timeoutFrom = measured ? 'measured' as const : estimate === undefined ? 'ceiling' as const : 'estimate' as const
+  const written = latestEstimateOf(timing, rule.id)
+  const source: ViewTimeout['source'] = measured
+    ? { kind: 'measured', runs: recent.length, slowestS: Math.max(...recent.map(run => run.seconds)) }
+    : timeoutFrom === 'ceiling'
+      ? { kind: 'ceiling' }
+      : { kind: 'agent-estimate', estimateS: estimate ?? 0, at: written?.at ?? rule.origin.at, ...(written?.session === undefined ? {} : { session: written.session.replace(/^session-/, '').slice(0, 8) }) }
+  // The values it took, newest first; before the first run, the estimate is the first value.
+  const values = timing.flatMap((line): ViewTimeoutChange[] => line.kind === 'value' && line.rule === rule.id
+    ? [{ at: line.at, seconds: line.seconds, ...(typeof line.previousSeconds === 'number' ? { previousS: line.previousSeconds } : {}), source: valueSourceWords(line, true) }]
+    : []).reverse()
+  const history = values.length === 0 && timeoutFrom === 'estimate'
+    ? [{ at: written?.at ?? rule.origin.at, seconds: decision.seconds, source: `写脚本的 agent 估 ${estimate} 秒，还没跑过` }]
+    : values
+  const stopped = timing.flatMap((line) => line.kind === 'timeout' && line.rule === rule.id
+    ? [{ at: line.at, limitS: line.limitSeconds, elapsedS: line.elapsedSeconds, outcome: TIMEOUT_OUTCOME[line.outcome] ?? '这次调用照常走了' }]
+    : []).reverse()
+  return {
+    ...head,
+    timeoutSeconds: decision.seconds,
+    timeoutFrom,
+    timeout: {
+      seconds: decision.seconds,
+      source,
+      ...(held === undefined ? {} : { held }),
+      // A ceiling owes no history and no timeout records: the page leaves them out (plain-ui 1.3 §4.7).
+      ...(timeoutFrom === 'ceiling' ? {} : {
+        history,
+        timeouts: stopped.slice(0, SHOWN_TIMEOUTS),
+        timeouts7d: stopped.filter(record => Date.parse(record.at) <= nowMs && Date.parse(record.at) > nowMs - WEEK_MS).length,
+      }),
+    },
   }
 }
 
@@ -169,7 +221,7 @@ export function buildRulesView(input: RulesViewInput, nowMs: number): RulesView 
   const stopTickets = tickets.filter(ticket => ticket.state === 'deferred' && isStop(ticket))
   const actor = state.peakMode?.origin.actor
   const rules = Object.values(state.rules ?? {}).sort((a, b) => compare(a.id, b.id)).map((rule): RulesPersonView => {
-    const script = scriptOf(rule, standings, input.missingScripts)
+    const script = scriptOf(rule, standings, input.missingScripts, input.timing, nowMs)
     return {
       id: rule.id,
       title: rule.title,

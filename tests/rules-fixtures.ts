@@ -119,6 +119,7 @@ export function viewInputOf(over: Partial<RulesViewInput> = {}): RulesViewInput 
     lifted: [],
     liveHosts: [],
     missingScripts: new Set(),
+    timing: [],
     items: [],
     statusProblems: [],
     host: { pid: 4242 },

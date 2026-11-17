@@ -347,6 +347,20 @@ function heldValueText(line: ValueLine, ceilingSeconds: number): string {
   return `[rules board] Rule ${line.rule}'s script ran its slowest of the last ${source.by === 'runs' ? source.runIds.length : 0} recorded runs in ${slowest} s; three times that (${line.capped?.wantedSeconds ?? 0} s) is above the ${ceilingSeconds} s ceiling, so the timeout stays at ${ceilingSeconds} s. Make the script faster, or tell the human the ceiling should change.`
 }
 
+/**
+ * Where a value came from, in the words the page's history reads (the rules board's form of
+ * env/timeout.ts's `valueSourceText`): the writer's estimate, with the session it was written in
+ * (or that it was not recorded) when `session`, the named runs, or the ceiling; a value held at
+ * the ceiling says so after the source. Pure.
+ */
+export function valueSourceWords(line: ValueLine, session = false): string {
+  const held = line.capped === undefined ? undefined : `想要 ${line.capped.wantedSeconds} 秒，被上限截在 ${line.seconds} 秒`
+  const said = line.source.by === 'runs' ? `按最近 ${line.source.runIds.length} 次里最慢的 ${line.source.seconds} 秒乘 3`
+    : line.source.by === 'ceiling' ? '没有估计，先用上限'
+      : `写脚本的 agent 估 ${line.source.estimateS} 秒${session ? `，会话 ${line.source.session === undefined ? '未记' : line.source.session.replace(/^session-/, '').slice(0, 8)}` : ''}`
+  return held === undefined ? said : `${said}；${held}`
+}
+
 /** The notice one held value waits as, for the main agent's next step on this host. */
 async function tellHeldValue(parts: {
   readonly root: string

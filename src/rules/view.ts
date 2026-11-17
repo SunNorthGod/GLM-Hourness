@@ -10,6 +10,7 @@
  * id to the rule id the violation journal carries. It imports types only, so
  * the client bundle can take it.
  */
+import type { ViewTimeout } from '../loops/view.ts'
 import type { PeakLevel } from '../shared/peak-mode.ts'
 import type { StatusItem } from '../shared/status.ts'
 import type { Condition, Effect, RecoveryReason, Rule, RuleAction, RowState, SignalType, SignalValue, SkippedRecord, Ticket } from './model.ts'
@@ -67,8 +68,10 @@ export interface RulesScriptView {
   /** The file is not in the project. */
   readonly missing: boolean
   readonly timeoutSeconds: number
-  /** `entry`: the rule writes it; `design`: the fixed value of the design fills it. */
-  readonly timeoutFrom: 'entry' | 'design'
+  /** `entry`: the rule writes it and nothing maintains it; `estimate`: three times the writer's estimate; `measured`: three times the slowest of the recent runs; `ceiling`: neither an estimate nor a run (d-timeout-measured). */
+  readonly timeoutFrom: 'entry' | 'estimate' | 'measured' | 'ceiling'
+  /** Estimate, measured and ceiling only: the timeout as the page words it (the same shape the loop board's checks carry; the page's cell reads it whole). */
+  readonly timeout?: ViewTimeout
   /** What a timeout or a crash does. */
   readonly onError: 'allow' | 'block'
   /** The rule does not say; the event's declared default (else allow) applies. */
