@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import { apply, type LoopsConfig, type LoopsContext } from '../src/loops/index.ts'
 import type { LoopsProjectionState } from '../src/loops/projection.ts'
 import { DATA_SERVICE } from '../src/shared/data-home.ts'
-import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, SessionProjectionsService, ToolFinalResult } from '../src/shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, SessionProjectionsService, ToolDefinitionLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { collectHealth } from '../src/shared/health.ts'
 import { execTool, fakeInjector, fakeRuntime, fakeSchedule, readViolations, type ExecTool, type FakeRuntime, type FakeSchedule, type ReadViolations } from './fake-rc3.ts'
 import { git, quickIo } from './loops-helpers.ts'
@@ -22,6 +22,8 @@ export interface LoopsFixture {
   readonly root: string
   readonly runtime: FakeRuntime
   readonly commands: Map<string, CommandDefinitionLike<AgentCommandInvocationLike>>
+  /** The tools the row registered, by name. */
+  readonly tools: Map<string, ToolDefinitionLike>
   /** What the row registered with the session projection registry. */
   readonly projections: Array<{ readonly key: string, readonly init: (header: unknown) => LoopsProjectionState, readonly apply: (state: LoopsProjectionState) => LoopsProjectionState }>
   /** The timers the row asked for, held until a test fires them. */
@@ -30,6 +32,8 @@ export interface LoopsFixture {
   readonly start: () => () => void
   /** Run `/loops <input>` in the fake agent's session, as the person. */
   readonly run: (input: string) => Promise<CommandResultLike>
+  /** Run one of the row's tools in the fake agent's session. */
+  readonly tool: <T = Record<string, unknown>>(name: string, args?: unknown, agent?: AgentLike) => Promise<T>
   readonly exec: ExecTool
   readonly violations: ReadViolations
   /** What the native tools were called with: a call the gate refused is not in it. */
@@ -56,7 +60,7 @@ export interface LoopsFixtureOptions {
   readonly config?: LoopsConfig
   readonly now?: () => number
   /** A host without these parts of the context. */
-  readonly without?: ReadonlyArray<'commands' | 'on' | 'inject'>
+  readonly without?: ReadonlyArray<'commands' | 'tools' | 'on' | 'inject'>
   /** Provide the session projection registry from the start (default true). */
   readonly projections?: boolean
   /** Provide the session controller from the start (default true): without it the row provides no service and runs nothing. */
@@ -97,6 +101,7 @@ export async function withLoopsRow(body: (fixture: LoopsFixture) => Promise<void
     const runtime = fakeRuntime({ natives: NATIVES, calls, ...(options.cwd === null ? {} : { cwd: options.cwd ?? root }) })
     runtime.services.set(DATA_SERVICE, { userHome: join(root, 'user'), projectHome: join(root, '.llm') })
     const commands: LoopsFixture['commands'] = new Map()
+    const tools: LoopsFixture['tools'] = new Map()
     const projections: LoopsFixture['projections'] = []
     const delayed: LoopsFixture['delayed'] = []
     const beats: LoopsFixture['beats'] = []
@@ -112,6 +117,7 @@ export async function withLoopsRow(body: (fixture: LoopsFixture) => Promise<void
       ...runtime.ctx,
       ...(missing.has('on') ? { on: undefined } : {}),
       ...(missing.has('commands') ? {} : { commands: { register: (definition: CommandDefinitionLike<AgentCommandInvocationLike>) => { commands.set(definition.name, definition); return () => { commands.delete(definition.name) } } } }),
+      ...(missing.has('tools') ? {} : { tools: { register: (definition: ToolDefinitionLike) => { tools.set(definition.name, definition); return () => { tools.delete(definition.name) } } } }),
       ...(missing.has('inject') ? {} : { inject: injector.inject }),
     } as unknown as LoopsContext
     const io = quickIo(options.now === undefined ? {} : { now: options.now })
@@ -149,6 +155,7 @@ export async function withLoopsRow(body: (fixture: LoopsFixture) => Promise<void
       root,
       runtime,
       commands,
+      tools,
       projections,
       delayed,
       beats,
@@ -158,6 +165,7 @@ export async function withLoopsRow(body: (fixture: LoopsFixture) => Promise<void
       controller,
       calls,
       run: input => commands.get('loops')!.handler({ commandId: 'test', agent: runtime.agent, rawInput: input } as unknown as AgentCommandInvocationLike),
+      tool: async <T,>(name: string, args?: unknown, agent?: AgentLike): Promise<T> => await tools.get(name)!.execute(args ?? {}, { agent: agent ?? runtime.agent }) as Promise<T>,
       exec: execTool(runtime),
       agentIn: cwd => ({ ...runtime.agent, session: { ...runtime.agent.session!, header: { ...runtime.agent.session!.header, cwd } } }),
       health: () => collectHealth(runtime.ctx, 'agent-1').find(entry => entry.row === 'loops')!,

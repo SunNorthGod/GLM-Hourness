@@ -41,7 +41,15 @@
  *   again after every beat of a project it runs, so the page shows the last
  *   runs;
  * - `/loops` (commands.ts): the person lists every entry, deletes one of
- *   theirs, gets one back, or acknowledges a damaged change record;
+ *   theirs, gets one back, acknowledges a damaged change record, or decides a
+ *   proposal that was made while the project graph was not there (`accept`
+ *   twice for one with text, `reject`);
+ * - the three agent tools (tools.ts): `loop_show`, any agent; `loop_propose`
+ *   and `loop_note`, the main agent's. A proposal rides the chat path of a
+ *   person's agreement (accept.ts): `propose_to_human` asks the service's
+ *   `attachable`, `record_human_answer` decides and hands back through
+ *   `acceptProposal`, and the reconciliation every beat carries out what the
+ *   graph says and the board did not hear;
  * - the gate `loops:files-only` (guard.ts), outermost on `tools/pre-execute`: a
  *   file tool or a shell command that writes into the board's files is denied
  *   from the day the row is enabled;
@@ -52,20 +60,20 @@
  *   same lists the service's readers hand out;
  * - reports its health: ready, or degraded with each thing that is wrong.
  *
- * It registers no agreement tool yet (`loop_show`, `loop_propose` and `loop_note`
- * come with the path of a person's agreement); it binds DSH `schedule` tasks
- * (`bind.ts`, `remove.ts`) and installs `loops:schedule-tools`. Activation never
- * throws: a host without `provide` leaves the row inactive with the reason, and
- * a command, a gate, a projection or a beat that cannot be set up degrades the
- * row and says which. The row ships enabled (packages/hourness/cordis.patch.yml).
+ * It binds DSH `schedule` tasks (`bind.ts`, `remove.ts`) and installs
+ * `loops:schedule-tools`. Activation never throws: a host without `provide`
+ * leaves the row inactive with the reason, and a command, a tool, a gate, a
+ * projection or a beat that cannot be set up degrades the row and says which.
+ * The row ships enabled (packages/hourness/cordis.patch.yml).
  */
 import { projectOf } from '../data/project-root.ts'
 import { projectHomeFor } from '../data/project-home.ts'
 import type { LockEnvironment } from '../data/lock.ts'
+import { graphService } from '../graph/service.ts'
 import { projectKey } from '../graph/main-agent-holder.ts'
 import { projectJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
-import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventHost, SessionEventOn, WorkspaceRegistryService } from '../shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventHost, SessionEventOn, ToolsLike, WorkspaceRegistryService } from '../shared/dsh-min.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { registerSessionProjection } from '../shared/row-support.ts'
 import type { StoreIo } from '../rules/store.ts'
@@ -89,16 +97,19 @@ import { createRegistry, LOOPS_SOURCE } from './registry.ts'
 import { installLoopStepNotice, machineStepFile } from './reminder.ts'
 import { BEAT_MS, createProjectRuntime, type LoopChecks, type ProjectRuntime } from './run.ts'
 import { envService, fillCheckArgv, formatCheckOutput, isCheckFormat } from '../env/env-service.ts'
-import { ensureRuntimeDir } from './store.ts'
-import { LOOPS_SERVICE, type Contribution, type LoopEventInput, type LoopsService } from './service.ts'
+import { ensureRuntimeDir, type LoopStore } from './store.ts'
+import { LOOPS_SERVICE, loopProposalLine, type Contribution, type LoopEventInput, type LoopsService } from './service.ts'
 import { staleItems, timeoutItems } from './status.ts'
+import { createLoopsAccept } from './accept.ts'
+import { loopNoteTool, loopProposeTool, loopShowTool } from './tools.ts'
+import { LOOP_TOOL_NAMES } from '../shared/tool-names.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
 import type { StatusItem } from '../shared/status.ts'
 import type { PeakView } from './view.ts'
 
-/** cordis plugin identity: needs the commands service. */
+/** cordis plugin identity: needs the commands and the tools service. */
 export const name = 'dsh-glm-hourness/loops'
-export const inject = ['commands']
+export const inject = ['commands', 'tools']
 
 /** The command name; its definition id is `dsh-glm-hourness/loops`. */
 export const LOOPS_COMMAND = 'loops'
@@ -154,7 +165,7 @@ function ownContribution(hasPricing: boolean, run: NonNullable<Contribution['run
 }
 
 /** What the row takes from its context. Everything but `provide` is optional: a host that lacks a part degrades the row and says which. */
-export interface LoopsContext extends Partial<ProvideHost>, Partial<InjectHost>, ServiceLookup, Partial<CommandsHost<AgentCommandInvocationLike>> {
+export interface LoopsContext extends Partial<ProvideHost>, Partial<InjectHost>, ServiceLookup, Partial<CommandsHost<AgentCommandInvocationLike>>, Partial<{ readonly tools: ToolsLike }> {
   readonly on?: {
     (event: 'agent/created', listener: (payload: { agent: AgentLike }) => Promise<void> | void): () => void
     (event: 'tools/pre-execute', listener: PreExecuteListener, options?: { prepend?: boolean }): () => void
@@ -240,10 +251,10 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
   const problems: string[] = []
   /** Lines that say what this process does not do; they are not faults (design §11.1). */
   const notes: string[] = []
-  /** What the setup of the command, the gate and the projection says: undefined once it is in place. */
-  const setup: { command: string | undefined, gate: string | undefined, projection: string | undefined } = { command: '/loops 还没注册', gate: '文件门还没装', projection: WAITING_PROJECTION }
+  /** What the setup of the command, the tools, the gate and the projection says: undefined once it is in place. */
+  const setup: { command: string | undefined, tools: string | undefined, gate: string | undefined, projection: string | undefined } = { command: '/loops 还没注册', tools: '工具还没注册', gate: '文件门还没装', projection: WAITING_PROJECTION }
   const activation = (): readonly [HealthState, string] => {
-    const faults = [setup.command, setup.gate, setup.projection].flatMap(fault => fault ?? [])
+    const faults = [setup.command, setup.tools, setup.gate, setup.projection].flatMap(fault => fault ?? [])
     const listed = [...problems, ...boards.problems()]
     return [
       faults.length + listed.length === 0 ? 'active' : 'degraded',
@@ -251,6 +262,7 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
         `循环板自己的 ${registry.entries().length} 项条目已登记`,
         ...notes,
         ...(setup.command === undefined ? [`命令 /${LOOPS_COMMAND} 已注册`] : []),
+        ...(setup.tools === undefined ? [`工具 ${LOOP_TOOL_NAMES.join('、')} 已注册`] : []),
         ...(setup.gate === undefined ? [`${LOOPS_FILES_ONLY} 与 ${LOOPS_SCHEDULE_TOOLS} 已装上`] : []),
         ...(setup.projection === undefined ? [`会话投影 ${LOOPS_KEY} 已注册`] : []),
         ...faults,
@@ -528,21 +540,55 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
       await held.runtime.beat()
       // What the beat ran, held or recorded goes on the page (design §8.4).
       await boards.rewrite(root)
+      // What the graph decided and the board did not hear (the row was off, a
+      // crash between the two writes) is carried out every beat (design §7.1 step 5).
+      await reconcileProject(root)
     }
     health.reactivate(...activation())
+  }
+
+  /**
+   * The store of the project a working directory is in, for the tools, the
+   * command's proposal decisions and the reconciliation of what the graph
+   * holds (accept.ts).
+   */
+  const storeFor = (cwd: string | undefined): LoopStore | undefined => {
+    const project = typeof cwd === 'string' && cwd !== '' ? projectOf(cwd) : undefined
+    return project === undefined ? undefined : boards.storeOf(project.root)
+  }
+  const loopsAccept = createLoopsAccept({ storeFor })
+
+  /**
+   * The decisions the graph holds that the board did not hear (the row was
+   * unloaded, or the host exited between the two writes), for one project
+   * whose graph is there. What a decision changed puts the view back, so the
+   * page does not show yesterday's board (design §7.1 step 5).
+   */
+  async function reconcileProject(root: string): Promise<void> {
+    const dir = graphService(ctx)?.dirFor(root)
+    if (dir === undefined) return
+    const done = await loopsAccept.reconcile(root, dir)
+    if (done.accepted.length + done.rejected.length + done.expired.length > 0) await boards.refresh(root)
   }
 
   const command: CommandDefinitionLike<AgentCommandInvocationLike> = {
     definitionId: name,
     name: LOOPS_COMMAND,
-    description: '循环板：列出全部条目、删掉你的一项、把读不出的一项恢复、确认存档恢复的提示',
+    description: '循环板：列出全部条目、删掉你的一项、把读不出的一项恢复、确认存档恢复的提示、拍板没有项目图时的提议',
     input: { hint: LOOPS_HINT },
     async handler(invocation): Promise<CommandResultLike> {
       const cwd = invocation.agent.session.header.cwd
       const project = typeof cwd === 'string' && cwd !== '' ? projectOf(cwd) : undefined
       if (project === undefined) return { kind: 'error', text: NOT_A_PROJECT }
       const root = project.root
-      const result = await runLoopsCommand(invocation.rawInput, { store: boards.storeOf(root), pluginIds: () => new Set(registry.entries().map(item => item.entry.id)), now: io.now, view: () => boards.refresh(root) })
+      const result = await runLoopsCommand(invocation.rawInput, {
+        store: boards.storeOf(root),
+        pluginIds: () => new Set(registry.entries().map(item => item.entry.id)),
+        now: io.now,
+        view: () => boards.refresh(root),
+        proposals: () => boards.storeOf(root).proposals(),
+        decide: mutation => boards.storeOf(root).apply('human', mutation),
+      })
       await boards.refresh(project.root)
       // The person touched this project: this process runs it from here on, if it can.
       await runtimeOf(project.root)?.beat()
@@ -560,6 +606,37 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
     }
   }
   else setup.command = `宿主没有 commands，/${LOOPS_COMMAND} 注册不了`
+
+  if (typeof ctx.tools?.register === 'function') {
+    try {
+      disposers.push(ctx.tools.register(loopShowTool({
+        view: async (cwd) => {
+          const project = projectOf(cwd)
+          return project === undefined ? undefined : boards.refresh(project.root)
+        },
+      })))
+      disposers.push(ctx.tools.register(loopProposeTool({
+        ctx,
+        now: io.now,
+        storeFor,
+        registry,
+        checks: () => checksSeam(ctx, note => { say(note, 'degraded') }),
+      })))
+      disposers.push(ctx.tools.register(loopNoteTool({
+        ctx,
+        io,
+        now: io.now,
+        storeFor,
+        runOf: (root, entry) => runOfEntry(root, entry),
+      })))
+      setup.tools = undefined
+    }
+    catch (error) {
+      console.warn(`${name}: registering ${LOOP_TOOL_NAMES.join(', ')} failed, agents cannot read the board or propose an entry: ${message(error)}`)
+      setup.tools = `工具注册失败：${message(error)}`
+    }
+  }
+  else setup.tools = `宿主没有 tools，${LOOP_TOOL_NAMES.join('、')} 注册不了`
 
   if (typeof ctx.on === 'function') {
     try {
@@ -734,6 +811,10 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
             },
             staleEntries: (project, _now) => weeklyLists(project)?.stale,
             timeoutEntries: (project, _now) => weeklyLists(project)?.timeouts,
+            // The path of a person's agreement (accept.ts); the design row reads these three through loopsAttachService.
+            attachable: loopsAccept.attachable,
+            proposalLine: loopProposalLine,
+            acceptProposal: loopsAccept.acceptProposal,
           }
           withdrawService = sub.provide(LOOPS_SERVICE, service)
         }

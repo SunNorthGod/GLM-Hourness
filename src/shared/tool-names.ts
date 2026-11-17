@@ -23,6 +23,16 @@ export const GRAPH_TOOL_NAMES: readonly string[] = [
 export const RULES_TOOL_NAMES: readonly string[] = ['rules_show', 'rules_propose']
 
 /**
+ * The loop row's tools, in registration order (loop board design 0.6 §7.3):
+ * the board's listing, the main agent's proposal tool and its note tool.
+ * Deferred on the GLM route like the rules row's: `loop_note`'s use is written
+ * in the entry's own text, so the model meets it when a message names it.
+ * tests/contracts.spec.ts pins the registration of src/loops/index.ts to this
+ * list.
+ */
+export const LOOP_TOOL_NAMES: readonly string[] = ['loop_show', 'loop_propose', 'loop_note']
+
+/**
  * The DSH native tools that dispatch a subagent. A call to one of them is a
  * `gate.dispatch` event of the rules board besides the `gate.tool-call` every
  * call is (src/rules/events.ts). The dispatch tool of the orchestration

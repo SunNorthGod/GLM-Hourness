@@ -25,6 +25,7 @@ import { momentText, type LoopsView } from '../src/loops/view.ts'
 import { appendEvents } from '../src/metrics/library.ts'
 import { statusViewOf } from '../src/report/status.ts'
 import type { EmittedEvent } from '../src/shared/metrics.ts'
+import { LOOP_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { entryFileOf, NOW, quickIo, recordsOf, scriptEntry, SCRIPT_TEXT, seedAgreed, tellEntry, writeFiles } from './loops-helpers.ts'
 import { withLoopsRow, type LoopsFixture } from './loops-host.ts'
 import { GLM_LOOP_DEFAULTS } from '../src/glm-llm/loop-defaults.ts'
@@ -52,13 +53,14 @@ const agreed = async (fixture: LoopsFixture, ...entries: Array<ReturnType<typeof
 
 const viewOf = async (root: string): Promise<LoopsView> => JSON.parse(await readFile(join(root, '.llm', 'loops', 'view.json'), 'utf8')) as LoopsView
 
-test('the row is a cordis plugin that needs the commands service, and registers /loops as a command of its own with its usage as the hint', async () => {
-  assert.deepEqual([name, inject, LOOPS_COMMAND], ['dsh-glm-hourness/loops', ['commands'], 'loops'])
-  await withLoopsRow(({ commands }) => {
+test('the row is a cordis plugin that needs the commands and tools services, and registers /loops as a command of its own with its usage as the hint', async () => {
+  assert.deepEqual([name, inject, LOOPS_COMMAND], ['dsh-glm-hourness/loops', ['commands', 'tools'], 'loops'])
+  await withLoopsRow(({ commands, tools }) => {
     const command = commands.get('loops')
     assert.deepEqual([command?.definitionId, command?.name, command?.recordInput], ['dsh-glm-hourness/loops', 'loops', undefined])
     assert.match(command?.input?.hint ?? '', /delete.+restore.+ack/)
     assert.ok((command?.description ?? '').length > 0)
+    assert.deepEqual([...tools.keys()], [...LOOP_TOOL_NAMES])
   })
 })
 
@@ -75,9 +77,9 @@ rowTest('the service the row provides reads as a loops service with the members 
 rowTest('/loops with a word it does not know, or without its argument, answers the usage and writes nothing', async (fixture) => {
   await agreed(fixture, tellEntry(A))
   const before = await readFile(join(fixture.root, '.llm', 'loops', 'journal.jsonl'), 'utf8')
-  for (const input of ['frobnicate', 'delete', 'delete   ', 'restore', 'restore not-an-id', 'ack now', 'accept lp-0123abcd']) {
+  for (const input of ['frobnicate', 'delete', 'delete   ', 'restore', 'restore not-an-id', 'ack now', 'accept not-an-id', 'accept', 'reject lp-0123abcd!']) {
     const result = await fixture.run(input)
-    assert.deepEqual([input, result.kind, result.text], [input, 'error', '用法：/loops（列出全部）、/loops delete <名字或 id>、/loops restore <id>、/loops ack'])
+    assert.deepEqual([input, result.kind, result.text], [input, 'error', '用法：/loops（列出全部）、/loops delete <名字或 id>、/loops restore <id>、/loops ack、/loops accept <lp-id>、/loops reject <lp-id>'])
   }
   assert.equal(await readFile(join(fixture.root, '.llm', 'loops', 'journal.jsonl'), 'utf8'), before)
 })
