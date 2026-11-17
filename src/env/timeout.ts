@@ -24,9 +24,10 @@
  */
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Actor, GraphNode } from '../graph/schema.ts'
+import { parseJournal, rewriteJournal, type JournalBook } from '../shared/journal.ts'
 import { isEnvTool, nodeChecks } from './branch.ts'
 
 /** The limit is this many times the run time. */
@@ -246,10 +247,7 @@ function isTimingLine(value: unknown): value is TimingLine {
 }
 
 /** The journal of one project: its readable lines in order, and how many lines could not be read. */
-export interface TimingBook {
-  readonly lines: readonly TimingLine[]
-  readonly bad: number
-}
+export type TimingBook = JournalBook<TimingLine>
 
 /** The journal file of a project directory. */
 export function timingFile(home: string): string {
@@ -258,20 +256,7 @@ export function timingFile(home: string): string {
 
 /** The lines of a journal text; a line that is not JSON or not a timing line is counted and skipped. Pure. */
 export function parseTiming(text: string): TimingBook {
-  const lines: TimingLine[] = []
-  let bad = 0
-  for (const raw of text.split('\n')) {
-    if (raw.trim() === '') continue
-    try {
-      const line: unknown = JSON.parse(raw)
-      if (isTimingLine(line)) lines.push(line)
-      else bad++
-    }
-    catch {
-      bad++
-    }
-  }
-  return { lines, bad }
+  return parseJournal(text, isTimingLine)
 }
 
 /** Read a project's journal: no file is an empty journal; any other failure is its error code, and the caller goes on without runs. */
@@ -330,16 +315,7 @@ export async function tidyTiming(home: string): Promise<string | undefined> {
   if ('error' in book) return `检查的超时账读不出（${book.error}）`
   const tidy = tidiedLines(book.lines)
   if (book.bad === 0 && tidy.length === book.lines.length) return undefined
-  const file = timingFile(home)
-  const temporary = `${file}.${process.pid}.tmp`
-  try {
-    await writeFile(temporary, tidy.map(line => `${JSON.stringify(line)}\n`).join(''), 'utf8')
-    await rename(temporary, file)
-    return undefined
-  }
-  catch (error) {
-    return `检查的超时账没整理成（${(error as NodeJS.ErrnoException).code ?? String(error)}）`
-  }
+  return rewriteJournal(timingFile(home), tidy, '检查的超时账')
 }
 
 /** The run times of one check under one command, oldest first, the last CHECK_RECENT_RUNS of them. */

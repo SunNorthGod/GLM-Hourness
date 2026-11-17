@@ -24,15 +24,16 @@
  * one, a write that fails comes back as a problem string for the caller's
  * own audible channel, and the verdict of a call never depends on any of it.
  */
-import { appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { GATE_TIMEOUT_MAX_SECONDS, effectiveTimeoutSeconds, type TimeoutInput } from '../loops/trigger.ts'
+import { parseJournal, rewriteJournal, type JournalBook } from '../shared/journal.ts'
 import { openRulesBoard } from './engine.ts'
 import { rulesPaths, type StoreIo } from './store.ts'
 
 /** The runs a value is computed from, the last ones per rule (M4's checker keeps the same many). */
-export const RULES_RECENT_RUNS = 10
+const RULES_RECENT_RUNS = 10
 
 /** The writer's estimate of one run, recorded when the proposal is made; the session is the proposing one. */
 export interface EstimateLine {
@@ -44,7 +45,7 @@ export interface EstimateLine {
 }
 
 /** One finished run of an approved script, as `runJudgedScripts` read it. A run cut at its timeout is outcome `timeout`. */
-export interface RunLine {
+interface RunLine {
   readonly kind: 'run'
   readonly at: string
   readonly rule: string
@@ -55,7 +56,7 @@ export interface RunLine {
 }
 
 /** Where a timeout value came from: the writer's estimate (with the session), the named runs, or neither (the ceiling). */
-export type TimingSource =
+type TimingSource =
   | { readonly by: 'estimate', readonly estimateS: number, readonly session?: string }
   | { readonly by: 'runs', readonly runIds: readonly string[], readonly seconds: number, readonly factor: number }
   | { readonly by: 'ceiling' }
@@ -73,7 +74,7 @@ export interface ValueLine {
 }
 
 /** A script was stopped at its timeout: the entry, the limit, the actual time, and how the rule's failure setting treated the call. */
-export interface TimeoutLine {
+interface TimeoutLine {
   readonly kind: 'timeout'
   readonly at: string
   readonly rule: string
@@ -95,31 +96,15 @@ function isTimingLine(value: unknown): value is ScriptTimingLine {
 }
 
 /** The journal of one project: its readable lines in order, and how many lines could not be read. */
-export interface TimingBook {
-  readonly lines: readonly ScriptTimingLine[]
-  readonly bad: number
-}
+export type TimingBook = JournalBook<ScriptTimingLine>
 
 /** The lines of a journal text; a line that is not JSON or not a timing line is counted and skipped. Pure. */
 export function parseTiming(text: string): TimingBook {
-  const lines: ScriptTimingLine[] = []
-  let bad = 0
-  for (const raw of text.split('\n')) {
-    if (raw.trim() === '') continue
-    try {
-      const line: unknown = JSON.parse(raw)
-      if (isTimingLine(line)) lines.push(line)
-      else bad++
-    }
-    catch {
-      bad++
-    }
-  }
-  return { lines, bad }
+  return parseJournal(text, isTimingLine)
 }
 
 /** The journal file of a project root (next to the board's runtime state). */
-export function timingFile(root: string, rulesDir?: string): string {
+function timingFile(root: string, rulesDir?: string): string {
   return join(rulesPaths(root, rulesDir).runtimeDir, 'timing.jsonl')
 }
 
@@ -172,7 +157,7 @@ export function recentRunsOf(lines: readonly ScriptTimingLine[], rule: string): 
 }
 
 /** The rule's last value line. Pure. */
-export function lastValueOf(lines: readonly ScriptTimingLine[], rule: string): ValueLine | undefined {
+function lastValueOf(lines: readonly ScriptTimingLine[], rule: string): ValueLine | undefined {
   return [...lines].reverse().find((line): line is ValueLine => line.kind === 'value' && line.rule === rule)
 }
 
@@ -272,15 +257,7 @@ async function tidyTiming(root: string, rulesDir?: string): Promise<string | und
   }
   const tidy = tidiedTimingLines(book.lines)
   if (book.bad === 0 && tidy.length === book.lines.length) return undefined
-  const temporary = `${file}.${process.pid}.tmp`
-  try {
-    await writeFile(temporary, tidy.map(line => `${JSON.stringify(line)}\n`).join(''), 'utf8')
-    await rename(temporary, file)
-    return undefined
-  }
-  catch (error) {
-    return `规则脚本的超时账没整理成（${(error as NodeJS.ErrnoException).code ?? String(error)}）`
-  }
+  return rewriteJournal(file, tidy, '规则脚本的超时账')
 }
 
 /** One run of one script, as the runner hands it to the journal: what `ScriptOutcome` says plus the limit that was in force. */
@@ -364,7 +341,7 @@ export async function recordScriptRuns(parts: {
 }
 
 /** The main agent's words when a measured value was held at the ceiling (the decision F8: the harness does not raise it). */
-export function heldValueText(line: ValueLine, ceilingSeconds: number): string {
+function heldValueText(line: ValueLine, ceilingSeconds: number): string {
   const { source } = line
   const slowest = source.by === 'runs' ? source.seconds : 0
   return `[rules board] Rule ${line.rule}'s script ran its slowest of the last ${source.by === 'runs' ? source.runIds.length : 0} recorded runs in ${slowest} s; three times that (${line.capped?.wantedSeconds ?? 0} s) is above the ${ceilingSeconds} s ceiling, so the timeout stays at ${ceilingSeconds} s. Make the script faster, or tell the human the ceiling should change.`
