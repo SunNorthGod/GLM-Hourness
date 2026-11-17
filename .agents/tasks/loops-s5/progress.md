@@ -240,3 +240,26 @@ decision has none (fallback wording recorded instead).
 
 Docs: ORCHESTRATION §18 header, §18.7 accept/reject sentence, new §18.14;
 HANDOFF §3 loops row.
+
+## 2026-11-18 解冻后:rebase、门禁与两笔收尾
+
+- rebase 到 4a9750af(answer-race 修复 + 两笔 docs),干净重放,7 个提交;
+  worktree 无 node_modules,junction 到主工作区的 node_modules 后 lint 可跑。
+- rebase 后 build 暴露三处 strip-types 不查的 strict 错(spec 的 source 解构、
+  seam 字段可写),已在 f21c030e。
+- eslint:6 处报错在根上修(createLoopsAccept 返回改箭头属性、whenWords 的
+  Array.isArray 收窄、去无用 as/赋值),回到 69 suppressed;连同 propose spec
+  进 test:1,一笔 25e74b5a。
+- knip:test 文件的"被用"来自 package.json test 脚本的显式点名,
+  loops-consent.spec.ts 进 test:1 即消失;NOTES_PER_ENTRY、
+  MAX_PERSON_ENTRIES、ProposalKind(loops)、showText 收回模块内。
+- jscpd 6 处新克隆,一并去重(e9e6c46e):
+  - agreementOf/Agreement/SEEN/EXPIRES 与 reconcile 的单条定夺收进
+    src/design/agreement.ts(settleQuestion,apply 作参数),两板 accept 各留
+    seenExactly(摘要来源不同:F37 存的 vs 现算的);
+  - loop_show/rules_show 的 textOutput + agent 提取用 tool-support 新导出的
+    textRender/execAgent;loop_propose/rules_propose/loop_note 走已有
+    toolShell;
+  - 两个 spec 的 putAndAgree 抽进 tests/design-tools-helpers.ts。
+  门禁:eslint 69 / knip 18 / jscpd 1 全部回基线;preflight OK;
+  loops-consent 13/13、rules-accept 9/9 复跑绿。
