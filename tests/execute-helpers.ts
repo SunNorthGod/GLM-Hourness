@@ -46,7 +46,8 @@ export function noticeHost(project: { readonly root: string, readonly graphDir: 
   claimHolder(holderFileOf(home, project.graphDir), record)
   const sent: UserNotice[] = []
   const deliver = (notice: UserNotice): void => { sent.push(notice) }
-  const mainAgent = { id: 'main-1', status: 'idle', followup: deliver, steer: deliver }
+  // The session is on the agent because every real one carries it: the wake table reads the header's origin.
+  const mainAgent = { id: 'main-1', status: 'idle', session: { id: 'main-1', header: { id: 'main-1' }, deriveMessages: () => [] }, followup: deliver, steer: deliver }
   const agents = { get: (id: string): unknown => id === 'main-1' ? mainAgent : undefined }
   const lookup: ServiceLookup = {
     get: (name: string) => name === 'agents' ? agents : name === 'glmHournessData' ? { userHome: home } : extra[name],

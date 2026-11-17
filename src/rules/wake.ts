@@ -56,6 +56,14 @@ export function walkToRoot<Agent extends { readonly session: { readonly header: 
  * absent, or throws because the agent is not its live instance (dsh-goal
  * `assertLive`, goal:611–614), means no goal.
  *
+ * A delegated session never gets the inject: 0.2.2-rc.3's goal-round driver
+ * starts no round for it (its drive waits on `subagents.waitForTreeWork`,
+ * whose `rootOf` refuses a session whose header origin is subagent, and the
+ * failed drive disarms the goal), so nothing would carry an injected message
+ * into a request — the board would say its piece to an agent nobody wakes.
+ * On 0.2.2-rc.1 the driver rounded delegated sessions and the inject rode the
+ * round (docs/FACTS.md §3).
+ *
  * The loop board reaches the main agent the same way (loops design §6.4 item 3
  * says "the same wake table as the rules board"), so it calls this; its only
  * difference, that a message which does not wake the session is injected, is
@@ -63,6 +71,7 @@ export function walkToRoot<Agent extends { readonly session: { readonly header: 
  */
 export function wayTo(ctx: ServiceLookup, agent: MessageableAgentLike): 'steer' | 'inject' | 'followup' {
   if (agent.status === 'running') return 'steer'
+  if (agent.session.header.origin === 'subagent') return 'followup'
   const goals: unknown = typeof ctx.get === 'function' ? ctx.get('goals') : undefined
   if (typeof (goals as GoalsService | undefined)?.get !== 'function') return 'followup'
   try {

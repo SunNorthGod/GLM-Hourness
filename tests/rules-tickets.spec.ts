@@ -203,6 +203,14 @@ for (const [title, prepare, how] of WAYS) {
   })
 }
 
+ticketTest('the wake is sent the way the agent can take it: a delegated session with an active goal gets a followup (0.2.2-rc.3 starts no driver round for it, so nothing would read an inject)', async (fixture) => {
+  const sub = subagent(fixture)
+  await fixture.exec('pwsh', shell(DEPLOY), { agent: sub })
+  fixture.live.setGoal('sub-1', 'active')
+  await fixture.run('off code-freeze')
+  assert.deepEqual(fixture.live.woken.map(entry => [entry.agentId, entry.how, entry.kind]), [['sub-1', 'followup', 'hourness-rules-wake']])
+})
+
 ticketTest('the call again, once the ticket is cleared, runs and closes the ticket', async (fixture) => {
   assert.equal((await fixture.exec('pwsh', shell(DEPLOY))).isError, true)
   assert.equal((await fixture.exec('pwsh', shell(DEPLOY))).isError, true, 'before it clears the call is refused again')
@@ -655,7 +663,7 @@ stopTest('when the peak ends the goal is resumed first, then the subagent is tol
   await pass(fixture, clock, OVER)
   assert.deepEqual(fixture.live.goalCalls.at(-1), { op: 'resume', agentId: 'sub-1', ref: { id: 'goal-sub-1', revision: 2 } })
   assert.equal(fixture.live.goalOf('sub-1')?.phase, 'active')
-  assert.deepEqual(fixture.live.log, ['goal:pause', 'goal:resume', 'wake:inject'], 'resume, then the wake')
+  assert.deepEqual(fixture.live.log, ['goal:pause', 'goal:resume', 'wake:followup'], 'resume, then the wake')
   assert.deepEqual(fixture.live.woken.map(entry => [entry.agentId, entry.kind, entry.text]), [['sub-1', 'hourness-rules-wake', `${RELEASED} Your goal is resumed. Continue your work from where you stopped; the call that was deferred was pwsh "npm test".`]])
   const ticket = ticketOf(fixture, 'q-1')
   assert.equal(ticket.state, 'done')
@@ -692,7 +700,7 @@ stopTest('a goal the person resumed or changed in the peak is not resumed: only 
 stopTest('changing the level from stop to inform resolves the ticket the same way, at once', async (fixture, _clock, sub) => {
   await fixture.exec('pwsh', shell('npm test'), { agent: sub })
   assert.equal((await fixture.run('peak 无影响')).kind, 'success')
-  assert.deepEqual(fixture.live.log, ['goal:pause', 'goal:resume', 'wake:inject'])
+  assert.deepEqual(fixture.live.log, ['goal:pause', 'goal:resume', 'wake:followup'])
   assert.equal(ticketOf(fixture, 'q-1').state, 'done')
   assert.equal((await fixture.exec('pwsh', shell('npm test'), { agent: sub })).isError, false, 'the next call runs')
 })
@@ -750,7 +758,7 @@ stopTest('a late heartbeat that expires a stop ticket under a live host does not
   assert.deepEqual([back.state, back.expiredWhy, back.host.pid], ['deferred', undefined, process.pid])
   assert.deepEqual(fixture.live.woken, [], 'the ticket is the host\'s again, nobody is told it ended')
   await pass(fixture, clock, OVER)
-  assert.deepEqual(fixture.live.log, ['goal:pause', 'goal:resume', 'wake:inject'])
+  assert.deepEqual(fixture.live.log, ['goal:pause', 'goal:resume', 'wake:followup'])
   assert.equal(ticketOf(fixture, 'q-1').state, 'done')
 })
 
@@ -789,7 +797,7 @@ ticketTest('after a restart the new host takes over the stop ticket of a session
   assert.equal((await journalOf(rulesPaths(fixture.root))).filter(record => record.op === 'ticket-adopt').length, 1)
   assert.deepEqual(fixture.live.goalCalls, [], 'the peak goes on: nothing resumed')
   await pass(fixture, clock, OVER)
-  assert.deepEqual(fixture.live.log, ['goal:resume', 'wake:inject'])
+  assert.deepEqual(fixture.live.log, ['goal:resume', 'wake:followup'])
   assert.deepEqual(fixture.live.woken.map(entry => entry.text), [`${RELEASED} Your goal is resumed. Continue your work from where you stopped; the call that was deferred was pwsh "npm test".`])
   assert.equal(ticketOf(fixture, 'q-1').state, 'done')
 }, { route: GLM, rules: { version: 2 }, setup: leftBehind(PAUSED) })
@@ -815,7 +823,7 @@ ticketTest('an ordinary ticket is not taken over: it waited for a call that ende
 
 ticketTest('when the peak is already over at the restart the goal is resumed and the subagent woken at once', async (fixture) => {
   await fixture.runtime.create(pausedSubagent(fixture))
-  assert.deepEqual(fixture.live.log, ['goal:resume', 'wake:inject'])
+  assert.deepEqual(fixture.live.log, ['goal:resume', 'wake:followup'])
   assert.equal(ticketOf(fixture, 'q-1').state, 'done')
   assert.equal(fixture.live.goalOf('sub-1')?.phase, 'active')
 }, { route: GLM, rules: { version: 2 }, clock: fakeClock(AFTER_PEAK), setup: leftBehind(PAUSED) })
@@ -829,7 +837,7 @@ ticketTest('a row that starts with the session already live takes the ticket ove
 
 ticketTest('a row that starts after the peak with the session live resumes the goal and wakes it', async (fixture) => {
   await fixture.until(() => fixture.live.log.length === 2)
-  assert.deepEqual(fixture.live.log, ['goal:resume', 'wake:inject'])
+  assert.deepEqual(fixture.live.log, ['goal:resume', 'wake:followup'])
   assert.equal(ticketOf(fixture, 'q-1').state, 'done')
 }, { route: GLM, rules: { version: 2 }, clock: fakeClock(AFTER_PEAK), setup: leftBehind(PAUSED, { live: true }) })
 
