@@ -16,6 +16,7 @@ import { CHANNEL_EVENTS, CHANNEL_LOGIN_REJECTED, CHANNEL_PEAK_CHANGED, CHANNEL_Q
 import { LOOP_ACTIONS, LOOP_DEFAULTS, DEPENDENCY_FILES } from '../src/loops/defaults.ts'
 import { fileChangedKey, hostRestartedKey, LOOP_EVENT_TABLE, LOOP_EVENTS, waitingOnHumanKey } from '../src/loops/events.ts'
 import { apply, inject, name, type LoopsContext } from '../src/loops/index.ts'
+import type { ToolsLike } from '../src/shared/dsh-min.ts'
 import { validateEntry, type LoopEntryDefinition } from '../src/loops/model.ts'
 import { createRegistry, LOOPS_SOURCE, validateContribution, type LoopsRegistry } from '../src/loops/registry.ts'
 import { LOOPS_SERVICE, loopsService, type Contribution, type ContributionSource, type LoopEventDeclaration, type LoopEventField, type LoopEventParam, type LoopEventRecord, type LoopsService } from '../src/loops/service.ts'
@@ -707,7 +708,9 @@ const healthOf = (store: ReturnType<typeof serviceStore>) => collectHealth(store
 function hostWithParts(): ReturnType<typeof serviceStore> & LoopsContext {
   const store = serviceStore()
   const injector = fakeInjector({ sessionProjections: { register: () => () => {} } as never, sessionController: { resolveAgent: () => Promise.resolve({}) } }, store)
-  return Object.assign(store, { commands: { register: () => () => {} }, tools: { register: () => () => {} }, on: () => () => {}, inject: injector.inject })
+  // The row only registers the three tools; the rest of ToolsLike stays unused here.
+  const tools: ToolsLike = { register: () => () => {}, get: () => undefined, schemas: () => [], execute: (): Promise<never> => new Promise(() => {}) }
+  return Object.assign(store, { commands: { register: () => () => {} }, tools, on: () => () => {}, inject: injector.inject })
 }
 
 test('the row is a cordis plugin that needs the commands and tools services, provides the service and its health, and withdraws both', () => {
