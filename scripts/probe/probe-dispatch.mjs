@@ -291,6 +291,13 @@ export function apply(ctx, config = {}) {
       })
       const { agent, created } = await child(root.options.model, true)
       note({ kind: 'stop-created', agentId: agent.id, origin: agent.session.header.origin ?? null, goal: goalView(created) })
+      // 0.2.2-rc.3's goal-round-driver no longer drives a delegated session
+      // (its drive waits on subagents.waitForTreeWork, whose rootOf refuses a
+      // session whose header origin is subagent, and the failed drive disarms
+      // the goal), so the first call is woken directly the way the non-GLM
+      // child below is; the board's refusal and its goal pause fire inside
+      // that call exactly as before.
+      agent.followup(createUserNotice('glm-probe-stop', 'probe', 'Run the probe command.'))
       const paused = await until(() => ctx.goals.get(agent)?.phase === 'paused' && agent.status === 'idle', 30_000, exec.signal)
       note({ kind: 'stop-paused', ok: paused, status: agent.status, goal: goalView(ctx.goals.get(agent)) })
       // A session that is not on GLM is not held: its call runs.
