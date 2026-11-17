@@ -102,6 +102,13 @@ row-level L2 keeps its shape.
   out-of-git `.agents/tasks/m5/lessons-seed.json` copied from the main
   checkout, or `lessons-seed.spec.ts` fails setup.
 
-## Stage 5 — rebase onto post-answer-race main, probe, land
+## Stage 5 — rebase onto main, probe, land
 
-TBD
+Main unfroze mid-lane twice: first at 4a9750af (the answer-race fix
+06af9bc5), where the branch was rebased and the full probe ran 612/612
+(`.llm/logs/mbuf-probe.log`); then main moved again to 532eac69 (the
+takeover-mutex lane), so the branch was rebased once more (fix 15e976be,
+progress 2a9e54cb), build / preflight / `npm test` rerun green (eslint 69,
+knip 18, jscpd 1) and the full probe rerun 612/612 on that exact tip before
+landing. ff-merged to main (532eac69..2a9e54cb), pushed to `origin/main`
+(Gitee) and `github main`, both fast-forward.
