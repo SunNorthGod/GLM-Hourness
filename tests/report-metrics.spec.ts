@@ -168,6 +168,36 @@ test('变更失败率 marks a deployment when the first commit after it breaks t
   assert.equal(verifiedSuccessor.failed, 1)
 })
 
+test('rollbacks do not count as deployments and successor search skips rollbacks strictly after the deploy index', () => {
+  const graph = graphOf([node({ id: 'task-a', type: 'task', title: '回退再重来', status: 'done' }, 10, 'llm', [])])
+  const rollback = (from: string, to: string, n: number): AdvanceRecord =>
+    ({ ref: 'local', from, to, check: null, tasks: [], at: at(n), ok: true, rollback: true })
+  // A -> B (deploy 1), B -> A (rollback), B -> C (re-deploy): rollback is excluded from deploys,
+  // and A -> B's successor is C (not A).
+  const rolledThenRedeployed = dora(input(graph, {
+    advances: [deploy('a', 'b', 60, ['task-a']), rollback('b', 'a', 65), deploy('b', 'c', 70)],
+    checks: [trunkCheck('a', false, 66)],
+  }))
+  assert.equal(rolledThenRedeployed.deploys, 2)
+  assert.equal(rolledThenRedeployed.failed, 0)
+
+  // If C fails the trunk check, A -> B sees C as its successor and counts as failed.
+  const redeployFailed = dora(input(graph, {
+    advances: [deploy('a', 'b', 60, ['task-a']), rollback('b', 'a', 65), deploy('b', 'c', 70)],
+    checks: [trunkCheck('c', false, 71)],
+  }))
+  assert.equal(redeployFailed.deploys, 2)
+  assert.equal(redeployFailed.failed, 1)
+
+  // An earlier B -> X before A -> B must not be picked as A -> B's successor (index > deploy index only).
+  const earlierFromB = dora(input(graph, {
+    advances: [deploy('b', 'x', 52), rollback('x', 'b', 55), deploy('a', 'b', 60, ['task-a']), deploy('b', 'c', 70)],
+    checks: [trunkCheck('x', false, 62)],
+  }))
+  assert.equal(earlierFromB.deploys, 3)
+  assert.equal(earlierFromB.failed, 0)
+})
+
 test('a deployment counts once however many markers name it; an unreadable graph leaves the rate out and keeps the counts', () => {
   const graph = graphOf([
     node({ id: 'task-a', type: 'task', title: '重开又有修复', status: 'doing' }, 10, 'llm', [

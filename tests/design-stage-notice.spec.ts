@@ -334,7 +334,7 @@ async function wiredMainAgent(): Promise<{ readonly host: DesignHost, readonly a
 async function stepNotices(agent: FakeAgent): Promise<UserNotice[]> {
   const decision = await agent.step()
   assert.equal(decision.kind, 'enter')
-  return (decision as { messages: UserNotice[] }).messages.filter(message => message.source?.kind === STAGE_SOURCE)
+  return (decision as unknown as { messages: UserNotice[] }).messages.filter(message => message.source?.kind === STAGE_SOURCE)
 }
 
 test('a main agent gets the reminder after its assembly, again only when it changes, and the notice ends the step\'s messages', async () => {
@@ -367,7 +367,7 @@ test('a notice goes after the messages the step admits', async () => {
   await agent.assemble()
   const claimed = { id: 'm-1', role: 'user', content: [{ type: 'text', text: '继续' }], source: { kind: 'user' } }
   const decision = await agent.step({ messages: [claimed] })
-  const messages = (decision as { messages: UserNotice[] }).messages
+  const messages = (decision as unknown as { messages: UserNotice[] }).messages
   // The /wish notice waits in the row's step mailbox and goes before the claimed messages (src/shared/step-mailbox.ts); the stage reminder goes after them.
   assert.deepEqual(messages.map(message => message.source.kind === 'user' ? message.id : message.source.kind), ['glm-design-wish', 'm-1', STAGE_SOURCE])
 })

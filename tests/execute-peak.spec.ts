@@ -52,7 +52,7 @@ test('execute.resume-drive is skipped while the peak holds and for a goal not bl
   assert.deepEqual([goalNow(rig).phase, goalNow(rig).activation], ['active', 'armed'])
   assert.deepEqual(rig.drive.status('main-1').counters, { idle: 0, peak: 0 })
   assert.ok((await rig.lines()).some(line => line.op === 'resume' && line.reason === 'peak-end'))
-  assert.ok(rig.metrics.some(event => event.event === 'execute.goal' && event.op === 'resume' && event.reason === 'peak-end'))
+  assert.ok(rig.metrics.some(event => event.event === 'execute.goal' && event.op === 'resume' && event.resumeWhy === 'peak-end'))
   assert.deepEqual(await rig.drive.resumeDrive(peakEnd(rig)), { outcome: 'skipped', reason: 'the goal is not blocked hourness-peak-wait (active)' }, 'a second run is idempotent')
 }))
 
@@ -76,7 +76,7 @@ test('the timer five minutes after the peak resumes the drive the board did not 
   await rig.settle()
   assert.equal(goalNow(rig).phase, 'active')
   assert.ok(rig.live.woken.some(entry => entry.kind === 'glm-hourness-loop' && entry.text === `GLM peak hours ended at ${clockOf(until)}. Work you moved to after peak can start now.`))
-  assert.ok(rig.metrics.some(event => event.event === 'execute.loop-fallback' && event.entry === 'loops.peak-end' && event.reason === 'peak-end-missed'))
+  assert.ok(rig.metrics.some(event => event.event === 'execute.loop-fallback' && event.entry === 'loops.peak-end' && event.why === 'peak-end-missed'))
   assert.deepEqual(rig.drive.notes(), [{ text: '高峰结束时循环板没有接上推进：M7 自己接上了', degraded: true }])
 }))
 

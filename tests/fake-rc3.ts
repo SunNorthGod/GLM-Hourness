@@ -16,7 +16,7 @@
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AgentRequestErrorPayload, AgentRequestPayload, AgentLike, AssemblePayload, AssembledTool, InjectHost, InjectableServices, LlmStreamListener, LlmStreamOptions, PluginContext, PostExecuteDecision, PostExecuteListener, PostExecutePayload, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ProvideHost, ScheduleCatalogEntry, ScheduleEditResult, ScheduleRecordLike, ScheduleService, ScheduleTarget, ScheduleTiming, ServiceLookup, SessionEventLike, SessionLike, ToolDefinitionLike, ToolExecuteInput, ToolFinalResult, UserNotice, UserQuestionsAnswer, UserQuestionsListener, UserQuestionsRequest, WorkspaceRegistryService } from '../src/shared/dsh-min.ts'
+import type { AgentRequestErrorPayload, AgentRequestPayload, AgentLike, AssemblePayload, AssembledTool, GoalChangedPayload, InjectHost, InjectableServices, LlmStreamListener, LlmStreamOptions, PluginContext, PostExecuteDecision, PostExecuteHost, PostExecuteListener, PostExecutePayload, PreExecuteDecision, PreExecuteListener, PreStepDecision, PreStepPayload, ProvideHost, ScheduleCatalogEntry, ScheduleEditResult, ScheduleRecordLike, ScheduleService, ScheduleTarget, ScheduleTiming, ServiceLookup, SessionEventHost, SessionEventLike, SessionLike, SessionProjectionDefinition, SessionProjectionHandle, SessionProjectionsService, ToolDefinitionLike, ToolExecuteInput, ToolFinalResult, ToolsLike, UserNotice, UserQuestionsAnswer, UserQuestionsListener, UserQuestionsRequest, WorkspaceRegistryService } from '../src/shared/dsh-min.ts'
 import type { StreamChunk } from '../src/shared/lm-min.ts'
 
 type Listener = (...args: never[]) => unknown
@@ -632,9 +632,127 @@ export function fakeWorkspaceRegistry(options: { readonly stop?: (sessionId: str
   }
 }
 
+type ToolWhenContext = { readonly agent?: AgentLike, readonly signal: AbortSignal }
+type ToolWhenPredicate = (context: ToolWhenContext) => boolean | Promise<boolean>
+interface ToolRegisterOptions { readonly when?: ToolWhenPredicate }
+type FakeToolDefinition = ToolDefinitionLike & { readonly when?: ToolWhenPredicate }
+
+interface FakeToolSet {
+  view(scope?: unknown): ReadonlyMap<string, ToolDefinitionLike>
+  dispose(): void
+}
+
+interface FakeToolsLike extends ToolsLike {
+  register(definition: FakeToolDefinition, options?: ToolRegisterOptions): () => void
+  get(name: string, scope?: unknown, toolSet?: FakeToolSet): ToolDefinitionLike | undefined
+  executable(name: string, scope?: unknown, toolSet?: FakeToolSet): ToolDefinitionLike | undefined
+  resolve(context: ToolWhenContext): Promise<FakeToolSet>
+}
+
+export interface FakeSessionProjections extends SessionProjectionsService {
+  register(definition: SessionProjectionDefinition): ((() => void | Promise<void>) & PromiseLike<SessionProjectionHandle<unknown>>)
+}
+
+/**
+ * `rc.1` `sessionProjections` double (`dsh-session-projection/lib/index.js:84-166`):
+ * `register` returns a callable-thenable disposer that settles to `{ dispose, stateOf, readerFor }`
+ * while keeping synchronous `dispose()` and `stateOf(session, key)` / `snapshot(session, keys)` compatible.
+ */
+export function fakeSessionProjections(options: {
+  readonly eventsOf?: (session: SessionLike) => readonly SessionEventLike[]
+} = {}): FakeSessionProjections {
+  const registrations = new Map<string, {
+    def: SessionProjectionDefinition
+    cells: WeakMap<SessionLike, { state: unknown, observed: number }>
+    refs: number
+  }>()
+  const eventsOf = options.eventsOf ?? ((session: SessionLike): readonly SessionEventLike[] => {
+    const direct = (session as { readonly events?: readonly SessionEventLike[] }).events
+    if (Array.isArray(direct)) return direct as readonly SessionEventLike[]
+    return session.snapshotEvents?.() ?? []
+  })
+  const cellFor = (reg: { def: SessionProjectionDefinition, cells: WeakMap<SessionLike, { state: unknown, observed: number }> }, session: SessionLike) => {
+    const events = eventsOf(session)
+    let cell = reg.cells.get(session)
+    if (cell === undefined) {
+      const inherited = (session as { readonly inherited?: number }).inherited ?? 0
+      cell = { state: reg.def.init(session.header, inherited), observed: 0 }
+      reg.cells.set(session, cell)
+    }
+    for (; cell.observed < events.length; cell.observed += 1) {
+      cell.state = reg.def.apply(cell.state as never, events[cell.observed] as never)
+    }
+    return cell
+  }
+  return {
+    register(definition) {
+      let reg = registrations.get(definition.key)
+      let badError: Error | undefined
+      if (!Number.isSafeInteger(definition.stateVersion) || definition.stateVersion < 0) {
+        badError = new Error(`session projection ${JSON.stringify(definition.key)} stateVersion must be a non-negative integer, got ${String(definition.stateVersion)}`)
+      }
+      else if (reg === undefined || reg.refs === 0) {
+        reg = { def: definition, cells: new WeakMap(), refs: 1 }
+        registrations.set(definition.key, reg)
+      }
+      else if (reg.def.stateVersion !== definition.stateVersion) {
+        badError = new Error(`session projection key ${JSON.stringify(definition.key)} is already registered at stateVersion ${String(reg.def.stateVersion)}; refusing to share it with stateVersion ${String(definition.stateVersion)}`)
+      }
+      else if (reg.def.wire?.summary !== definition.wire?.summary) {
+        badError = new Error(`session projection key ${JSON.stringify(definition.key)} is already registered with summary=${String(reg.def.wire?.summary)}; refusing to share it with summary=${String(definition.wire?.summary)}`)
+      }
+      else {
+        reg.refs += 1
+      }
+      let disposed = false
+      const dispose = (): void => {
+        if (disposed || reg === undefined) return
+        disposed = true
+        reg.refs -= 1
+      }
+      const ready = badError !== undefined
+        ? Promise.reject(badError)
+        : Promise.resolve().then((): SessionProjectionHandle<unknown> => {
+          const active = reg!
+          return {
+            dispose: () => Promise.resolve(dispose()),
+            stateOf: session => cellFor(active, session).state,
+            readerFor: session => () => cellFor(active, session).state,
+          }
+        })
+      void ready.catch(() => {})
+      return Object.assign(dispose, {
+        then: ready.then.bind(ready),
+        catch: ready.catch.bind(ready),
+        finally: ready.finally.bind(ready),
+        [Symbol.toStringTag]: 'Promise' as const,
+      })
+    },
+    snapshot(session, keys) {
+      const values: Record<string, unknown> = {}
+      for (const key of keys) {
+        const reg = registrations.get(key)
+        if (reg === undefined || reg.refs === 0 || reg.def.wire === undefined) continue
+        values[key] = reg.def.wire.view(cellFor(reg, session).state as never)
+      }
+      return { values }
+    },
+    stateOf(session, key) {
+      const reg = registrations.get(key)
+      if (reg === undefined || reg.refs === 0) return undefined
+      return cellFor(reg, session).state
+    },
+  }
+}
+
 export interface FakeRuntime {
   /** The context every row receives; cordis contexts also read and provide services. */
-  readonly ctx: PluginContext & ServiceLookup & ProvideHost
+  readonly ctx: Omit<PluginContext, 'tools'> & {
+    readonly tools: FakeToolsLike
+    get(name: string): unknown
+    on(event: 'goal/changed', listener: (payload: GoalChangedPayload) => void): () => void
+    on(event: 'user-questions/request', listener: UserQuestionsListener): () => void
+  } & ServiceLookup & ProvideHost & SessionEventHost & PostExecuteHost
   /** The services provided through `ctx.provide`. */
   readonly services: Map<string, unknown>
   readonly agent: AgentLike
@@ -857,16 +975,20 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
   let headerRoute = options.route
   const natives = new Map((options.natives ?? NATIVE_NAMES).map(name => [name, native(name, calls)]))
   const scoped: ToolDefinitionLike[] = []
+  const scopedEntries: Array<{ readonly definition: ToolDefinitionLike, readonly when?: ToolWhenPredicate }> = []
   const listeners: FakeRuntime['listeners'] = []
   const history: unknown[] = []
   const deferred: unknown[] = []
   const executed: ToolExecuteInput[] = []
   let callCounter = 0
-  const visible = (): ToolDefinitionLike[] => {
-    const byName = new Map(natives)
-    for (const tool of scoped) byName.set(tool.name, tool)
+  const visibleEntries = (): Array<{ readonly definition: ToolDefinitionLike, readonly when?: ToolWhenPredicate }> => {
+    const byName = new Map<string, { readonly definition: ToolDefinitionLike, readonly when?: ToolWhenPredicate }>(
+      [...natives.entries()].map(([name, definition]) => [name, { definition }]),
+    )
+    for (const entry of scopedEntries) byName.set(entry.definition.name, entry)
     return [...byName.values()]
   }
+  const visible = (): ToolDefinitionLike[] => visibleEntries().map(entry => entry.definition)
   const of = (event: string) => listeners.filter(entry => entry.event === event).map(entry => entry.listener)
   const execution = (callId: string, signal: AbortSignal, contexts: unknown[]) => ({
     callId,
@@ -910,13 +1032,41 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
     get: store.get,
     provide: store.provide,
     tools: {
-      register: definition => {
+      register: (definition, options = {}) => {
         const violations = schemaViolations(definition.output.schema)
         if (violations.length > 0) throw new TypeError(`unsupported JSON schema: ${violations.join('; ')}`)
+        const when = options.when ?? definition.when
+        const entry = { definition, ...(when === undefined ? {} : { when }) }
         scoped.push(definition)
-        return () => { scoped.splice(scoped.indexOf(definition), 1) }
+        scopedEntries.push(entry)
+        return () => {
+          const i = scoped.indexOf(definition)
+          if (i >= 0) scoped.splice(i, 1)
+          const j = scopedEntries.indexOf(entry)
+          if (j >= 0) scopedEntries.splice(j, 1)
+        }
       },
-      get: name => visible().find(tool => tool.name === name),
+      get: (name, scope, toolSet) => toolSet === undefined
+        ? visible().find(tool => tool.name === name)
+        : toolSet.view(scope).get(name),
+      executable: (name, scope, toolSet) => {
+        if (toolSet !== undefined) return toolSet.view(scope).get(name)
+        const entry = visibleEntries().find(candidate => candidate.definition.name === name)
+        return entry !== undefined && entry.when === undefined ? entry.definition : undefined
+      },
+      async resolve(context) {
+        context.signal.throwIfAborted()
+        const admitted = new Map<string, ToolDefinitionLike>()
+        for (const entry of visibleEntries()) {
+          const enabled = entry.when === undefined || await entry.when(context)
+          context.signal.throwIfAborted()
+          if (enabled) admitted.set(entry.definition.name, entry.definition)
+        }
+        return Object.freeze({
+          view: () => admitted,
+          dispose: () => { admitted.clear() },
+        })
+      },
       // The registry view the wire-face projection reads (rc.1 dsh-tools
       // `schemas`, tools:585–591): model-facing schemas without callbacks,
       // no step admission. The runtime orders its registrations canonically;
@@ -955,7 +1105,7 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
             () => Promise.resolve<PreExecuteDecision>({ kind: 'allow' }),
           )()
           if (gate.kind !== 'allow' && gate.kind !== 'deny') throw new Error(`fake-rc3 does not model the ${gate.kind} decision`)
-          const tool = visible().find(candidate => candidate.name === block.name)
+          const tool = ctx.tools.executable(block.name, input.agent, input.toolSet as FakeToolSet | undefined)
           const callContexts: unknown[] = []
           let result: ToolFinalResult
           try {
@@ -1036,7 +1186,14 @@ export function fakeRuntime(options: { natives?: readonly string[], calls?: Arra
         signal: new AbortController().signal,
         step,
         turn,
-        ...(selection === undefined ? {} : { modelSelection: { provider: selection.provider, model: selection.model } }),
+        ...(selection === undefined
+          ? {}
+          : {
+              modelSelection: {
+                ...(selection.provider === undefined ? {} : { provider: selection.provider }),
+                ...(selection.model === undefined ? {} : { model: selection.model }),
+              },
+            }),
       }
       const chain = of('agent/pre-step').reduceRight<() => Promise<PreStepDecision>>(
         (next, listener) => async () => (listener as unknown as (p: PreStepPayload, n: () => Promise<PreStepDecision>) => Promise<PreStepDecision>)(payload, next),

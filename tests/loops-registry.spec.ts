@@ -21,6 +21,7 @@ import { createRegistry, LOOPS_SOURCE, validateContribution, type LoopsRegistry 
 import { LOOPS_SERVICE, loopsService, type Contribution, type ContributionSource, type LoopEventDeclaration, type LoopEventField, type LoopEventParam, type LoopEventRecord, type LoopsService } from '../src/loops/service.ts'
 import { validateWhen } from '../src/loops/trigger.ts'
 import { collectHealth, healthServiceName } from '../src/shared/health.ts'
+import { METRICS_ID_PATTERN } from '../src/shared/metrics.ts'
 import { plainWordsIn } from '../src/graph/plain-question.ts'
 import { GLM_LOOP_DEFAULTS } from '../src/glm-llm/loop-defaults.ts'
 import type { UsagePricing } from '../src/shared/pricing.ts'
@@ -188,9 +189,9 @@ test('a hand-over whose namespace is hourness. from any row but the execute row 
   assert.ok(trunk)
   const mine: LoopEntryDefinition = { ...M7_OPERATE.entries[0], id: 'hourness.mine' }
   assert.deepEqual(registry.contribute(ENV, { events: [trunk], entries: [mine] }), refusal, 'entry and event in hourness.')
-  assert.deepEqual(registry.contribute(OPERATE, { events: [trunk] }), refusal, 'an event alone')
+  assert.deepEqual(registry.contribute(OPERATE, { events: [trunk], entries: [] }), refusal, 'an event alone')
   assert.deepEqual(registry.contribute(OPERATE, { entries: [mine] }), refusal, 'an entry alone')
-  assert.deepEqual(registry.contribute({ plugin: 'other-plugin', row: 'other/row' }, { actions: [{ id: 'hourness.act', title: '动作' }], run: done }), refusal, 'an action alone')
+  assert.deepEqual(registry.contribute({ plugin: 'other-plugin', row: 'other/row' }, { entries: [], actions: [{ id: 'hourness.act', title: '动作' }], run: done }), refusal, 'an action alone')
   assert.equal(registry.events().has('hourness.trunk-advanced'), false)
   assert.equal(registry.entries().length, 0)
   assert.deepEqual(reports, [
@@ -552,7 +553,12 @@ test('the keys of the loop row\'s events: the event name without its namespace, 
   assert.notEqual(hostRestartedKey('p', '2026-11-02T01:00:00.000Z'), hostRestartedKey('p', '2026-11-02T01:05:00.000Z'), 'every start is its own occurrence')
   shaped(hostRestartedKey('p', '2026-11-02T01:00:00.000Z'), 'host-restarted')
   assert.equal(fileChangedKey('/work/app.asar', 4096, 1_793_000_000_000), 'file-changed:/work/app.asar:4096-1793000000000')
-  assert.equal(fileChangedKey('C:\\Program Files\\ZCode\\app.asar', 'gone', 1_793_000_000_000), 'file-changed:C:\\Program Files\\ZCode\\app.asar:gone-1793000000000')
+  const winKey = fileChangedKey('C:\\Program Files\\ZCode\\app.asar', 'gone', 1_793_000_000_000)
+  assert.ok(METRICS_ID_PATTERN.test(winKey), winKey)
+  assert.ok(winKey.endsWith(':gone-1793000000000'), winKey)
+  assert.equal(winKey, fileChangedKey('C:\\Program Files\\ZCode\\app.asar', 'gone', 1_793_000_000_000))
+  assert.notEqual(winKey, fileChangedKey('C:\\Program Files\\ZCode\\other.asar', 'gone', 1_793_000_000_000))
+  shaped(winKey, 'file-changed')
   assert.notEqual(fileChangedKey('/a', 1, 1), fileChangedKey('/a', 1, 2))
   shaped(fileChangedKey('/work/app.asar', 4096, 1), 'file-changed')
   shaped(fileChangedKey('C:\\x', 'gone', 1), 'file-changed')

@@ -237,6 +237,23 @@ const REQUESTS: Readonly<Record<Exclude<WriteOp, 'repo-outside' | 'repo-outside-
   'recovery-dismiss': { op: 'recovery-dismiss', labels: ['3-1'] },
   'repo-adopt': { op: 'repo-adopt' },
   'repo-restore': { op: 'repo-restore' },
+  'propose': {
+    op: 'propose',
+    proposal: {
+      id: 'p-00000001',
+      kind: 'lift',
+      body: { id: 'r-block' },
+      describe: '解除规则 r-block',
+      cautions: [],
+      reason: '不再需要',
+      via: 'graph',
+      proposedBy: { sessionId: 's-1', agentId: 'a-1' },
+    },
+  },
+  'proposal-show': { op: 'proposal-show', id: 'p-00000001' },
+  'proposal-accept': { op: 'proposal-accept', id: 'p-00000001', by: 'human' },
+  'proposal-reject': { op: 'proposal-reject', id: 'p-00000001', by: 'human' },
+  'proposal-expire': { op: 'proposal-expire', id: 'p-00000001' },
   'notice-add': { op: 'notice-add', kind: 'late-block', rule: 'r-block', text: 't' },
   'notice-delivered': { op: 'notice-delivered', id: 'n-1' },
 }
@@ -245,8 +262,11 @@ projectTest('asked by the wrong identity, every operation is forbidden with how 
   await mkdir(board.paths.rulesDir, { recursive: true })
   await writeFile(board.paths.rulesFile, repoJson({ version: 2, rules: { 'r-block': ruleOf({ id: 'r-block' }) } }))
   assert.notEqual(await board.settle(), 'busy')
+  const allowedActors = (op: WriteOp): readonly RulesActor[] =>
+    AGENT.includes(op) ? ['llm'] : PERSON_OR_HOST.includes(op) ? ['human', 'harness'] : PERSON.includes(op) || op === 'proposal-show' ? ['human'] : ['harness']
   for (const [op, request] of Object.entries(REQUESTS)) {
-    const wrong = ACTORS.filter(actor => (PERSON as readonly string[]).includes(op) ? actor !== 'human' : actor !== 'harness')
+    const allowed = allowedActors(op as WriteOp)
+    const wrong = ACTORS.filter(actor => !allowed.includes(actor))
     for (const actor of wrong) {
       const before = await treeOf(root)
       const result = await board.apply(actor, request)
@@ -257,9 +277,10 @@ projectTest('asked by the wrong identity, every operation is forbidden with how 
       }
       assert.deepEqual(await treeOf(root), before, `${actor} on ${op}: nothing written`)
     }
-    const right = PERSON.includes(op as WriteOp) ? 'human' : 'harness'
-    const result = await board.apply(right, request)
-    assert.notEqual(result.ok ? undefined : result.error.code, 'forbidden', `${right} on ${op}`)
+    for (const right of allowed) {
+      const result = await board.apply(right, request)
+      assert.notEqual(result.ok ? undefined : result.error.code, 'forbidden', `${right} on ${op}`)
+    }
   }
 })
 

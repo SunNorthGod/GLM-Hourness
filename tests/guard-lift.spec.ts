@@ -60,6 +60,7 @@ const liftsPath = (root: string): string => join(root, 'docs', 'guard', 'lifts.j
 function agentOf(messages: readonly DerivedMessage[], origin?: 'subagent'): AgentLike {
   return {
     id: 'agent-lift',
+    ctx: {} as never,
     session: {
       id: 'session-lift',
       header: { id: 'session-lift', ...(origin === undefined ? {} : { origin }) },

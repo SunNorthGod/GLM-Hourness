@@ -89,7 +89,7 @@ interface World {
   /** Archive the holder session in the host's workspace registry. */
   readonly archive: (sessionId: string) => Promise<void>
   /** The ids `resolveAgent` was asked for, and what it answers next. */
-  readonly resolve: { readonly asked: string[], answer: () => { readonly agent?: unknown, readonly error?: { readonly code: string, readonly message?: string } } }
+  readonly resolve: { readonly asked: string[], answer: (live: FakeLive) => { readonly agent?: unknown, readonly error?: { readonly code: string, readonly message?: string } } }
   /** The goal reads and the resume calls, in the order they happened. */
   readonly order: string[]
   readonly resumeCalls: Array<{ readonly action: string, readonly event: string, readonly run: string | undefined }>
@@ -120,10 +120,10 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
   // The board hands its records to the metrics journal (metrics design §12 step 6); this fake is the journal,
   // keeping what its field tables take (a refused event is lost, as in the real one).
   const records: Array<Record<string, unknown>> = []
-  const level = { level: options.level ?? 'reduce' }
+  const level: World['level'] = { level: options.level === 'absent' || options.level === undefined ? 'reduce' : options.level }
   const resolve: World['resolve'] = {
     asked: [],
-    answer: options.answer ?? ((): { readonly error: { readonly code: string } } => ({ error: { code: 'session/not-found' } })),
+    answer: options.answer ?? (() => ({ error: { code: 'session/not-found' } })),
   }
   const recordFile = holderFileOf(home, join(root, 'docs', 'graph'))
   mkdirSync(dirname(recordFile), { recursive: true })
@@ -167,12 +167,12 @@ async function worldOf(root: string, options: WorldOptions = {}): Promise<World>
           },
         }
       }
-      if (name === 'sessionProjections') return { stateOf: (session: SessionLike, key: string) => key === MAIN_AGENT_KEY ? undefined : undefined }
+      if (name === 'sessionProjections') return { stateOf: (_session: SessionLike, key: string) => key === MAIN_AGENT_KEY ? undefined : undefined }
       if (name === 'workspaceRegistry') return registryService.service
       if (name === 'sessions') return { flush: () => Promise.resolve(true) }
       if (name === DATA_SERVICE) return { userHome: home, projectHome: join(root, '.llm') }
       if (name === METRICS_SERVICE) return { emit: (event: EmittedEvent): void => { if (journalTakes(event)) records.push({ ...event.body, kind: event.k }) } }
-      if (name === PEAK_MODE_SERVICE && level.level !== 'absent') return peakMode
+      if (name === PEAK_MODE_SERVICE && options.level !== 'absent') return peakMode
       return undefined
     },
   }

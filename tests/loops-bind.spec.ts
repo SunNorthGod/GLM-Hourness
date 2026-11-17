@@ -236,7 +236,7 @@ test('bind: a reminder somebody edited on the DSH task page is put back with one
     assert.equal(edit.id, task)
     assert.equal(edit.actor, HOLDER)
     assert.equal(edit.expectedUpdatedAt, drifted.updatedAt)
-    assert.ok(!asked.some(call => call.op === 'list'), 'there is no list to read an expected record from')
+    assert.ok(!asked.some(call => (call.op as string) === 'list'), 'there is no list to read an expected record from')
     assert.deepEqual(drifts(it.records), ['edited'])
     assert.equal(done.lines.filter(line => line.includes('在 DSH 的自动化任务页里改的不算数')).length, 1)
     // The same task says it once a day.
@@ -484,7 +484,7 @@ test('edit: the absent-updatedAt trap of rc.1 — a wrong stamp conflicts, an om
     // A stale stamp is a conflict.
     assert.deepEqual(await it.schedule.service.edit({ id: made.id, action: 'update', patch: { title: 'stale' }, expectedUpdatedAt: new Date(Date.parse(made.updatedAt!) - 1_000).toISOString() }, HOLDER), { id: made.id, code: 'schedule_conflict' })
     // The stamp the row carries writes.
-    const current = await it.schedule.service.edit({ id: made.id, action: 'update', patch: { title: 'current' }, expectedUpdatedAt: made.updatedAt }, HOLDER)
+    const current = await it.schedule.service.edit({ id: made.id, action: 'update', patch: { title: 'current' }, ...(made.updatedAt === undefined ? {} : { expectedUpdatedAt: made.updatedAt }) }, HOLDER)
     assert.ok(!('code' in current) && !('deleted' in current))
     // The field left out skips the check, whatever the row carries.
     const skipped = await it.schedule.service.edit({ id: made.id, action: 'update', patch: { title: 'unchecked' } }, HOLDER)

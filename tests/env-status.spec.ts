@@ -197,7 +197,9 @@ test('the env row hands env/timeouts from the project\'s timing journal and limi
     const collected = collectStatus(rt.services, 'agent-1', 'agent', Date.now())
     // Two reads a millisecond apart: everything but the read moment is the same entry.
     const withoutAsOf = (entry: typeof timeouts): object | undefined => entry === undefined ? undefined : { ...entry, asOf: undefined }
-    assert.deepEqual(withoutAsOf(collected.items.find(entry => entry.id === 'env/timeouts')), withoutAsOf(timeouts), 'the collector reads the same entry')
+    const found = collected.items.find(entry => entry.id === 'env/timeouts')
+    assert.ok(found !== undefined)
+    assert.deepEqual(withoutAsOf(found), withoutAsOf(timeouts), 'the collector reads the same entry')
     writeFileSync(join(workspace, '.llm', 'env-checks', 'limits.jsonl'), `${RAISED}${limitLine('2026-11-05T03:00:00Z', 'tool-2/eslint', 'reset', 60, '')}\n`)
     const after = view.items('agent-1').find(entry => entry.id === 'env/timeouts')
     assert.ok(after !== undefined && !(after.detail ?? []).some(line => line.includes('上限已由主 Agent 调高')), JSON.stringify(after))

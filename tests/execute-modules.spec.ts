@@ -249,7 +249,7 @@ test('§3.7.5 a design review waits on its own subtree only; a running review ma
   const elsewhere = graphOf([...graph.nodes.values(), node({ id: 'question-1', type: 'question', parent: 'module-b', options: [{ key: 'A', label: 'a' }, { key: 'B', label: 'b' }] })])
   assert.equal(briefGate(elsewhere, get(elsewhere, 'module-b'), freeContext(elsewhere, get(elsewhere, 'module-b'), { id: 'module-b' })).ok, true)
   // ...a running review of the module does.
-  const running = [{ childId: 'hz-review-b-a1-abcdef', role: 'review' as const, node: 'review-b', attempt: 1, provider: 'p', model: 'glm-5.3', why: 'w', plan: 'none' as const, pins: 'pins: x@000000000000' }]
+  const running = [{ childId: 'hz-review-b-a1-abcdef', role: 'review' as const, node: 'review-b', attempt: 1, graphDir: 'docs/graph', provider: 'p', model: 'glm-5.3', why: 'w', plan: 'none' as const, pins: 'pins: x@000000000000' }]
   const busy = refusal(briefGate(graph, get(graph, 'module-b'), { ...freeContext(graph, get(graph, 'module-b'), { id: 'module-b', model: 'other-model' }), running }))
   assert.equal(busy.code, 'busy')
   // The cap: a GLM review is refused when the cap is full, and the review's model is a GLM one.

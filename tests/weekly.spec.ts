@@ -11,6 +11,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { weeklyReport, reworkAfterHuman, type WeeklyReportInput } from '../src/report/weekly.ts'
+import type { ViolationRecord } from '../src/guard/records.ts'
 import { renderHandbackComment } from '../src/execute/attempts.ts'
 import { plainWordsIn } from '../src/graph/plain-question.ts'
 import { at, graphOf, node } from './execute-helpers.ts'
@@ -101,8 +102,8 @@ test('the closing line points the person to the metrics board, and no ratio ente
   assert.equal(text, weeklyReport(input(graphOf([]), { status: [hubEntry('metrics/load', '最近 7 天：每周被问几次 3')] })))
 })
 
-const denial = (rule: string, second: number): { readonly at: string, readonly rule: string, readonly tool: string } =>
-  ({ at: at(second), rule, tool: 'Bash' })
+const denial = (rule: string, second: number): ViolationRecord =>
+  ({ at: at(second), rule, tool: 'Bash', correction: 'blocked' })
 
 /** A done handback comment that names the changed paths (the 改动 line the floor grouping reads). */
 const handback = (childId: string, paths: readonly string[]): string => renderHandbackComment({
@@ -196,4 +197,26 @@ test('floor additions take the three slots before the ladder moves when both kin
   assert.equal(matters.length, 3, `three matters at most, got: ${JSON.stringify(matters)}`)
   assert.equal(matters.filter(line => line.includes('要不要加一类')).length, 2, 'both floor additions ride')
   assert.deepEqual(matters.filter(line => line.includes('要不要升一级')), matters.slice(-1), 'the ladder move rides last, one of the two')
+})
+
+test('root single files deduplicate against files entries without a trailing slash while directory prefixes still deduplicate subdirectories', () => {
+  const graph = graphOf([
+    node({
+      id: 'norm-review-floor',
+      type: 'norm',
+      title: '必须全审的改动',
+      status: 'approved',
+      acceptance: ['清单和源码全审 `files package.json, src/`'],
+    }),
+    demoted('t-pkg1', '改包一', ['package.json']),
+    demoted('t-pkg2', '改包二', ['package.json']),
+    demoted('t-src1', '改源码一', ['src/a.ts']),
+    demoted('t-src2', '改源码二', ['src/b.ts']),
+    demoted('t-ts1', '改配置一', ['tsconfig.json']),
+    demoted('t-ts2', '改配置二', ['tsconfig.json']),
+  ])
+  const lines = section(weeklyReport(input(graph)), '## 规矩的提议')
+  assert.ok(!lines.some(line => line.includes('package.json')), 'covered root file does not propose')
+  assert.ok(!lines.some(line => line.includes('集中在 src')), 'covered directory does not propose')
+  assert.ok(lines.some(line => line.includes('降档之后返工的活集中在 tsconfig.json')), 'uncovered root file still proposes')
 })

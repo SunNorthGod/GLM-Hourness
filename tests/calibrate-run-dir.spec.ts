@@ -12,7 +12,6 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import test from 'node:test'
-// @ts-expect-error The script is plain JavaScript without a declaration file.
 import { closeBatch, collectBatch, openBatch, openRun } from '../scripts/calibrate/run-dir.mjs'
 
 interface Batch {

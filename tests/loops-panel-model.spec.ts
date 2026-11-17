@@ -702,7 +702,7 @@ test('the page lists the board\'s status entries as the 两张单子 group, the 
   }]
   const model = buildLoopsPage({ ...richView(), items })
   assert.deepEqual(model.items, [{ id: items[0].id, text: items[0].text, detail: items[0].detail }])
-  assert.deepEqual(plainWordsIn([items[0].text, ...items[0].detail].join('\n')), [])
+  assert.deepEqual(plainWordsIn([items[0].text, ...(items[0].detail ?? [])].join('\n')), [])
   // A view without entries (an older view.json, or nothing stale) makes no group.
   assert.deepEqual(buildLoopsPage({ ...richView(), items: [] }).items, [])
 })

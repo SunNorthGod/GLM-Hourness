@@ -23,7 +23,6 @@ test('each kind words its facts and a draft that passes the landed checks as wri
     askDraft('acceptance-stuck', { goal: 'goal-1', title: '记账小工具', failing: ['每月的账能导出', '导出的表格带合计'] }),
     askDraft('acceptance-stuck', { goal: 'goal-1', title: '记账小工具', failing: [] }),
     askDraft('norm-ladder', { norm: 'norm-merge-gate', title: '依赖检查', direction: 'up', counts: '近 7 天拦下 4 次' }),
-    askDraft('norm-ladder', { norm: 'norm-review-floor', title: '派活先定审查', direction: 'enforce', counts: '近 14 天影子记录 23 条' }),
     askDraft('norm-ladder', { norm: 'norm-merge-gate', title: '整点校验', direction: 'down', counts: '近 28 天没有拦过' }),
     askDraft('floor-add', { paths: ['src/graph/', 'src/execute/'], reworked: 2, declared: 5 }),
   ]
@@ -52,7 +51,7 @@ test('draftRefusal names what a broken draft got wrong', () => {
   // A banned word fails the draft.
   const banned: Draft = { ...long.draft, doubt: '要是**验收**本身不对，再修也没用' }
   const wordRefusal = draftRefusal(banned)
-  assert.ok(wordRefusal !== undefined && wordRefusal.message.includes('验收'), wordRefusal?.message)
+  assert.ok(wordRefusal !== undefined && wordRefusal.message.includes('验收'), wordRefusal?.message ?? '')
   // The line limit is the propose record's.
   assert.equal(PROPOSAL_LIMITS.line, 60)
 })

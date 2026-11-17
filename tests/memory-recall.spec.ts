@@ -43,7 +43,7 @@ const entry = (spec: Spec, scope: Scope = 'project'): MemoryEntry => ({
   status: spec.status ?? 'active',
 })
 
-const stateOf = (scope: Scope, ...entries: MemoryEntry[]): MemoryState => ({ scope, entries: new Map(entries.map(item => [item.name, item])) })
+const stateOf = (scope: Scope, ...entries: MemoryEntry[]): MemoryState => ({ ...emptyMemory(scope), entries: new Map(entries.map(item => [item.name, item])) })
 const lines = (text: string): string[] => text.split('\n')
 const listed = (text: string): string[] => lines(text).filter(line => line.startsWith('- '))
 

@@ -6,7 +6,7 @@
   "type": "module",
   "license": "PolyForm-Noncommercial-1.0.0",
   "scripts": {
-    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json && tsc -p packages/glm/tsconfig.json && tsc -p packages/hourness/tsconfig.json && tsc -p ui/tsconfig.json && node scripts/build-ui.mjs && node scripts/build-info.mjs",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json && tsc -p packages/glm/tsconfig.json && tsc -p packages/hourness/tsconfig.json && tsc -p ui/tsconfig.json && tsc -p tests/tsconfig.json && node scripts/build-ui.mjs && node scripts/build-info.mjs",
     "preflight": "node scripts/preflight-bundle.mjs",
     "check:verbatim": "node --experimental-strip-types --no-warnings scripts/check-verbatim.mjs",
     "lint": "node scripts/check-lint.mjs",

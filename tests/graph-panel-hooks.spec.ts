@@ -208,6 +208,6 @@ test('the shim fires on a real hook-order change: a component that grows one hoo
     if (props.ready) useCallback(() => 'goal')
     return null
   }
-  render(grows, { ready: false })
-  assert.throws(() => render(grows, { ready: true }), /Rendered more hooks than during the previous render/)
+  render(grows, { ready: false } as never)
+  assert.throws(() => render(grows, { ready: true } as never), /Rendered more hooks than during the previous render/)
 })

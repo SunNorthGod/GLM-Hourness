@@ -32,7 +32,7 @@ import { rulesReadOf, startHandback, type HandbackDeps } from '../src/execute/ha
 import { policyDigests, renderPolicyLine } from '../src/execute/policy-digest.ts'
 import { createGit } from '../src/execute/git.ts'
 import { sha256Hex } from '../src/execute/digest.ts'
-import { forgetAttempt, parseHandbackComment, recordCommunication, registerAttempt, registeredAttempt, renderDispatchComment, REVIEW_TASK_ACCEPTANCE, type Attempt } from '../src/execute/attempts.ts'
+import { forgetAttempt, parseHandbackComment, recordCommunication, registerAttempt, registeredAttempt, renderDispatchComment, REVIEW_TASK_ACCEPTANCE, type Attempt, type HandbackComment } from '../src/execute/attempts.ts'
 import { roundsOf } from '../src/execute/review.ts'
 import { briefGate } from '../src/execute/brief.ts'
 import type { LoopEmit } from '../src/execute/loop-link.ts'
@@ -159,7 +159,7 @@ function reviewTaskOf(graph: Awaited<ReturnType<GraphCache['load']>>): GraphNode
 }
 
 /** The handback comments of a task, in history order. */
-function handbacksOf(task: GraphNode): readonly { attempt: number, status: string, childId: string, depth?: string, floorHit?: string, paths?: readonly string[] }[] {
+function handbacksOf(task: GraphNode): readonly HandbackComment[] {
   return task.history.flatMap(entry => entry.op === 'comment' && entry.actor === 'harness' && typeof entry.text === 'string' ? [parseHandbackComment(entry.text)] : []).filter(entry => entry !== undefined)
 }
 
@@ -496,7 +496,7 @@ test('lessons without the lessons row go to the fallback comment; a secret-shape
     await processed(attempt.childId)
     const graph = await rig1.cache.load(project.graphDir)
     const fallback = graph.nodes.get('task-1')!.history.find(entry => entry.op === 'comment' && typeof entry.text === 'string' && entry.text.startsWith(`候选经验退路 · ${attempt.childId}`))
-    assert.ok(fallback !== undefined, 'no fallback comment for the candidates')
+    assert.ok(fallback !== undefined && fallback.text !== undefined, 'no fallback comment for the candidates')
     assert.match(fallback.text, /\[候选经验\] the writer unlocked the guard → hold the lock across the write/)
     assert.match(fallback.text, /（像密钥，已略去）/, 'the secret-shaped problem text is not elided')
     assert.doesNotMatch(fallback.text, /sk-1234567890abcdef/, 'the secret reached the graph')
@@ -1048,7 +1048,7 @@ test('a design review writes the module record with the directions digest and th
     await processed(attempt.childId)
     const after = await rig1.cache.load(project.graphDir)
     const record = after.nodes.get('module-a')!.history.find(entry => entry.op === 'comment' && typeof entry.text === 'string' && entry.text.startsWith('设计审查 · '))
-    assert.ok(record !== undefined, 'no design review record on the module')
+    assert.ok(record !== undefined && record.text !== undefined, 'no design review record on the module')
     assert.match(record.text, /^设计审查 · hz-review-module-a-a1-zzzzzz · APPROVED · 方向清单 [0-9a-f]{12} · 挡路 0 · 派出 \S+$/)
     assert.ok(record.text.includes(digest), `the digest does not match the trimmed directions: ${record.text}`)
     const rounds = roundsOf(after.nodes.get('review-module-a')!.history)

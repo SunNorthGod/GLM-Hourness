@@ -423,7 +423,7 @@ rowTest('the main agent walking a step leaves the two notes of the walk, and a s
   assert.equal(STEP_NOTE_MS, 60_000)
   // A step with no reminder of the board's in it gets no line: the step keeps exactly the messages it admitted.
   const plain = await runtime.preStep(step)
-  assert.equal(plain.messages.length, step.messages.length)
+  assert.equal((plain.messages as unknown[]).length, step.messages.length)
   assert.equal(JSON.stringify(plain.messages).includes(LOOP_STEP_SOURCE), false)
 })
 

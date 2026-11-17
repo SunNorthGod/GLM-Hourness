@@ -180,6 +180,31 @@ test('a board that refuses the hand-over, or is absent, degrades the row health 
   assert.ok(bareHealth.activation().reason.includes('循环板不在'), bareHealth.activation().reason)
 })
 
+test('apply degrades health and warns when tools.register throws inside inject', () => {
+  const origWarn = console.warn
+  const warnings: string[] = []
+  console.warn = (...args: unknown[]) => warnings.push(args.map(String).join(' '))
+  const store = new Map<string, unknown>()
+  try {
+    const dispose = operateApply({
+      get: (name: string) => store.get(name),
+      provide: (name: string, value: unknown) => { store.set(name, value); return () => { store.delete(name) } },
+      inject: (names: readonly string[], callback: (sub: { tools: { register: () => () => void }, provide: (n: string, v: unknown) => () => void, get: (n: string) => unknown }) => void) => {
+        if (names.includes('tools')) callback({ tools: { register: () => { throw new Error('duplicate tool') } }, provide: (n: string, v: unknown) => { store.set(n, v); return () => { store.delete(n) } }, get: (n: string) => store.get(n) })
+        return undefined
+      },
+    } as unknown as Parameters<typeof operateApply>[0])
+    const health = store.get('glmHournessHealth/operate') as { activation(): { state: string, reason: string } }
+    assert.equal(health.activation().state, 'degraded')
+    assert.match(health.activation().reason, /报告行的工具没注册上：duplicate tool/)
+    assert.ok(warnings.some(warning => warning.includes('duplicate tool')))
+    dispose()
+  }
+  finally {
+    console.warn = origWarn
+  }
+})
+
 test('provideRowStatus keeps the row off the hub: the operate row submits no status entries of its own', () => {
   // The reports are readers of the hub, not writers; the collector’s STATUS_ROWS already lists the row (health.ts).
   const store = new Map<string, unknown>()

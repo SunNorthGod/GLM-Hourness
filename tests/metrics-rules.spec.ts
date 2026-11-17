@@ -248,7 +248,7 @@ test('through the gate each denial, a run_code program\'s call among them, is on
   // The guard row (guard_lift) first; the metrics row's gate is prepended after it, so it is the outermost, as in the bundle.
   // The no-op timer keeps the background self-check and the board's view out of the run.
   const stops = [
-    guardApply(rt.ctx as never, { workspaceRoots: [root] }),
+    guardApply(rt.ctx, { workspaceRoots: [root] }),
     metricsApply(rt.ctx as never, { timer: () => () => {} }),
   ]
   const exec = execTool(rt)

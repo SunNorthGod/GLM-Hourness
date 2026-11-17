@@ -87,6 +87,7 @@ clockedTest('a script rule is made ready with its file, its hash and the caution
   const detail = proposalDetail(proposal)
   assert.ok(detail?.markdown.includes(SCRIPT.trimEnd()))
   assert.deepEqual(detail?.mustShow, [SCRIPT, ...proposal.cautions])
+  return Promise.resolve()
 })
 
 clockedTest('what is wrong with a proposal is named by the field to correct, and nothing is made', async (project) => {

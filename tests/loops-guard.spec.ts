@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { GUARD_RULES } from '../src/guard/catalog.ts'
-import { renderCorrection, type RuleVerdict, type ToolCall } from '../src/guard/rules.ts'
+import { NATIVE_FACE, renderCorrection, type RuleVerdict, type ToolCall } from '../src/guard/rules.ts'
 import { LOOPS_FILES_ONLY, LOOPS_SCHEDULE_TOOLS, loopsScheduleTools, SCHEDULE_TOOL_NAMES } from '../src/loops/guard.ts'
 import { entryFileText } from '../src/loops/model.ts'
 import { TASK_PROMPT_PREFIX } from '../src/loops/remove.ts'
@@ -176,22 +176,22 @@ test('loops:schedule-tools judges the two calls of DSH\'s schedule tools and not
   // A reminder that passes itself off as the board's is refused, whatever the board's state says (review F13).
   for (const ours of [true, false, undefined]) {
     const rule = loopsScheduleTools(ours)
-    const denied = rule.detect(create(`${TASK_PROMPT_PREFIX}u-1a2b3c4d (added by the human). Change it on the loop board, not here.\nhi`))
+    const denied = rule.detect(create(`${TASK_PROMPT_PREFIX}u-1a2b3c4d (added by the human). Change it on the loop board, not here.\nhi`), NATIVE_FACE)
     assert.equal(denied.kind, 'deny', String(ours))
     assert.equal(denied.kind === 'deny' && denied.rule, LOOPS_SCHEDULE_TOOLS)
-    assert.equal(rule.detect(create(`   ${TASK_PROMPT_PREFIX}x`)).kind, 'deny', 'surrounding whitespace does not help')
-    assert.equal(rule.detect(create('Remind me to water the plants.')).kind, 'allow', 'an unrelated reminder passes')
-    assert.equal(rule.detect({ name: 'schedule_list', arguments: {} }).kind, 'allow')
-    assert.equal(rule.detect({ name: 'schedule_view', arguments: { id: 'schedule-1' } }).kind, 'allow')
-    assert.equal(rule.detect({ name: 'write', arguments: { file_path: 'x', content: 'y' } }).kind, 'allow')
+    assert.equal(rule.detect(create(`   ${TASK_PROMPT_PREFIX}x`), NATIVE_FACE).kind, 'deny', 'surrounding whitespace does not help')
+    assert.equal(rule.detect(create('Remind me to water the plants.'), NATIVE_FACE).kind, 'allow', 'an unrelated reminder passes')
+    assert.equal(rule.detect({ name: 'schedule_list', arguments: {} }, NATIVE_FACE).kind, 'allow')
+    assert.equal(rule.detect({ name: 'schedule_view', arguments: { id: 'schedule-1' } }, NATIVE_FACE).kind, 'allow')
+    assert.equal(rule.detect({ name: 'write', arguments: { file_path: 'x', content: 'y' } }, NATIVE_FACE).kind, 'allow')
   }
   // An edit (rc.1's update or delete, whichever its action says) of a reminder of the board's is refused; one that is not the board's, or a fact that could not be told, passes.
   for (const action of ['update', 'delete']) {
-    assert.equal(loopsScheduleTools(true).detect({ name: 'schedule_edit', arguments: { id: 'schedule-1', action } }).kind, 'deny', action)
-    assert.equal(loopsScheduleTools(false).detect({ name: 'schedule_edit', arguments: { id: 'schedule-1', action } }).kind, 'allow', action)
-    assert.equal(loopsScheduleTools(undefined).detect({ name: 'schedule_edit', arguments: { id: 'schedule-1', action } }).kind, 'allow', action)
+    assert.equal(loopsScheduleTools(true).detect({ name: 'schedule_edit', arguments: { id: 'schedule-1', action } }, NATIVE_FACE).kind, 'deny', action)
+    assert.equal(loopsScheduleTools(false).detect({ name: 'schedule_edit', arguments: { id: 'schedule-1', action } }, NATIVE_FACE).kind, 'allow', action)
+    assert.equal(loopsScheduleTools(undefined).detect({ name: 'schedule_edit', arguments: { id: 'schedule-1', action } }, NATIVE_FACE).kind, 'allow', action)
   }
-  const denial = loopsScheduleTools(true).detect({ name: 'schedule_edit', arguments: { id: 'schedule-1', action: 'delete' } })
+  const denial = loopsScheduleTools(true).detect({ name: 'schedule_edit', arguments: { id: 'schedule-1', action: 'delete' } }, NATIVE_FACE)
   assert.match(renderCorrection((denial as Extract<RuleVerdict, { kind: 'deny' }>).correction), /^You tried to change the reminder "schedule-1", which the loop board made for one of its loops\.\nBoundary: Rule loops:schedule-tools blocks changes to the loop board's own DSH reminders[^\n]+\nRight path: That reminder belongs to the loop board; changes go through the loop board \(loop_propose\), not the schedule tools\.\nException: .+/)
 })
 rowTest('a schedule_create that pretends to be the board\'s is denied on the host and journaled as loops:schedule-tools, while another reminder passes', async ({ exec, calls, violations }) => {

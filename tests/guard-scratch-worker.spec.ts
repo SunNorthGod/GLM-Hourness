@@ -73,7 +73,7 @@ function guardOver(execute: boolean): ReturnType<typeof execTool> {
       runAction: () => Promise.resolve({ outcome: 'skipped', reason: 'test' }),
     } satisfies ExecuteService)
   }
-  guardApply(rt.ctx as never, {})
+  guardApply(rt.ctx, {})
   return execTool(rt)
 }
 

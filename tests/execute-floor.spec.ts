@@ -55,6 +55,11 @@ test('floorHits: files, deletes, commands and outside, and the strict answer whe
   // outside: a write outside the worktree, or any absolute path in a shell call; a home path is always outside.
   assert.deepEqual(floorHits(floor, { paths: [], deleted: [] }, [call({ writes: true, paths: ['C:\\other\\x'], shell: false, tool: 'write' })], 'C:\\repo\\.worktrees\\hz-t'), [{ index: '3', reason: 'a write outside the worktree' }])
   assert.deepEqual(floorHits(floor, { paths: [], deleted: [] }, [call({ writes: false, paths: ['C:\\repo\\.worktrees\\hz-t\\src\\a'], shell: true })], 'C:\\repo\\.worktrees\\hz-t'), [])
+  if (process.platform === 'win32') {
+    assert.deepEqual(floorHits(floor, { paths: [], deleted: [] }, [call({ writes: true, paths: ['c:\\repo\\.worktrees\\hz-t\\src\\a'], shell: false, tool: 'write' })], 'C:\\repo\\.worktrees\\hz-t'), [], 'mixed drive-letter casing inside worktree is allowed')
+    assert.deepEqual(floorHits(floor, { paths: [], deleted: [] }, [call({ writes: true, paths: ['C:\\repo\\.worktrees\\hz-t2\\src\\a'], shell: false, tool: 'write' })], 'C:\\repo\\.worktrees\\hz-t'), [{ index: '3', reason: 'a write outside the worktree' }], 'sibling directory prefix is outside worktree')
+  }
+  assert.deepEqual(floorHits(floor, { paths: [], deleted: [] }, [call({ writes: true, paths: ['/w2/a'], shell: false, tool: 'write' })], '/w'), [{ index: '3', reason: 'a write outside the worktree' }], 'POSIX sibling directory prefix is outside worktree')
   assert.deepEqual(floorHits(floor, { paths: [], deleted: [] }, [call({ writes: true, paths: ['~/.dsh/profile'] })], '/w'), [{ index: '3', reason: 'a write outside the worktree' }])
   // A read tool outside is not a write outside.
   assert.deepEqual(floorHits(floor, { paths: [], deleted: [] }, [call({ writes: false, shell: false, tool: 'read', paths: ['/elsewhere/x'] })], '/w'), [])

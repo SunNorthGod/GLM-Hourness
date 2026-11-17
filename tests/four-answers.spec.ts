@@ -223,7 +223,7 @@ test('the rule proposals' + "'" + ' checks ride the same section the /hourness r
   const missed: EffectCheck = {
     question: 'q-1',
     title: '拦下要变少',
-    effect: { metric: 'denials:files-only', direction: 'down', days: 7 },
+    effect: { change: 'add', effect: '拦下更少', metric: 'denials:files-only', direction: 'down', days: 7 },
     agreedAt: at(10),
     dueAt: at(80),
     outcome: 'missed',

@@ -85,7 +85,7 @@ test('a plain fetch of the upstream is recorded as a fetch: no violation, no evi
     assert.deepEqual({ ...line, at: undefined }, { ref: 'remote', by: 'fetch', from, to: fetched, agent: rig.main.id, callId, at: undefined })
     assert.deepEqual(rig.violations, [])
     assert.equal(rig.repo.git('rev-parse', 'main'), from)
-    assert.deepEqual(advanceEvents(rig.metrics).map(event => [event.ref, event.way]), [['remote', 'fetch']])
+    assert.deepEqual(advanceEvents(rig.metrics).map(event => [event.ref, event.how]), [['remote', 'fetch']])
   })
 })
 

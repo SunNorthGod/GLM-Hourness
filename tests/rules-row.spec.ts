@@ -357,7 +357,7 @@ test('activation never throws: a command that cannot register, a service that ca
 
     // A configuration that is not a path: nothing registers.
     const badDir = fakeRuntime({ natives: [] })
-    const never = apply({ ...badDir.ctx, commands: { register: () => { throw new Error('must not register') } } } as unknown as RulesContext, { dir: '  ' })
+    const never = apply({ ...badDir.ctx, commands: { register: () => { throw new Error('must not register') } } }, { dir: '  ' })
     assert.equal(collectHealth(badDir.ctx, undefined).find(entry => entry.row === 'rules')?.status, 'inactive')
     assert.equal(badDir.services.has(PEAK_MODE_SERVICE), false)
     void never()

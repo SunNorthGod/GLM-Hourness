@@ -121,7 +121,6 @@ function fakeBoard(answer: (input: LoopEventInput) => EmitResult, contributed: (
   return {
     emits,
     service: {
-      declaration: 'the fake board',
       contribute: (_source, contribution) => contributed(contribution),
       emit: (input) => {
         emits.push(input)
@@ -129,6 +128,8 @@ function fakeBoard(answer: (input: LoopEventInput) => EmitResult, contributed: (
       },
       listens: () => true,
       recordRun: () => {},
+      staleEntries: () => [],
+      timeoutEntries: () => [],
     },
   }
 }
@@ -228,7 +229,7 @@ test('a harness entry the board accepts but never runs is run by the watchdog af
     await until(() => loopNotices(r).length === 1, 'the watchdog runs the entry')
     assert.deepEqual(r.runs, [event.key])
     assert.equal(textOf(loopNotices(r)[0]), 'The design of goal-1 is released and the drive has started. Decompose it into tasks with dispatch attributes and dispatch them with dispatch_task; do not wait for the person.')
-    assert.ok(r.metrics.some(item => item.event === 'execute.loop-fallback' && item.entry === 'execute.release' && item.key === event.key && item.reason === 'unclaimed' && item.waitedS === 300))
+    assert.ok(r.metrics.some(item => item.event === 'execute.loop-fallback' && item.entry === 'execute.release' && item.key === event.key && item.why === 'unclaimed' && item.waitedS === 300))
     const note = r.link.notes().at(-1)
     assert.deepEqual(note, { text: '循环板没有在 5 分钟内执行『开始自动推进』（hourness.design-released）：M7 自己执行了（近 24 小时接手 1 次）', degraded: true })
     assert.equal(r.timers(), 0, 'no claim left, no timer')
@@ -267,7 +268,7 @@ test('busy from the board runs the listening entries at once, with execute.loop-
     withBoard(r, { ok: false, code: 'busy', message: 'the inbox is held' })
     r.link.emit(r.repo.root, 'main-1', reviewPassed('hz-task-1-r1-bbbbbb'))
     await until(() => loopNotices(r).length === 1, 'the fallback tells the holder')
-    assert.ok(r.metrics.some(item => item.event === 'execute.loop-fallback' && item.entry === 'execute.reviewed' && item.reason === 'emit-failed'))
+    assert.ok(r.metrics.some(item => item.event === 'execute.loop-fallback' && item.entry === 'execute.reviewed' && item.why === 'emit-failed'))
     assert.match(r.link.notes().at(-1)?.text ?? '', /^交给循环板的事件 hourness\.review-passed 没交上（busy：the inbox is held）：M7 自己执行了（近 24 小时接手 1 次）$/)
   }
   finally {
@@ -304,7 +305,7 @@ test('duplicate reruns an action whose only line is another process\u2019s start
     await until(() => r.runs.length === 1, 'the abandoned action runs again')
     await settle()
     assert.deepEqual(r.runs, [abandoned.key])
-    assert.ok(r.metrics.some(item => item.event === 'execute.loop-fallback' && item.key === abandoned.key && item.reason === 'interrupted'))
+    assert.ok(r.metrics.some(item => item.event === 'execute.loop-fallback' && item.key === abandoned.key && item.why === 'interrupted'))
     assert.equal(r.timers(), 0, 'a duplicate leaves no claim')
   }
   finally {
@@ -409,7 +410,7 @@ test('a notice for a holder that is not live waits in memory and goes out at its
     r.link.emit(r.repo.root, 'main-1', reviewPassed('hz-task-1-r1-cccccc'))
     await settle()
     assert.deepEqual(loopNotices(r), [])
-    assert.ok(r.metrics.some(item => item.event === 'execute.loop-entry' && item.entry === 'execute.reviewed' && !item.delivered && item.deferred === 'holder-not-live'))
+    assert.ok(r.metrics.some(item => item.event === 'execute.loop-entry' && item.entry === 'execute.reviewed' && !item.sent && item.deferred === 'holder-not-live'))
     r.setLive(true)
     r.link.flushHeld('main-1')
     assert.equal(loopNotices(r).length, 1)
@@ -434,7 +435,7 @@ test('replayInterrupted reruns a start without an end that another process wrote
     writeLine(r, { action: 'execute.start-drive', key: ended.key, at: new Date(START - 30_000).toISOString(), proc: 1, phase: 'end', outcome: 'done' })
     assert.equal(await r.link.replayInterrupted(r.repo.root), 1)
     assert.deepEqual(r.runs, [interrupted.key])
-    assert.ok(r.metrics.some(item => item.event === 'execute.loop-fallback' && item.entry === 'execute.release' && item.key === interrupted.key && item.reason === 'interrupted'))
+    assert.ok(r.metrics.some(item => item.event === 'execute.loop-fallback' && item.entry === 'execute.release' && item.key === interrupted.key && item.why === 'interrupted'))
     assert.equal(loopNotices(r).length, 1, 'the replayed entry tells the holder')
     assert.equal(await r.link.replayInterrupted(r.repo.root), 0, 'replayed once in this process')
   }

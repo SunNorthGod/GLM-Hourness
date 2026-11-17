@@ -71,7 +71,7 @@ function harness(roots: readonly string[] | undefined, options: { home?: string,
     },
     get: (name: string) => name === 'glmHournessData' ? options.service : services.get(name),
   }
-  apply(ctx, { ...(roots === undefined ? {} : { workspaceRoots: roots }), fs: store.fs, ...(options.home === undefined ? {} : { home: options.home }) })
+  apply(ctx as unknown as Parameters<typeof apply>[0], { ...(roots === undefined ? {} : { workspaceRoots: roots }), fs: store.fs, ...(options.home === undefined ? {} : { home: options.home }) })
   const preExecute = listeners.get('tools/pre-execute') as unknown as (payload: ToolExecutionPayload, next: () => Promise<PreExecuteDecision>) => Promise<PreExecuteDecision>
   return {
     decisions,
@@ -80,7 +80,7 @@ function harness(roots: readonly string[] | undefined, options: { home?: string,
     records: () => store.lines(VIOLATIONS),
     violations: () => store.lines(VIOLATIONS) as ViolationRecord[],
     run: (payload: ToolExecutionPayload) => preExecute(payload, () => Promise.resolve(options.inner ?? { kind: 'allow' })).then(decision => { decisions.push(decision) }).then(settle),
-    event: (session: SessionLike, event: SessionEventLike) => (listeners.get('session/event') as unknown as (s: SessionLike, e: SessionEventLike) => void)(session, event),
+    event: (session: SessionLike, event: Omit<SessionEventLike, 'time'> & { readonly time?: number }) => (listeners.get('session/event') as unknown as (s: SessionLike, e: SessionEventLike) => void)(session, { time: event.time ?? 0, ...event }),
     disposed: (session: SessionLike) => (listeners.get('session/disposed') as unknown as (s: SessionLike) => void)(session),
   }
 }
@@ -188,7 +188,7 @@ test('each project\'s session journals into its own project directory', async ()
     // The project of the session's working directory is resolved on the real
     // file system (the temp projects exist with their .llm); the journal writes
     // through the injected fs, so the run is deterministic.
-    apply(ctx, { workspaceRoots: [rootA], fs: store.fs }) // no home, no data service: the project of the session decides
+    apply(ctx as unknown as Parameters<typeof apply>[0], { workspaceRoots: [rootA], fs: store.fs }) // no home, no data service: the project of the session decides
     const preExecute = listeners.get('tools/pre-execute') as unknown as (payload: ToolExecutionPayload, next: () => Promise<PreExecuteDecision>) => Promise<PreExecuteDecision>
     await preExecute({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent: agentAt(rootA, 'a1', 's1') }, () => Promise.resolve({ kind: 'allow' }))
     await preExecute({ name: 'Bash', arguments: { command: 'Set-Content f.txt hi' }, agent: agentAt(rootB, 'a2', 's2') }, () => Promise.resolve({ kind: 'allow' }))
@@ -523,7 +523,7 @@ test('a malformed dialect service counts as absent: still denied, warned once, a
 test('every request carries the workspace-rules sentence as the last system prompt section, the same text on every route and with no rule lines', async () => {
   const rt = fakeRuntime()
   glmPromptApply(rt.ctx)
-  apply(rt.ctx as never, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
+  apply(rt.ctx, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
   await rt.create()
   await rt.create() // installs once per agent
   assert.equal(rt.listeners.filter(entry => entry.event === 'system-prompt/assemble').length, 2) // dialect and guard
@@ -544,7 +544,7 @@ test('every request carries the workspace-rules sentence as the last system prom
 
 test('without a session directory the section is the same sentence; the gate, not the declaration, carries the per-rule facts', async () => {
   const rt = fakeRuntime() // the fake agent's session has no cwd
-  apply(rt.ctx as never, { home: 'C:/ws/.llm', fs: memoryFs().fs })
+  apply(rt.ctx, { home: 'C:/ws/.llm', fs: memoryFs().fs })
   await rt.create()
   const section = (await rt.assemble({ model: 'glm-5.3' })).sections.at(-1)!
   assert.equal(section.name, DECLARATION_SECTION)
@@ -555,18 +555,18 @@ test('without a session directory the section is the same sentence; the gate, no
 test('the main agent gets the same sentence: it names no tool, so the S4-4 clash (a line naming the Write/Edit tools it does not have) cannot recur', async () => {
   const main = (): ReturnType<typeof fakeRuntime> => {
     const rt = fakeRuntime({ cwd: 'C:\\ws' })
-    rt.services.set('sessionProjections', { stateOf: (session: SessionLike, key: string) => key === MAIN_AGENT_KEY ? { active: true } : undefined })
+    rt.services.set('sessionProjections', { stateOf: (_session: SessionLike, key: string) => key === MAIN_AGENT_KEY ? { active: true } : undefined })
     return rt
   }
   const rt = main()
-  apply(rt.ctx as never, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
+  apply(rt.ctx, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
   await rt.create()
   const section = (await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!
   assert.equal(section.name, DECLARATION_SECTION)
   assert.equal(section.text, WORKSPACE_RULES_TEXT)
   // An ordinary session gets the same text.
   const plain = fakeRuntime({ cwd: 'C:\\ws' })
-  apply(plain.ctx as never, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
+  apply(plain.ctx, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
   await plain.create()
   const plainSection = (await plain.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!
   assert.equal(plainSection.text, WORKSPACE_RULES_TEXT)
@@ -574,7 +574,7 @@ test('the main agent gets the same sentence: it names no tool, so the S4-4 clash
 
 test('the section does not vary with the graph row: the rule enforces through its own gate, not through a declaration line', async () => {
   const rt = fakeRuntime()
-  apply(rt.ctx as never, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
+  apply(rt.ctx, { workspaceRoots: ['C:\\ws'], home: 'C:/ws/.llm', fs: memoryFs().fs })
   await rt.create()
   const before = (await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })).sections.at(-1)!
   assert.equal(before.text, WORKSPACE_RULES_TEXT)

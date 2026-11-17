@@ -95,9 +95,9 @@ test('the panel row registers the units when the registry arrives, and survives 
   const registered: string[] = []
   const commands = { register: () => () => {} }
   const snapshot = () => ({ values: {} })
-  apply({ commands, inject: fakeInjector({ sessionProjections: { register: definition => { registered.push(definition.key); return () => {} }, snapshot } }).inject })
+  apply({ commands, inject: fakeInjector({ sessionProjections: { register: definition => { registered.push(definition.key); return () => {} }, snapshot, stateOf: () => undefined } }).inject })
   assert.deepEqual(registered, [LIVE_KEY, 'hournessProject'], 'the live view and the holder-record pointer register together')
-  const failing = await captureWarnings(() => apply({ commands, inject: fakeInjector({ sessionProjections: { register: () => { throw new Error('incompatible stateVersion') }, snapshot } }).inject }))
+  const failing = await captureWarnings(() => apply({ commands, inject: fakeInjector({ sessionProjections: { register: () => { throw new Error('incompatible stateVersion') }, snapshot, stateOf: () => undefined } }).inject }))
   assert.match(failing.warnings.join('\n'), /the live projection is off: incompatible stateVersion/)
   assert.equal(typeof apply({ commands }), 'function', 'no inject: the command still registers')
 })

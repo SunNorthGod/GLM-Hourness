@@ -129,7 +129,7 @@ test('a git without --pathspec-from-file (before 2.25) gets the paths after -- i
   repo.write({ 'one.txt': '1\n', 'two words.txt': '2\n' })
   const old: Partial<SnapshotEnvironment> = {
     run: (cwd, args, options) => args.includes('--pathspec-from-file=-')
-      ? Promise.resolve({ code: 129, stdout: '', stderr: 'error: unknown option `pathspec-from-file=-\'', problem: undefined })
+      ? Promise.resolve({ code: 129, stdout: '', stderr: 'error: unknown option `pathspec-from-file=-\'' })
       : realSnapshotEnvironment.run(cwd, args, options),
   }
   allowed(await run(repo, 'git clean -fd', { env: old }))

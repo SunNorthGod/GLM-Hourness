@@ -24,7 +24,11 @@ const DAY = 86_400_000
 const denial = (rule: string, daysAgo: number): { readonly at: string, readonly rule: string, readonly tool: string } =>
   ({ at: new Date(NOW - daysAgo * DAY).toISOString(), rule, tool: 'Bash' })
 
-/** A shadow record (mode shadow with paths) — the journal line a shadowing rule writes, allowed through. */
+/** A late-denial record (mode late with paths) — the current turn-end fallback record. */
+const late = (rule: string, daysAgo: number): { readonly at: string, readonly rule: string, readonly mode: 'late', readonly via: 'turn-end', readonly paths: readonly string[] } =>
+  ({ at: new Date(NOW - daysAgo * DAY).toISOString(), rule, mode: 'late', via: 'turn-end', paths: ['x.ts'] })
+
+/** A legacy shadow record (mode shadow with paths) — the pre-0.6 fallback line. */
 const shadow = (rule: string, daysAgo: number): { readonly at: string, readonly rule: string, readonly mode: 'shadow', readonly paths: readonly string[] } =>
   ({ at: new Date(NOW - daysAgo * DAY).toISOString(), rule, mode: 'shadow', paths: ['x.ts'] })
 
@@ -63,21 +67,26 @@ test('blocks of another rule do not count, and a gate-level norm never proposes 
   assert.equal(ladderProposals(gate).length, 0)
 })
 
-test('a quiet gate-level norm is proposed down; any block or shadow record in twenty-eight days keeps it', () => {
+test('a quiet gate-level norm is proposed down; any block, late or legacy shadow record in twenty-eight days keeps it', () => {
   const quiet = ladderProposals(input([norm('norm-a', '门禁', 'rules:env-key')], []))
   assert.equal(quiet.length, 1)
   assert.equal(quiet[0]?.direction, 'down')
-  assert.equal(quiet[0]?.counts, '近 28 天拦截与影子都是 0')
+  assert.equal(quiet[0]?.counts, '近 28 天拦截与晚到的拦下都是 0')
   const denied = input([norm('norm-a', '门禁', 'rules:env-key')], [denial('rules:env-key', 27)])
   assert.equal(ladderProposals(denied).length, 0)
+  const belated = input([norm('norm-a', '门禁', 'rules:env-key')], [late('rules:env-key', 20)])
+  assert.equal(ladderProposals(belated).length, 0)
   const shadowed = input([norm('norm-a', '门禁', 'rules:env-key')], [shadow('rules:env-key', 20)])
   assert.equal(ladderProposals(shadowed).length, 0)
   const below = ladderProposals(input([norm('norm-a', '记忆', 'rules:env-key')], []))
   assert.equal(below.length, 0, 'a level below gate with no blocks does not demote')
 })
 
-test('the shadow-to-enforce direction stays gone: a shadow-heavy norm below gate proposes nothing', () => {
-  const heavy = input([norm('norm-a', '提示词', 'rules:env-key')], Array.from({ length: 25 }, (_, index) => shadow('rules:env-key', index + 1)))
+test('the shadow-to-enforce direction stays gone: late or legacy shadow records below gate propose nothing', () => {
+  const heavy = input([norm('norm-a', '提示词', 'rules:env-key')], [
+    ...Array.from({ length: 15 }, (_, index) => shadow('rules:env-key', index + 1)),
+    ...Array.from({ length: 10 }, (_, index) => late('rules:env-key', index + 1)),
+  ])
   assert.equal(ladderProposals(heavy).length, 0)
 })
 
@@ -189,28 +198,28 @@ test('the changed paths ride the handback comments and the proposal fires end to
     ...(depth === undefined ? {} : { depth }), ...(paths === undefined ? {} : { paths }), problems: [],
   })
   const dispatched = (daysAgo: number, why: string, review: string) => ({
-    at: iso(now(daysAgo)), actor: 'harness', op: 'comment' as const, text: `第 1 次派发 · r · 模型 x/y，理由：${why} · 审查：${review}\npins: x`,
+    at: iso(now(daysAgo)), actor: 'harness' as const, op: 'comment' as const, text: `第 1 次派发 · r · 模型 x/y，理由：${why} · 审查：${review}\npins: x`,
   })
-  const landed = (daysAgo: number) => ({ at: iso(now(daysAgo)), actor: 'harness', op: 'comment' as const, text: `进主干 abc${daysAgo}（从 def${daysAgo}）· 检查 ok` })
-  const reopened = (daysAgo: number) => ({ at: iso(now(daysAgo)), actor: 'llm', op: 'status' as const, from: 'done', to: 'doing', reason: '回归坏了' })
+  const landed = (daysAgo: number) => ({ at: iso(now(daysAgo)), actor: 'harness' as const, op: 'comment' as const, text: `进主干 abc${daysAgo}（从 def${daysAgo}）· 检查 ok` })
+  const reopened = (daysAgo: number) => ({ at: iso(now(daysAgo)), actor: 'llm' as const, op: 'status' as const, from: 'done', to: 'doing', reason: '回归坏了' })
   const floorNode = node({ id: 'norm-review-floor', type: 'norm', title: '必须全审的改动', status: 'approved', acceptance: ['文档一类的改动重写过 `files docs/`'] })
   const graph = graphOf([
     floorNode,
     node({ id: 't-a', type: 'task', title: '轻审', status: 'done' }, 10, 'llm', [
       dispatched(30, '改环境行', '轻审'),
-      { at: iso(now(29)), actor: 'harness', op: 'comment', text: handback('r1', '轻审', ['src/env/a.ts']) },
+      { at: iso(now(29)), actor: 'harness' as const, op: 'comment' as const, text: handback('r1', '轻审', ['src/env/a.ts']) },
       landed(28),
       reopened(26),
     ]),
     node({ id: 't-b', type: 'task', title: '不审', status: 'done' }, 10, 'llm', [
       dispatched(30, '改环境行', '不审'),
-      { at: iso(now(28)), actor: 'harness', op: 'comment', text: handback('r2', undefined, ['src/env/b.ts']) },
+      { at: iso(now(28)), actor: 'harness' as const, op: 'comment' as const, text: handback('r2', undefined, ['src/env/b.ts']) },
       landed(27),
       reopened(25),
     ]),
     node({ id: 't-old', type: 'task', title: '旧批注', status: 'done' }, 10, 'llm', [
       dispatched(30, '改环境行', '轻审'),
-      { at: iso(now(29)), actor: 'harness', op: 'comment', text: handback('r3', '轻审') },
+      { at: iso(now(29)), actor: 'harness' as const, op: 'comment' as const, text: handback('r3', '轻审') },
       landed(28),
       reopened(26),
     ]),
@@ -236,17 +245,17 @@ test('the paths read is the latest handback comment that carries the 改动 line
     attempt: 1, status: 'done', childId, commits: 1, files: 1, questions: 0, assumptions: 0, asked: 0, answered: 0, timeouts: 0, plans: 0, incoming: 0, lessons: 0, depth: '轻审',
     ...(paths === undefined ? {} : { paths }), problems: [],
   })
-  const landed = (daysAgo: number) => ({ at: iso(now(daysAgo)), actor: 'harness', op: 'comment' as const, text: `进主干 abc${daysAgo}（从 def${daysAgo}）· 检查 ok` })
+  const landed = (daysAgo: number) => ({ at: iso(now(daysAgo)), actor: 'harness' as const, op: 'comment' as const, text: `进主干 abc${daysAgo}（从 def${daysAgo}）· 检查 ok` })
   const graph = graphOf([
     node({ id: 't-x', type: 'task', title: '两轮', status: 'done' }, 10, 'llm', [
-      { at: iso(now(30)), actor: 'harness', op: 'comment', text: handback('r1', ['src/env/first.ts']) },
+      { at: iso(now(30)), actor: 'harness' as const, op: 'comment' as const, text: handback('r1', ['src/env/first.ts']) },
       landed(28),
-      { at: iso(now(20)), actor: 'harness', op: 'comment', text: handback('r2') },
+      { at: iso(now(20)), actor: 'harness' as const, op: 'comment' as const, text: handback('r2') },
     ]),
     node({ id: 't-y', type: 'task', title: '两轮反向', status: 'done' }, 10, 'llm', [
-      { at: iso(now(30)), actor: 'harness', op: 'comment', text: handback('r3') },
+      { at: iso(now(30)), actor: 'harness' as const, op: 'comment' as const, text: handback('r3') },
       landed(28),
-      { at: iso(now(20)), actor: 'harness', op: 'comment', text: handback('r4', ['src/env/second.ts']) },
+      { at: iso(now(20)), actor: 'harness' as const, op: 'comment' as const, text: handback('r4', ['src/env/second.ts']) },
     ]),
   ])
   const named = new Map(floorTasks(graph).map(fact => [fact.task, fact]))

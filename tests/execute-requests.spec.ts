@@ -114,9 +114,9 @@ async function rig(over: Partial<RequestsDeps> = {}, childId = 'hz-task-1-a1-aaa
   const task = graph.nodes.get('task-1')!
   const pins = renderPins(pinsOf(graph, task, sha256Hex))
   assert.ok(parsePins(pins) !== undefined, 'the fixture pins line must parse')
-  registerAttempt({ childId, role: 'worker', node: 'task-1', attempt: 1, worktree, branch: 'hz/task-1', provider: 'probe', model: 'probe-model', why: 'one directory', plan: 'required', pins })
-  const child: AgentLike = { id: childId, ctx: {} as never, session: { id: childId, header: { id: childId, cwd: worktree } } }
-  const main: AgentLike = { id: 'main-1', ctx: {} as never, session: { id: 'main-1', header: { id: 'main-1', cwd: project.root }, requestHeader: () => ({ config: { provider: 'probe', model: 'probe-main' } }) } }
+  registerAttempt({ childId, role: 'worker', node: 'task-1', attempt: 1, graphDir: project.graphDir, worktree, branch: 'hz/task-1', provider: 'probe', model: 'probe-model', why: 'one directory', plan: 'required', pins })
+  const child: AgentLike = { id: childId, ctx: {} as never, session: { id: childId, header: { id: childId, cwd: worktree }, deriveMessages: () => [] } }
+  const main: AgentLike = { id: 'main-1', ctx: {} as never, session: { id: 'main-1', header: { id: 'main-1', cwd: project.root }, deriveMessages: () => [], requestHeader: () => ({ config: { provider: 'probe', model: 'probe-main' } }) } }
   const execOf = (agent: AgentLike, callId: string): ToolExecutionContext => ({ callId, signal: new AbortController().signal, agent, deferContext: () => {}, concludeTurn: () => {} })
   return {
     project,

@@ -106,7 +106,7 @@ test('an unreadable record file reads its lifts from the journal and names the f
   const lifts: LiftsInput = { records: [liftRecord('2026-11-04T01:00:00Z', 'scratch-only', 'lift', '别拦')], file: { error: 'EACCES' } }
   const item = guardStatusItems({ violations: [], lifts, source: 'j', liftsSource: 'l' }, NOW_MS).find(entry => entry.id === 'rules/lifts')
   assert.equal(item?.text, liftLines(lifts, 480)[0])
-  assert.ok(item?.detail?.includes('- lifts.jsonl 读不出（EACCES），这一次没有对账'), item?.detail?.join('\n'))
+  assert.ok(item?.detail?.includes('- lifts.jsonl 读不出（EACCES），这一次没有对账'), item?.detail?.join('\n') ?? '')
 })
 
 test('a file the journal contradicts keeps the mismatch line in the detail', () => {
@@ -145,7 +145,7 @@ test('the guard row provides glmHournessStatus/guard over the project journals a
     await writeFile(join(workspace, '.llm', 'audit', 'violations.jsonl'), `${[...violations, ...liftRecords].map(record => JSON.stringify(record)).join('\n')}\n`)
     await writeFile(join(workspace, 'docs', 'guard', 'lifts.jsonl'), `${liftFileLine('2026-11-04T02:00:00Z', 'file-tools-only', 'lift')}\n`)
     const rt = fakeRuntime({ cwd: workspace })
-    const dispose = guardApply(rt.ctx as never, { home: join(workspace, '.llm'), now: () => new Date(NOW_MS) })
+    const dispose = guardApply(rt.ctx, { home: join(workspace, '.llm'), now: () => new Date(NOW_MS) })
     await rt.create()
     const view = rt.services.get(statusServiceName('guard')) as RowStatusView | undefined
     assert.ok(view !== undefined, 'the row provides glmHournessStatus/guard')
@@ -177,7 +177,7 @@ test('a journal that is not there yet: the lifts entry still answers, and the mi
   try {
     await mkdir(join(workspace, '.llm'), { recursive: true })
     const rt = fakeRuntime({ cwd: workspace })
-    const dispose = guardApply(rt.ctx as never, { home: join(workspace, '.llm'), now: () => new Date(NOW_MS) })
+    const dispose = guardApply(rt.ctx, { home: join(workspace, '.llm'), now: () => new Date(NOW_MS) })
     await rt.create()
     const view = rt.services.get(statusServiceName('guard')) as RowStatusView
     const [lifts] = view.items('agent-1')

@@ -19,7 +19,6 @@ import { MAIN_AGENT_RULES } from '../src/guard/main-agent-rules.ts'
 import { PLAIN_QUESTION_EXAMPLES } from '../src/graph/plain-question.ts'
 import { askTextRefusal, renderAsk } from '../src/graph/proposal.ts'
 import { DELEGATED, DELEGATIONS_ID } from '../src/shared/answer-marks.ts'
-// @ts-expect-error The module is plain JavaScript without a declaration file.
 import { interviewMetrics, proposeReason, readRun, recordReason, snapshotRefusalCode } from './calibration/interview-metrics.mjs'
 
 type Event = Record<string, unknown>

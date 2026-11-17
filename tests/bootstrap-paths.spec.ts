@@ -34,6 +34,7 @@ import { labeledSections } from '../src/graph/stage.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import { validateRule } from '../src/rules/model.ts'
 import { PROPOSE_TO_HUMAN, RECORD_HUMAN_ANSWER } from '../src/shared/tool-names.ts'
+import { graphRelativeDir } from '../src/bootstrap/review.ts'
 import { git, init, journal, scanFixture, takeoverHost, transitionAgent } from './bootstrap-host.ts'
 import { graphOf, node } from './execute-helpers.ts'
 import { exampleRecord } from './proposal-examples.ts'
@@ -76,7 +77,7 @@ test('the default gate drafts read in M7\'s own parser with nothing left as pros
       ...items.map(item => gateLine(item)),
       `\`only docs/graph/\``,
     ]
-    const parsed = parseGateNorm({ acceptance: lines } as GraphNode)
+    const parsed = parseGateNorm({ acceptance: lines } as unknown as GraphNode)
     const readCommands = parsed.commands.map(command => command.command)
     assert.deepEqual(readCommands, items.map(item => item.command), `${key}: every written command reads back, in order`)
     assert.deepEqual(parsed.only, ['docs/graph/'], `${key}: the only line reads as the graph directory`)
@@ -324,4 +325,14 @@ test('the seam with M3: the drafted questions go through propose_to_human with a
   // Once the takeover is closed nothing matches.
   assert.equal((await init(made, agent, 'off')).kind, 'success')
   assert.match(await service.acceptProposal({ questionId: 'question-1', graphDir: dir, cwd: ws, by }), /No open takeover matches this question/)
+})
+
+test('graphRelativeDir: handles mixed drive-letter casing and rejects sibling directory prefixes', () => {
+  if (process.platform === 'win32') {
+    assert.equal(graphRelativeDir('C:\\repo', 'c:\\repo\\docs\\graph'), 'docs/graph')
+    assert.equal(graphRelativeDir('C:\\repo', 'C:\\repo2\\docs\\graph'), 'C:\\repo2\\docs\\graph')
+    assert.equal(graphRelativeDir('C:\\repo', 'D:\\elsewhere\\docs\\graph'), 'D:\\elsewhere\\docs\\graph')
+  }
+  assert.equal(graphRelativeDir('/repo', '/repo/docs/graph'), 'docs/graph')
+  assert.equal(graphRelativeDir('/repo', '/repo2/docs/graph'), '/repo2/docs/graph')
 })

@@ -971,6 +971,17 @@ ticketTest('the agent retrying the call the script now lets through runs the cal
   assert.equal(fixture.live.woken.length, 0, 'no wake: the agent is the one that ran it')
 })
 
+ticketTest('a retry that hits a blocking verdict closes the matching open deferred ticket', async (fixture) => {
+  await approveScript(fixture.root, 'r-script', WORD, FLIP)
+  await fixture.exec('pwsh', shell(`run ${WORD}`))
+  assert.equal(ticketOf(fixture, 'q-1').state, 'deferred')
+  await writeFile(join(fixture.root, 'block.txt'), 'stop')
+  const blocked = await fixture.exec('pwsh', shell(`run ${WORD}`))
+  assert.equal(blocked.isError, true)
+  assert.match(reasonOf(blocked), /blocked the call/)
+  assert.equal(ticketOf(fixture, 'q-1').state, 'done', 'the open deferred ticket is closed when the retry is blocked')
+})
+
 // ------------------------------------------------------------- teardown
 
 ticketTest('the row\'s timers go with the row, and a row that is gone sends nothing', async (fixture) => {

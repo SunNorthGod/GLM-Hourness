@@ -168,7 +168,7 @@ test('when redaction throws nothing is written: the export is skipped with the r
     assert.equal(answer?.kind, 'skipped')
     const view = store.get(healthServiceName('transcript')) as RowHealthView
     assert.equal(view.session('S1')?.state, 'degraded')
-    assert.ok(view.session('S1')?.reason.startsWith('压缩摘要不带原文路径：遮掉像凭证的字符串失败'), view.session('S1')?.reason)
+    assert.ok(view.session('S1')?.reason.startsWith('压缩摘要不带原文路径：遮掉像凭证的字符串失败'), view.session('S1')?.reason ?? '')
     assert.equal(existsSync(join(home, 'transcripts')), false)
     dispose()
   }
@@ -308,7 +308,7 @@ test('the row provides glmHournessTranscript, reports each export in its health,
     assert.equal(view.activation().state, 'active')
     assert.equal(view.session('S1')?.state, 'active')
     assert.ok(view.session('S1')?.reason.includes(join(resolve(home), 'transcripts', 'S1.txt')))
-    assert.ok(view.session('S1')?.reason.includes('遮掉 0 处像凭证的字符串'), view.session('S1')?.reason)
+    assert.ok(view.session('S1')?.reason.includes('遮掉 0 处像凭证的字符串'), view.session('S1')?.reason ?? '')
     const skipped = await service.exportBeforeCompaction('../S2')
     assert.equal(skipped.kind, 'skipped')
     assert.equal(view.session('../S2')?.state, 'degraded')
@@ -330,7 +330,7 @@ test('the row health of a session whose export replaced credential-like strings 
     assert.equal(written?.kind, 'written')
     const view = store.get(healthServiceName('transcript')) as RowHealthView
     assert.equal(view.session('S1')?.state, 'active')
-    assert.ok(view.session('S1')?.reason.includes('遮掉 6 处像凭证的字符串'), view.session('S1')?.reason)
+    assert.ok(view.session('S1')?.reason.includes('遮掉 6 处像凭证的字符串'), view.session('S1')?.reason ?? '')
     const text = readFileSync(join(home, 'transcripts', 'S1.txt'), 'utf8')
     for (const sample of SAMPLES) assert.ok(!text.includes(sample), `a sample is left in the file: ${sample.slice(0, 6)}…`)
     dispose()

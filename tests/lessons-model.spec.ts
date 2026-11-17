@@ -68,7 +68,7 @@ interface Extra {
   readonly reason?: string
   readonly by?: JournalRecord['by']
 }
-const rec = (actor: Actor, op: string, id: string, extra: Extra = {}, time: string = T0): JournalRecord => ({ v: 1, seq: ++seq, at: time, actor, op, id, ...extra })
+const rec = (actor: Actor, op: string, id: string, extra: Extra = {}, time: string = T0): JournalRecord => ({ v: 1, seq: ++seq, at: time, actor, op, id, ...extra } as JournalRecord)
 
 const SESSION_A = { session: 'session-a', agent: 'agent-1' }
 
@@ -118,7 +118,7 @@ const ok = (records: readonly JournalRecord[], from?: LessonsState): LessonsStat
 // --- Field checks ---------------------------------------------------------------
 
 test('the design example is taken; the situation lists default to empty and the evidence is kept as written', () => {
-  const taken = checkLessonFields(RESIZE)
+  const taken = checkLessonFields(RESIZE as unknown as Readonly<Record<string, unknown>>)
   assert.ok(!('code' in taken))
   assert.deepEqual(taken.situation, { files: ['tools/resize/**'], tools: [], commands: ['resize-batch'], errors: ['EMFILE: too many open files'] })
   assert.deepEqual(taken.evidence, ['commit:3fa9c21d7be0'])
@@ -578,7 +578,7 @@ test('behind the real journal: a proposal appended through the lock folds into a
   const file = join(directory, 'lessons.jsonl')
   const options = { directory: 'user', row: 'lessons-test' } as const
 
-  const example = checkLessonFields(RESIZE)
+  const example = checkLessonFields(RESIZE as unknown as Readonly<Record<string, unknown>>)
   assert.ok(!('code' in example))
   const created = await appendJournal(file, lessonsFold, reading => ({
     records: [{ actor: 'llm', op: 'new', id: newId('L', reading.state, () => 0x0f12aa) ?? 'none', evidence: example.evidence, data: { situation: example.situation, pitfall: example.pitfall, fix: example.fix } as unknown as JsonValue, by: SESSION_A }],

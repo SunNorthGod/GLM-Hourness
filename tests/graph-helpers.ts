@@ -132,9 +132,19 @@ export function fakeRemote(workspace: string): { readonly remote: RemoteRoot, re
           return { ok: false, error: { code: 'workspace-file/not-found', message: `no entry at "${path}"` } }
         }
       },
+      stat: async (_session, path) => {
+        try {
+          const data = await readFile(join(workspace, path))
+          return { ok: true, value: { absolutePath: join(workspace, path), version: 'v1', bytes: data.length } }
+        }
+        catch {
+          return { ok: false, error: { code: 'workspace-file/not-found', message: path } }
+        }
+      },
       readBytes: async (_session, path) => {
         try {
-          return { ok: true, value: { absolutePath: join(workspace, path), data: new Uint8Array(await readFile(join(workspace, path))) } }
+          const data = new Uint8Array(await readFile(join(workspace, path)))
+          return { ok: true, value: { absolutePath: join(workspace, path), version: 'v1', bytes: data.length, offset: 0, data, eof: true } }
         }
         catch {
           return { ok: false, error: { code: 'workspace-file/not-found', message: path } }
@@ -142,7 +152,7 @@ export function fakeRemote(workspace: string): { readonly remote: RemoteRoot, re
       },
       changes: () => undefined,
     },
-    commands: { execute: () => Promise.resolve({ ok: true, value: undefined }) },
+    commands: { execute: () => Promise.resolve({ ok: true, value: undefined }), list: () => Promise.resolve({ ok: true, value: [] }) },
     $stream: <T>() => ({
       async *[Symbol.asyncIterator]() {
         while (!disposed) {

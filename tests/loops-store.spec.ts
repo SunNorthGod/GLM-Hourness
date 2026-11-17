@@ -14,6 +14,7 @@ import { appendFile, mkdir, readFile, rm, utimes, writeFile } from 'node:fs/prom
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { appendJournal, openLoopStore } from '../src/loops/store.ts'
+import { createRunLock } from '../src/loops/lock.ts'
 import { entryFileText } from '../src/loops/model.ts'
 import { acquireLock } from '../src/data/lock.ts'
 import { entryFileOf, gitProjectTest, namesIn, NOW, quickIo, recordsOf, scriptEntry, SCRIPT_TEXT, seedAgreed, sha256, statusOf, tellEntry, writeFiles, writtenNote } from './loops-helpers.ts'
@@ -307,7 +308,7 @@ gitProjectTest('a rename refused with EPERM is retried; when it keeps failing th
   await seedAgreed(project, entry)
   await project.store.apply('human', { op: 'delete', entry: A })
   const refused: string[] = []
-  const failing = openLoopStore(project.root, { io: quickIo({ rename: (from, to) => { refused.push(to); return Promise.reject(Object.assign(new Error('operation not permitted'), { code: 'EPERM' })) } }) })
+  const failing = openLoopStore(project.root, { io: quickIo({ rename: (_from, to) => { refused.push(to); return Promise.reject(Object.assign(new Error('operation not permitted'), { code: 'EPERM' })) } }) })
   const restored = await failing.apply('human', { op: 'restore', entry: A })
   assert.equal(restored.ok && restored.file, 'failed')
   assert.equal(refused.length, 6, 'the first try and the five waits')
@@ -509,4 +510,32 @@ gitProjectTest('two processes appending to the change record at once lose no lin
   assert.equal(new Set(records.map(record => record.note)).size, 2, 'both writers wrote')
   assert.deepEqual((await namesIn(project.store.paths.runtimeDir)).filter(name => name.startsWith('write.lock')), [])
   assert.deepEqual(project.store.read().journal.unreadable, [])
+})
+
+gitProjectTest('concurrent stale takeover on runner.lock has one winner and preserves the winner lock', async (project) => {
+  await mkdir(project.store.paths.runtimeDir, { recursive: true })
+  const staleAt = new Date(NOW - 10 * 60_000).toISOString()
+  await writeFile(project.store.paths.runner, JSON.stringify({ pid: 999_999, boot: 60_000, startedAt: staleAt, at: staleAt, token: 'dead-runner' }, null, 2))
+  const mk = (pid: number) => createRunLock({
+    paths: project.store.paths,
+    io: quickIo(),
+    now: () => NOW,
+    pid,
+    boot: () => 60_000,
+    holderHere: () => undefined,
+    busy: () => undefined,
+    record: () => {},
+  })
+  const a = mk(1001)
+  const b = mk(1002)
+  const [standA, standB] = await Promise.all([a.beat(), b.beat()])
+  const held = [standA, standB].filter(s => s.kind === 'held')
+  const elsewhere = [standA, standB].filter(s => s.kind === 'elsewhere')
+  assert.equal(held.length, 1, 'exactly one contender wins the stale runner.lock')
+  assert.equal(elsewhere.length, 1, 'the other contender sees elsewhere without fault')
+  const winner = standA.kind === 'held' ? a : b
+  assert.equal(winner.holds(), true)
+  const onDisk = JSON.parse(await readFile(project.store.paths.runner, 'utf8')) as { pid: number }
+  assert.equal(onDisk.pid, standA.kind === 'held' ? 1001 : 1002)
+  await winner.release()
 })

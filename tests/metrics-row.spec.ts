@@ -16,9 +16,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { apply, METRICS_SELF_CHECK_ENTRY, name, type MetricsConfig } from '../src/metrics/index.ts'
+import { createObserve } from '../src/metrics/observe.ts'
+import { nodeMetricsFs, openWriter } from '../src/metrics/writer.ts'
+import { apply as applyReport } from '../src/report/index.ts'
 import { openEngine } from '../src/graph/engine.ts'
 import { readLog } from '../src/metrics/read.ts'
-import { METRICS_SERVICE, type MetricsService } from '../src/shared/metrics.ts'
+import { METRICS_ID_PATTERN, METRICS_SERVICE, type MetricsService, type QueuedEvent } from '../src/shared/metrics.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import type { Contribution, LoopEventRecord } from '../src/loops/service.ts'
 import type { InjectHost, SessionEventLike, SessionLike, UserQuestionsRequest } from '../src/shared/dsh-min.ts'
@@ -402,7 +405,7 @@ test('peak mode does not touch the row: a stop-level service is never read, and 
     await emitCount(fx)
     assert.deepEqual(reads, [], 'the metrics row reads no peak mode')
     const activation = fx.health()?.activation()
-    assert.ok(!(activation?.reason ?? '').includes('高峰'), activation?.reason)
+    assert.ok(!(activation?.reason ?? '').includes('高峰'), activation?.reason ?? '')
   }
   finally {
     rm(fx)
@@ -444,7 +447,7 @@ test('the daily self-check entry goes to the loop board when it is there, with i
   rt.services.set('agents', { get: (id: string) => id === rt.agent.id ? { id: rt.agent.id, session: rt.agent.session } : undefined })
   const loops = fakeLoops()
   try {
-    const injector = fakeInjector({ glmHournessLoops: loops.service }, rt.ctx)
+    const injector = fakeInjector({ glmHournessLoops: loops.service } as never, rt.ctx)
     apply({ ...rt.ctx, inject: injector.inject } as never, {
       randomId: () => '0123abcd',
       now: () => AT,
@@ -569,7 +572,7 @@ test('a second metrics instance warns and says so; a host without seams names th
     const activation = first.health()?.activation()
     assert.match(activation?.reason ?? '', /没有 agents 服务/)
     stop()
-    const bare = fakeRuntime({ route: undefined })
+    const bare = fakeRuntime()
     apply({ ...bare.ctx, on: undefined } as never, { checkDelay: 60_000, randomId: () => 'ffffffff', now: () => AT })
     assert.equal(bare.ctx.get(healthServiceName('metrics')) !== undefined, true)
     assert.match((bare.ctx.get(healthServiceName('metrics')) as RowHealthView).activation().reason ?? '', /接缝没装上/)
@@ -604,7 +607,7 @@ test('a project whose exclude file cannot be written keeps the events queued and
 test('the first sight of a session is one session event with its origin and parent (§4.2)', async () => {
   const fx = fixture({ checkDelay: 60_000 })
   try {
-    const child = { ...fx.rt.agent, id: 'child-1', session: { ...fx.rt.agent.session, id: 'child-1', header: { id: 'child-1', cwd: fx.rt.agent.session?.header.cwd, origin: 'subagent' as const, parentSession: fx.rt.agent.id } } }
+    const child = { ...fx.rt.agent, id: 'child-1', session: { ...fx.rt.agent.session, id: 'child-1', header: { id: 'child-1', cwd: fx.rt.agent.session?.header.cwd ?? fx.root, origin: 'subagent' as const, parentSession: fx.rt.agent.id }, deriveMessages: () => [] } }
     await fx.rt.create(child)
     const events = await untilEvents(fx, 1)
     const sessions = events.filter(event => event.k === 'session') as Array<{ readonly body: Record<string, unknown> }>
@@ -613,5 +616,201 @@ test('the first sight of a session is one session event with its origin and pare
   }
   finally {
     rm(fx)
+  }
+})
+
+test('H5: non-id fields, non-integer counts, and negative durations are shaped/clamped while fractional credits stay, with zero writer rejections', async () => {
+  let clock = AT + 10_000
+  const fx = fixture({ checkDelay: 60_000, now: () => clock })
+  try {
+    fx.rt.services.set('glmHournessPricing', {
+      basis: 'probe',
+      plan: 'probe',
+      charged: () => 0.1234,
+      peak: () => false,
+    })
+    const parentBad = {
+      ...fx.rt.agent,
+      id: 'child-shaped',
+      session: {
+        ...fx.rt.agent.session,
+        id: 'child-shaped',
+        header: { id: 'child-shaped', cwd: fx.root, origin: 'subagent' as const, parentSession: '父会话 space' },
+        deriveMessages: () => [],
+      },
+    }
+    await fx.rt.create(parentBad)
+
+    // Clock rollback during stream: startedAt = AT + 10_000, delta/end at AT + 5_000 -> ttft === 0 and ms === 0.
+    await streamAll(fx.rt.stream(
+      { provider: 'my provider', model: '模型\\v1', purpose: '摘要 purpose' as never, sessionId: fx.rt.agent.id, messages: [] },
+      () => ({
+        async *[Symbol.asyncIterator]() {
+          await Promise.resolve()
+          clock = AT + 5_000
+          yield { type: 'text-delta', index: 0, text: 'hi' }
+          yield { type: 'usage', usage: { inputTokens: 10.5, outputTokens: -2, cacheReadTokens: 15, totalTokens: 25.5 } }
+          yield { type: 'finish', reason: { kind: 'stop' } }
+        },
+      }),
+    ))
+
+    const session = fx.rt.agent.session as SessionLike
+    fx.rt.event(session, { type: 'turn/start', seq: 1, time: AT, data: { turn: 1.5 } })
+    fx.rt.event(session, { type: 'turn/start', seq: 2, time: AT, data: { turn: 1 } })
+    fx.rt.event(session, { type: 'approval/asked', seq: 3, time: AT + 10, data: { id: 'ap 1', toolName: '写 工具', callId: 'call 中文' } })
+    fx.rt.event(session, { type: 'approval/decided', seq: 4, time: AT + 20, data: { id: 'ap 1', outcome: 'rejected' } })
+    fx.rt.event(session, { type: 'tool/call', seq: 5, time: AT + 100, data: { turn: 1, step: 1, callId: 'call 中文', name: '工具\\名', arguments: '{}' } })
+    fx.rt.event(session, { type: 'tool/result', seq: 6, time: AT + 50, data: { turn: 1, step: 1, message: { toolCallId: 'call 中文', content: [], isError: true } } })
+    fx.rt.event(session, { type: 'command/run', seq: 7, time: AT + 60, data: { commandId: 'cmd 1', name: '命令 名' } })
+    fx.rt.event(session, { type: 'command/done', seq: 8, time: AT + 70, data: { commandId: 'cmd 1', kind: 'success' } })
+    fx.rt.event(session, { type: 'turn/end', seq: 9, time: AT + 80, data: { turn: 1, reason: { kind: '结束 reason' } } })
+
+    const events = await untilEvents(fx, 10)
+    assert.equal(events.some(event => event.k === 'reject'), false, 'zero events rejected by writer')
+    assert.ok(!(fx.health()?.activation().reason ?? '').includes('拒收'))
+
+    const sess = events.find(event => event.k === 'session')?.body as Record<string, unknown>
+    assert.equal(sess.parent, 'other')
+
+    const llm = events.find(event => event.k === 'llm')?.body as Record<string, unknown>
+    assert.deepEqual([llm.provider, llm.model, llm.purpose], ['other', 'other', 'other'])
+    assert.deepEqual([llm.ms, llm.ttft, llm.credits], [0, 0, 0.1234])
+    assert.equal(llm.input, undefined, 'float token count dropped')
+    assert.equal(llm.output, undefined, 'negative token count dropped')
+    assert.equal(llm.cacheRead, 15)
+    assert.equal(llm.total, undefined, 'float total token count dropped')
+
+    const turns = events.filter(event => event.k === 'turn').map(event => event.body as Record<string, unknown>)
+    assert.equal(turns.length, 2, 'float turn/start is skipped')
+    assert.equal(turns[1]?.end, 'other')
+
+    const tool = events.find(event => event.k === 'tool')?.body as Record<string, unknown>
+    assert.deepEqual([tool.call, tool.name, tool.out, tool.ms], ['other', 'other', 'declined', 0])
+
+    const approvals = events.filter(event => event.k === 'approval').map(event => event.body as Record<string, unknown>)
+    assert.deepEqual(approvals.map(a => [a.id, a.tool, a.call]), [['other', 'other', 'other'], ['other', undefined, 'other']])
+
+    const cmds = events.filter(event => event.k === 'command').map(event => event.body as Record<string, unknown>)
+    assert.deepEqual(cmds.map(c => [c.cid, c.name, c.phase]), [['other', 'other', 'run'], ['other', 'other', 'done']])
+  }
+  finally {
+    rm(fx)
+  }
+})
+
+test('M7-metrics: Windows drive-letter case differences share root Maps and targetPathOf relative hashing', async () => {
+  const fx = fixture({ checkDelay: 60_000 })
+  try {
+    if (/^[A-Za-z]:/.test(fx.root)) {
+      const lowerRoot = `${fx.root[0].toLowerCase()}${fx.root.slice(1)}`
+      const upperRoot = `${fx.root[0].toUpperCase()}${fx.root.slice(1)}`
+      fx.service()?.emit({ k: 'count', by: 'guard', at: DAY_AT, body: { what: 'drive-lower', value: 1 } }, { dir: lowerRoot })
+      await untilEvents(fx, 1)
+      const covUpper = fx.service()?.coverage?.(upperRoot)
+      const covLower = fx.service()?.coverage?.(lowerRoot)
+      assert.ok(covUpper !== undefined && covLower !== undefined)
+      assert.deepEqual(covUpper, covLower)
+    }
+
+    const emitted: QueuedEvent[] = []
+    const rootWin = 'C:\\Repo\\Project'
+    const cwdWin = 'c:\\Repo\\Project\\src'
+    const observe = createObserve({
+      record: (event) => { emitted.push(event) },
+      problem: () => {},
+      now: () => AT,
+      pricing: () => undefined,
+      rootOf: () => rootWin,
+      keyOf: () => '0123456789abcdef0123456789abcdef',
+    })
+    const sessionUpper: SessionLike = { id: 's-drive', header: { id: 's-drive', cwd: `${rootWin}\\src` }, deriveMessages: () => [] }
+    const sessionLower: SessionLike = { id: 's-drive', header: { id: 's-drive', cwd: cwdWin }, deriveMessages: () => [] }
+    observe.onEvent(sessionUpper, { type: 'tool/call', seq: 1, time: AT, data: { turn: 1, step: 1, callId: 'c-u', name: 'Read', arguments: JSON.stringify({ file_path: 'a.ts' }) } })
+    observe.onEvent(sessionUpper, { type: 'tool/result', seq: 2, time: AT + 1, data: { turn: 1, step: 1, message: { toolCallId: 'c-u', content: [], isError: false } } })
+    observe.onEvent(sessionLower, { type: 'tool/call', seq: 3, time: AT + 2, data: { turn: 1, step: 2, callId: 'c-l', name: 'Read', arguments: JSON.stringify({ file_path: 'a.ts' }) } })
+    observe.onEvent(sessionLower, { type: 'tool/result', seq: 4, time: AT + 3, data: { turn: 1, step: 2, message: { toolCallId: 'c-l', content: [], isError: false } } })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const targets = emitted.filter(event => event.k === 'tool').map(event => (event.body as { target?: string }).target)
+    if (process.platform === 'win32') {
+      assert.equal(targets.length, 2)
+      assert.match(targets[0] ?? '', /^[0-9a-f]{12}$/)
+      assert.equal(targets[0], targets[1], 'c:\\... and C:\\... resolve to the same relative target hash')
+    }
+  }
+  finally {
+    rm(fx)
+  }
+})
+
+test('H8-report & ms clamp: registration conflict degrades without throwing, and clock rollback clamps report.ms to 0 with rejected === 0', async () => {
+  const base = mkdtempSync(join(tmpdir(), `report-h8-${++counter}-`))
+  const root = join(base, 'ws')
+  mkdirSync(root, { recursive: true })
+  assert.equal(spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: root }).status, 0)
+  const services = new Map<string, unknown>()
+  const registered: Array<{ name: string, handler: (inv: unknown) => Promise<unknown> }> = []
+  const warnings: string[] = []
+  const originalWarn = console.warn
+  console.warn = (text: string) => { warnings.push(String(text)) }
+
+  let nowCount = 0
+  const times = [AT + 5_000, AT + 5_000, AT + 1_000]
+  const emitted: QueuedEvent[] = []
+  const writer = openWriter({ host: 'headless', fs: nodeMetricsFs, now: () => AT, randomId: () => '0123abcd' })
+
+  try {
+    const ctxWithCommands = <C>(commands: C) => ({
+      get: (id: string) => services.get(id),
+      provide: (id: string, value: unknown) => {
+        services.set(id, value)
+        return () => { services.delete(id) }
+      },
+      commands,
+    })
+
+    // 1. Conflicting commands.register never throws out of apply(), warns, and marks row degraded.
+    const conflictCtx = ctxWithCommands({
+      register: (def: { name: string }) => {
+        throw new Error(`duplicate command ${def.name}`)
+      },
+    })
+    const disposeConflict = applyReport(conflictCtx)
+    const health = services.get(healthServiceName('hourness')) as RowHealthView | undefined
+    assert.equal(health?.activation().state, 'degraded')
+    assert.match(health?.activation().reason ?? '', /注册失败/)
+    assert.equal(warnings.length, 2)
+    disposeConflict()
+
+    // 2. Clock rollback on /hourness emit clamps ms to 0 and passes writer with rejected === 0.
+    services.clear()
+    services.set(METRICS_SERVICE, {
+      emit: (event: QueuedEvent) => {
+        emitted.push(event)
+        writer.record(root, { ...event, v: 'spec' })
+      },
+    })
+    const okCtx = ctxWithCommands({
+      register: (def: { name: string, handler: (inv: unknown) => Promise<unknown> }) => {
+        registered.push(def)
+        return () => {}
+      },
+    })
+    const disposeOk = applyReport(okCtx as never, { now: () => new Date(times[Math.min(nowCount++, times.length - 1)]) })
+    const hournessCmd = registered.find(cmd => cmd.name === 'hourness')
+    assert.ok(hournessCmd !== undefined)
+    await hournessCmd.handler({ rawInput: '', agent: { id: 'main', session: { id: 's-main', header: { cwd: root } } } })
+    const reportEvent = emitted.find(event => event.k === 'report')
+    assert.ok(reportEvent !== undefined)
+    assert.equal((reportEvent.body as { ms: number }).ms, 0)
+    assert.match(reportEvent.k, METRICS_ID_PATTERN)
+    await writer.flush()
+    assert.equal(writer.status().get(root)?.rejected, 0)
+    await writer.close()
+    disposeOk()
+  }
+  finally {
+    console.warn = originalWarn
+    rmSync(base, { recursive: true, force: true })
   }
 })

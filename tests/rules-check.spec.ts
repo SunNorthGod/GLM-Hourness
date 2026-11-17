@@ -24,7 +24,7 @@ import { conditionPhrase, denialText } from '../src/rules/denial.ts'
 import { gateEvents } from '../src/rules/events.ts'
 import { HEARTBEAT_FRESH_MS, hostPeak, liveHeartbeats, type HostHeartbeat } from '../src/rules/heartbeat.ts'
 import { judge, judgeInput } from '../src/rules/judge.ts'
-import type { RulesMetricEvent } from '../src/rules/metrics.ts'
+import type { RulesCheckEvent, RulesMetricEvent } from '../src/rules/metrics.ts'
 import { repoJson, type RepoRules } from '../src/rules/model.ts'
 import { showText } from '../src/rules/show.ts'
 import { GLM_MODEL, ruleOf, scriptRef } from './rules-fixtures.ts'
@@ -82,7 +82,12 @@ async function run(project: ClockedProject, call: { readonly tool: string, reado
 }
 
 /** Signals as a caller of JavaScript may give them: any name, any value; `checkCall` says which are wrong. */
-const signalsOf = (values: Record<string, unknown>): CheckOptions['signals'] => values
+const signalsOf = (values: Record<string, unknown>): NonNullable<CheckOptions['signals']> => values
+
+function checkEvent(event: RulesMetricEvent | undefined): RulesCheckEvent {
+  assert.ok(event?.event === 'rules.check')
+  return event
+}
 
 async function usageError(promise: Promise<unknown>): Promise<string> {
   const error: unknown = await promise.then(() => undefined, (caught: unknown) => caught)
@@ -363,7 +368,7 @@ clockedTest('glm-peak true inside all says until when, beside the other items as
   assert.ok((await project.board.apply('human', { op: 'signal-manual', name: 'code-freeze', value: true })).ok)
   const { result } = await run(project, DEPLOY, { signals: { 'glm-peak': true }, peakUntil: PEAK_UNTIL })
   assert.equal(result.exitCode, 5)
-  assert.ok((result.text ?? '').includes(`defers it while (glm-peak is true until ${localHm(PEAK_UNTIL)}) and (code-freeze is on).`), result.text)
+  assert.ok((result.text ?? '').includes(`defers it while (glm-peak is true until ${localHm(PEAK_UNTIL)}) and (code-freeze is on).`), result.text ?? '')
 }, { start: START })
 
 clockedTest('when glm-peak cannot be read the words have no time in them', async (project) => {
@@ -465,7 +470,7 @@ clockedTest('a level a person chose says when, and the stop level names its own 
   const { result } = await run(project, DEPLOY, { signals: { 'glm-peak': true }, glmSpend: 'necessary' })
   assert.equal(result.exitCode, 5)
   assert.equal(result.peakMode, 'stop')
-  assert.ok((result.text ?? '').includes(`Peak mode set by the human at ${localMinute(at)}: stop.`), result.text)
+  assert.ok((result.text ?? '').includes(`Peak mode set by the human at ${localMinute(at)}: stop.`), result.text ?? '')
   assert.ok((result.text ?? '').includes('builtin:glm-peak-stop-scripts'))
   assert.ok((result.text ?? '').includes('defers scripts that report GLM spending until peak ends.'))
   const subagent = await run(project, DEPLOY, { signals: { 'glm-peak': true }, role: 'subagent', model: GLM_MODEL })
@@ -590,8 +595,9 @@ clockedTest('every judgement sends exactly one rules.check event, with no comman
   await rm(join(project.paths.runtimeDir, 'hosts'), { recursive: true, force: true })
   const blind = await run(project, DEPLOY)
   assert.equal(blind.events.length, 1)
-  assert.deepEqual(blind.events[0]?.unknownSignals, ['glm-peak'])
-  assert.equal(blind.events[0]?.glmPeakSource, 'none')
+  const blindEvent = checkEvent(blind.events[0])
+  assert.deepEqual(blindEvent.unknownSignals, ['glm-peak'])
+  assert.equal(blindEvent.glmPeakSource, 'none')
 }, { start: START })
 
 clockedTest('a metrics exit that throws changes neither the verdict nor the text, and writes nothing', async (project) => {
@@ -776,9 +782,10 @@ clockedTest('the command line is the caller \'cli\' and sends the event; the lib
   assert.equal(done.exitCode, 5)
   assert.equal(done.stderr, '')
   assert.equal(events.length, 1)
-  assert.deepEqual([events[0]?.caller, events[0]?.effect, events[0]?.exitCode, events[0]?.waitedMs, events[0]?.glmPeakSource], ['cli', 'queue', 5, 1200, 'caller'])
+  const cliEvent = checkEvent(events[0])
+  assert.deepEqual([cliEvent.caller, cliEvent.effect, cliEvent.exitCode, cliEvent.waitedMs, cliEvent.glmPeakSource], ['cli', 'queue', 5, 1200, 'caller'])
   const library = await run(project, DEPLOY, { signals: { 'glm-peak': true } })
-  assert.equal(library.events[0]?.caller, 'library')
+  assert.equal(checkEvent(library.events[0]).caller, 'library')
 }, { start: START })
 
 clockedTest('a project that cannot be read is exit 1 on the command line, not a usage error', async (project) => {

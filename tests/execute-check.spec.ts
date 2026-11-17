@@ -132,6 +132,14 @@ async function taskComments(repo: TestRepo): Promise<string[]> {
 const checkEvents = (metrics: readonly MetricEvent[]): Extract<MetricEvent, { event: 'execute.check' }>[] =>
   metrics.flatMap(event => event.event === 'execute.check' ? [event] : [])
 
+async function untilAsync(check: () => Promise<boolean>, what: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (await check()) return
+    await new Promise(resolve => { setTimeout(resolve, 20) })
+  }
+  throw new Error(`timed out: ${what}`)
+}
+
 function trunkEvent(project: string, to: string, tasks = ''): LoopEventRecord {
   const at = new Date().toISOString()
   return { id: 'ev-0000000000000001', event: 'hourness.trunk-advanced', at, project, key: `trunk-advanced:${to}:${at}`, payload: { from: '', to, tasks, files: [], truncated: false }, merged: [] }
@@ -196,7 +204,7 @@ test('a passing check writes result.json and a verified checks.jsonl line, tells
     assert.equal(notice?.source.kind, 'glm-hourness-execute')
     assert.match(textOf(notice), new RegExp(`^${commit.slice(0, 12)} passed the merge checks \\(3 commands\\)\\. Fast-forward main with \`git merge --ff-only ${commit}\` in the main checkout\\.$`))
     const events = checkEvents(r.metrics)
-    assert.deepEqual(events.map(event => [event.kind, event.passed, event.commit, event.tasks]), [['commands', true, commit, ['task-1']]])
+    assert.deepEqual(events.map(event => [event.kind, event.ok, event.commit, event.task]), [['commands', true, commit, 'task-1']])
     assert.ok(r.reports.some(reason => reason.startsWith('检查以同步方式运行')), 'without the backend the check ran inside the call, and the row health says so')
 
     const again = await r.call(commit)
@@ -296,13 +304,13 @@ test('a `changed` line runs on the files the change still holds and fails only o
     // a change that touches only the clean file: the old warning of src/a.js is not in the run, the gate passes
     const clean = r.repo.commit({ 'src/b.js': 'clean\ntouched\n' }, 'touch the clean file only')
     await r.call(clean)
-    await until(() => (async () => (await readChecks(r.execDir)).length === 1)(), 'the first check record')
+    await untilAsync(async () => (await readChecks(r.execDir)).length === 1, 'the first check record')
     assert.deepEqual((await readChecks(r.execDir)).map(record => record.passed), [true])
     assert.match(textOf(r.sent.at(-1)), /passed the merge checks/)
     // a change that adds a new STALE line: the fresh finding fails the gate
     const dirty = r.repo.commit({ 'src/a.js': 'kept\nSTALE old warning\nSTALE new warning\n' }, 'add a new stale warning')
     await r.call(dirty)
-    await until(() => (async () => (await readChecks(r.execDir)).length === 2)(), 'the second check record')
+    await untilAsync(async () => (await readChecks(r.execDir)).length === 2, 'the second check record')
     assert.deepEqual((await readChecks(r.execDir)).map(record => record.passed), [true, false])
     assert.match(textOf(r.sent.at(-1)), /failed the merge checks/)
     assert.match(textOf(r.sent.at(-1)), /exit 1/)
@@ -316,7 +324,7 @@ test('a `changed` line runs on the files the change still holds and fails only o
     bare.repo.commit({ 'scripts/counter.js': COUNTER, 'src/a.js': 'kept\nSTALE old warning\n', 'src/b.js': 'clean\n' }, 'base')
     const touched = bare.repo.commit({ 'src/b.js': 'clean\ntouched\n' }, 'touch')
     await bare.call(touched)
-    await until(() => (async () => (await readChecks(bare.execDir)).length === 1)(), 'the record of the baseline-less run')
+    await untilAsync(async () => (await readChecks(bare.execDir)).length === 1, 'the record of the baseline-less run')
     assert.deepEqual((await readChecks(bare.execDir)).map(record => record.passed), [false])
     assert.match(textOf(bare.sent.at(-1)), /no baseline on its tool node/)
   }
@@ -381,7 +389,7 @@ test('setup runs in a new gate worktree and again when a watched file changes; a
     await r.call(r.repo.commitOn('hz/s', { 'src/a.js': '1\n' }, 'one'))
     await r.call(r.repo.commitOn('hz/s', { 'src/a.js': '2\n' }, 'two'))
     await r.call(r.repo.commitOn('hz/s', { 'package.json': '{}\n' }, 'three'))
-    assert.deepEqual(checkEvents(r.metrics).map(event => [event.passed, event.setup]), [[true, true], [true, false], [true, true]])
+    assert.deepEqual(checkEvents(r.metrics).map(event => [event.ok, event.setup]), [[true, true], [true, false], [true, true]])
 
     const bad = r.repo.commitOn('hz/s', { 'package.json': '{"name":"x"}\n', 'BADSETUP': 'x\n' }, `four\n\n${TRAILER}`)
     await r.call(bad)
@@ -594,13 +602,13 @@ test('a registerProvider that throws leaves the checks running inside their call
   const runtime = fakeRuntime({ natives: [] })
   const registered: ToolDefinitionLike[] = []
   const tools = { get: (name: string) => registered.find(tool => tool.name === name), register: (definition: ToolDefinitionLike) => { registered.push(definition); return () => {} } }
-  runtime.ctx.provide('tools', tools)
+  runtime.ctx.provide?.('tools', tools)
   const subagents = { registerProvider: () => { throw new Error('DUPLICATE_PROVIDER') } } as unknown as InjectableServices['subagents']
-  ;(runtime.ctx as { inject?: unknown }).inject = fakeInjector({ tools: runtime.ctx.get('tools') as InjectableServices['tools'], subagents }, runtime.ctx).inject
-  const dispose = executeApply(runtime.ctx, {})
+  const inject = fakeInjector({ tools: runtime.ctx.get?.('tools') as InjectableServices['tools'], subagents }, runtime.ctx).inject
+  const dispose = executeApply({ ...runtime.ctx, inject }, {})
   try {
     assert.ok(registered.some(tool => tool.name === 'check_commit'))
-    const view = runtime.ctx.get('glmHournessHealth/execute') as { activation(): { state: string, reason: string } }
+    const view = runtime.ctx.get?.('glmHournessHealth/execute') as { activation(): { state: string, reason: string } }
     assert.equal(view.activation().state, 'degraded')
     assert.match(view.activation().reason, /检查以同步方式运行：检查后端 hourness-gate 没注册上（DUPLICATE_PROVIDER）/)
   }

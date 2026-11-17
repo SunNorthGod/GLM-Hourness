@@ -73,11 +73,11 @@ test('a file this host has no state for is not a change, and a change counts onc
   world.states.set('/p/a.json', { size: 10, mtimeMs: AT - 1000 })
   const watched = watchPaths(['/p/a.json'], (path, state) => { changes.push({ path, state }) }, world.deps)
   await watched.beat()
-  assert.deepEqual(changes, [], 'what is there at the start is not a change')
+  assert.equal(changes.length, 0, 'what is there at the start is not a change')
   assert.deepEqual([...watched.states()], [['/p/a.json', { size: 10, mtimeMs: AT - 1000 }]])
   world.states.set('/p/a.json', { size: 20, mtimeMs: AT + 1 })
   await watched.beat()
-  assert.deepEqual(changes, [], 'a file that just changed is not still yet')
+  assert.equal(changes.length, 0, 'a file that just changed is not still yet')
   world.fake.move(QUIET_MS)
   await watched.beat()
   assert.equal(changes.length, 1)
@@ -155,7 +155,7 @@ test('the real watch and the real reading of a file agree with the same judgment
     const changes: FileState[] = []
     const watched = watchPaths([file], (_path, state) => { changes.push(state) }, { now: () => clock, delay: () => () => {}, quietMs: 0 })
     await watched.beat()
-    assert.deepEqual(changes, [], 'the file as it is at the start is not a change')
+    assert.equal(changes.length, 0, 'the file as it is at the start is not a change')
     await writeFile(file, 'one and two')
     clock += QUIET_MS
     // The first beat sees it changed, the next one sees it still: with no wait asked for, that is the two readings.

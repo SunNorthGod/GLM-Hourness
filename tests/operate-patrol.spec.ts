@@ -14,7 +14,8 @@
  * lessons row's `hygiene` and its absence, and the `operate.patrol` metric.
  */
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 import { hournessReportTool, type OperateDeps } from '../src/operate/index.ts'
@@ -23,10 +24,10 @@ import { OPERATE_ENTRIES } from '../src/operate/entries.ts'
 import { validateEntry } from '../src/loops/model.ts'
 import { plainWordsIn } from '../src/graph/plain-question.ts'
 import { renderDispatchComment } from '../src/execute/attempts.ts'
-import { createGit } from '../src/execute/git.ts'
+import { createGit, type Git } from '../src/execute/git.ts'
 import { openEngine } from '../src/graph/engine.ts'
 import type { ServiceLookup, ToolExecutionContext } from '../src/shared/dsh-min.ts'
-import { GOAL, TASK, gateNode, stageNodes, testRepo, type TestRepo } from './execute-repo.ts'
+import { GOAL, TASK, floorNode, gateNode, stageNodes, testRepo, type TestRepo } from './execute-repo.ts'
 
 const NOW = Date.parse('2026-11-15T02:30:00+08:00')
 const DAY_MS = 86_400_000
@@ -46,6 +47,7 @@ function patrolHost(repo: TestRepo, over: {
   readonly execute?: { runAction: (action: string, record: unknown) => Promise<{ outcome: string, reason?: string, tell?: string }>, reconcileTrunk?: () => Promise<number> }
   readonly lessons?: { hygiene: (session: unknown, now: string) => Promise<readonly { kind: string, id?: string, detail: string }[]> }
   readonly nowMs?: number
+  readonly git?: Git
 } = {}): PatrolHost {
   const emitted: { event: unknown, where: unknown }[] = []
   const runs: { action: string, record: unknown }[] = []
@@ -67,7 +69,7 @@ function patrolHost(repo: TestRepo, over: {
     lookup,
     isMain: () => true,
     graphDirOf: () => repo.graphDir,
-    git: createGit(),
+    git: over.git ?? createGit(),
     runLine: (command) => { commands.push(command); return Promise.resolve({ exit: 3, ms: 1 }) },
     now: () => nowMs,
   }
@@ -129,7 +131,7 @@ test('the patrol entry is the loop board\'s 02:30 default, valid against the boa
   assert.equal(patrol.action.kind, 'tell-main')
   assert.ok(patrol.action.kind === 'tell-main' && patrol.action.wake === true)
   assert.ok(patrol.action.kind === 'tell-main' && patrol.action.text.startsWith('Scheduled patrol (hourness). Call hourness_report with kind "patrol".'))
-  assert.deepEqual(plainWordsIn(patrol.why), [])
+  assert.deepEqual(plainWordsIn(patrol.why ?? ''), [])
   for (const entry of OPERATE_ENTRIES) assert.deepEqual(validateEntry(entry, 'plugin', { table: new Map(), now: new Date(NOW) }), [])
 })
 
@@ -343,6 +345,146 @@ test('the patrol kind answers only the main agent, like the other kinds', async 
     const notMain: OperateDeps = { ...host.deps, isMain: () => false }
     const exec = { agent: { id: 'worker-1', session: { id: 's2', header: { cwd: repo.root } } } } as unknown as ToolExecutionContext
     await assert.rejects(() => Promise.resolve(hournessReportTool(notMain).execute({ kind: 'patrol' }, exec)), /forbidden/)
+  }
+  finally {
+    repo.dispose()
+  }
+})
+
+function spyGit(): { readonly git: Git, readonly betweenCalls: Array<readonly [string, string]> } {
+  const realGit = createGit()
+  const betweenCalls: Array<readonly [string, string]> = []
+  const git: Git = {
+    ...realGit,
+    commitsBetween: (cwd, from, to) => {
+      betweenCalls.push([from, to])
+      return realGit.commitsBetween(cwd, from, to)
+    },
+  }
+  return { git, betweenCalls }
+}
+
+test('patrol excludes rollback advances and clears earlier ok: false advances covered by a later verified forward advance', async () => {
+  const repo = testRepo()
+  try {
+    await stageNodes(repo.graphDir, [GOAL, TASK])
+    const base = repo.git('rev-parse', 'main')
+    const c1 = repo.commit({ 'src/a.ts': 'a\n' }, 'first')
+    const c2 = repo.commit({ 'src/b.ts': 'b\n' }, 'second')
+    const execDir = join(repo.root, '.llm', 'execute')
+    mkdirSync(execDir, { recursive: true })
+    const atIso = new Date(NOW - 3_600_000).toISOString()
+    const writeAdvances = (records: readonly Record<string, unknown>[]): void => {
+      writeFileSync(join(execDir, 'advances.jsonl'), `${records.map(record => JSON.stringify(record)).join('\n')}\n`)
+    }
+    // 1) rollback: true is excluded from trunk-unchecked-advance
+    // 2) c0 -> c1 (ok: false) followed by c1 -> c2 (ok: true, check: c2) is covered via isAncestor
+    writeAdvances([
+      { ref: 'local', from: base, to: c1, ok: false, missing: 'check', at: atIso },
+      { ref: 'local', from: c1, to: base, ok: true, check: null, tasks: [], at: atIso, rollback: true },
+      { ref: 'local', from: c1, to: c2, ok: true, check: c2, tasks: [], at: atIso },
+    ])
+    const { git, betweenCalls } = spyGit()
+    const text = await runPatrol(patrolHost(repo, { git }))
+    assert.ok(!text.includes('没检查的主干前进还没补检查'), text)
+    assert.ok(!betweenCalls.some(([from, to]) => from === c1 && to === base), 'rollback does not call commitsBetween')
+
+    // Rollback-then-reapply: base -> c1 (ok: false), c1 -> base (rollback), base -> c3 (verified forward)
+    repo.git('reset', '--hard', base)
+    const c3 = repo.commit({ 'src/c.ts': 'c\n' }, 'reapply')
+    writeAdvances([
+      { ref: 'local', from: base, to: c1, ok: false, missing: 'check', at: atIso },
+      { ref: 'local', from: c1, to: base, ok: true, check: null, tasks: [], at: atIso, rollback: true },
+      { ref: 'local', from: base, to: c3, ok: true, check: c3, tasks: [], at: atIso },
+    ])
+    const reapplied = await runPatrol(patrolHost(repo))
+    assert.ok(!reapplied.includes('没检查的主干前进还没补检查'), reapplied)
+
+    // Still-uncovered ok: false advance is flagged
+    writeAdvances([{ ref: 'local', from: base, to: c3, ok: false, missing: 'check', at: atIso }])
+    const uncovered = await runPatrol(patrolHost(repo))
+    assert.ok(uncovered.includes('1 次没检查的主干前进还没补检查'), uncovered)
+  }
+  finally {
+    repo.dispose()
+  }
+})
+
+test('patrol avoids commitsBetween on diverged/rebased advance pairs', async () => {
+  const repo = testRepo()
+  try {
+    await stageNodes(repo.graphDir, [GOAL, TASK])
+    const base = repo.git('rev-parse', 'main')
+    const diverged = repo.commitOn('side', { 'src/side.ts': 'side\n' }, 'side commit')
+    const rebased = repo.commit({ 'src/main.ts': 'main\n' }, 'rebased commit')
+    const execDir = join(repo.root, '.llm', 'execute')
+    mkdirSync(execDir, { recursive: true })
+    writeFileSync(join(execDir, 'advances.jsonl'), `${JSON.stringify({ ref: 'local', from: diverged, to: rebased, ok: true, check: rebased, at: new Date(NOW - 3_600_000).toISOString() })}\n`)
+    const { git, betweenCalls } = spyGit()
+    const text = await runPatrol(patrolHost(repo, { git }))
+    assert.ok(!betweenCalls.some(([from, to]) => from === diverged && to === rebased), 'diverged pair never calls commitsBetween')
+    assert.ok(text.includes(`近 7 天主干上 1 个提交不在任何前进与拉取记录里（系统外的改动）：${base.slice(0, 12)}`), text)
+  }
+  finally {
+    repo.dispose()
+  }
+})
+
+test('patrol checks root commits without a parent against norm-review-floor', async () => {
+  const repo = testRepo()
+  try {
+    await stageNodes(repo.graphDir, [GOAL, TASK, floorNode(['受保护文件 `files README.md`'])])
+    const seed = repo.git('rev-parse', 'main')
+    const text = await runPatrol(patrolHost(repo))
+    assert.ok(text.includes(`碰到必须全审改动的主干提交没有全审看过：${seed.slice(0, 12)}`), text)
+  }
+  finally {
+    repo.dispose()
+  }
+})
+
+test('patrol keeps all 7-day commits when more than 200 commits land in 7 days', async () => {
+  const repo = testRepo()
+  try {
+    await stageNodes(repo.graphDir, [GOAL, TASK])
+    const blob = repo.git('rev-parse', 'HEAD:README.md')
+    const commitSec = Math.floor((NOW - 3_600_000) / 1000)
+    const lines: string[] = []
+    for (let index = 1; index <= 205; index++) {
+      const msg = `bulk commit ${index}`
+      lines.push(
+        `commit refs/heads/main`,
+        `committer Test <test@example.invalid> ${commitSec + index} +0800`,
+        `data ${Buffer.byteLength(msg)}\n${msg}`,
+        index === 1 ? `from refs/heads/main^0` : '',
+        `M 100644 ${blob} README.md`,
+      )
+    }
+    execFileSync('git', ['fast-import', '--quiet'], { cwd: repo.root, input: lines.filter(Boolean).join('\n') + '\n', encoding: 'utf8' })
+    repo.git('reset', '--hard', 'refs/heads/main', '--quiet')
+    const text = await runPatrol(patrolHost(repo))
+    assert.ok(text.includes('近 7 天主干上 206 个提交不在任何前进与拉取记录里'), text)
+  }
+  finally {
+    repo.dispose()
+  }
+})
+
+test('patrol falls back to main on detached HEAD and uses deps.now for background patrol records', async () => {
+  const repo = testRepo()
+  try {
+    await stageNodes(repo.graphDir, [GOAL, TASK, gateNode(['`push`', '`patrol $ node -e "process.exit(3)"`'])])
+    repo.withRemote()
+    repo.commit({ 'src/feed.xml': '<rss/>\n' }, 'ahead on main')
+    repo.git('checkout', '--detach', 'HEAD', '--quiet')
+    const host = patrolHost(repo, { execute: { runAction: () => Promise.resolve({ outcome: 'done' }) } })
+    const text = await runPatrol(host)
+    assert.ok(text.includes('主干领先上游 1 个提交，还没推'), text)
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const expectedAt = new Date(NOW).toISOString()
+    const lines = journalOf(repo)
+    assert.equal(lines.find(line => line.kind === 'trunk-check')?.at, expectedAt)
+    assert.equal(lines.find(line => line.kind === 'patrol-command')?.at, expectedAt)
   }
   finally {
     repo.dispose()

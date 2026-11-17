@@ -20,6 +20,11 @@ import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
 import { worktreesOf } from '../src/data/project-root.ts'
 import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
+import { installExecuteRules, type CommandRecordLine } from '../src/guard/execute-rules.ts'
+import { installRuleGate } from '../src/guard/gate.ts'
+import { realSnapshotEnvironment } from '../src/guard/git-snapshot.ts'
+import type { GuardRecord } from '../src/guard/records.ts'
+import { NATIVE_FACE, type GuardRule } from '../src/guard/rules.ts'
 import { checkCall } from '../src/rules/check.ts'
 import { RULES_FILES_ONLY } from '../src/rules/gate.ts'
 import { repoJson, type RepoRules } from '../src/rules/model.ts'
@@ -718,3 +723,112 @@ rowTest('a record judgement hands rule-record, and the files-only block names fi
   const byRule = new Map(judgedBodies().map(body => [body.rule, body]))
   assert.deepEqual([byRule.get('r-note-npm')?.how, byRule.get('files-only')?.how, byRule.get('files-only')?.tool], ['rule-record', 'block', 'write'])
 }, { rules: file([RECORD_NPM]), services: JUDGED_SERVICES })
+
+rowTest('rules.judged shapes tool via toMetricsId, filters negative integers from signals into unread, and caps map keys at 32', async ({ exec }) => {
+  judged.length = 0
+  const result = await exec('weird tool name', { x: 1 })
+  assert.equal(result.isError, true)
+  const events = judgedBodies()
+  assert.equal(events.length, 1)
+  const [body] = events
+  assert.equal(body.tool, 'other')
+  assert.deepEqual(body.signals, { 'pos-sig': 5 })
+  assert.ok(body.unread?.includes('neg-sig'), `expected neg-sig in unread: ${JSON.stringify(body.unread)}`)
+}, {
+  natives: ['weird tool name'],
+  rules: file(
+    [ruleOf({
+      id: 'r-metrics-sanitize',
+      title: 'Sanitize',
+      filter: { tool: { in: ['weird tool name'] } },
+      condition: { all: [{ signal: 'neg-sig', below: 0 }, { signal: 'pos-sig', above: 0 }] },
+    })],
+    {
+      signals: {
+        'neg-sig': { type: { kind: 'number' }, manual: { value: -3, at: '2026-10-28T06:00:00.000Z' } },
+        'pos-sig': { type: { kind: 'number' }, manual: { value: 5, at: '2026-10-28T06:00:00.000Z' } },
+      },
+    },
+  ),
+  services: JUDGED_SERVICES,
+})
+
+for (const order of ['execute-before-rules', 'rules-before-execute'] as const) {
+  let snapshotCalls = 0
+  const commandLines: CommandRecordLine[] = []
+  const installExec = (root: string, ctx: Parameters<typeof installExecuteRules>[0]) => {
+    installExecuteRules(ctx, {
+      lookup: ctx as never,
+      register: agentId => agentId === 'agent-1'
+        ? { childId: 'agent-1', role: 'worker', node: 'task-1', attempt: 1, worktree: root, graphDir: join(root, 'docs', 'graph'), provider: 'probe', model: 'm', why: 'w', plan: 'skipped', pins: '' }
+        : undefined,
+      owning: () => undefined,
+      live: () => false,
+      graphOf: () => undefined,
+      journal: () => {},
+      report: () => {},
+      effectiveDir: session => session.header.cwd,
+      record: (_task, _childId, line) => { commandLines.push(line); return Promise.resolve(true) },
+      snapshots: {
+        ...realSnapshotEnvironment,
+        run: (_cwd, args) => {
+          snapshotCalls += 1
+          if (args.includes('--git-common-dir')) return Promise.resolve({ ok: true, code: 0, stdout: '.git\n', stderr: '' })
+          if (args.includes('--show-toplevel')) return Promise.resolve({ ok: true, code: 0, stdout: `${root}\n`, stderr: '' })
+          return Promise.resolve({ ok: true, code: 0, stdout: '', stderr: '' })
+        },
+        now: () => new Date('2026-10-28T07:00:00.000Z'),
+        randomHex: () => 'abcd1234',
+      },
+    })
+  }
+  rowTest(`H2 execute-rules + rules (${order}): blocking git reset --hard skips snapshot and command record; allowing runs them`, async ({ root, runtime, exec }) => {
+    snapshotCalls = 0
+    commandLines.length = 0
+    if (order === 'rules-before-execute') installExec(root, runtime.ctx)
+    const blocked = await exec('pwsh', shell('git reset --hard --no-block-nope rules-probe-blocked'))
+    assert.equal(blocked.isError, true)
+    assert.equal(snapshotCalls, 0, `${order}: takeSnapshot must not run when rules blocks`)
+    assert.equal(commandLines.length, 0, `${order}: command record must not write allowed when rules blocks`)
+    const allowed = await exec('pwsh', shell('git reset --hard'))
+    assert.equal(allowed.isError, false, `${order}: unexpected refusal: ${textOf(allowed)}`)
+    assert.ok(snapshotCalls > 0, `${order}: takeSnapshot must run when rules allows`)
+    assert.deepEqual(commandLines.map(line => line.verdict), ['allowed'])
+  }, {
+    rules: file([BLOCK_PROBE]),
+    setup: order === 'execute-before-rules'
+      ? ({ root, runtime }) => { installExec(root, runtime.ctx); return Promise.resolve() }
+      : () => Promise.resolve(),
+  })
+}
+
+rowTest('H3 guard + rules: guard denial settles through guard\'s own journal even when rules observes the next call', async ({ runtime }) => {
+  const guardRecords: GuardRecord[] = []
+  const guardRule: GuardRule = {
+    id: 'guard-no-edit',
+    detect: call => call.name === 'edit'
+      ? { kind: 'deny', rule: 'guard-no-edit', correction: { fact: 'no edit', violation: 'no', rightPath: 'use write', exception: 'none' } }
+      : { kind: 'allow' },
+  }
+  installRuleGate(runtime.ctx, {
+    row: 'guard',
+    prepend: false,
+    rules: () => ({ rules: [guardRule], face: NATIVE_FACE, origin: { scope: 'dialect' } }),
+    journal: (record) => { guardRecords.push(record); return Promise.resolve('written') },
+  })
+  const callTool = async (id: string, name: string, args: unknown) => {
+    runtime.progress.step += 1
+    const batch = await runtime.ctx.tools.execute({
+      calls: [{ id, name, arguments: args }],
+      agent: runtime.agent,
+      signal: new AbortController().signal,
+      log: { turn: runtime.progress.turn, step: runtime.progress.step },
+    })
+    return batch.results[0].result
+  }
+  assert.equal((await callTool('h3-rules-call-1', 'edit', { file_path: 'a.ts' })).isError, true)
+  assert.equal((await callTool('h3-rules-call-2', 'pwsh', shell('echo ok'))).isError, false)
+  const followups = guardRecords.filter(record => 'kind' in record && record.kind === 'followup')
+  assert.equal(followups.length, 1, `guardRecords=${JSON.stringify(guardRecords)}`)
+  assert.equal(followups[0]?.rule, 'guard-no-edit')
+}, { natives: NATIVES, rules: file([]) })

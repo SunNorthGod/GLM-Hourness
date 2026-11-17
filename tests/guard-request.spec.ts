@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import type { JsonValue } from '../src/shared/json.ts'
 import { codePointCount } from '../src/graph/proposal.ts'
 import { proposalLineRefusal } from '../src/graph/plan-text.ts'
-import { GRANT_TTL_MS, GrantBook, RefusalBook, REQUEST_TTL_MS, REFUSAL_LIMIT, REQUEST_EXAMPLE, normalizeWords, signatureOf } from '../src/guard/request.ts'
+import { GRANT_TTL_MS, GrantBook, RefusalBook, REQUEST_TTL_MS, REFUSAL_LIMIT, REQUEST_EXAMPLE, normalizeWords, signatureOf, type GrantEntry } from '../src/guard/request.ts'
 import { QUESTION, REQUEST_ASK_MESSAGE, REQUESTS_SERVICE, REQUEST_SOURCE, createRequestDesk, requestsService } from '../src/guard/request-service.ts'
 import type { GrantPreparation, RequestDesk, RequestDeskDeps, RequestDeskFs, RequestExceptionResult, RequestsService, StepInput } from '../src/guard/request-service.ts'
 import { morningReport } from '../src/workflow/morning-report.ts'
@@ -87,7 +87,7 @@ function deskOf(): {
 function agentOf(messages: readonly DerivedMessage[], options: { readonly id?: string, readonly session?: string, readonly origin?: 'subagent' } = {}): AgentLike {
   const name = options.session ?? 'session-1'
   const header = { id: name, ...(options.origin === undefined ? {} : { origin: options.origin }) }
-  return { id: options.id ?? 'root-1', session: { id: name, header, deriveMessages: () => messages, requestHeader: () => undefined } }
+  return { id: options.id ?? 'root-1', ctx: {} as never, session: { id: name, header, deriveMessages: () => messages, requestHeader: () => undefined } }
 }
 
 /** One standing scenario over an existing three-byte todo.md: the denial registered, the filing agent ready. */
@@ -125,8 +125,8 @@ function denyOf(environment: ReturnType<typeof deskOf>, target: string, args: Re
 
 /** The requestException result narrowed to the ask shape. */
 function askOf(result: RequestExceptionResult): Extract<RequestExceptionResult, { outcome: 'ask' }> {
-  assert.equal(result.outcome, 'ask', JSON.stringify(result))
-  return result as Extract<RequestExceptionResult, { outcome: 'ask' }>
+  if (!('outcome' in result) || result.outcome !== 'ask') assert.fail(JSON.stringify(result))
+  return result
 }
 
 const errorOf = (result: RequestExceptionResult): { code: string, message: string, hint: string } => {
@@ -183,8 +183,8 @@ test('request_exception: a standing grant answers approved at once with the tool
   // The grant stands: the second request_exception answers approved without asking.
   environment.desk.books.grants.add({ ref, rule: 'workspace-containment', signature, root: agent.id, facts: { exists: true, size: 3, mtimeMs: 1 }, decidedAt: 0, expiresAt: Date.parse('2026-11-04T10:00:00Z'), words: '可以' })
   const standing = await environment.desk.requestException({ ref, purpose: 'p', reversibility: 'r', alternatives: 'a' }, agent, environment.root)
-  assert.equal(standing.outcome, 'approved')
-  const approved = standing as Extract<RequestExceptionResult, { outcome: 'approved' }>
+  if (!('outcome' in standing) || standing.outcome !== 'approved') assert.fail(JSON.stringify(standing))
+  const approved = standing
   assert.deepEqual([approved.tool, approved.ref], ['write', ref])
   assert.deepEqual(approved.arguments, { file_path: target, content: 'hello' })
   assert.equal(approved.expires, '2026-11-04T10:00:00.000Z')
@@ -409,7 +409,7 @@ test('prepareGrant: the facts re-check voids a moved target, an unchanged target
   const target = join(environment.root, 'outside', 'todo.md')
   environment.files.set(target.replaceAll('\\', '/').toLowerCase(), { size: 2140, mtimeMs: 1000, content: 'a'.repeat(2140) })
   const { ref, signature } = denyOf(environment, target)
-  const grant = { ref, rule: 'workspace-containment', signature, root: agent.id, facts: { exists: true, size: 2140, mtimeMs: 1000 }, decidedAt: 0, expiresAt: Date.now() + GRANT_TTL_MS, words: '可以' }
+  const grant: GrantEntry = { ref, rule: 'workspace-containment', signature, root: agent.id, facts: { exists: true, size: 2140, mtimeMs: 1000 }, decidedAt: 0, expiresAt: Date.now() + GRANT_TTL_MS, words: '可以' }
   environment.desk.books.grants.add(grant)
   const call = { name: 'write', arguments: { file_path: target, content: 'hello' } }
   const ready = await environment.desk.prepareGrant(call, environment.root, grant, environment.root)
@@ -523,7 +523,7 @@ test('the F20 example passes the parameter checks and renders a qualified plan t
 // ------------------------------------------------------------- §5.8: the report
 
 test('the morning report counts the period\'s filings by outcome, with the grants beside them (§5.8)', () => {
-  const request = (ref: string, outcome: RequestRecord['outcome']): RequestRecord => ({ kind: 'request', at: '2026-11-04T06:00:00Z', rule: 'workspace-containment', tool: 'write', ref, outcome })
+  const request = (ref: string, outcome: RequestRecord['outcome']): RequestRecord => ({ kind: 'request', at: '2026-11-04T06:00:00Z', rule: 'workspace-containment', tool: 'write', scope: 'dialect', ref, outcome })
   const violations: Array<Record<string, unknown>> = [
     { ...request('r-1a2b3c4d', 'asked'), target: 'C:/x' },
     { ...request('r-1a2b3c4d', 'approved'), words: '可以' },

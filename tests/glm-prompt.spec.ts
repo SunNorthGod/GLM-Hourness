@@ -244,7 +244,7 @@ for (const [label, service, said] of [
     assert.equal(warnings.length, 1, warnings.join(' | '))
     assert.ok(warnings[0]?.includes(said), warnings[0])
     assert.equal(promptHealth(rt)?.state, 'degraded')
-    assert.ok(promptHealth(rt)?.reason.includes('汇报细度'), promptHealth(rt)?.reason)
+    assert.ok(promptHealth(rt)?.reason.includes('汇报细度'), promptHealth(rt)?.reason ?? '')
   })
 }
 

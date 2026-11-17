@@ -194,7 +194,7 @@ test('the Config schema fills the defaults the addendum names: name 「主 Agent
   assert.deepEqual(Config({}), { persona: { name: '主 Agent', text: '' } })
   assert.deepEqual(Config({ persona: { text: 'x' } }), { persona: { name: '主 Agent', text: 'x' } })
   assert.deepEqual(Config({ persona: PERSONA }), { persona: PERSONA })
-  assert.throws(() => Config({ persona: { text: 5 } }))
+  assert.throws(() => Config({ persona: { text: 5 as unknown as string } }))
   const persona = Config.dict?.persona
   assert.equal(persona?.dict?.text?.meta.role, 'textarea')
   assert.equal(persona?.dict?.name?.meta.role, undefined)

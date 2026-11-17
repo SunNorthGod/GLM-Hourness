@@ -64,9 +64,10 @@ const liveAgents = new WeakMap<FakeRuntime, Map<string, AgentLike>>()
 function liveAgentsOf(runtime: FakeRuntime): Map<string, AgentLike> {
   let live = liveAgents.get(runtime)
   if (live === undefined) {
-    live = new Map([[runtime.agent.id, runtime.agent]])
-    liveAgents.set(runtime, live)
-    runtime.services.set('agents', { get: (id: string) => live.get(id) })
+    const agents = new Map([[runtime.agent.id, runtime.agent]])
+    live = agents
+    liveAgents.set(runtime, agents)
+    runtime.services.set('agents', { get: (id: string) => agents.get(id) })
   }
   return live
 }

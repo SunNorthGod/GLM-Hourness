@@ -80,7 +80,7 @@ test('update_goal complete with gaps is denied with the gaps and the goal stays 
   assert.equal(denied.kind, 'deny')
   assert.equal(denied.reason, 'The completion gate keeps goal goal-1 open. What is missing:\n- the goal\'s acceptance review has not passed: dispatch_task goal-1 with a model and why')
   assert.equal(goalNow(rig).phase, 'active', 'the goal stays active')
-  assert.ok(rig.metrics.some(event => event.event === 'execute.completion-gate' && !event.passed && event.gaps === 1))
+  assert.ok(rig.metrics.some(event => event.event === 'execute.completion-gate' && !event.ok && event.gaps === 1))
   // The acceptance review passed on the trunk commit with the goal's pins.
   const graph = await rig.graph()
   const goal = graph.nodes.get('goal-1')
@@ -198,7 +198,7 @@ test('an active goal that is not armed is resumed, and the holder\'s first step 
   rig.live.disarm('main-1')
   await rig.step()
   assert.deepEqual([goalNow(rig).phase, goalNow(rig).activation], ['active', 'armed'])
-  assert.ok(rig.metrics.some(event => event.event === 'execute.goal' && event.op === 'resume' && event.reason === 'disarmed'))
+  assert.ok(rig.metrics.some(event => event.event === 'execute.goal' && event.op === 'resume' && event.resumeWhy === 'disarmed'))
 }))
 
 test('a goal the person cleared is not rebuilt; the line gives the objective to start again with', () => withRig(startedRig, async (rig) => {
@@ -264,7 +264,7 @@ test('the batch mark after a shown propose_to_human and after await_human, and t
   await rig.drive.batchMark({ name: 'propose_to_human', arguments: {}, agent: rig.agent(), callId: 'call-p1' }, proposed, next)
   assert.ok((await rig.comments('goal-1')).includes('批次 1 · 交给你 1 件 · 告知 agent 自己定的 1 件 · call-p1'))
   assert.equal(rig.drive.status('main-1').batchTell, 'Say in one line each, in this same reply, what you decided yourself since the last batch: question-a Feed path.')
-  assert.ok(rig.metrics.some(event => event.event === 'execute.tier' && event.tier === 1 && event.reported === 1 && event.batched === 1))
+  assert.ok(rig.metrics.some(event => event.event === 'execute.tier' && event.tier === 1 && event.told === 1 && event.handed === 1))
   // An error result and a result that is not a shown proposal are no batch.
   await rig.drive.batchMark({ name: 'propose_to_human', arguments: {}, agent: rig.agent(), callId: 'call-p2' }, { isError: true, content: [{ type: 'text', text: 'Error: no' }] }, next)
   await rig.drive.batchMark({ name: 'propose_to_human', arguments: {}, agent: rig.agent(), callId: 'call-p3' }, resultOf({ refused: true }), next)

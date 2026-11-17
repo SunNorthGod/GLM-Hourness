@@ -27,7 +27,7 @@ import { LOOPS_SERVICE, loopsService } from '../src/loops/service.ts'
 import { MAIN_AGENT_RULES, NO_WAIT_RULE } from '../src/guard/main-agent-rules.ts'
 import { CATALOG } from '../src/rules/builtin.ts'
 import { RULES_FILES_ONLY } from '../src/rules/gate.ts'
-import { apply as rulesApply, type RulesContext } from '../src/rules/index.ts'
+import { apply as rulesApply } from '../src/rules/index.ts'
 import { RULES_SERVICE, rulesBoardService } from '../src/rules/service.ts'
 import { DECLARATION_SECTION, WORKSPACE_RULES_TEXT } from '../src/guard/sections.ts'
 import { DIALECT_SERVICE, dialectNames, dialectService, toNativeTool, ZCODE_ALIAS_NATIVES, type DialectService } from '../src/shared/dialect.ts'
@@ -132,7 +132,7 @@ test('tool names: the rules row registers exactly the contract names, and the di
   assert.ok(DISPATCH_TOOL_NAMES.length > 0)
   for (const name of DISPATCH_TOOL_NAMES) assert.ok((DISPATCH_TOOLS as readonly string[]).includes(name), `${name} is not a dispatch tool the workflow row knows`)
   const rt = fakeRuntime({ natives: [] })
-  const stop = rulesApply({ ...rt.ctx, commands: { register: () => () => {} } } as unknown as RulesContext, {})
+  const stop = rulesApply({ ...rt.ctx, commands: { register: () => () => {} } }, {})
   assert.deepEqual(rt.scoped.map(tool => tool.name), [...RULES_TOOL_NAMES])
   void stop()
 })
@@ -207,8 +207,8 @@ test('loops service: absent reads as none without a word, a wrong shape reads as
 async function guardDeclaration(rules: unknown, loops?: HealthState): Promise<{ text: string, warnings: string[] }> {
   const rt = fakeRuntime({ route: GLM })
   if (rules !== undefined) rt.services.set(RULES_SERVICE, rules)
-  if (loops !== undefined) rt.services.set(healthServiceName('loops'), { row: 'loops', activation: () => ({ state: loops, reason: '循环板', at: new Date() }), session: () => undefined } satisfies RowHealthView)
-  guardApply(rt.ctx as never, { home: 'C:/ws/.llm', fs: { mkdir: () => Promise.resolve(undefined), appendFile: () => Promise.resolve() } })
+  if (loops !== undefined) rt.services.set(healthServiceName('loops'), { row: 'loops', activation: () => ({ state: loops, reason: '循环板', at: new Date().toISOString() }), session: () => undefined } satisfies RowHealthView)
+  guardApply(rt.ctx, { home: 'C:/ws/.llm', fs: { mkdir: () => Promise.resolve(undefined), appendFile: () => Promise.resolve() } })
   const { warnings } = await quietly(() => rt.create())
   const assembled = await quietly(() => rt.assemble(GLM))
   const section = assembled.value.sections.find(candidate => candidate.name === DECLARATION_SECTION)
@@ -260,9 +260,9 @@ test('guard catalog: each listed rule is the id of a rule object its row install
 
 test('guard catalog: the rows with rules install their pre-execute listeners through installRuleGate', () => {
   const rt = fakeRuntime({ route: GLM })
-  guardApply(rt.ctx as never, { home: 'C:/ws/.llm', fs: { mkdir: () => Promise.resolve(undefined), appendFile: () => Promise.resolve() } })
+  guardApply(rt.ctx, { home: 'C:/ws/.llm', fs: { mkdir: () => Promise.resolve(undefined), appendFile: () => Promise.resolve() } })
   assert.deepEqual(rt.scoped.map(tool => tool.name), [...GUARD_TOOL_NAMES], 'the guard row registers exactly the contract tool names')
-  graphApply(rt.ctx as never, { dir: 'C:/work/app/docs/graph' })
+  graphApply(rt.ctx, { dir: 'C:/work/app/docs/graph' })
   const guardListener = rt.listeners.filter(entry => entry.event === 'tools/pre-execute')
   assert.equal(guardListener.length, 2, 'the guard row and the graph row each install one listener')
   assert.ok(guardListener.every(entry => isGateListener(entry.listener)), 'every tools/pre-execute listener of these rows comes from the gate')
@@ -433,7 +433,7 @@ test('metrics: emitMetric hands events to the injected sink and is silent withou
   const previous = setMetricSink(event => { seen.push(event) })
   try {
     emitMetric({ event: 'execute.dispatch-refused', code: 'slots_full' })
-    emitMetric({ event: 'execute.completion-gate', goal: 'goal-1', passed: false, gaps: 2 })
+    emitMetric({ event: 'execute.completion-gate', goal: 'goal-1', ok: false, gaps: 2 })
     assert.equal(seen.length, 2)
     assert.deepEqual(seen[0], { event: 'execute.dispatch-refused', code: 'slots_full' })
   }
@@ -514,7 +514,7 @@ async function rows(broken = false): Promise<FakeRuntime> {
   const rt = fakeRuntime({ route: GLM })
   if (broken) (rt.ctx.tools as { get: unknown }).get = () => { throw new Error('registry gone') }
   glmPromptApply(rt.ctx)
-  guardApply(rt.ctx as never, { home: 'C:/ws/.llm', fs: { mkdir: () => Promise.resolve(undefined), appendFile: () => Promise.resolve() } })
+  guardApply(rt.ctx, { home: 'C:/ws/.llm', fs: { mkdir: () => Promise.resolve(undefined), appendFile: () => Promise.resolve() } })
   await quietly(() => rt.create())
   return rt
 }
@@ -532,7 +532,7 @@ test('dialect: glm-prompt provides the service; it claims an agent it installed 
   assert.equal(service.claims(other, GLM), false)
   // The guard reads it: a GLM Bash shell write is denied and corrected in the dialect's names.
   const denied = await shellWrite(rt)
-  assert.ok(denied.content[0]?.text?.includes('Right path: Read the target with Read, then apply the change with Write or Edit.'), denied.content[0]?.text)
+  assert.ok(denied.content[0]?.text?.includes('Right path: Read the target with Read, then apply the change with Write or Edit.'), denied.content[0]?.text ?? '')
 })
 
 test('dialect: an agent whose dialect install failed is not claimed; the guard still denies, in native names', async () => {
@@ -540,7 +540,7 @@ test('dialect: an agent whose dialect install failed is not claimed; the guard s
   const service = dialectService(rt.ctx)
   assert.equal(service?.claims(rt.agent, GLM), false)
   const denied = await shellWrite(rt)
-  assert.ok(denied.content[0]?.text?.includes('Right path: Read the target with read, then apply the change with write or edit.'), denied.content[0]?.text)
+  assert.ok(denied.content[0]?.text?.includes('Right path: Read the target with read, then apply the change with write or edit.'), denied.content[0]?.text ?? '')
 })
 
 test('dialect readers: absent and malformed services read as none; a throwing method counts as absent for that call', () => {

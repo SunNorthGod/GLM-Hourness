@@ -12,7 +12,7 @@ test('apply registers the native adapter under the configured provider route', (
   assert.deepEqual(registered[0].providers, ['glm-zcode'])
   assert.ok(registered[0].adapter instanceof ZcodeAdapter)
   assert.equal(typeof dispose, 'function')
-  dispose()
+  dispose?.()
 })
 
 test('apply honors a custom provider id and plan', () => {
@@ -50,7 +50,7 @@ test('without a home the route still registers (the credential directory default
   const dispose = apply({ registerAdapter: providers => { registered.push([...providers]); return () => {} } }, {})
   assert.deepEqual(registered, [['glm-zcode']])
   assert.equal(typeof dispose, 'function')
-  dispose()
+  dispose?.()
 })
 
 test('Config schema exposes home/plan/provider with coding-plan default', () => {

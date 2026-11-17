@@ -52,7 +52,7 @@ test('the human agrees in their own words: the question is decided with their wo
   assert.deepEqual(question.evidence, [{ kind: 'decision', ref: 'conclusion' }])
   const entry = question.history.at(-1)!
   assert.deepEqual([entry.actor, entry.op, entry.relay, entry.conclusion], ['llm', 'decide', '可以，就按推荐的来', '默认少做'])
-  assert.ok(entry.reason?.startsWith(ANSWER_MARKS.agree), entry.reason)
+  assert.ok(entry.reason?.startsWith(ANSWER_MARKS.agree), entry.reason ?? '')
   assert.equal(answerKindOf(entry), 'agree')
   assert.match(answerCallOf(entry) ?? '', /^call-\d+$/)
   assert.match(entry.reason ?? '', /^人在对话里同意（record_human_answer call-\d+）$/)
@@ -503,7 +503,7 @@ test('delegation creates the node while the goal is still in interview, adds a k
   const node = await fixture.node(DELEGATIONS_ID)
   assert.deepEqual([node.type, node.status, node.parent, node.acceptance], ['norm', 'approved', 'goal-1', [itemOf('代码风格')]])
   const entry = node.history[0]
-  assert.ok(entry.reason?.startsWith(DELEGATION_REASON), entry.reason)
+  assert.ok(entry.reason?.startsWith(DELEGATION_REASON), entry.reason ?? '')
   assert.match(entry.reason ?? '', /（record_human_answer call-\d+）$/)
   assert.equal(entry.relay, '这类你定')
   assert.equal(answerKindOf(entry), undefined, 'the panel does not read it as an agreement')

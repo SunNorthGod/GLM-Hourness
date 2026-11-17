@@ -505,7 +505,7 @@ const withQuota = (quota: unknown): UsagePricing => ({ ...creditPricing, quota }
  * the 额度 section's lines and the row's warnings.
  */
 async function quotaSectionOf(pricing: UsagePricing | undefined, usage: string = journal): Promise<{ text: string, lines: string[], warnings: string[] }> {
-  const row = statusRow(new Map([[USAGE_FILE, usage]]), { pricing })
+  const row = statusRow(new Map([[USAGE_FILE, usage]]), pricing === undefined ? {} : { pricing })
   try {
     const result = await row.run()
     return { text: result.text, lines: sectionOf(result.text, '额度'), warnings: row.warnings }

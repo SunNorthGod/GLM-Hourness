@@ -31,10 +31,10 @@ interface Habit {
 }
 
 /** The person's task a minute before the first ask, then their no a minute after it. */
-const talk: TalkView = {
+const talk = {
   people: [{ seq: 1, time: T0 - MINUTE, text: 'the task' }, { seq: 2, time: T0 + MINUTE, text: NO }],
   shown: [],
-}
+} as unknown as TalkView
 
 const ask = (memory: MemoryFixture, habit: Habit, extra: Record<string, unknown> = {}) =>
   memory.call('memory_habit', { action: 'ask', ...habit, body: BODY, ...extra }, MAIN)
@@ -119,7 +119,7 @@ test('a no past its 28 days no longer refuses the close ask', () => withFixture(
   await declined(memory, POSITIVES[0][1])
   memory.setNow(new Date(T0 + 29 * DAY))
   assert.equal((await ask(memory, SQ)).asked, true)
-}, { talk: { ...talk, people: [...talk.people, { seq: 3, time: T0 + 29 * DAY - MINUTE, text: 'next task' }] } }))
+}, { talk: { ...talk, people: [...talk.people, { seq: 3, time: T0 + 29 * DAY - MINUTE, text: 'next task' }] } as unknown as TalkView }))
 
 test('memory_query lists the live noes whatever the focus, and not an expired one', () => withFixture(async (memory) => {
   await declined(memory, SQ)

@@ -45,7 +45,7 @@ test('parseChildId: reads both forms back, anchored at the end, and refuses anyt
   }
 })
 
-const attempt = (overrides: Partial<Attempt>): Attempt => ({ childId: 'hz-t-a1-000000', role: 'worker', node: 't', attempt: 1, provider: 'p', model: 'm', why: 'w', plan: 'required', pins: 'pins: t@000000000000', ...overrides })
+const attempt = (overrides: Partial<Attempt>): Attempt => ({ childId: 'hz-t-a1-000000', role: 'worker', node: 't', attempt: 1, graphDir: 'docs/graph', provider: 'p', model: 'm', why: 'w', plan: 'required', pins: 'pins: t@000000000000', ...overrides })
 
 test('queries over the running dispatches: by node, workers, and GLM ones that count against the cap', () => {
   const running = [
@@ -202,7 +202,8 @@ test('the handback comment: the changed paths sit in one line after the depth an
   const read = parseHandbackComment(withPaths)
   assert.deepEqual(read?.paths, ['src/guarded/writer.js', 'docs/notes/with space.md'])
   // A skip handback has no depth line: the paths line opens the tail and still reads back.
-  const skip = renderHandbackComment({ ...base, depth: undefined, paths: ['src/only.js'] })
+  const { depth: _depth, ...withoutDepth } = base
+  const skip = renderHandbackComment({ ...withoutDepth, paths: ['src/only.js'] })
   assert.equal(skip.split('\n')[3], '改动 `src/only.js`')
   assert.deepEqual(parseHandbackComment(skip)?.paths, ['src/only.js'])
   // Comments written before the line existed — and an empty record — carry no paths.

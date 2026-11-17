@@ -11,8 +11,8 @@ import {
 } from '../src/toolsearch/zcode-text.ts'
 import { wrapSystemReminder } from '../src/shared/zcode-notice.ts'
 import { apply as glmPromptApply } from '../src/glm-prompt/index.ts'
-import type { AssembledTool, DerivedMessage, PreStepDecision, UserNotice } from '../src/shared/dsh-min.ts'
-import { fakeRuntime } from './fake-rc3.ts'
+import type { AssembledTool, DerivedMessage, PreStepDecision, ToolFinalResult, UserNotice } from '../src/shared/dsh-min.ts'
+import { execTool, fakeRuntime, fakeSessionProjections } from './fake-rc3.ts'
 
 const tool = (name: string, description = `native ${name}`): AssembledTool => ({ name, description, parameters: { type: 'object', properties: {} } })
 const CONTROLS = [tool('LocalToolSearch'), tool('DeferredToolCall')]
@@ -231,7 +231,9 @@ test('no announcement for an empty first step or a non-GLM request', async () =>
   assert.deepEqual(noticesOf(await rt.preStep({ messages: [] })), [])
   const plain = await glmAgent('deepseek-flash')
   assert.deepEqual(noticesOf(await plain.rt.preStep({ messages: [userInput] })), [])
-  await assert.rejects(plain.rt.execute('LocalToolSearch', { query: 'select:web_fetch', max_results: 5 }), /ToolSearch is not enabled for this request\./)
+  const denied = await execTool(plain.rt)('LocalToolSearch', { query: 'select:web_fetch', max_results: 5 })
+  assert.equal(denied.isError, true)
+  assert.equal(denied.error?.message, 'ToolSearch is not enabled for this request.')
 })
 
 test('LocalToolSearch returns the projected content and renders it as text blocks', async () => {
@@ -239,13 +241,18 @@ test('LocalToolSearch returns the projected content and renders it as text block
   const search = rt.scoped.find(entry => entry.name === 'LocalToolSearch')!
   // The exposure state of a step is computed at its pre-step.
   await rt.preStep({ messages: [userInput] })
-  const value = await rt.execute('LocalToolSearch', { query: 'select:web_fetch', max_results: 5 }) as { matches: string[], total_deferred_tools: number, content: string[] }
+  const call = execTool(rt)
+  const searchRes = await call('LocalToolSearch', { query: 'select:web_fetch', max_results: 5 })
+  assert.equal(searchRes.isError, false)
+  const value = searchRes.value as { matches: string[], total_deferred_tools: number, content: string[] }
   assert.deepEqual(value.matches, ['web_fetch'])
   assert.equal(value.total_deferred_tools, 2)
   const rendered = search.output.render({}, value)
   assert.equal(rendered.length, 2)
   assert.ok(rendered[0].text!.startsWith('<functions>\n<function>{"description":"native web_fetch","name":"web_fetch"'))
-  const none = await rt.execute('LocalToolSearch', { query: 'zzz' }) as { content: string[] }
+  const noneRes = await call('LocalToolSearch', { query: 'zzz' })
+  assert.equal(noneRes.isError, false)
+  const none = noneRes.value as { content: string[] }
   assert.deepEqual(none.content, [NO_MATCHING_DEFERRED_TOOLS])
 })
 
@@ -262,32 +269,87 @@ async function loggingGlmRuntime(calls: Array<{ name: string, args: unknown }>) 
 test('DeferredToolCall runs the deferred target through the tool pipeline as a call of its own', async () => {
   const calls: Array<{ name: string, args: unknown }> = []
   const rt = await loggingGlmRuntime(calls)
-  const value = await rt.execute('DeferredToolCall', { name: 'TodoWrite', input: { todos: [{ content: 'a', status: 'pending', priority: 'high' }] } }) as { name: string, content: unknown[] }
+  const res = await execTool(rt)('DeferredToolCall', { name: 'TodoWrite', input: { todos: [{ content: 'a', status: 'pending', priority: 'high' }] } })
+  assert.equal(res.isError, false)
+  const value = res.value as { name: string, content: unknown[] }
   assert.equal(value.name, 'TodoWrite')
   assert.deepEqual(value.content, [{ type: 'text', text: 'todo_write' }]) // the target's own rendering
   assert.deepEqual(calls, [{ name: 'todo_write', args: { todos: [{ content: 'a', status: 'pending' }] } }])
-  assert.equal(rt.executed.length, 1)
-  assert.equal(rt.executed[0].parent, undefined) // not a transport sub-dispatch: listeners see TodoWrite
-  assert.equal(rt.executed[0].callId, 'call-1:deferred')
+  assert.equal(rt.executed.length, 2)
+  assert.equal(rt.executed[0].name, 'DeferredToolCall')
+  assert.equal(rt.executed[1].name, 'TodoWrite')
+  assert.equal(rt.executed[1].parent, undefined) // not a transport sub-dispatch: listeners see TodoWrite
+  assert.equal(rt.executed[1].callId, 'call-1:deferred')
 })
 
 test('DeferredToolCall is no way round the write tools: Write is resident on GLM, so the call fails and nothing is written (the main agent relies on it, addendum 2.1)', async () => {
   const calls: Array<{ name: string, args: unknown }> = []
   const rt = await loggingGlmRuntime(calls)
-  await assert.rejects(rt.execute('DeferredToolCall', { name: 'Write', input: { file_path: 'a.txt', content: 'x' } }), /^Error: (Call Write directly using its normal tool call; DeferredToolCall only accepts deferred tools\.|Tool not available in this request: Write)$/)
+  const res = await execTool(rt)('DeferredToolCall', { name: 'Write', input: { file_path: 'a.txt', content: 'x' } })
+  assert.equal(res.isError, true)
+  assert.equal(res.error?.message, 'Call Write directly using its normal tool call; DeferredToolCall only accepts deferred tools.')
   assert.deepEqual(calls, [])
 })
 
 test('DeferredToolCall rejects resident, control, unknown and malformed calls with the ZCode texts', async () => {
   const { rt } = await glmAgent()
   await rt.preStep({ messages: [userInput] })
-  await assert.rejects(rt.execute('DeferredToolCall', { name: 'Read', input: {} }), { message: 'Call Read directly using its normal tool call; DeferredToolCall only accepts deferred tools.' })
-  await assert.rejects(rt.execute('DeferredToolCall', { name: 'ToolSearch', input: {} }), { message: 'Call ToolSearch directly using its normal tool call; DeferredToolCall only accepts deferred tools.' })
-  await assert.rejects(rt.execute('DeferredToolCall', { name: 'LocalToolSearch', input: {} }), { message: 'Tool not available in this request: LocalToolSearch' })
-  await assert.rejects(rt.execute('DeferredToolCall', { name: 'nope', input: {} }), { message: 'Tool not available in this request: nope' })
-  await assert.rejects(rt.execute('DeferredToolCall', { name: 'web_fetch' }), { message: 'Invalid DeferredToolCall input.' })
-  await assert.rejects(rt.execute('DeferredToolCall', { name: 'web_fetch', input: {}, extra: 1 }), { message: 'Invalid DeferredToolCall input.' })
+  const call = execTool(rt)
+  const rejectMsg = async (args: unknown, expected: string): Promise<void> => {
+    const res: ToolFinalResult = await call('DeferredToolCall', args)
+    assert.equal(res.isError, true)
+    assert.equal(res.error?.message, expected)
+  }
+  await rejectMsg({ name: 'Read', input: {} }, 'Call Read directly using its normal tool call; DeferredToolCall only accepts deferred tools.')
+  await rejectMsg({ name: 'ToolSearch', input: {} }, 'Call ToolSearch directly using its normal tool call; DeferredToolCall only accepts deferred tools.')
+  await rejectMsg({ name: 'LocalToolSearch', input: {} }, 'Tool not available in this request: LocalToolSearch')
+  await rejectMsg({ name: 'nope', input: {} }, 'Tool not available in this request: nope')
+  await rejectMsg({ name: 'web_fetch' }, 'Invalid DeferredToolCall input.')
+  await rejectMsg({ name: 'web_fetch', input: {}, extra: 1 }, 'Invalid DeferredToolCall input.')
   await rt.assemble({ model: 'deepseek-flash' })
   await rt.preStep({ messages: [userInput] })
-  await assert.rejects(rt.execute('DeferredToolCall', { name: 'web_fetch', input: {} }), { message: 'DeferredToolCall is not available for this request.' })
+  await rejectMsg({ name: 'web_fetch', input: {} }, 'DeferredToolCall is not available for this request.')
+})
+
+test('rc.1 tools.register when/executable gates tools.execute and sessionProjections.register resolves to { dispose, stateOf, readerFor }', async () => {
+  const rt = fakeRuntime()
+  let allowed = false
+  rt.ctx.tools.register({
+    name: 'gated_tool',
+    description: 'conditional',
+    parameters: { type: 'object', properties: {} },
+    output: { schema: { type: 'object' }, render: () => [{ type: 'text', text: 'ok' }] },
+    execute: () => Promise.resolve({ ok: true }),
+  }, { when: () => allowed })
+  assert.equal(rt.ctx.tools.executable('gated_tool', rt.agent), undefined)
+  const blocked = await execTool(rt)('gated_tool', {})
+  assert.equal(blocked.isError, true)
+  assert.equal(blocked.error?.message, 'unknown tool "gated_tool"')
+  const deniedSet = await rt.ctx.tools.resolve({ agent: rt.agent, signal: new AbortController().signal })
+  assert.equal(rt.ctx.tools.executable('gated_tool', rt.agent, deniedSet), undefined)
+  allowed = true
+  const admittedSet = await rt.ctx.tools.resolve({ agent: rt.agent, signal: new AbortController().signal })
+  assert.ok(rt.ctx.tools.executable('gated_tool', rt.agent, admittedSet) !== undefined)
+  const batch = await rt.ctx.tools.execute({
+    calls: [{ id: 'c1', name: 'gated_tool', arguments: {} }],
+    agent: rt.agent,
+    signal: new AbortController().signal,
+    toolSet: admittedSet,
+  })
+  assert.equal(batch.results[0].result.isError, false)
+
+  const projections = fakeSessionProjections({ eventsOf: () => [{ type: 'bump', seq: 1, time: 1 }] })
+  const reg = projections.register({
+    key: 'counter',
+    stateVersion: 1,
+    stateSchema: { parse: v => v },
+    init: () => 0,
+    apply: (state: number) => state + 1,
+  })
+  const handle = await reg
+  assert.equal(handle.stateOf(rt.agent.session!), 1)
+  assert.equal(handle.readerFor?.(rt.agent.session!)(), 1)
+  assert.equal(projections.stateOf(rt.agent.session!, 'counter'), 1)
+  await handle.dispose()
+  assert.equal(projections.stateOf(rt.agent.session!, 'counter'), undefined)
 })

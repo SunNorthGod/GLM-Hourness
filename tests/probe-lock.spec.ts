@@ -17,7 +17,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, 
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { type LockEnvironment } from '../src/data/lock.ts'
+import { acquireLock, type LockEnvironment } from '../src/data/lock.ts'
 import { acquireProbeLock, judgeClaim, mainCheckoutRoot, PROBE_LOCK_CLAIM, PROBE_LOCK_SLOTS } from '../scripts/probe/probe-lock.mjs'
 
 const MIN = 60_000
@@ -41,7 +41,11 @@ type ProbeLockSetup = {
   environment: LockEnvironment
   log: (line: string) => void
 }
-const take = (setup: ProbeLockSetup): Promise<ProbeLock | 'busy'> => acquireProbeLock(setup)
+const take = async (setup: ProbeLockSetup): Promise<ProbeLock | 'busy'> => {
+  const result = await acquireProbeLock(setup)
+  assert.ok(result !== undefined)
+  return result
+}
 
 /** Tight pacing: every wait is a real duration, but a short one. */
 const TIGHT = { waitMs: 400, pollMs: 20, attemptMs: 300, retryMs: 5, graceMs: 50 }
@@ -221,4 +225,86 @@ test('the slots default to the main checkout, whichever checkout the probe runs 
   assert.equal(commonDir.status, 0)
   const commonPath: string = String(commonDir.stdout).trim()
   assert.equal(resolve(commonPath), resolve(join(root, '.git')), 'the resolved root names the checkout whose .git is the common dir, so the slots are shared across worktrees')
+})
+
+test('an active unreadable/text lock whose mtimeMs advances with identical content resets the grace timer and is never broken early', async () => {
+  await withRoot(async (root) => {
+    const file = claimFile(root)
+    mkdirSync(join(root, '.llm', SLOT_A), { recursive: true })
+    const hbText = 'wf_hb lane identical heartbeat\n'
+    let clock = 1_700_000_000_000
+    writeFileSync(file, hbText)
+    utimesSync(file, new Date(clock), new Date(clock))
+
+    let sleeps = 0
+    const env: LockEnvironment = {
+      now: () => clock,
+      sleep: (ms) => {
+        clock += ms
+        sleeps += 1
+        // Heartbeat rewrites identical text every poll for 4 iterations (4s > 2s grace), advancing mtimeMs each time.
+        if (sleeps <= 4) {
+          writeFileSync(file, hbText)
+          utimesSync(file, new Date(clock), new Date(clock))
+        }
+        return Promise.resolve()
+      },
+      pid: process.pid,
+      isAlive: () => true,
+    }
+    const busy = await acquireLock(file, env, { retryMs: 1_000, waitMs: 4_500, unreadableGraceMs: 2_000, keepStale: true })
+    assert.equal(busy, 'busy', 'identical-text heartbeat rewrites keep resetting the unreadable grace timer')
+    assert.equal(staleArchives(root).length, 0)
+
+    // Once heartbeats stop advancing mtimeMs, the stale timer expires after unreadableGraceMs.
+    const taken = await acquireLock(file, { ...env, sleep: (ms) => { clock += ms; return Promise.resolve() } }, { retryMs: 1_000, waitMs: 5_000, unreadableGraceMs: 2_000, keepStale: true })
+    assert.notEqual(taken, 'busy')
+    if (taken !== 'busy') await taken.release()
+  })
+})
+
+test('concurrent stale takeover produces exactly one winner and never unlinks another contender\'s newly created lock', async () => {
+  for (const keepStale of [true, false] as const) {
+    await withRoot(async (root) => {
+      const file = claimFile(root)
+      mkdirSync(join(root, '.llm', SLOT_A), { recursive: true })
+      const now = Date.now()
+      writeFileSync(file, JSON.stringify({ pid: 999_999_999, startedAt: now - 60_000, at: now - 60_000, token: 'expired', holder: 'dead-holder' }))
+      const env = instantEnvironment({ isAlive: pid => pid !== 999_999_999 })
+      const contenders = Array.from({ length: 6 }, (_, index) =>
+        acquireLock(file, env, { retryMs: 20, waitMs: 80, staleMs: 10_000, keepStale, holder: `contender-${index}` }),
+      )
+      const results = await Promise.all(contenders)
+      const winners = results.filter(result => result !== 'busy')
+      assert.equal(winners.length, 1, `exactly one winner when keepStale=${String(keepStale)}`)
+      const winner = winners[0]
+      assert.ok(winner !== undefined)
+      assert.equal(await winner.held(), true, 'newly created lock survives losing contenders\' stale cleanup')
+      await winner.release()
+    })
+  }
+})
+
+test('acquireProbeLock probes all candidate slots immediately so an occupied slot 1 does not stall acquisition when slot 2 is free', async () => {
+  await withRoot(async (root) => {
+    // Slot 1 holds an empty/in-progress file with a long grace/attempt wait; slot 2 is free.
+    writeTextClaim(root, '', 0, SLOT_A)
+    const started = Date.now()
+    const lock = await take({
+      waitMs: 3_000,
+      pollMs: 50,
+      attemptMs: 2_500,
+      retryMs: 20,
+      graceMs: 2_000,
+      root,
+      holder: 'wf_fast land',
+      environment: instantEnvironment(),
+      log: () => {},
+    })
+    const elapsed = Date.now() - started
+    assert.notEqual(lock, 'busy')
+    assert.ok(elapsed < 1_000, `expected immediate failover to slot 2 without waiting attemptMs, took ${elapsed}ms`)
+    assert.equal((JSON.parse(readFileSync(claimFile(root, SLOT_B), 'utf8')) as { holder: string }).holder, 'wf_fast land')
+    if (lock !== 'busy') await lock.release()
+  })
 })

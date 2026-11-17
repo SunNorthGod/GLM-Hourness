@@ -119,6 +119,8 @@ function fakeBoard(): FakeBoard {
       },
       listens: () => board.hears,
       recordRun: () => {},
+      staleEntries: () => undefined,
+      timeoutEntries: () => undefined,
     },
   }
   return board

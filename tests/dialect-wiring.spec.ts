@@ -14,12 +14,12 @@ const rule = workspaceContainment(['C:\\ws\\proj'])
 const write = (path: string) => ({ name: 'write', arguments: { file_path: path } })
 
 test('containment allows writes inside the workspace (case and separator insensitive)', () => {
-  assert.equal(rule.detect(write('C:\\WS\\PROJ\\src\\a.ts')).kind, 'allow')
-  assert.equal(rule.detect(write('C:/ws/proj/.llm/memory/a.md')).kind, 'allow')
+  assert.equal(rule.detect(write('C:\\WS\\PROJ\\src\\a.ts'), NATIVE_FACE).kind, 'allow')
+  assert.equal(rule.detect(write('C:/ws/proj/.llm/memory/a.md'), NATIVE_FACE).kind, 'allow')
 })
 
 test('containment denies writes outside the workspace with a four-part correction', () => {
-  const verdict = rule.detect(write('C:\\Windows\\system32\\evil.dll'))
+  const verdict = rule.detect(write('C:\\Windows\\system32\\evil.dll'), NATIVE_FACE)
   assert.equal(verdict.kind, 'deny')
   if (verdict.kind === 'deny') {
     assert.ok(verdict.correction.fact.includes('evil.dll'))
@@ -34,7 +34,7 @@ test('containment denies writes outside the workspace with a four-part correctio
 })
 
 test('both exceptions name no request channel; containment still sends the model to the human (file-tools-only is not requestable, design 0.6-finish2 §5.2)', () => {
-  const [containment, shellWrite] = [rule.detect(write('C:\\Windows\\system32\\evil.dll')), fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'echo x > out.txt' } }, NATIVE_FACE)]
+  const [containment, shellWrite] = [rule.detect(write('C:\\Windows\\system32\\evil.dll'), NATIVE_FACE), fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'echo x > out.txt' } }, NATIVE_FACE)]
   for (const verdict of [containment, shellWrite]) {
     assert.equal(verdict.kind, 'deny')
     if (verdict.kind !== 'deny') continue
@@ -48,7 +48,7 @@ test('both exceptions name no request channel; containment still sends the model
 })
 
 test('containment ignores sibling prefixes like proj-evil', () => {
-  assert.equal(rule.detect(write('C:\\ws\\proj-evil\\a.ts')).kind, 'deny')
+  assert.equal(rule.detect(write('C:\\ws\\proj-evil\\a.ts'), NATIVE_FACE).kind, 'deny')
 })
 
 const bash = (command: string) => ({ name: 'pwsh', arguments: { command } })

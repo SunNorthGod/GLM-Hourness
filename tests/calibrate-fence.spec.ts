@@ -8,7 +8,6 @@
 import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import test from 'node:test'
-// @ts-expect-error The script is plain JavaScript without a declaration file.
 import { fenceOf, fencedPathOf, pathsOf } from '../scripts/calibrate/fence.mjs'
 
 interface Places { readonly workspace: string, readonly fenced: readonly string[], readonly tmp: string, readonly env?: Record<string, string> }

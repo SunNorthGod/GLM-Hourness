@@ -212,7 +212,7 @@ test('collectStatus: a row whose items throw takes the placeholder and one warni
   const { result, warnings } = quietly(() => collectStatus(storeWith(() => { throw new Error('boom\nsecond line') }), 's1', 'agent', 0))
   assert.deepEqual(result.items.map(item => item.id), ['guard/one'])
   assert.deepEqual(result.rows.find(row => row.row === 'hourness'), { row: 'hourness', outcome: 'error', reason: 'boom second line' })
-  assert.ok(warnings.includes('dsh-glm-hourness/hourness: 状态读取失败：boom second line'), warnings)
+  assert.ok(warnings.includes('dsh-glm-hourness/hourness: 状态读取失败：boom second line'), warnings.join(' | '))
   assert.deepEqual(statusPlaceholders(result.rows), ['hourness 行的状态暂时读不到：boom second line'])
   assert.deepEqual(statusPlaceholders(result.rows.filter(row => row.row !== 'hourness')), [])
   const long = quietly(() => collectStatus(storeWith(() => { throw new Error('x'.repeat(200)) }), 's1', 'agent', 0))
@@ -220,8 +220,8 @@ test('collectStatus: a row whose items throw takes the placeholder and one warni
 })
 
 test('collectStatus drops a malformed entry with one warning per row and reason, and a cleaned one with its own', () => {
-  const bad = { ...entry('glm/usage', 'glm', 'agent'), audience: 'human' }
-  const lookup = storeWith(() => [bad, { ...bad, text: '另一条' }, { ...entry('glm/usage', 'glm', 'agent'), text: '' }, entry('glm/quota', 'glm', 'agent', { fields: { bent: [] } })])
+  const bad = { ...entry('glm/usage', 'glm', 'agent'), audience: 'human' as unknown as StatusAudience }
+  const lookup = storeWith(() => [bad, { ...bad, text: '另一条' }, { ...entry('glm/usage', 'glm', 'agent'), text: '' }, entry('glm/quota', 'glm', 'agent', { fields: { bent: [] as unknown as string } })] as StatusItem[])
   const { result, warnings } = quietly(() => collectStatus(lookup, 's1', 'agent', 0))
   assert.deepEqual(result.items.map(item => item.id), ['glm/quota', 'guard/one'])
   const fromRow = warnings.filter(message => message.startsWith('dsh-glm-hourness/hourness: '))
@@ -385,7 +385,7 @@ test('the weekly report relays the loop board’s two lists from the collector, 
   const timeouts = timeoutItems([
     { id: 'loops.remind-waiting', title: '把在等的事再报一次', timeouts7d: 3, lastTimeoutAt: '2026-10-31T11:00:00.000Z' },
   ], 'p/.llm/loops', at)
-  const expected = [stale[0].text, ...stale[0].detail, timeouts[0].text, ...timeouts[0].detail]
+  const expected = [stale[0].text, ...(stale[0].detail ?? []), timeouts[0].text, ...(timeouts[0].detail ?? [])]
   const lookup = serviceStore()
   lookup.provide(statusServiceName('loops'), { row: 'loops', items: () => [...stale, ...timeouts] })
   const collected = collectStatus(lookup, 's1', 'agent', at)

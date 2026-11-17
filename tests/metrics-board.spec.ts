@@ -33,7 +33,7 @@ import { validateStatusItem } from '../src/shared/status.ts'
 import { renderHourness } from '../src/report/index.ts'
 import { fakeInjector, fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 import { GUIDE_LINE, homeLineOf, metricsBoard, stampOf } from '../ui/src/metrics/board.ts'
-import type { ProjectionValues, RemoteRoot, SessionsClient } from '../ui/src/dsh.ts'
+import type { ProjectionValues, RemoteRoot, SessionsClient, WatchFrame } from '../ui/src/dsh.ts'
 import type { BoardState } from '../ui/src/graph/boards.ts'
 import type { StreamChunk } from '../src/shared/lm-min.ts'
 

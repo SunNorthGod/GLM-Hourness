@@ -14,11 +14,13 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import test from 'node:test'
 import type { JournalRecord } from '../src/data/journal.ts'
 import { METRICS_KINDS } from '../src/metrics/kinds/index.ts'
-import { checkEvent, FORMAT_VERSION } from '../src/metrics/schema.ts'
-import { storeRecord, type MemoryEntry } from '../src/memory/model.ts'
+import { checkEvent, FORMAT_VERSION, MAX_ENTRIES } from '../src/metrics/schema.ts'
+import { nodeMetricsFs, openWriter } from '../src/metrics/writer.ts'
+import { askRecord, declineRecord, storeRecord, type MemoryEntry } from '../src/memory/model.ts'
+import { habitNotSameByKey } from '../src/memory/tools.ts'
 import { INDEX_MAX_CHARS, INDEX_MAX_LINES, renderIndex } from '../src/memory/recall.ts'
 import { journalFile } from '../src/memory/storage.ts'
-import { METRICS_SERVICE, type EmittedEvent, type MetricsWhere, type QueuedEvent } from '../src/shared/metrics.ts'
+import { METRICS_ID_PATTERN, METRICS_SERVICE, type EmittedEvent, type MetricsWhere, type QueuedEvent } from '../src/shared/metrics.ts'
 import { captureWarnings } from './graph-helpers.ts'
 import { MAIN, withFixture } from './memory-helpers.ts'
 import { withRow, type Row } from './memory-row-host.ts'
@@ -171,5 +173,73 @@ test('on the row, a memory_query that finds nothing answers as before when the m
     assert.deepEqual(warnings, [])
     row.runtime.services.set(METRICS_SERVICE, { emit: () => { throw new Error('journal down') } })
     assert.deepEqual((await row.tool('memory_query', { focus: 'nothing' })).matches, [])
+  })
+})
+
+test('habit-not-same shapes byKey with toMetricsId, merges collisions by summing, caps at 32 entries, and passes the writer with rejected === 0', async () => {
+  const shaped = habitNotSameByKey([
+    'all:有 空格',
+    'all:win\\path',
+    `all:long-${'x'.repeat(120)}`,
+    ...Array.from({ length: 35 }, (_, index) => `all:declined-${String(index).padStart(2, '0')}`),
+  ])
+  assert.equal(Object.keys(shaped).length, MAX_ENTRIES)
+  assert.equal(shaped.other, 3, 'all three non-id decline ids merge into other')
+  for (const key of Object.keys(shaped)) assert.match(key, METRICS_ID_PATTERN)
+
+  const handed: EmittedEvent[] = []
+  const description = 'Always start every reply with the direct answer first'
+  const validNames = Array.from({ length: 35 }, (_, index) => `declined-${String(index).padStart(2, '0')}`)
+
+  await withFixture(async (memory) => {
+    const userDir = memory.places.user
+    assert.ok(userDir !== undefined)
+    mkdirSync(userDir, { recursive: true })
+    const earlier = '2026-10-20T08:00:00.000Z'
+    const lines = validNames.flatMap((name, index): JournalRecord[] => {
+      const fields = {
+        name,
+        scope: 'all' as const,
+        description,
+        body: '**Why:** clarity.\n**How to apply:** answer first.',
+        question: 'Start every reply with the direct answer first?',
+      }
+      return [
+        { v: 1, seq: index * 2 + 1, at: earlier, ...askRecord(fields, { tool: 'memory_habit' }) },
+        { v: 1, seq: index * 2 + 2, at: earlier, ...declineRecord(fields, 'no', { tool: 'memory_habit' }) },
+      ]
+    })
+    writeFileSync(journalFile(userDir), `${lines.map(line => JSON.stringify(line)).join('\n')}\n`)
+
+    const asked = await memory.call('memory_habit', {
+      action: 'ask',
+      name: 'fresh-habit',
+      scope: 'all',
+      description,
+      body: '**Why:** speed.\n**How to apply:** lead with the answer.',
+      question: 'Open each reply with the direct answer?',
+      notSame: true,
+    })
+    assert.equal(asked.asked, true)
+    const countEvent = handed.find(event => event.k === 'count')
+    assert.ok(countEvent !== undefined)
+    takes(countEvent)
+    const body = countEvent.body as { readonly what: string, readonly value: number, readonly byKey: Record<string, number> }
+    assert.equal(body.what, 'habit-not-same')
+    assert.equal(body.value, validNames.length)
+    const keys = Object.keys(body.byKey)
+    assert.equal(keys.length, MAX_ENTRIES)
+    for (const key of keys) assert.match(key, METRICS_ID_PATTERN)
+    assert.equal(body.byKey['all:declined-00'], 1)
+
+    const writer = openWriter({ host: 'headless', fs: nodeMetricsFs, now: () => Date.parse(NOW), randomId: () => '0123abcd' })
+    writer.record(memory.root, { ...countEvent, v: 'spec' })
+    writer.record(memory.root, { k: 'count', by: 'memory', at: NOW, v: 'spec', body: { what: 'habit-not-same', value: 38, byKey: shaped } })
+    await writer.flush()
+    assert.equal(writer.status().get(memory.root)?.rejected, 0)
+    await writer.close()
+  }, {
+    talk: { people: [{ seq: 1, time: Date.parse('2026-11-01T11:00:00Z') }], shown: [] },
+    emit: (event) => { handed.push(event) },
   })
 })

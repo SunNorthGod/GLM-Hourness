@@ -206,7 +206,7 @@ test('a read for a project by a service files under the directory; an asker the 
   await board.reader.view({ waitMs: 1000, asker: { kind: 'service', dir: 'C:/work/alpha' } })
   assert.deepEqual(board.handed.map(entry => [entry.where, bodiesOf([entry], 'glm.quota-read')[0]?.by]), [[{ dir: 'C:/work/alpha' }, 'service']])
   const odd = await channel()
-  await odd.reader.view({ waitMs: 1000, asker: { kind: 'robot', sessionId: 5 } as unknown as QuotaRequest['asker'] })
+  await odd.reader.view({ waitMs: 1000, asker: { kind: 'robot', sessionId: 5 } as unknown as NonNullable<QuotaRequest['asker']> })
   assert.deepEqual(odd.handed.map(entry => [entry.where, bodiesOf([entry], 'glm.quota-read')[0]?.by]), [[{}, 'service']])
   const bare = await channel()
   await bare.reader.view({ waitMs: 1000 })

@@ -21,7 +21,7 @@ import { provideRowHealth, type RowHealth } from '../src/shared/health.ts'
 import { NATIVE_FACE, fileToolsOnly, type Correction, type GuardRule, type ToolCall } from '../src/guard/rules.ts'
 import { graphFilesOnly } from '../src/guard/graph-files.ts'
 import type { AgentLike } from '../src/shared/dsh-min.ts'
-import { fakeRuntime } from './fake-rc3.ts'
+import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 
 const CORRECTION = (text: string): Correction => ({ fact: text, violation: 'no', rightPath: 'yes', exception: 'none' })
 
@@ -67,7 +67,7 @@ function harness(rules: readonly GuardRule[], options: { prepend?: boolean, jour
       },
     ...(options.health === undefined ? {} : { health: options.health }),
   }
-  installRuleGate(rt.ctx as never, gateOptions)
+  installRuleGate(rt.ctx, gateOptions)
   rt.ctx.provide(METRICS_SERVICE, metrics)
   // Each call is the model's next step, as the agent loop advances the turn's step counter (N16 compares
   // steps); the call ids are unique per harness, since the recorder's settled ring is module-wide.
@@ -162,7 +162,7 @@ test('a disposed session records none and stops tracking the session', async () 
 test('a call the loop did not log never settles: only model-issued calls count', () => {
   const rt = fakeRuntime()
   const { lines } = memoryJournal()
-  installRuleGate(rt.ctx as never, {
+  installRuleGate(rt.ctx, {
     row: 'guard',
     prepend: false,
     rules: () => ({ rules: [denyRule('one')], face: NATIVE_FACE, origin: { scope: 'dialect' } }),
@@ -219,29 +219,38 @@ test('the shipped rules carry the design\'s right paths: a file-tool write after
   assert.deepEqual(g.followups().map(record => record.outcome), ['other', 'right-path'])
 })
 
+function makeExec(rt: FakeRuntime, agent: AgentLike, prefix: string): (name: string, args: unknown) => Promise<unknown> {
+  let callNo = 0
+  return (name, args) => {
+    rt.progress.step += 1
+    return rt.ctx.tools.execute({
+      calls: [{ id: `${prefix}-call-${++callNo}`, name, arguments: args }],
+      agent,
+      signal: new AbortController().signal,
+      log: { turn: rt.progress.turn, step: rt.progress.step },
+    }).then(batch => batch.results[0].result)
+  }
+}
+
 test('the outermost gate settles the follow-up, and an inner gate\'s observe of the same call does nothing (F5)', async () => {
   const rt = fakeRuntime()
   // Both gates write the same project journal, as rows of one composition do.
   const shared = memoryJournal()
   const id = `agent-${++counter}`
   const agent: AgentLike = { id, ctx: rt.ctx, session: { id, header: { id }, deriveMessages: () => [], requestHeader: () => undefined } }
-  installRuleGate(rt.ctx as never, {
+  installRuleGate(rt.ctx, {
     row: 'outer',
     prepend: true,
     rules: () => ({ rules: [denyRule('outer-write', call => call.name === 'write')], face: NATIVE_FACE, origin: { scope: 'dialect' } }),
     journal: shared.journal,
   })
-  installRuleGate(rt.ctx as never, {
+  installRuleGate(rt.ctx, {
     row: 'inner',
     prepend: false,
     rules: () => ({ rules: [denyRule('inner-edit', call => call.name === 'edit')], face: NATIVE_FACE, origin: { scope: 'dialect' } }),
     journal: shared.journal,
   })
-  let callNo = 0
-  const exec = (name: string, args: unknown): Promise<unknown> => {
-    rt.progress.step += 1
-    return rt.ctx.tools.execute({ calls: [{ id: `cross-${id}-call-${++callNo}`, name, arguments: args }], agent, signal: new AbortController().signal, log: { turn: rt.progress.turn, step: rt.progress.step } }).then(batch => batch.results[0].result)
-  }
+  const exec = makeExec(rt, agent, `cross-${id}`)
   await exec('edit', { file_path: 'C:\\x' }) // the inner gate denies; the outer let it through to there
   assert.deepEqual(shared.lines.map(record => 'kind' in record ? record.kind : record.rule), ['inner-edit'])
   await exec('read', READ) // denied by neither; the outer gate's observe settles, the inner's does nothing
@@ -269,5 +278,48 @@ test('a follow-up the journal could not write counts against the session like a 
   await h.exec('write', WRITE)
   await h.exec('read', READ)
   await new Promise(resolve => setImmediate(resolve))
-  assert.ok(health.session(h.agent.id)?.reason.includes('2 条违规没有落盘'), health.session(h.agent.id)?.reason)
+  assert.ok(health.session(h.agent.id)?.reason.includes('2 条违规没有落盘'), health.session(h.agent.id)?.reason ?? '')
+})
+
+test('H3: cross-row follow-up settles through the noting row\'s own journal even after another row calls hookJournal (observe, turn/end, session/disposed)', async () => {
+  const rt = fakeRuntime()
+  const guardJournal = memoryJournal()
+  const otherJournal = memoryJournal()
+  const id = `agent-${++counter}`
+  const agent: AgentLike = { id, ctx: rt.ctx, session: { id, header: { id }, deriveMessages: () => [], requestHeader: () => undefined } }
+  installRuleGate(rt.ctx, {
+    row: 'guard',
+    prepend: false,
+    rules: () => ({ rules: [denyRule('guard-rule', call => call.name === 'write')], face: NATIVE_FACE, origin: { scope: 'dialect' } }),
+    journal: guardJournal.journal,
+  })
+  installRuleGate(rt.ctx, {
+    row: 'other-row',
+    prepend: true,
+    rules: () => ({ rules: [denyRule('other-rule', call => call.name === 'edit')], face: NATIVE_FACE, origin: { scope: 'other' } }),
+    journal: otherJournal.journal,
+  })
+  const exec = makeExec(rt, agent, `h3-${id}`)
+
+  // 1. guard denies; other-row (outer) had called hookJournal on the same session, and observes the next call.
+  await exec('write', WRITE)
+  await exec('read', READ)
+  const settledObserve = guardJournal.lines.filter((record): record is FollowupRecord => 'kind' in record && record.kind === 'followup')
+  assert.deepEqual(settledObserve.map(record => [record.rule, record.outcome]), [['guard-rule', 'other']])
+  assert.equal(otherJournal.lines.length, 0, 'the follow-up must not land in the other row\'s journal')
+
+  // 2. guard denies, other-row hooks journal via an allowed call in the same step, then turn/end settles to guard's journal.
+  await exec('write', WRITE)
+  await rt.ctx.tools.execute({ calls: [{ id: `h3-${id}-call-same-step`, name: 'read', arguments: READ }], agent, signal: new AbortController().signal, log: { turn: rt.progress.turn, step: rt.progress.step } })
+  rt.sessionEvent(agent.session!, 'turn/end', { turn: rt.progress.turn, reason: 'stop' })
+  const settledTurnEnd = guardJournal.lines.filter((record): record is FollowupRecord => 'kind' in record && record.kind === 'followup')
+  assert.deepEqual(settledTurnEnd.map(record => record.outcome), ['other', 'none'])
+  assert.equal(otherJournal.lines.length, 0)
+
+  // 3. guard denies, then session/disposed settles to guard's journal.
+  await exec('write', WRITE)
+  rt.disposeSession(agent.session!)
+  const settledDisposed = guardJournal.lines.filter((record): record is FollowupRecord => 'kind' in record && record.kind === 'followup')
+  assert.deepEqual(settledDisposed.map(record => record.outcome), ['other', 'none', 'none'])
+  assert.equal(otherJournal.lines.length, 0)
 })

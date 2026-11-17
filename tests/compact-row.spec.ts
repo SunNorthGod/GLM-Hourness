@@ -72,7 +72,8 @@ async function collect(stream: AsyncIterable<StreamChunk>): Promise<StreamChunk[
   return chunks
 }
 
-const textOf = (chunks: StreamChunk[]): string[] => chunks.filter(chunk => chunk.type === 'block-end' && chunk.block?.type === 'text').map(chunk => chunk.block!.text!)
+const textOf = (chunks: StreamChunk[]): string[] =>
+  chunks.flatMap(chunk => (chunk.type === 'block-end' && chunk.block.type === 'text' ? [chunk.block.text] : []))
 
 test('a GLM compaction request reaches the adapter with the ZCode instruction as its final message', async () => {
   const { ctx, dispatched } = fakeLlm(['<analysis>x</analysis><summary>checkpoint body</summary>'])

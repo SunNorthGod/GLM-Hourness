@@ -29,7 +29,7 @@ function gate(graph: LoadedGraph, id: string, extra: Partial<BriefContext> = {},
   return briefGate(graph, target, { ...freeContext(graph, target, args), ...extra })
 }
 
-const attempt = (overrides: Partial<Attempt>): Attempt => ({ childId: 'hz-x-a1-000000', role: 'worker', node: 'x', attempt: 1, provider: 'p', model: 'example-model-large', why: 'w', plan: 'required', pins: 'pins: x@000000000000', ...overrides })
+const attempt = (overrides: Partial<Attempt>): Attempt => ({ childId: 'hz-x-a1-000000', role: 'worker', node: 'x', attempt: 1, graphDir: 'docs/graph', provider: 'p', model: 'example-model-large', why: 'w', plan: 'required', pins: 'pins: x@000000000000', ...overrides })
 
 test('parseDispatchArgs: a call with the required arguments parses; unknown names do not', () => {
   const ok = parseDispatchArgs({ id: 'task-12', model: 'example-model-large', why: 'touches one directory', review: { depth: 'light', why: 'adds one new file' }, context: 'reuse the date helper' })

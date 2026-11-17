@@ -157,7 +157,7 @@ test('pushOk: the three clauses', () => {
   assert.equal(refused.ok, false)
   assert.equal(pushOk(records, 'o2', 'hz-task-1-a1').ok, false)
   // Or by the same gate as from T, when the caller binds advanceOk.
-  const fromT = (from: string, to: string) => to === 'checked' ? { ok: true as const } : { ok: false as const, missing: 'no passed merge check' }
+  const fromT = (_from: string, to: string) => to === 'checked' ? { ok: true as const } : { ok: false as const, missing: 'no passed merge check' }
   assert.deepEqual(pushOk(records, 'o3', 'checked', fromT), { ok: true })
   assert.equal(pushOk(records, 'o3', 'unchecked', fromT).ok, false)
 })
@@ -340,7 +340,7 @@ test('a fast-forward to a checked commit lands the advance line, the evidence an
     assert.equal(seen?.event.event, 'hourness.trunk-advanced')
     assert.equal(seen?.event.key, `trunk-advanced:${commit}:${line.at ?? ''}`)
     assert.deepEqual(seen?.event.payload, { from, to: commit, tasks: 'task-1', files: ['src/feed.js'], truncated: false })
-    assert.deepEqual(advanceEvents(rig.metrics).map(event => [event.ref, event.way, event.byCheck, event.byPaths, event.reviewPending]), [['local', 'advance', true, false, []]])
+    assert.deepEqual(advanceEvents(rig.metrics).map(event => [event.ref, event.how, event.by, event.reviewPending]), [['local', 'advance', 'check', []]])
     assert.deepEqual(rig.violations, [])
   })
 })
@@ -399,7 +399,7 @@ test('a script move is found after the call: the unchecked line, a detected-afte
     assert.equal(task.status, 'done')
     assert.equal(doneEvidence(task).filter(item => item.kind === 'test').length, 3, 'the when line ran too')
     assert.ok((await rig.comments('task-1')).some(text => text.startsWith('进主干 ') && text.endsWith(' · 检查在前进之后')))
-    assert.ok(advanceEvents(rig.metrics).some(event => event.checkedAfter === true))
+    assert.ok(advanceEvents(rig.metrics).some(event => event.checkAfter === true))
   })
 })
 
@@ -483,7 +483,7 @@ test('a rollback of the trunk passes and is recorded with check null and no task
     assert.equal(result.isError, false)
     assert.equal(rig.repo.git('rev-parse', 'main'), base)
     const [line] = await rig.advances()
-    assert.deepEqual([line?.ref, line?.from, line?.to, line?.check, line?.tasks, line?.ok], ['local', top, base, null, [], true])
+    assert.deepEqual([line?.ref, line?.from, line?.to, line?.check, line?.tasks, line?.ok, line?.rollback], ['local', top, base, null, [], true, true])
     assert.deepEqual(rig.violations, [])
   })
 })
@@ -525,7 +525,7 @@ test('a commit made outside every call is seen at the main agent\'s next step as
     await rig.runtime.preStep()
     const [line] = await rig.advances()
     assert.deepEqual([line?.ref, line?.by, line?.from, line?.to, line?.ok], ['local', 'outside', from, to, undefined])
-    assert.ok(advanceEvents(rig.metrics).some(event => event.way === 'outside' && event.external === true))
+    assert.ok(advanceEvents(rig.metrics).some(event => event.how === 'outside' && event.external === true))
     assert.deepEqual(rig.events.map(seen => [seen.event.event, seen.event.payload.files]), [['hourness.outside-advance', ['README.md']]])
     assert.deepEqual(rig.violations, [])
   })

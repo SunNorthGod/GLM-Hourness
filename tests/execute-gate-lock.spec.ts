@@ -51,7 +51,7 @@ function fakeEnvironment(over: Partial<LockEnvironment> = {}): FakeEnvironment {
 /** The lock file a live process on this machine, not the caller, wrote. */
 function foreignLock(file: string, environment: LockEnvironment, over: { readonly age?: number, readonly bootOffset?: number, readonly pid?: number } = {}): void {
   const at = environment.now() - (over.age ?? 0)
-  writeFileSync(file, JSON.stringify({ pid: over.pid ?? process.pid, startedAt: at, at, token: 'someone-else', boot: environment.bootTime() + (over.bootOffset ?? 0), holder: 'check 0000000' }))
+  writeFileSync(file, JSON.stringify({ pid: over.pid ?? process.pid, startedAt: at, at, token: 'someone-else', boot: (environment.bootTime?.() ?? BOOT) + (over.bootOffset ?? 0), holder: 'check 0000000' }))
 }
 
 const staleFiles = (dir: string): string[] => readdirSync(dir).filter(name => name.startsWith('gate.lock.stale-'))

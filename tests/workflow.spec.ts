@@ -151,7 +151,7 @@ test('follow-up, request, grant, void, lift and gap records are not violations; 
       { at: 't5', kind: 'grant', rule: 'workspace-containment', tool: 'write', ref: 'r-1', signature: 's', call: { tool: 'write', target: 'x' }, scope: 'dialect' },
       { at: 't6', kind: 'grant-void', rule: 'workspace-containment', tool: 'write', ref: 'r-1', reason: 'changed', scope: 'dialect' },
       { at: 't7', kind: 'lift', rule: 'scratch-only', action: 'lift', via: 'chat', words: '新建脚本那条先别拦了' },
-      { at: 't8', rule: 'x', mode: 'late' },
+      { at: 't8', rule: 'x', mode: 'late' } as unknown as GuardRecord,
       { at: 't9', kind: 'gap', row: 'guard', lost: 3, classes: { denial: 2, followup: 1 }, since: '2026-11-01T01:00:00Z', until: '2026-11-01T02:10:00Z' },
     ],
     usage: [],
@@ -518,6 +518,52 @@ test('the installer form journals decisions into the row home, else the data ser
     console.warn = warn
   }
   assert.deepEqual([...files.keys()].sort(), ['C:/row/.llm/audit/decisions.jsonl', 'C:/svc/.llm/audit/decisions.jsonl'])
+})
+
+test('a failing decision journal warns and reports degraded health without blocking dispatch', async () => {
+  const origWarn = console.warn
+  const listeners: Array<(payload: unknown, next: () => Promise<unknown>) => Promise<unknown>> = []
+  const warnings: string[] = []
+  console.warn = (...args: unknown[]) => warnings.push(args.map(String).join(' '))
+  const store = new Map<string, unknown>()
+  try {
+    const dispose = apply(
+      {
+        on: (_event, listener) => { listeners.push(listener as typeof listeners[number]); return () => {} },
+        get: name => store.get(name),
+        provide: (name, value) => { store.set(name, value); return () => { store.delete(name) } },
+      },
+      {
+        home: 'C:/row/.llm',
+        fs: {
+          mkdir: () => Promise.resolve(undefined),
+          appendFile: () => Promise.reject(new Error('disk full')),
+        },
+      },
+    )
+    const result = await listeners[0]({ name: 'subagent', arguments: { description: 'task' }, agent: { id: 's-wf', session: { id: 's-wf', header: { id: 's-wf' } } } }, () => Promise.resolve({ kind: 'allow' }))
+    assert.deepEqual(result, { kind: 'allow' })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.ok(warnings.some(warning => warning.includes('disk full')))
+
+    // Direct applyOverJournal rejection also warns and triggers onError without blocking next().
+    const { applyOverJournal } = await import('../src/workflow/index.ts')
+    const directListeners: Array<(payload: unknown, next: () => Promise<unknown>) => Promise<unknown>> = []
+    const errors: string[] = []
+    applyOverJournal(
+      { on: (_event, listener) => { directListeners.push(listener as typeof directListeners[number]); return () => {} } },
+      { decision: () => Promise.reject(new Error('io failed')) },
+      undefined,
+      (_payload, error) => { errors.push((error as Error).message) },
+    )
+    assert.deepEqual(await directListeners[0]({ name: 'subagent', arguments: { description: 'task' } }, () => Promise.resolve({ kind: 'allow' })), { kind: 'allow' })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(errors, ['io failed'])
+    dispose()
+  }
+  finally {
+    console.warn = origWarn
+  }
 })
 
 test('the checks\' timeouts: one line per check with its value and source, the timeouts of seven days, the queue drops, a ceiling the main agent raised (m4-checks, design §6.3.1, P13-01)', async () => {

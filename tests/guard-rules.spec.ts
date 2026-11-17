@@ -13,9 +13,9 @@
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { fileToolsOnly, workspaceContainment, type RuleVerdict, type ToolCall } from '../src/guard/rules.ts'
+import { fileToolsOnly, NATIVE_FACE, normalizePath, workspaceContainment, type GuardRule, type ToolCall } from '../src/guard/rules.ts'
 
-const VERDICT_OF = (rule: { detect(call: ToolCall): RuleVerdict }, name: string, args: unknown): string => String(rule.detect({ name, arguments: args } as ToolCall).kind)
+const VERDICT_OF = (rule: GuardRule, name: string, args: unknown): string => String(rule.detect({ name, arguments: args } as ToolCall, NATIVE_FACE).kind)
 
 /** One denial row: the call, the rule that must deny it, and the fact line the model reads. The names are the DSH natives the rows judge (ORCHESTRATION.md §6.1); the journal's own records keep the model's spellings (Write, Bash). */
 const DENIED: ReadonlyArray<{ readonly rule: string, readonly name: string, readonly args: unknown, readonly fact: string }> = [
@@ -51,14 +51,11 @@ const ALLOWED: ReadonlyArray<{ readonly name: string, readonly args: unknown, re
 
 test('the incident table: every seed spelling is denied by its rule, with the fact line the journal kept', () => {
   const containment = workspaceContainment(['C:\\ws'])
-  const targets: ReadonlyArray<{ rule: string, detect: (call: ToolCall) => RuleVerdict }> = [
-    { rule: 'workspace-containment', detect: call => containment.detect(call) },
-    { rule: 'file-tools-only', detect: call => fileToolsOnly.detect(call) },
-  ]
+  const targets: ReadonlyArray<GuardRule> = [containment, fileToolsOnly]
   for (const seed of DENIED) {
-    const target = targets.find(candidate => candidate.rule === seed.rule)
+    const target = targets.find(candidate => candidate.id === seed.rule)
     assert.ok(target !== undefined, seed.rule)
-    const verdict = target.detect({ name: seed.name, arguments: seed.args } as ToolCall)
+    const verdict = target.detect({ name: seed.name, arguments: seed.args } as ToolCall, NATIVE_FACE)
     assert.equal(verdict.kind, 'deny', `${seed.rule} on ${JSON.stringify(seed.args)}`)
     assert.ok(verdict.kind === 'deny' && verdict.correction.fact.includes(seed.fact), verdict.kind === 'deny' ? verdict.correction.fact : '')
     assert.ok(verdict.kind === 'deny' && verdict.rule === seed.rule)
@@ -69,13 +66,13 @@ test('the incident table: every near-miss passes', () => {
   const containment = workspaceContainment(['C:\\ws'])
   for (const seed of ALLOWED) {
     for (const target of [containment, fileToolsOnly]) {
-      assert.equal(target.detect({ name: seed.name, arguments: seed.args } as ToolCall).kind, 'allow', `${seed.why} (${seed.name} ${JSON.stringify(seed.args)})`)
+      assert.equal(target.detect({ name: seed.name, arguments: seed.args } as ToolCall, NATIVE_FACE).kind, 'allow', `${seed.why} (${seed.name} ${JSON.stringify(seed.args)})`)
     }
   }
 })
 
 test('file-tools-only names the build-and-git exception, word for word, through the face', () => {
-  const verdict = fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'Set-Content f.txt x' } })
+  const verdict = fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'Set-Content f.txt x' } }, NATIVE_FACE)
   assert.ok(verdict.kind === 'deny')
   const expected = 'Build, test and git commands that write files as a side effect are allowed; only redirections and file-changing commands are denied. If this command writes no file, say so in your reply: the denial is recorded for review.'
   assert.equal(verdict.kind === 'deny' && verdict.correction.exception, expected)
@@ -83,7 +80,7 @@ test('file-tools-only names the build-and-git exception, word for word, through 
 
 test('workspace containment keeps its exception wording in G1 (it changes with the request card, G4)', () => {
   const containment = workspaceContainment(['C:\\ws'])
-  const verdict = containment.detect({ name: 'write', arguments: { file_path: 'C:\\Windows\\x.dll' } })
+  const verdict = containment.detect({ name: 'write', arguments: { file_path: 'C:\\Windows\\x.dll' } }, NATIVE_FACE)
   assert.ok(verdict.kind === 'deny' && verdict.correction.exception.startsWith('If the task really needs to write outside the workspace, tell the human'))
 })
 
@@ -91,6 +88,17 @@ test('a relative target resolves against the base, and the roots still decide (t
   const containment = workspaceContainment(['C:\\ws'], 'C:\\ws\\pkg')
   assert.equal(VERDICT_OF(containment, 'write', { file_path: 'src/a.ts' }), 'allow')
   assert.equal(VERDICT_OF(containment, 'write', { file_path: '../elsewhere/a.ts' }), 'allow', 'C:\\ws\\elsewhere is inside the roots; the base only decides what the spelling names')
-  const verdict = containment.detect({ name: 'write', arguments: { file_path: '../../../elsewhere/a.ts' } })
+  const verdict = containment.detect({ name: 'write', arguments: { file_path: '../../../elsewhere/a.ts' } }, NATIVE_FACE)
   assert.ok(verdict.kind === 'deny' && verdict.correction.fact.includes('You tried to write "../../../elsewhere/a.ts" (resolves to'), verdict.kind === 'deny' ? verdict.correction.fact : '')
+})
+
+test('normalizePath preserves UNC leading // and folds case only on Windows and macOS (M7-guard)', () => {
+  const expectedUnc = process.platform === 'win32' || process.platform === 'darwin' ? '//server/share/dir/file.ts' : '//server/Share/Dir/file.ts'
+  assert.equal(normalizePath('\\\\server\\Share\\Dir\\file.ts'), expectedUnc)
+  assert.equal(normalizePath('//server/Share//Dir///file.ts'), expectedUnc)
+  if (process.platform === 'win32') {
+    const uncContainment = workspaceContainment(['\\\\server\\share\\proj'])
+    assert.equal(VERDICT_OF(uncContainment, 'write', { file_path: '\\\\server\\share\\proj\\sub\\a.ts' }), 'allow')
+    assert.equal(VERDICT_OF(uncContainment, 'write', { file_path: '\\server\\share\\proj\\sub\\a.ts' }), 'deny')
+  }
 })

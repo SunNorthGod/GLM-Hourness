@@ -33,7 +33,7 @@ const write = (path: string, over: Record<string, unknown> = {}): ToolCall => ({
 // A real checkout for the facts that read one.
 function tempRepo(files: readonly string[]): string {
   const root = mkdtempSync(join(tmpdir(), 'guard-rules-'))
-  const run = (args: string[]): void => execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' })
+  const run = (args: string[]): void => { execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' }) }
   run(['init', '-q'])
   run(['config', 'user.email', 'probe@example.com'])
   run(['config', 'user.name', 'probe'])
@@ -67,7 +67,7 @@ test('suppression-reason: reason and existing node id pass; a node the graph doe
   const known: RuleContext = { oldContent: '', nodeIds: new Set(['m4-checks']) }
   assert.equal(detect(suppressionOnly(known), write('C:\\ws\\a.ts', { content: good })).kind, 'allow')
   assert.equal(detect(suppressionOnly({ oldContent: '', nodeIds: new Set(['other-node']) }), write('C:\\ws\\a.ts', { content: good })).kind, 'deny', 'a node id the graph does not list denies')
-  assert.equal(detect(suppressionOnly({ oldContent: '', nodeIds: undefined }), write('C:\\ws\\a.ts', { content: '// eslint-disable-next-line x -- short [whatever]\n' })).kind, 'allow', 'the graph unreadable, the id is not checked')
+  assert.equal(detect(suppressionOnly({ oldContent: '' }), write('C:\\ws\\a.ts', { content: '// eslint-disable-next-line x -- short [whatever]\n' })).kind, 'allow', 'the graph unreadable, the id is not checked')
   assert.equal(detect(suppressionOnly({ oldContent: '', nodeIds: new Set(['m4-checks']) }), write('C:\\ws\\a.ts', { content: '// eslint-disable-next-line x -- 一句足够长的中文理由不用英文词 [m4-checks]\n' })).kind, 'allow', 'six han characters are a reason')
 })
 
@@ -142,7 +142,7 @@ test('scratch-only: a new script outside the scratch area is denied; under .llm/
 })
 
 test('scratch-only: an unknown tracked list never denies (design §4.1)', () => {
-  const rule = scratchOnly(['C:\\ws'], { target: { exists: false }, tracked: undefined }, 'r-9')
+  const rule = scratchOnly(['C:\\ws'], { target: { exists: false } }, 'r-9')
   assert.equal(detect(rule, write('C:\\ws\\fix.py')).kind, 'allow', 'the tracked list unreadable')
 })
 

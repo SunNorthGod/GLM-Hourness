@@ -223,7 +223,7 @@ userTest('walk: the evidence shapes and the ten kept on the node (design §1.4 i
 })
 
 /** The main agent's session over the fixture's directory. */
-type MainSession = { readonly id: string, readonly session: { readonly header: { readonly cwd: string }, readonly id: string } }
+type MainSession = { readonly id: string, readonly session: { readonly header: { readonly id: string, readonly cwd: string }, readonly id: string, readonly deriveMessages: () => readonly unknown[] } }
 
 /**
  * The real relay check (main-agent-graph-relay over talk.ts personSaid) for
@@ -243,7 +243,7 @@ function personSays(g: EngineFixture, words: string, at: number): { readonly dep
       return said.ok ? { ok: true } : { ok: false, reason: said.reason, offBoundary: said.offBoundary }
     },
   }
-  return { deps, agent: { id: 'main', session: { header: { cwd: g.dir }, id: 's1' } } }
+  return { deps, agent: { id: 'main', session: { header: { id: 's1', cwd: g.dir }, id: 's1', deriveMessages: () => [] } } }
 }
 
 userTest('the propose and relink of the example pass the real transcribe check, once per node (design §1.4 item 13)', async g => {

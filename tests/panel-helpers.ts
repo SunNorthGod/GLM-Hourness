@@ -44,7 +44,7 @@ function fakeFeed(): {
 }
 
 type RemoteResult =
-  | { readonly ok: true, readonly value: { readonly absolutePath: string, readonly version: string, readonly bytes?: number, readonly data: Uint8Array } }
+  | { readonly ok: true, readonly value: { readonly absolutePath: string, readonly version: string, readonly bytes?: number, readonly offset: number, readonly data: Uint8Array, readonly eof: boolean } }
   | { readonly ok: false, readonly error: { readonly code: string, readonly message: string } }
 
 /** A Remote face over absolute paths held in memory, with a change feed the test drives and failing reads. */
@@ -70,7 +70,7 @@ export function fakeRemote(files: { readonly [path: string]: string }): {
     const text = contents.get(path)
     if (text === undefined) return Promise.resolve({ ok: false, error: { code: 'workspace-file/not-found', message: path } })
     reads.set(path, (reads.get(path) ?? 0) + 1)
-    return Promise.resolve({ ok: true, value: { absolutePath: path, version: String(text.length), bytes: text.length, data: new TextEncoder().encode(text) } })
+    return Promise.resolve({ ok: true, value: { absolutePath: path, version: String(text.length), bytes: text.length, offset: 0, data: new TextEncoder().encode(text), eof: true } })
   }
   const remote: RemoteRoot = {
     workspaceFiles: {
@@ -86,7 +86,7 @@ export function fakeRemote(files: { readonly [path: string]: string }): {
       },
       changes: () => undefined,
     },
-    commands: { execute: () => Promise.resolve({ ok: true, value: undefined }) },
+    commands: { execute: () => Promise.resolve({ ok: true, value: undefined }), list: () => Promise.resolve({ ok: true, value: [] }) },
     $stream: <T>() => {
       const feed = fakeFeed()
       feeds.add(feed.deliver)

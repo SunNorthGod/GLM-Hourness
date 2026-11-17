@@ -57,6 +57,8 @@ function fakeBoard(): Board {
       emit: () => Promise.resolve({ ok: true as const, id: 'ev-x', duplicate: false }),
       listens: () => false,
       recordRun: (run) => { runs.push(run) },
+      staleEntries: () => undefined,
+      timeoutEntries: () => undefined,
     },
   }
 }

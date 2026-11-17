@@ -41,7 +41,7 @@ const talkOf = (replies: readonly string[], minutesBeforeAsk = 1, shown = 0): Ta
     ...replies.map((text, index) => ({ seq: index + 2, time: T0 + (index + 1) * MINUTE, text })),
   ],
   shown: Array.from({ length: shown }, (_, index) => ({ seq: 10 + index })),
-})
+}) as unknown as TalkView
 
 const withMemory = withFixture
 
@@ -79,7 +79,7 @@ test('words of the avoided list in the question or the description are refused w
   const plain = await refusalOf(memory.call('memory_habit', { action: 'ask', ...HABIT, question: '验收标准都用测试来写，好吗？' }, MAIN))
   assert.equal(plain.code, 'plain_words')
   assert.equal(plain.field, 'question')
-  assert.ok(plain.hint?.includes('怎样算做完') === true, plain.hint)
+  assert.ok(plain.hint?.includes('怎样算做完') === true, plain.hint ?? '')
   const plainDescription = await refusalOf(memory.call('memory_habit', { action: 'ask', ...HABIT, description: ' acceptance rules in tests' }, MAIN))
   assert.equal(plainDescription.field, 'description')
   const secret = await refusalOf(memory.call('memory_habit', { action: 'ask', ...HABIT, body: 'The token is ghp_a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8.\n**Why:** said.' }, MAIN))
@@ -258,7 +258,7 @@ test('updating a confirmed habit without the person\'s messages is unavailable a
   await memory.call('memory_habit', { action: 'confirm', name: 'commit-in-english', words: [REPLY] }, MAIN)
   const talkless = memoryTools({ ...memory.env, talk: () => undefined }).find(tool => tool.name === 'memory_store')!
   const update = { name: 'commit-in-english', type: 'feedback', scope: 'all', description: HABIT.description, body: HABIT.body, relay: 'something the person never said' }
-  const refused = await refusalOf(runTool(new Map([['memory_store', talkless]]), 'memory_store', update))
+  const refused = await refusalOf(runTool(new Map([['memory_store', talkless]]), 'memory_store', update, MAIN))
   assert.equal(refused.code, 'unavailable')
   assert.equal(records(memory.places.user!).length, 2, 'nothing was written')
   const { question: _question, ...stated } = HABIT

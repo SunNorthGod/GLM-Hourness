@@ -39,6 +39,8 @@ function fakeBoard(refused?: string): { readonly service: LoopsService, readonly
     emit: () => Promise.resolve({ ok: true as const, id: 'ev-x', duplicate: false }),
     listens: () => false,
     recordRun: () => {},
+    staleEntries: () => undefined,
+    timeoutEntries: () => undefined,
   }
   return { service, handed }
 }

@@ -38,9 +38,9 @@ const settled = async (): Promise<void> => new Promise(resolve => setImmediate(r
 const runTurn = (fallback: ReturnType<typeof fixture>['fallback'], sessionId: string, command: unknown, turn: number): void => {
   const call = payload('Bash', { command }, sessionId)
   const session = sessionOf(call)
-  fallback.event(session as never, { type: 'turn/start', seq: turn, data: { turn } })
+  fallback.event(session as never, { type: 'turn/start', seq: turn, time: 0, data: { turn } })
   fallback.observe(call, origin)
-  fallback.event(session as never, { type: 'workspace/changes', seq: turn * 3, data: { turn } })
+  fallback.event(session as never, { type: 'workspace/changes', seq: turn * 3, time: 0, data: { turn } })
 }
 
 test('a turn whose shell writes no file tool targeted leaves one late denial and one queued correction', async () => {

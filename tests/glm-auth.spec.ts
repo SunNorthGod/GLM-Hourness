@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
+import { apply as applyGlmLlm } from '../src/glm-llm/index.ts'
+import { apply as applyGlmLogin } from '../src/glm-llm/login-row.ts'
 import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { PollOAuthClient, buildDesktopOAuthRedirectParam, parsePastedCallbackUrl, exchangeCode, buildPasteAuthorizeUrl, freshPasteState } from '../src/glm-llm/auth/oauth.ts'
 import { loadCredential, loadStoredCredential, saveCredential, clearCredential, updateStoredCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
@@ -221,4 +226,91 @@ test('jwt inspection reports age and rejects non-jwt shapes', () => {
   assert.equal(info.userId, 'u1')
   assert.equal(inspectJwt('not-a-jwt'), null)
   assert.equal(inspectJwt(`h.${b64url({})}.s`), null)
+})
+
+async function withCapturedWarnings(
+  run: (store: Map<string, unknown>, warnings: string[]) => Promise<void> | void,
+): Promise<void> {
+  const store = new Map<string, unknown>()
+  const warnings: string[] = []
+  const origWarn = console.warn
+  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')) }
+  try {
+    await run(store, warnings)
+  }
+  finally {
+    console.warn = origWarn
+  }
+}
+
+test('glm-llm apply degrades health and warns when registerAdapter throws', async () => {
+  await withCapturedWarnings((store, warnings) => {
+    const dispose = applyGlmLlm({
+      registerAdapter: () => { throw new Error('adapter exists') },
+      get: name => store.get(name),
+      provide: (name, value) => { store.set(name, value); return () => { store.delete(name) } },
+    }, { home: 'C:/ws/.llm' })
+    const health = store.get('glmHournessHealth/glm-llm') as { activation(): { state: string, reason: string } }
+    assert.equal(health.activation().state, 'degraded')
+    assert.match(health.activation().reason, /路由 glm-zcode 注册失败：adapter exists/)
+    assert.ok(warnings.some(warning => warning.includes('adapter exists')))
+    assert.equal(typeof dispose, 'function')
+    dispose?.()
+  })
+})
+
+test('glm-login apply degrades health when commands.register throws and catches storage I/O errors in /glm-logout and /glm-status', async () => {
+  await withCapturedWarnings(async (store, warnings) => {
+    const partialDispose = applyGlmLogin({
+      commands: {
+        register: (def) => {
+          if (def.name === 'glm-status') throw new Error('command taken')
+          return () => {}
+        },
+      },
+      get: name => store.get(name),
+      provide: (name, value) => { store.set(name, value); return () => { store.delete(name) } },
+    })
+    const partialHealth = store.get('glmHournessHealth/glm-login') as { activation(): { state: string, reason: string } }
+    assert.equal(partialHealth.activation().state, 'degraded')
+    assert.match(partialHealth.activation().reason, /\/glm-status 注册失败：command taken/)
+    partialDispose()
+
+    // A failure while rendering /glm-status returns { kind: 'error' } and degrades health; a directory at credentials.json triggers an unlink error in /glm-logout.
+    const statusHome = mkdtempSync(join(tmpdir(), 'glm-status-err-'))
+    const statusStore = new Map<string, unknown>()
+    const registered = new Map<string, { handler(invocation: unknown): Promise<{ kind: string, text: string }> }>()
+    const statusDispose = applyGlmLogin({
+      commands: { register: (def) => { registered.set(def.name, def); return () => {} } },
+      get: name => {
+        if (name === 'glmHournessHealth/glm-compact') throw new Error('health read failed')
+        return statusStore.get(name)
+      },
+      provide: (name, value) => { statusStore.set(name, value); return () => { statusStore.delete(name) } },
+    }, { home: statusHome })
+    const invocation = { agent: { id: 's-glm', session: { id: 's-glm', header: { id: 's-glm' } } }, rawInput: '' }
+    const statusResult = await registered.get('glm-status')!.handler(invocation)
+    assert.equal(statusResult.kind, 'error')
+    assert.match(statusResult.text, /读取状态失败：health read failed/)
+    const statusHealth = statusStore.get('glmHournessHealth/glm-login') as { activation(): { state: string, reason: string } }
+    assert.equal(statusHealth.activation().state, 'degraded')
+    statusDispose()
+
+    const logoutHome = mkdtempSync(join(tmpdir(), 'glm-logout-err-'))
+    mkdirSync(join(logoutHome, 'credentials.json'), { recursive: true })
+    const logoutStore = new Map<string, unknown>()
+    const logoutCmds = new Map<string, { handler(invocation: unknown): Promise<{ kind: string, text: string }> }>()
+    const logoutDispose = applyGlmLogin({
+      commands: { register: (def) => { logoutCmds.set(def.name, def); return () => {} } },
+      get: name => logoutStore.get(name),
+      provide: (name, value) => { logoutStore.set(name, value); return () => { logoutStore.delete(name) } },
+    }, { home: logoutHome })
+    const logoutResult = await logoutCmds.get('glm-logout')!.handler(invocation)
+    assert.equal(logoutResult.kind, 'error')
+    assert.match(logoutResult.text, /清除凭证失败/)
+    const logoutHealth = logoutStore.get('glmHournessHealth/glm-login') as { activation(): { state: string, reason: string } }
+    assert.equal(logoutHealth.activation().state, 'degraded')
+    logoutDispose()
+    assert.ok(warnings.length >= 3)
+  })
 })

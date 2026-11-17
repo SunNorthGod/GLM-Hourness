@@ -30,12 +30,13 @@ function goal(id = 'goal-1'): GraphNode {
 
 /** A node under the base goal, or under the given parent. */
 function node(id: string, type: GraphNode['type'], extra: Partial<GraphNode> = {}, parent?: string): GraphNode {
+  const parentId = parent ?? (type === 'feature' || type === 'role' ? 'goal-1' : undefined)
   return {
     id,
     type,
     title: `${id} 标题`,
     status: 'approved',
-    parent: parent ?? (type === 'goal' ? undefined : type === 'feature' || type === 'role' ? 'goal-1' : undefined),
+    ...(parentId === undefined ? {} : { parent: parentId }),
     history: [born],
     ...extra,
   }
@@ -103,11 +104,11 @@ test('a role, a flow and a step read clean; V1 puts each under its parent type (
 test('V2: a user node stores proposed, approved, dropped or superseded only (design §1.4 item 6, read side)', () => {
   const closed: readonly GraphNode['status'][] = ['doing', 'done']
   for (const status of closed) {
-    const issues = errorIssues(node('step-2', 'step', { status }, 'flow-x'))
+    const issues = errorIssues(node('step-2', 'step', { status }, 'flow-x') as unknown as Record<string, unknown>)
     assert.ok(issues.some(issue => issue.field === 'status'), status)
   }
   for (const status of USER_STATUSES) {
-    assert.ok(!errorIssues(node('step-2', 'step', { status }, 'flow-x')).some(issue => issue.field === 'status'), status)
+    assert.ok(!errorIssues(node('step-2', 'step', { status }, 'flow-x') as unknown as Record<string, unknown>).some(issue => issue.field === 'status'), status)
   }
 })
 
@@ -155,8 +156,8 @@ test('V7: walk evidence is a step\'s, with its ref, exit and note shapes (design
   const bad: readonly (readonly [Evidence, string])[] = [
     [{ ...good, ref: 'walked it' }, 'evidence[0].ref'],
     [{ ...good, ref: `command:${'a'.repeat(USER_LIMITS.ref)}` }, 'evidence[0].ref'],
-    [{ ...good, exit: undefined }, 'evidence[0].exit'],
-    [{ ...good, note: undefined }, 'evidence[0].note'],
+    [{ kind: 'walk', ref: good.ref, note: good.note } as Evidence, 'evidence[0].exit'],
+    [{ kind: 'walk', ref: good.ref, exit: good.exit } as Evidence, 'evidence[0].note'],
     [{ ...good, note: '两行\n的note' }, 'evidence[0].note'],
     [{ ...good, note: `@3f2a91c ${'长'.repeat(USER_LIMITS.note)}` }, 'evidence[0].note'],
   ]

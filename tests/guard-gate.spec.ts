@@ -12,7 +12,7 @@ import test from 'node:test'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { installRuleGate, isGateListener, type RuleGateOptions } from '../src/guard/gate.ts'
+import { deferPreExecuteEffect, installRuleGate, isGateListener, withPreExecuteFrame, type RuleGateOptions } from '../src/guard/gate.ts'
 import { judge, NATIVE_FACE, renderCorrection, type Correction, type GuardRule, type ToolCall } from '../src/guard/rules.ts'
 import type { ViolationRecord } from '../src/guard/records.ts'
 import { provideRowHealth, sessionIdOf, type RowHealth } from '../src/shared/health.ts'
@@ -192,7 +192,7 @@ test('a throwing detector fails open: the rule does not deny, the health note na
     assert.equal((await h.run(write(agent))).kind, 'deny', 'only the broken rule fails open; the healthy rule still judges (design §3.1)')
     assert.equal((await h.run(write(agent))).kind, 'deny', 'a second call fails the broken rule open the same way')
     assert.equal(warnings.filter(message => message.includes('broken-rule')).length, 1, 'one console warning per rule and session')
-    const report = h.health.session(sessionIdOf(agent))
+    const report = h.health.session(sessionIdOf(agent) ?? '')
     assert.ok(report !== undefined)
     assert.equal(report.state, 'degraded')
     assert.ok(report.reason.includes('规则 broken-rule 判定出错'), report.reason)
@@ -204,7 +204,7 @@ test('a throwing detector fails open: the rule does not deny, the health note na
 
 test('the rule-errors note names at most three rules and says 等 for the rest', async () => {
   const h = harness()
-  const broken = (id: string): GuardRule => ({ id, declare: id, detect() { throw new Error('no') } })
+  const broken = (id: string): GuardRule => ({ id, detect() { throw new Error('no') } })
   h.gateOf({ rules: () => ({ rules: [broken('a'), broken('b'), broken('c'), broken('d')], face: NATIVE_FACE, origin: { scope: 'dialect' } }), health: h.health })
   const agent = agentAt('a1')
   assert.equal((await h.run(write(agent))).kind, 'allow')
@@ -214,12 +214,12 @@ test('the rule-errors note names at most three rules and says 等 for the rest',
 
 test('a failed journal write counts against the session and the note outlives the row health reports', async () => {
   const h = harness({ fail: () => true })
-  h.gateOf({ rules: () => ({ rules: [rule('one')], face: NATIVE_FACE, origin: { scope: 'dialect' } }), health: h.health, journal: (record) => h.store.fs.appendFile('C:/ws/.llm/audit/violations.jsonl', `${JSON.stringify(record)}\n`) })
+  h.gateOf({ rules: () => ({ rules: [rule('one')], face: NATIVE_FACE, origin: { scope: 'dialect' } }), health: h.health, journal: async (record) => { await h.store.fs.appendFile('C:/ws/.llm/audit/violations.jsonl', `${JSON.stringify(record)}\n`); return 'written' as const } })
   const agent = agentAt('a1')
   assert.equal((await h.run(write(agent))).kind, 'deny', 'the call is denied whether or not the record landed')
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(h.violations().length, 0)
-  assert.equal(h.health.session('a1')?.reason.includes('1 条违规没有落盘'), true, h.health.session('a1')?.reason)
+  assert.equal(h.health.session('a1')?.reason.includes('1 条违规没有落盘'), true, h.health.session('a1')?.reason ?? '')
   // The plain report does not wipe the note.
   h.health.report('a1', 'active', '门禁生效')
   assert.equal(h.health.session('a1')?.reason.includes('1 条违规没有落盘'), true)
@@ -257,4 +257,105 @@ test('isGateListener marks the listeners the gate installs, and nothing else', (
   assert.equal(isGateListener(pre.listener), true)
   assert.equal(isGateListener(() => Promise.resolve({ kind: 'allow' as const })), false)
   stop()
+})
+
+test('withPreExecuteFrame: beforeAllow short-circuits on deny and skips onAllow, running onDeny once at the outermost frame', async () => {
+  const events: string[] = []
+  const payload = write(agentAt('a1'))
+  const decision = await withPreExecuteFrame(payload, async () => {
+    deferPreExecuteEffect(payload, {
+      beforeAllow: () => { events.push('before-1'); return Promise.resolve({ kind: 'deny', reason: 'blocked in beforeAllow' }) },
+      onAllow: () => { events.push('allow-1') },
+      onDeny: () => { events.push('deny-1') },
+    })
+    return await withPreExecuteFrame(payload, () => {
+      deferPreExecuteEffect(payload, {
+        beforeAllow: () => { events.push('before-2'); return Promise.resolve(undefined) },
+        onAllow: () => { events.push('allow-2') },
+        onDeny: () => { events.push('deny-2') },
+      })
+      return Promise.resolve({ kind: 'allow' })
+    })
+  })
+  assert.deepEqual(decision, { kind: 'deny', reason: 'blocked in beforeAllow' })
+  assert.deepEqual(events, ['before-1', 'deny-1', 'deny-2'])
+})
+
+test('cross-row H2: an outer gate denying after next() releases carried grants without consuming them and skips allowed()', async () => {
+  const store = memoryFs()
+  const listeners: Array<{ event: string, listener: Listener, prepend?: boolean }> = []
+  const ctx = {
+    on: (event: string, listener: never, opts?: { prepend?: boolean }) => {
+      const entry = { event, listener: listener as Listener, ...(opts === undefined ? {} : { prepend: opts.prepend }) }
+      if (opts?.prepend === true) listeners.unshift(entry)
+      else listeners.push(entry)
+      return () => {}
+    },
+    get: () => undefined,
+  }
+  const events: string[] = []
+  let grantState: 'unused' | 'in-use' | 'consumed' | 'released' = 'unused'
+  let outerDecision: PreExecuteDecision = { kind: 'deny', reason: 'outer rules block' }
+  installRuleGate(ctx, {
+    row: 'guard',
+    prepend: false,
+    rules: () => ({
+      rules: [{
+        id: 'workspace-containment',
+        detect: call => call.name === 'write'
+          ? { kind: 'deny', rule: 'workspace-containment', correction: CORRECTION('outside'), ref: 'r-test1234' }
+          : { kind: 'allow' },
+      }],
+      face: NATIVE_FACE,
+      origin: { scope: 'dialect' },
+    }),
+    grants: () => ({
+      kind: 'carried',
+      rule: 'workspace-containment',
+      grant: { ref: 'r-test1234', rule: 'workspace-containment', signature: 'sig', root: 'a1', facts: { exists: false }, decidedAt: 0, expiresAt: 100_000, words: 'ok' },
+      markInUse: () => { grantState = 'in-use'; events.push('markInUse') },
+      consume: () => { grantState = 'consumed'; events.push('consume'); return undefined },
+      release: () => { grantState = 'released'; events.push('release') },
+    }),
+    journal: (record) => { void store.fs.appendFile('C:/ws/.llm/audit/violations.jsonl', `${JSON.stringify(record)}\n`) },
+    allowed: (payload) => { events.push(`allowed:${payload.name}`) },
+  })
+  // Outer listener (like rules/gate.ts) wrapped in withPreExecuteFrame.
+  ctx.on('tools/pre-execute', ((payload: ToolExecutionPayload, next: () => Promise<PreExecuteDecision>) => withPreExecuteFrame(payload, async () => {
+    const inner = await next()
+    if (inner.kind !== 'allow') return inner
+    return outerDecision
+  })) as never, { prepend: true })
+
+  const runWaterfall = (payload: ToolExecutionPayload): Promise<PreExecuteDecision> => {
+    const chain = listeners.filter(entry => entry.event === 'tools/pre-execute')
+    const dispatch = (index: number): Promise<PreExecuteDecision> =>
+      index >= chain.length ? Promise.resolve({ kind: 'allow' }) : chain[index].listener(payload, () => dispatch(index + 1))
+    return dispatch(0)
+  }
+
+  // 1. Granted write blocked by outer gate: released, not consumed, no GrantRecord.
+  const deniedGrant = await runWaterfall(write(agentAt('a1')))
+  assert.equal(deniedGrant.kind, 'deny')
+  assert.equal(grantState, 'released')
+  assert.deepEqual(events, ['markInUse', 'release'])
+  assert.equal(store.lines('C:/ws/.llm/audit/violations.jsonl').length, 0)
+
+  // 2. Normal read blocked by outer gate: allowed() is NOT called.
+  events.length = 0
+  const deniedRead = await runWaterfall({ name: 'read', arguments: { file_path: 'a.ts' }, agent: agentAt('a1') })
+  assert.equal(deniedRead.kind, 'deny')
+  assert.deepEqual(events, [])
+
+  // 3. Outer gate allows: grant is consumed and GrantRecord is written; read calls allowed().
+  outerDecision = { kind: 'allow' }
+  grantState = 'unused'
+  const allowedGrant = await runWaterfall(write(agentAt('a1')))
+  assert.equal(allowedGrant.kind, 'allow')
+  assert.equal(grantState, 'consumed')
+  assert.deepEqual(events, ['markInUse', 'consume'])
+  assert.equal(store.lines('C:/ws/.llm/audit/violations.jsonl').length, 1)
+  events.length = 0
+  assert.equal((await runWaterfall({ name: 'read', arguments: { file_path: 'a.ts' }, agent: agentAt('a1') })).kind, 'allow')
+  assert.deepEqual(events, ['allowed:read'])
 })

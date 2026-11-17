@@ -226,7 +226,7 @@ test('git missing lets the command through and says so', async () => {
 test('a step that fails refuses the command with the snapshot\'s four-part correction, and leaves no ref', async () => {
   const repo = twoCommitRepo()
   repo.write({ 'a.txt': 'unsaved\n' })
-  const broken = refusal(await run(repo, 'git checkout -- a.txt', { env: replacing(args => args.includes('commit-tree'), { code: 1, stdout: '', stderr: 'boom', problem: undefined }) }))
+  const broken = refusal(await run(repo, 'git checkout -- a.txt', { env: replacing(args => args.includes('commit-tree'), { code: 1, stdout: '', stderr: 'boom' }) }))
   assert.equal(broken.code, 'git-failed')
   const correction = snapshotCorrection('git checkout -- a.txt', broken)
   assert.equal(correction.fact, 'The harness could not save a snapshot before "git checkout -- a.txt": git commit-tree exited 1: boom.')
@@ -272,7 +272,7 @@ test('the temporary index lives in the system temporary directory and is gone af
     assert.ok([...used].every(file => file.startsWith(scratch) && file.includes('glm-hourness-snap-index-')), [...used].join(', '))
     assert.ok(used.size > 0)
     assert.equal(readdirSync(scratch).length, 0)
-    refusal(await run(repo, 'git clean -fd', { env: { ...watching, ...replacing(args => args.includes('write-tree'), { code: 1, stdout: '', stderr: 'no', problem: undefined }) } }))
+    refusal(await run(repo, 'git clean -fd', { env: { ...watching, ...replacing(args => args.includes('write-tree'), { code: 1, stdout: '', stderr: 'no' }) } }))
     assert.equal(readdirSync(scratch).length, 0)
     assert.equal(readdirSync(join(repo.dir, '.git')).some(name => name.startsWith('tmp-index') || name === 'hourness'), false)
   }

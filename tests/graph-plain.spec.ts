@@ -105,7 +105,7 @@ test('why: read and written back byte for byte, right after the title; a questio
 
 test('reading notices: one per rule an open node breaks, with its field and rule; closed nodes are not read', () => {
   const nodes = new Map<string, GraphNode>([
-    ['goal-1', node({ id: 'goal-1', type: 'goal', title: '记账本', parent: undefined })],
+    ['goal-1', node({ id: 'goal-1', type: 'goal', title: '记账本' })],
     ['task-1', node({ id: 'task-1', type: 'task', title: 'M3 记一条', why: '跟 task-2 一起' })],
     ['task-2', node({ id: 'task-2', type: 'task', title: 'M3 已做完', status: 'done', evidence: [{ kind: 'commit', ref: 'abc1234' }] })],
     ['task-3', node({ id: 'task-3', type: 'task', title: 'M3 不做了', status: 'dropped' })],

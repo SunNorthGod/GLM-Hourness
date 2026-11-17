@@ -34,7 +34,6 @@ const GATE = ['`$ node -e "process.exit(0)"`', '`$ node -e "process.exit(0)"`', 
 const TRAILER = 'Hourness-Task: task-1'
 
 type Gate = ReturnType<typeof installTrunkGate>
-type GateHost = Parameters<typeof installTrunkGate>[0]
 type TrunkEventSeen = { readonly project: string, readonly trunk: string, readonly event: { readonly event: string, readonly key: string, readonly payload: Readonly<Record<string, unknown>> } }
 
 export interface TrunkRig {
@@ -113,7 +112,7 @@ export async function trunkRig(options: {
   // The live agents the gate walks a subagent's chain through: the runtime's agent, and the holder's main-1 the notices go to.
   const holderAgents = lookup.get?.('agents') as { get(id: string): unknown }
   const gateLookup: ServiceLookup = { get: name => name === 'agents' ? { get: (id: string) => id === runtime.agent.id ? runtime.agent : holderAgents.get(id) } : lookup.get?.(name) }
-  const installed = installTrunkGate(runtime.ctx as unknown as GateHost, {
+  const installed = installTrunkGate(runtime.ctx, {
     lookup: gateLookup,
     register: registeredAttempt,
     owning: () => undefined,

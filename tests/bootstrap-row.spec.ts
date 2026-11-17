@@ -270,11 +270,14 @@ test('settleWorkspace refuses the home directory, a drive root and a folder with
   assert.ok(!existsSync(join(home, '.llm')) && !existsSync(join(home, '.git')) && !existsSync(join(loose, '.llm')) && !existsSync(join(loose, '.git')))
 })
 
-test('the row installs no gate, registers /hourness-init and provides its service; a registration that throws does not throw out of activation; with the row off /wish is unchanged (row #6)', async () => {
+test('the row installs no gate, registers /hourness-init and provides its service; a registration that throws does not throw out of activation and degrades health; with the row off /wish is unchanged (row #6)', async () => {
   const events: string[] = []
   const store = serviceStore()
-  const dispose = applyBootstrap({ get: name => store.get(name), provide: (name, value) => store.provide(name, value), commands: { register: () => { throw new Error('taken') } }, on: (event) => { events.push(event); return () => {} } })
-  assert.equal((store.get(healthServiceName('bootstrap')) as RowHealthView).activation().state, 'active')
+  const { result: dispose, warnings } = await captureWarnings(() => applyBootstrap({ get: name => store.get(name), provide: (name, value) => store.provide(name, value), commands: { register: () => { throw new Error('taken') } }, on: (event) => { events.push(event); return () => {} } }))
+  const healthView = store.get(healthServiceName('bootstrap')) as RowHealthView
+  assert.equal(healthView.activation().state, 'degraded')
+  assert.match(healthView.activation().reason, /命令 \/hourness-init 注册失败：taken/)
+  assert.ok(warnings.some(warning => warning.includes('taken')))
   assert.equal(typeof (store.get(BOOTSTRAP_SERVICE) as { prepare?: unknown }).prepare, 'function')
   assert.deepEqual(events, ['agent/created'], 'the row listens to agent creation only: no tools/pre-execute gate')
   dispose()
@@ -302,7 +305,7 @@ test('/wish on an empty folder opens the takeover as a new project: nothing to h
   const agent = await rootAgent(made, 's-w-new', 'wnew', false)
   const ws = made.workspace('wnew')
   const run = await made.execute(agent, '/wish')
-  assert.equal(run?.result.kind, 'success', run?.result.text)
+  assert.equal(run?.result.kind, 'success', run?.result.text ?? '')
   assert.match(run?.result.text ?? '', /^开了接管 tk-[0-9a-z]{8}（新项目）：空目录：当新项目，已建 git 仓库。/)
   assert.match(run?.result.text ?? '', /说一句你想做成什么，主 Agent 从这里开始问你。\n已让这个会话的 agent 当主 Agent（项目经理）/)
   const open = journal(ws)[0]
@@ -320,7 +323,7 @@ test('/wish with words in a folder that has no docs/graph: the directory is made
   const ws = made.workspace('wwords')
   rmSync(join(ws, 'docs'), { recursive: true })
   const run = await made.execute(agent, '/wish 记一笔账')
-  assert.equal(run?.result.kind, 'success', run?.result.text)
+  assert.equal(run?.result.kind, 'success', run?.result.text ?? '')
   assert.ok(existsSync(join(ws, 'docs', 'graph', 'nodes')))
   assert.doesNotMatch(run?.result.text ?? '', /说一句你想做成什么/, 'the person said it already')
   assert.match(run?.result.text ?? '', /已把你的愿望交给它/)
@@ -336,7 +339,7 @@ test('/wish on an existing project: the takeover-start notice wakes the idle age
   existingProject(ws)
   const agent = await rootAgent(made, 's-w-ex', 'wexisting', false)
   const first = await made.execute(agent, '/wish 加一个导出')
-  assert.equal(first?.result.kind, 'success', first?.result.text)
+  assert.equal(first?.result.kind, 'success', first?.result.text ?? '')
   assert.match(first?.result.text ?? '', /^开了接管 tk-[0-9a-z]{8}（已有项目）：已有项目：1 个代码文件、1 个提交/)
   assert.match(first?.result.text ?? '', /你许的愿记在接管流水里，清单同意之后交给主 Agent。\n主 Agent 开始读这个项目，读完先问你两件事。\n已让这个会话的 agent 当主 Agent/)
   assert.doesNotMatch(first?.result.text ?? '', /已把你的愿望交给它/)
@@ -347,7 +350,7 @@ test('/wish on an existing project: the takeover-start notice wakes the idle age
   assert.deepEqual([open?.data?.trigger, open?.data?.path, open?.data?.wish], ['wish', 'existing', '加一个导出'])
 
   const second = await made.execute(agent, '/wish 再加一个导出')
-  assert.equal(second?.result.kind, 'success', second?.result.text)
+  assert.equal(second?.result.kind, 'success', second?.result.text ?? '')
   assert.match(second?.result.text ?? '', /^接着做开着的接管 /)
   assert.equal(journal(ws).filter(record => record.op === 'takeover-open').length, 1, 'the open takeover is resumed, not a second one')
   const wishes = journal(ws).filter(record => record.op === 'takeover-wish')
@@ -409,12 +412,12 @@ test('/wish in a session while another session is the main agent points there an
   assert.equal((await made.execute(first, '/wish'))?.result.kind, 'success')
   const second = await rootAgent(made, 's-w-second', 'wpoint', false)
   const pointed = await made.execute(second, '/wish 加一个导出')
-  assert.ok(pointed?.result.text.startsWith(ROLE_UNCHANGED_MARK), pointed?.result.text)
+  assert.ok(pointed?.result.text.startsWith(ROLE_UNCHANGED_MARK), pointed?.result.text ?? '')
   assert.equal(journal(ws).filter(record => record.op === 'takeover-open').length, 1)
   assert.equal(journal(ws).filter(record => record.op === 'takeover-wish').length, 0, 'the words went nowhere')
   assert.deepEqual(second.sent, [])
   const moved = await made.execute(second, '/wish here 加一个导出')
-  assert.equal(moved?.result.kind, 'success', moved?.result.text)
+  assert.equal(moved?.result.kind, 'success', moved?.result.text ?? '')
   assert.equal(journal(ws).filter(record => record.op === 'takeover-open').length, 1)
   assert.deepEqual(journal(ws).filter(record => record.op === 'takeover-wish').map(record => record.data?.text), ['加一个导出'])
   assert.deepEqual(startNoticesOf(second), ['followup'])
@@ -451,7 +454,7 @@ test('wants: a takeover journal that cannot be read does not stop an ordinary /w
   assert.equal(warnings.filter(warning => warning.includes('cannot be read, /wish goes on without the takeover')).length, 1)
   const agent = await rootAgent(made, 's-w-broken', 'wbroken', false)
   const run = await made.execute(agent, '/wish')
-  assert.equal(run?.result.kind, 'success', run?.result.text)
+  assert.equal(run?.result.kind, 'success', run?.result.text ?? '')
   assert.ok(!run?.result.text.includes('接管'), 'M3 alone answered')
 })
 
@@ -555,4 +558,71 @@ test('the graph-in-git check after a close: the first reminder names the closing
   assert.deepEqual(await graphNotices(), [])
   assert.equal(journal(ws).filter(record => record.op === 'graph-tracked').length, 1)
   assert.deepEqual(await graphNotices(), [], 'tracked: no more reminders')
+})
+
+test('bootstrap degrades health when tools.register throws inside inject', async () => {
+  const store = serviceStore()
+  const { result: dispose, warnings } = await captureWarnings(() => applyBootstrap({
+    get: name => store.get(name),
+    provide: (name, value) => store.provide(name, value),
+    inject: ((_names: readonly string[], callback: (sub: { tools: { register: () => () => void }, provide: (n: string, v: unknown) => () => void, get: (n: string) => unknown }) => void) => {
+      callback({ tools: { register: () => { throw new Error('tool conflict') } }, provide: (n: string, v: unknown) => store.provide(n, v), get: (n: string) => store.get(n) })
+      return undefined
+    }) as never,
+    commands: { register: () => () => {} },
+    on: () => () => {},
+  }))
+  const healthView = store.get(healthServiceName('bootstrap')) as RowHealthView
+  assert.equal(healthView.activation().state, 'degraded')
+  assert.match(healthView.activation().reason, /bootstrap_review 注册失败：tool conflict/)
+  assert.ok(warnings.some(warning => warning.includes('registering bootstrap_review failed: tool conflict')))
+  dispose()
+})
+
+test('design row handles rc.1 async sessionProjections rejection and reads resolved handle.stateOf without deprecated registry stateOf', async () => {
+  const made = designHost()
+  let deprecatedReads = 0
+  const state = { active: true, running: null, settled: null }
+  const handle = {
+    dispose: async () => {},
+    stateOf: () => state,
+  }
+  const rc1Projections = {
+    register: (def: { key: string }) => {
+      if (def.key === 'hournessMainAgent') {
+        const ready = Promise.resolve(handle)
+        return Object.assign(async () => {}, {
+          then: ready.then.bind(ready),
+        })
+      }
+      const rejected = Promise.reject(new Error('talk version mismatch'))
+      return Object.assign(async () => {}, {
+        then: rejected.then.bind(rejected),
+      })
+    },
+    snapshot: () => ({ values: {} }),
+    stateOf: () => {
+      deprecatedReads += 1
+      return undefined
+    },
+  }
+  const injector = {
+    inject: (_names: readonly string[], cb: (sub: unknown) => (() => void) | void) => {
+      cb({ sessionProjections: rc1Projections, get: (n: string) => made.ctx.get?.(n) })
+      return undefined
+    },
+  }
+  const { warnings } = await captureWarnings(async () => {
+    const dispose = applyDesign({ ...made.ctx, inject: injector.inject as never })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const view = made.services.get(healthServiceName('design')) as RowHealthView
+    assert.equal(view.activation().state, 'degraded')
+    assert.match(view.activation().reason, /talk version mismatch/)
+    const agent = made.addAgent('s-rc1')
+    await made.created(agent)
+    await agent.assemble()
+    assert.equal(deprecatedReads, 0, 'resolved handle.stateOf avoids deprecated sessionProjections.stateOf')
+    dispose()
+  })
+  assert.ok(warnings.some(warning => warning.includes('talk version mismatch')))
 })

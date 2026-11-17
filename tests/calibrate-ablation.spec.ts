@@ -9,7 +9,6 @@
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-// @ts-expect-error The script is plain JavaScript without a declaration file.
 import { ARMS, DEFERRED_BY_A3, paragraphRule, rewriteRequest, rewriteText, WORKSPACE_RULES_SHORT } from '../scripts/calibrate/ablation.mjs'
 import { WORKSPACE_RULES_TEXT } from '../src/guard/sections.ts'
 import { DYNAMIC_BEHAVIOR } from '../src/glm-prompt/verbatim.ts'

@@ -215,6 +215,46 @@ test('projectJournal writes each project into its own journal and flushes every 
   await journal.flush()
 })
 
+test('concurrent failed violation writes merge taken back into gap instead of overwriting it, and projectJournal folds Windows drive-letter case (M8.1)', async () => {
+  const files = new Map<string, string>()
+  let rejectNext = true
+  const fs = {
+    mkdir: () => Promise.resolve(),
+    appendFile: (path: string, data: string): Promise<void> => {
+      if (rejectNext) return Promise.reject(Object.assign(new Error('disk full'), { code: 'ENOSPC' }))
+      files.set(path, (files.get(path) ?? '') + data)
+      return Promise.resolve()
+    },
+  }
+  const warnings: string[] = []
+  const warn = console.warn
+  console.warn = (message: string) => { warnings.push(message) }
+  try {
+    const pj = projectJournal('guard', cwd => cwd, fs)
+    // Initial failure seeds gap with 1 lost record.
+    assert.equal(await pj.violation(denial('2026-11-01T01:00:00Z'), 'C:/ws/.llm'), 'failed')
+    // Two concurrent failures with different drive-letter case: both share one RowJournal and merge into gap (3 lost total).
+    const [r1, r2] = await Promise.all([
+      pj.violation(denial('2026-11-01T02:00:00Z'), 'c:/ws/.llm'),
+      pj.violation(denial('2026-11-01T03:00:00Z'), 'C:/ws/.llm'),
+    ])
+    assert.deepEqual([r1, r2], ['failed', 'failed'])
+    assert.equal(warnings.length, 1, 'drive-letter case folding shares one RowJournal and warns once')
+    rejectNext = false
+    assert.equal(await pj.violation(denial('2026-11-01T04:00:00Z'), 'c:/ws/.llm'), 'written')
+    const lines = (files.get('C:/ws/.llm/audit/violations.jsonl') ?? '').trim().split('\n').map(line => JSON.parse(line) as Record<string, unknown>)
+    assert.equal(lines.length, 2)
+    assert.equal(lines[0]?.kind, 'gap')
+    assert.equal(lines[0]?.lost, 3)
+    assert.equal(lines[0]?.since, '2026-11-01T01:00:00Z')
+    assert.equal(lines[0]?.until, '2026-11-01T03:00:00Z')
+    assert.equal(lines[1]?.at, '2026-11-01T04:00:00Z')
+  }
+  finally {
+    console.warn = warn
+  }
+})
+
 
 /** A memory context: the llm/stream waterfall, the agent lifecycle, the tools service and an optional data service. */
 function memoryContext(data: unknown) {

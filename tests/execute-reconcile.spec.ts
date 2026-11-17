@@ -93,7 +93,7 @@ test('a lost dispatch whose session holds a structured_output is replayed from t
     assert.deepEqual(rig.handbacks[0]?.settlement, { structured: rig.projections.get(CHILD), stopReason: 'completed' })
     assert.ok((await rig.comments('task-1')).some(text => text.startsWith(`第 1 次交回 · blocked · ${CHILD}`)), 'the handback comment is on the task')
     assert.deepEqual(reconcileLines(rig).map(line => [line.key, line.lost, line.replayed, line.evidence]), [['host-started:main-1:1', 0, 1, 0]])
-    assert.ok(rig.metrics.some(event => event.event === 'execute.reconcile' && event.replayed === 1 && event.lost === 0))
+    assert.ok(rig.metrics.some(event => event.event === 'execute.reconcile' && event.redone === 1 && event.lost === 0))
     assert.deepEqual(await rig.drive.reconcile(hostStarted(rig, 'host-started:main-1:1')), { outcome: 'skipped', reason: 'already reconciled' })
     // Another key finds the handback comment: the dispatch is processed, nothing runs twice.
     assert.deepEqual(await rig.drive.reconcile(hostStarted(rig, 'host-started:main-1:2')), { outcome: 'done' })
@@ -136,7 +136,10 @@ test('a lost dispatch with nothing to read back is commented lost and listed in 
     const commit = rig.repo.commitOn('hz/task-1', { 'src/feed.js': 'feed\n' }, 'task-1: half of the feed')
     // The holder's first step in this process hands over hourness.host-started; without the board the fallback runs execute.reconcile.
     await rig.step()
-    await until(async () => (await rig.comments('task-1')).includes(`第 1 次在宿主重启时丢失 · ${CHILD}`), 'the lost comment')
+    for (let waited = 0; waited < 3_000 && !(await rig.comments('task-1')).includes(`第 1 次在宿主重启时丢失 · ${CHILD}`); waited += 25) {
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert.ok((await rig.comments('task-1')).includes(`第 1 次在宿主重启时丢失 · ${CHILD}`), 'the lost comment')
     await until(() => reconcileLines(rig).length === 1, 'the reconcile line')
     assert.deepEqual(reconcileLines(rig).map(line => [line.key, line.lost]), [[`host-started:main-1:${PROC}`, 1]])
     assert.deepEqual(rig.drive.status('main-1').lost, [{ task: 'task-1', attempt: 1, childId: CHILD }])
@@ -218,7 +221,7 @@ test('a harness action another process started and never ended runs again: execu
   assert.equal(result.outcome, 'done')
   assert.ok(rig.live.goalOf('main-1') !== undefined, 'the interrupted start-drive did not run again')
   assert.equal((await rig.comments('goal-1')).filter(text => text.startsWith('自动推进已开始')).length, 1)
-  assert.ok(rig.metrics.some(event => event.event === 'execute.loop-fallback' && event.reason === 'interrupted' && event.key === key))
+  assert.ok(rig.metrics.some(event => event.event === 'execute.loop-fallback' && event.why === 'interrupted' && event.key === key))
   assert.deepEqual(reconcileLines(rig).map(line => line.replayed), [1])
   const lines = readFileSync(join(execDir, 'actions.jsonl'), 'utf8').split('\n').filter(line => line !== '').map(line => JSON.parse(line) as { phase: string, key: string })
   assert.deepEqual(lines.map(line => line.phase), ['start', 'start', 'end'])
@@ -266,7 +269,10 @@ test('a return to design missed before the restart is acknowledged and the activ
 test('the completion gate\'s refusal reconciles once more without the event key', () => withRig(() => startedRig({ nodes: [GOAL, TASK] }), async (rig) => {
   await dispatchedTask(rig)
   assert.equal((await completeGoal(rig, 'call-a')).kind, 'deny')
-  await until(async () => (await rig.comments('task-1')).includes(`第 1 次在宿主重启时丢失 · ${CHILD}`), 'the refusal\'s reconcile commented the loss')
+  for (let waited = 0; waited < 3_000 && !(await rig.comments('task-1')).includes(`第 1 次在宿主重启时丢失 · ${CHILD}`); waited += 25) {
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  assert.ok((await rig.comments('task-1')).includes(`第 1 次在宿主重启时丢失 · ${CHILD}`), 'the refusal\'s reconcile commented the loss')
   await until(() => reconcileLines(rig).length === 1, 'the reconcile line')
   assert.equal((await completeGoal(rig, 'call-b')).kind, 'deny')
   await until(() => reconcileLines(rig).length === 2, 'a second refusal reconciles again')
@@ -280,7 +286,7 @@ test('the hournessHandback projection folds the last structured_output call whos
   for (const event of [call(0, 'c1', { status: 'partial' }), result(1, 'c1', true), call(2, 'c2', { status: 'done' }), result(3, 'c2', false), call(4, 'c3', 'not json')]) state = handbackProjection.apply(state, event)
   assert.deepEqual(handbackProjection.wire.view(state), { status: 'done' })
   assert.deepEqual(handbackProjection.stateSchema.parse(JSON.parse(JSON.stringify(state))), state)
-  const same = handbackProjection.apply(state, { type: 'user/message', seq: 5, time: 5, data: {} })
+  const same = handbackProjection.apply(state, { type: 'user/message', seq: 5, data: {} })
   assert.equal(same, state, 'an event it does not know keeps the state')
   let root = handbackProjection.init({ origin: 'user' }, 0)
   root = handbackProjection.apply(root, call(0, 'c1', { status: 'done' }))

@@ -14,10 +14,11 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import test from 'node:test'
 import { readLog } from '../src/metrics/read.ts'
+import { nodeMetricsFs, openWriter } from '../src/metrics/writer.ts'
 import { setEngineObserver, type EngineNote } from '../src/graph/engine.ts'
 import { engineEventsOf } from '../src/graph/metrics-events.ts'
 import { loadGraph } from '../src/graph/store.ts'
-import type { EmittedEvent, HostBodies } from '../src/shared/metrics.ts'
+import { METRICS_ID_PATTERN, type EmittedEvent, type HostBodies } from '../src/shared/metrics.ts'
 import { engineFixture, fixtureTest, type EngineFixture } from './graph-helpers.ts'
 import { scratchGitProject } from './metrics-helpers.ts'
 import { runCli } from '../src/graph/cli.ts'
@@ -113,7 +114,7 @@ withGraph('each failure code is exactly one graph-fail (acceptance 3, F23)', asy
   const seen: string[] = []
   for (const { code, apply } of cases) {
     const events = await recorded(async events => {
-      const result = await apply(g)
+      const result = await apply(g) as { ok: boolean }
       assert.equal(result.ok, false, `${code} refuses`)
       return events
     })
@@ -201,6 +202,38 @@ withGraph('the command line keeps its own writer: the graph event lands in the p
     const graphs = events.filter(event => event.k === 'graph')
     assert.equal(graphs.length, 1)
     assert.equal(graphs[0]?.body.op, 'comment')
+  }
+  finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('graph-fail shapes node and field (including array-index fields like options[0]) so the writer accepts them with rejected === 0', async () => {
+  const root = scratchGitProject('graph-metrics-h5-')
+  try {
+    const notes: readonly EngineNote[] = [
+      { kind: 'failed', dir: join(root, 'docs', 'graph'), actor: 'llm', err: 'invalid', op: 'propose', node: 'C:\\ws\\目标 节点', field: 'options[0]' },
+      { kind: 'failed', dir: join(root, 'docs', 'graph'), actor: 'human', err: 'invalid', op: 'edit', node: 'goal-1', field: 'ways[2].标题' },
+      { kind: 'failed', dir: join(root, 'docs', 'graph'), actor: 'harness', err: 'invalid', op: 'edit', node: 'n'.repeat(121), field: 'set.tags[10]' },
+    ]
+    const events = notes.flatMap(note => engineEventsOf(note))
+    assert.deepEqual(events.map(event => event.body), [
+      { actor: 'llm', err: 'invalid', op: 'propose', node: 'other', field: 'options.0' },
+      { actor: 'human', err: 'invalid', op: 'edit', node: 'goal-1', field: 'other' },
+      { actor: 'harness', err: 'invalid', op: 'edit', node: 'other', field: 'set.tags.10' },
+    ])
+    for (const event of events) {
+      const body = event.body as { node?: string, field?: string }
+      if (body.node !== undefined) assert.match(body.node, METRICS_ID_PATTERN)
+      if (body.field !== undefined) assert.match(body.field, METRICS_ID_PATTERN)
+    }
+    const writer = openWriter({ host: 'headless', fs: nodeMetricsFs, now: () => Date.parse('2026-11-04T12:00:00.000Z'), randomId: () => '0123abcd' })
+    for (const event of events) writer.record(root, { ...event, v: 'spec' })
+    await writer.flush()
+    assert.equal(writer.status().get(root)?.rejected, 0)
+    await writer.close()
+    const { events: stored } = await readLog(root)
+    assert.equal(stored.filter(event => event.k === 'graph-fail').length, 3)
   }
   finally {
     rmSync(root, { recursive: true, force: true })

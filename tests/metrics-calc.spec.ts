@@ -306,7 +306,7 @@ test('verify flags graph history entries the journal misses; backfill-graph fill
     assert.equal(seed.error, undefined)
     const nodes = join(root, 'docs', 'graph', 'nodes')
     mkdirSync(nodes, { recursive: true })
-    const entry = (at: string, op: string): { readonly at: string, readonly actor: 'human', readonly op: string, readonly reason: string } => ({ at, actor: 'human', op, reason: 'probe' })
+    const entry = (at: string, op: 'propose' | 'approve'): { readonly at: string, readonly actor: 'human', readonly op: 'propose' | 'approve', readonly reason: string } => ({ at, actor: 'human', op, reason: 'probe' })
     const node: GraphNode = {
       id: 'goal-1',
       type: 'goal',
@@ -440,7 +440,7 @@ test('an in-window append changes the output, and the basis rerun reproduces the
     assert.equal(appended.error, undefined)
     // The rerun reads by the FIRST report's basis line: the file it named, to the line it read.
     const read = (first.stdout.split('\n')[0] ?? '').match(/(events-[^ ]+\.jsonl) 1–(\d+) 行/)
-    assert.ok(read !== undefined, first.stdout.split('\n')[0] ?? '')
+    assert.ok(read !== null, first.stdout.split('\n')[0] ?? '')
     const rerun = await runCli([...args, '--basis', `${read[1]}:${read[2]}`], io)
     assert.equal(rerun.exitCode, 0)
     assert.equal(rerun.stdout, first.stdout, 'the basis rerun reproduces the first report verbatim')

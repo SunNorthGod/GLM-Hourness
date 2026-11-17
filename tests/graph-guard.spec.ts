@@ -185,7 +185,7 @@ test('a graph-files-only denial is journaled with the call origin: other until t
     const route = { provider: 'glm-zcode', model: 'glm-5.3' }
     const runtime = fakeRuntime({ natives: NATIVES, cwd: workspace, route })
     const records: ViolationRecord[] = []
-    installGraphFileGuard(runtime.ctx, () => graph, (record) => { records.push(record) })
+    installGraphFileGuard(runtime.ctx, () => graph, (record) => { records.push(record as ViolationRecord) })
     const call = caller(runtime)
     deniedByGraphRule(await call('Write', { file_path: 'docs/graph/nodes/goal-1.json', content: '{}' }))
     runtime.ctx.provide(DIALECT_SERVICE, dialectServiceFor(new WeakSet([runtime.agent])))

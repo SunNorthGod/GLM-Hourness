@@ -23,7 +23,7 @@ import { exampleArgs } from './proposal-examples.ts'
 
 type Outcome = Awaited<ReturnType<DesignHost['callTool']>>
 
-const errorOf = (outcome: Outcome): { code: string, field: string | undefined, message: string, hint: string } | undefined => outcome.kind === 'error' ? outcome.error : undefined
+const errorOf = (outcome: Outcome): { code: string, field?: string, message: string, hint: string } | undefined => outcome.kind === 'error' ? outcome.error : undefined
 const valueOf = (outcome: Outcome): Record<string, unknown> => {
   assert.equal(outcome.kind, 'ok', JSON.stringify(outcome))
   return outcome.kind === 'ok' ? outcome.value : {}
@@ -651,7 +651,7 @@ const RELEASE = { kind: 'release', goal: 'goal-1', text: '照上面的方案放�
 const releaseOf = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({ ...RELEASE, ...patch })
 
 /** The call is refused with this code on this field, and the graph and the human's view are as they were. */
-async function releaseRefused(fixture: Awaited<ReturnType<typeof mainAgentWithGoal>>, patch: Record<string, unknown>, code: string, field: string | undefined): Promise<{ code: string, field: string | undefined, message: string, hint: string }> {
+async function releaseRefused(fixture: Awaited<ReturnType<typeof mainAgentWithGoal>>, patch: Record<string, unknown>, code: string, field: string | undefined): Promise<{ code: string, field?: string, message: string, hint: string }> {
   const { host, agent, engine } = fixture
   const before = [(await engine.load()).revision, (host.projections.stateOf(agent.session, TALK_PROJECTION) as TalkState).shown.length]
   const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, releaseOf(patch)))

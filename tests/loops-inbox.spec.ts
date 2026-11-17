@@ -15,13 +15,16 @@ import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { LOOP_EVENT_TABLE } from '../src/loops/events.ts'
+import { fileChangedKey, LOOP_EVENT_TABLE } from '../src/loops/events.ts'
 import { keyFaultOf, openInbox, payloadFaultOf, quietUntil, SELF_LOOP_MS, type EmitInput, type Inbox, type RunBatch, type RunnableEntry } from '../src/loops/inbox.ts'
+import { metricEventOf } from '../src/loops/metrics.ts'
 import type { DuplicateRecord, LoopRecord } from '../src/loops/records.ts'
 import { ensureRuntimeDir, loopsPaths, openLoopStore, type LoopsPaths } from '../src/loops/store.ts'
+import { nodeMetricsFs, openWriter } from '../src/metrics/writer.ts'
 import { appendLine } from '../src/rules/store.ts'
 import type { LoopEntryDefinition } from '../src/loops/model.ts'
 import type { LoopEventDeclaration } from '../src/loops/trigger.ts'
+import { METRICS_ID_PATTERN } from '../src/shared/metrics.ts'
 import { gitProjectTest, heldTimers, journalTakesRecord, quickIo } from './loops-helpers.ts'
 
 const WRITER = '--writer'
@@ -314,4 +317,39 @@ gitProjectTest('events a stopped host left in the inbox are run after the start,
   await stale.advance(5_000)
   const undeclared = stale.records.filter(record => record.kind === 'loop-done' && record.entry === 'nobody.declared')
   assert.deepEqual(undeclared.map(record => record.kind === 'loop-done' && [record.outcome, record.reason]), [['expired', 'undeclared-event']])
+})
+
+gitProjectTest('fileChangedKey shapes Windows backslashes, spaces, Chinese paths, and deep directories to METRICS_ID_PATTERN while keeping dedupe specificity and zero writer rejections', async ({ root }) => {
+  const winPath = 'C:\\Program Files\\ZCode\\中文 目录\\app.asar'
+  const deepPathA = `C:\\${'deep\\'.repeat(25)}目标A\\file.txt`
+  const deepPathB = `C:\\${'deep\\'.repeat(25)}目标B\\file.txt`
+  const keyWin = fileChangedKey(winPath, 4096, AT)
+  const keyDeepA = fileChangedKey(deepPathA, 128, AT)
+  const keyDeepB = fileChangedKey(deepPathB, 128, AT)
+  for (const key of [keyWin, keyDeepA, keyDeepB]) {
+    assert.match(key, METRICS_ID_PATTERN)
+    assert.equal(keyFaultOf('loops.file-changed', key), undefined)
+  }
+  assert.notEqual(keyDeepA, keyDeepB, 'distinct deep/Chinese paths keep distinct dedupe keys')
+
+  const harness = await harnessOf(root, AT, { entries: () => [hears('e-file', 'loops.file-changed')] })
+  const first = await harness.inbox.emit({ event: 'loops.file-changed', project: root, key: keyWin, payload: { path: winPath, size: 4096, mtime: new Date(AT).toISOString() }, from: 'glm-hourness/loops' })
+  const second = await harness.inbox.emit({ event: 'loops.file-changed', project: root, key: keyWin, payload: { path: winPath, size: 4096, mtime: new Date(AT).toISOString() }, from: 'glm-hourness/loops' })
+  const other = await harness.inbox.emit({ event: 'loops.file-changed', project: root, key: keyDeepA, payload: { path: deepPathA, size: 128, mtime: new Date(AT).toISOString() }, from: 'glm-hourness/loops' })
+  assert.equal(first.ok && !first.duplicate, true)
+  assert.equal(second.ok && second.duplicate, true)
+  assert.equal(other.ok && !other.duplicate, true)
+
+  const duplicates = harness.records.filter((record): record is DuplicateRecord => record.kind === 'loop-duplicate')
+  assert.equal(duplicates.length, 1)
+  assert.equal(duplicates[0]?.key, keyWin)
+
+  const writer = openWriter({ host: 'headless', fs: nodeMetricsFs, now: () => AT, randomId: () => '0123abcd' })
+  for (const record of harness.records) {
+    const event = metricEventOf(record)
+    if (event !== undefined) writer.record(root, { ...event, v: 'spec' })
+  }
+  await writer.flush()
+  assert.equal(writer.status().get(root)?.rejected, 0)
+  await writer.close()
 })

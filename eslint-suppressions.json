@@ -9,23 +9,12 @@
       "count": 2
     }
   },
-  "src/toolsearch/index.ts": {
-    "@typescript-eslint/require-await": {
-      "count": 1
-    }
-  },
   "tests/aliases.spec.ts": {
     "@typescript-eslint/require-await": {
       "count": 1
     }
   },
   "tests/compact-row.spec.ts": {
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-return": {
-      "count": 2
-    },
     "@typescript-eslint/require-await": {
       "count": 1
     }

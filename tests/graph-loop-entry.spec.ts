@@ -39,6 +39,8 @@ function fakeBoard(options: { refused?: string, recordRunThrows?: boolean } = {}
       if (options.recordRunThrows === true) throw new Error('board closed')
       handed.runs.push(run)
     },
+    staleEntries: () => undefined,
+    timeoutEntries: () => undefined,
   }
   return { service, handed }
 }
@@ -106,7 +108,7 @@ const EVIDENCE = [{ kind: 'commit', ref: 'abc1234' }]
 async function reopenThroughTool(fixture: Fixture, times: number): Promise<{ isError: boolean, value: { notice?: string }, text: string | undefined }> {
   const status = async (to: 'done' | 'doing', reason: string): Promise<ToolFinalResult> => {
     const result = await fixture.call('graph_status', { id: 'task-1', rev: await fixture.rev('task-1'), to, reason, ...(to === 'done' ? { evidence: EVIDENCE } : {}) })
-    assert.equal(result.isError, false, result.content[0]?.text)
+    assert.equal(result.isError, false, result.content[0]?.text ?? '')
     return result
   }
   let last = await status('done', '第一次完成')
@@ -126,9 +128,9 @@ function subagentOf(fixture: Fixture): FakeRuntime['agent'] {
 /** One done-and-reopen round through the tool, human's words relayed: their own decision. */
 async function relayedReopen(fixture: Fixture): Promise<{ notice?: string }> {
   const done = await fixture.call('graph_status', { id: 'task-1', rev: await fixture.rev('task-1'), to: 'done', reason: '先完成', evidence: EVIDENCE })
-  assert.equal(done.isError, false, done.content[0]?.text)
+  assert.equal(done.isError, false, done.content[0]?.text ?? '')
   const reopened = await fixture.call('graph_status', { id: 'task-1', rev: await fixture.rev('task-1'), to: 'doing', reason: '人让再试', relay: '再试一次吧' })
-  assert.equal(reopened.isError, false, reopened.content[0]?.text)
+  assert.equal(reopened.isError, false, reopened.content[0]?.text ?? '')
   return reopened.value as { notice?: string }
 }
 

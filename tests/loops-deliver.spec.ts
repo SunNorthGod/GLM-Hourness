@@ -390,12 +390,12 @@ test('deliver: a state nobody can be told through keeps the message with its rea
   it.live.add(agent)
   sent.holder = { kind: 'ok', session: HOLDER }
   await sent.made.flush()
-  assert.deepEqual(sent.state.held, [])
+  assert.equal(sent.state.held.length, 0)
   assert.deepEqual(it.live.woken.map(woken => woken.text.includes('run-1')), [true, false])
   // A message that waited a day is dropped.
   sent.state.held.push({ at: new Date(NOW - HELD_MS - 60_000).toISOString(), entry: 'u-old', run: 'run-old', title: 'old', text: 'old', wake: true, reason: 'holder-archived' })
   await sent.made.flush()
-  assert.deepEqual(sent.state.held, [])
+  assert.equal(sent.state.held.length, 0)
   assert.equal(it.live.woken.length, 2, 'the message that waited a day was not delivered')
   // Fifty at a time: the oldest goes when the fifty-first arrives.
   sent.holder = { kind: 'none', reason: 'no-record' }

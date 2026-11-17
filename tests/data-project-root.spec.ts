@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
 import test from 'node:test'
-import { ensureProjectDir, projectDirOf } from '../src/data/project-root.ts'
+import { ensureProjectDir, projectDirOf, projectOf } from '../src/data/project-root.ts'
 import { skipIfTempInsideGit } from './temp-outside-git.ts'
 
 const scratch = (): string => mkdtempSync(join(tmpdir(), 'project-dir-'))
@@ -103,4 +103,17 @@ test('ensureProjectDir: outside a repository .llm is created and nothing is writ
   await ensureProjectDir(join(folder, '.llm'))
   assert.ok(existsSync(join(folder, '.llm')))
   assert.ok(!existsSync(join(folder, '.git')))
+})
+
+test('projectOf: Windows drive-letter casing shares cache entries while preserving returned path casing', { skip: process.platform !== 'win32' }, () => {
+  const base = scratch()
+  const root = join(base, 'MixedCaseRepo')
+  mkdirSync(join(root, '.git'), { recursive: true })
+  const upper = root.replace(/^[a-z]:/i, drive => drive.toUpperCase())
+  const lower = root.replace(/^[a-z]:/i, drive => drive.toLowerCase())
+  const first = projectOf(upper)
+  const second = projectOf(lower)
+  assert.ok(first !== undefined && second !== undefined)
+  assert.equal(first, second, 'mixed drive-letter casing shares the cached ProjectLocation')
+  assert.ok(first.root.endsWith('MixedCaseRepo'), `returned root preserves directory casing: ${first.root}`)
 })

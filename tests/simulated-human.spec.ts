@@ -8,8 +8,18 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
-// @ts-expect-error The script is plain JavaScript without a declaration file.
-import { readConfig, simulatedReply } from '../scripts/calibrate/simulated-human.mjs'
+import { readConfig as rawReadConfig, simulatedReply } from '../scripts/calibrate/simulated-human.mjs'
+
+interface SimulatedConfig {
+  readonly restateReply: string
+  readonly fallback: string
+  readonly maxReplies: number
+  readonly replies: Record<string, string[]>
+  readonly answers: Record<string, string>
+  readonly enabled: boolean
+  readonly stop?: string
+}
+const readConfig = rawReadConfig as (raw: unknown, warn?: (text: string) => void) => SimulatedConfig
 
 interface Reply {
   readonly kind: 'reply' | 'silent'

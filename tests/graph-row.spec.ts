@@ -169,9 +169,9 @@ test('row health: a bad config or a failed registration leaves the row inactive'
 test('graph-panel health is an activation status: the commands, the live projection and stopping subagents', async () => {
   const commands = { register: () => () => {} }
   const services = {
-    sessionProjections: { register: () => () => {}, snapshot: () => ({ values: {} }) },
+    sessionProjections: { register: () => () => {}, snapshot: () => ({ values: {} }), stateOf: () => undefined },
     agents: { get: () => undefined },
-    subagents: { interrupt: () => {} },
+    subagents: { interrupt: () => {} } as never,
   }
   const full = fakeRuntime({ natives: [] })
   applyPanel({ ...full.ctx, commands, inject: fakeInjector(services).inject })
@@ -205,9 +205,9 @@ test('the project projection names the holder record: the path through the graph
   const commands = { register: () => () => {} }
   const definitions: Array<{ readonly key: string, readonly init: (header: unknown) => unknown }> = []
   const services = {
-    sessionProjections: { register: (definition: never) => { definitions.push(definition); return () => {} }, snapshot: () => ({ values: {} }) },
+    sessionProjections: { register: (definition: never) => { definitions.push(definition); return () => {} }, snapshot: () => ({ values: {} }), stateOf: () => undefined },
     agents: { get: () => undefined },
-    subagents: { interrupt: () => {} },
+    subagents: { interrupt: () => {} } as never,
   }
   const runtime = fakeRuntime({ natives: [] })
   // The inject callback's context carries the parent's `get` (fake-rc3): the projection reads the graph row's service through it.

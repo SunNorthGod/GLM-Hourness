@@ -65,7 +65,7 @@ function fakeSubagents(): { readonly service: InjectableServices['subagents'], r
     resolveMaxDepth(): number | undefined {
       return 1
     },
-    registerProvider(): () => void {},
+    registerProvider(): () => void { return () => {} },
     waitForChildren(): Promise<boolean> {
       return Promise.resolve(false)
     },
@@ -116,7 +116,7 @@ function mainAgent(cwd: string): AgentLike {
   return {
     id: 'main-1',
     ctx: {} as never,
-    session: { id: 'main-1', header: { id: 'main-1', cwd }, requestHeader: () => ({ config: { provider: 'probe', model: 'glm-5.3' } }) },
+    session: { id: 'main-1', header: { id: 'main-1', cwd }, deriveMessages: () => [], requestHeader: () => ({ config: { provider: 'probe', model: 'glm-5.3' } }) },
   }
 }
 
@@ -188,10 +188,10 @@ test('the execute row registers dispatch_task, check_commit and await_human, dis
   // The session state service, recording what registers (rc.3 session-projection register).
   const projections: string[] = []
   const sessionProjections = { register: (definition: { readonly key: string }) => { projections.push(definition.key); return () => {} }, snapshot: () => ({ values: {} }), stateOf: () => undefined }
-  ;(runtime.ctx as { inject?: unknown }).inject = fakeInjector({ tools: runtime.ctx.get('tools'), sessionProjections }, runtime.ctx).inject
+  ;(runtime.ctx as { inject?: unknown }).inject = fakeInjector({ tools: runtime.ctx.tools, sessionProjections }, runtime.ctx).inject
   executeApply(runtime.ctx, {})
   assert.deepEqual(projections, ['hournessHandback'], 'the row registers the handback projection the reconcile reads (§3.9.6 step 3)')
-  const registered = runtime.scoped.find<ToolDefinitionLike>(tool => tool.name === 'dispatch_task')
+  const registered = runtime.scoped.find(tool => tool.name === 'dispatch_task')
   assert.ok(registered !== undefined, 'the row did not register dispatch_task')
   assert.equal(registered.description, dispatchDescription())
   assert.ok(runtime.scoped.some(tool => tool.name === 'check_commit'), 'the row did not register check_commit')
@@ -255,9 +255,9 @@ test('a registered worker writes inside its file scope and its .hourness/; outsi
     const elsewhere = await exec('write', { file_path: join(project.root, 'escaped.txt'), content: 'no\n' }, { agent: child })
     assert.ok(elsewhere.isError && elsewhere.content.map(part => part.text ?? '').join('').includes('you write only inside your worktree'), `out-of-worktree write ran: ${elsewhere.content.map(part => part.text ?? '').join('')}`)
     // A git push is refused; reset --hard runs after its snapshot.
-    const push = await exec('pwsh', { command: 'git push origin main' }, { agent: child }) as { isError: boolean, content: { text?: string }[] }
+    const push = await exec('pwsh', { command: 'git push origin main' }, { agent: child })
     assert.ok(push.isError && push.content.map(part => part.text ?? '').join('').includes('use git only on your branch'), `git push ran: ${push.content.map(part => part.text ?? '').join('')}`)
-    const reset = await exec('pwsh', { command: 'git reset --hard' }, { agent: child }) as { isError: boolean, content: { text?: string }[] }
+    const reset = await exec('pwsh', { command: 'git reset --hard' }, { agent: child })
     assert.ok(!reset.isError, `git reset --hard was refused: ${reset.content.map(part => part.text ?? '').join('')}`)
     assert.ok(existsSync(join(project.root, '.llm', 'snapshots.jsonl')), 'the snapshot before reset --hard left no journal')
     // The graph write tools by name are refused for the chain; graph_comment is not one of them and reaches its own (absent) body.
@@ -287,32 +287,32 @@ test('worker-git keeps the index writes to the worker\u2019s own worktree: read-
   const { project, cleanup, childId, child, exec } = seam
   try {
     // In its own worktree the plumbing writes the worker's own index: it runs (§3.2.4 step 2).
-    const own = await exec('pwsh', { command: 'git read-tree HEAD' }, { agent: child }) as { isError: boolean, content: { text?: string }[] }
+    const own = await exec('pwsh', { command: 'git read-tree HEAD' }, { agent: child })
     assert.ok(!own.isError, `git read-tree in the worktree was refused: ${own.content.map(part => part.text ?? '').join('')}`)
-    const refresh = await exec('pwsh', { command: 'git update-index -q --refresh' }, { agent: child }) as { isError: boolean, content: { text?: string }[] }
+    const refresh = await exec('pwsh', { command: 'git update-index -q --refresh' }, { agent: child })
     assert.ok(!refresh.isError, `git update-index in the worktree was refused: ${refresh.content.map(part => part.text ?? '').join('')}`)
     // `--index-output` can point the write anywhere: at the main checkout's index it is refused, absolute and relative alike.
-    const absolute = await exec('pwsh', { command: `git read-tree --index-output=${join(project.root, '.git', 'index')} HEAD` }, { agent: child }) as { isError: boolean, content: { text?: string }[] }
+    const absolute = await exec('pwsh', { command: `git read-tree --index-output=${join(project.root, '.git', 'index')} HEAD` }, { agent: child })
     assert.ok(absolute.isError && absolute.content.map(part => part.text ?? '').join('').includes('--index-output points outside your worktree'), `read-tree --index-output reached the main checkout: ${absolute.content.map(part => part.text ?? '').join('')}`)
-    const relative = await exec('pwsh', { command: 'git read-tree --index-output=../../.git/index HEAD' }, { agent: child }) as { isError: boolean, content: { text?: string }[] }
+    const relative = await exec('pwsh', { command: 'git read-tree --index-output=../../.git/index HEAD' }, { agent: child })
     assert.ok(relative.isError && relative.content.map(part => part.text ?? '').join('').includes('--index-output points outside your worktree'), `the relative --index-output reached the main checkout: ${relative.content.map(part => part.text ?? '').join('')}`)
     // A dispatch without a worktree works in the main checkout: the index-writing plumbing resolves to the main checkout's index and is refused.
     registerAttempt({ childId: 'hz-bare-1', role: 'worker', node: 'task-1', attempt: 1, graphDir: join(project.root, 'docs', 'graph'), provider: 'probe', model: 'probe-model', why: 'no worktree', plan: 'skipped', pins: '' })
     const bare = childAgent('hz-bare-1', project.root, 'main-1')
-    const noWorktree = await exec('pwsh', { command: 'git read-tree HEAD' }, { agent: bare }) as { isError: boolean, content: { text?: string }[] }
+    const noWorktree = await exec('pwsh', { command: 'git read-tree HEAD' }, { agent: bare })
     assert.ok(noWorktree.isError && noWorktree.content.map(part => part.text ?? '').join('').includes('it writes the index of the main checkout'), `git read-tree without a worktree ran: ${noWorktree.content.map(part => part.text ?? '').join('')}`)
-    const applyCached = await exec('pwsh', { command: 'git apply --cached change.patch' }, { agent: bare }) as { isError: boolean, content: { text?: string }[] }
+    const applyCached = await exec('pwsh', { command: 'git apply --cached change.patch' }, { agent: bare })
     assert.ok(applyCached.isError && applyCached.content.map(part => part.text ?? '').join('').includes('it writes the index of the main checkout'), `git apply --cached without a worktree ran: ${applyCached.content.map(part => part.text ?? '').join('')}`)
     forgetAttempt('hz-bare-1')
     // A reviewer's read-tree is a write of the index: only reads are hers (§3.2.4 step 1).
     registerAttempt({ childId: 'hz-rev-1', role: 'review', node: 'task-1', attempt: 1, graphDir: join(project.root, 'docs', 'graph'), provider: 'probe', model: 'probe-model', why: 'review read', plan: 'skipped', pins: '' })
     const reviewer = childAgent('hz-rev-1', project.root, 'main-1')
-    const reviewTree = await exec('pwsh', { command: 'git read-tree HEAD' }, { agent: reviewer }) as { isError: boolean, content: { text?: string }[] }
+    const reviewTree = await exec('pwsh', { command: 'git read-tree HEAD' }, { agent: reviewer })
     assert.ok(reviewTree.isError && reviewTree.content.map(part => part.text ?? '').join('').includes('it is not a read'), `the reviewer's git read-tree ran: ${reviewTree.content.map(part => part.text ?? '').join('')}`)
     forgetAttempt('hz-rev-1')
     // A session outside the dispatched chain (no origin, not registered) is not §3.2.4's subject: the row passes its git through — the main agent's git is M3's snapshot rule, an ordinary session's is nobody's here.
     const outside: AgentLike = { id: 'walk-1', ctx: {} as never, session: { id: 'walk-1', header: { id: 'walk-1', cwd: project.root }, deriveMessages: () => [] } }
-    const outOfChain = await exec('pwsh', { command: 'git read-tree HEAD' }, { agent: outside }) as { isError: boolean, content: { text?: string }[] }
+    const outOfChain = await exec('pwsh', { command: 'git read-tree HEAD' }, { agent: outside })
     assert.ok(!outOfChain.isError, `git read-tree outside the dispatched chain was refused: ${outOfChain.content.map(part => part.text ?? '').join('')}`)
     // The denials are in the violation journal.
     const violations = readFileSync(join(project.root, '.llm', 'audit', 'violations.jsonl'), 'utf8')
@@ -550,7 +550,7 @@ test('with the execute service on, the main agent\u2019s no-write denial points 
 
 test('removalsOfRole: the main agent keeps everything but the worker tools; a non-main agent loses the execute and operate tools; a worker keeps the worker tools; a reviewer loses submit_plan; a dispatched chain loses the eleven graph writes', () => {
   const attempt = (role: Attempt['role']): Attempt => ({
-    childId: `hz-task-1-a1-000000`, role, node: 'task-1', attempt: 1, provider: 'p', model: 'm', why: 'w', plan: 'required', pins: 'pins: x',
+    childId: `hz-task-1-a1-000000`, role, node: 'task-1', attempt: 1, graphDir: 'docs/graph', provider: 'p', model: 'm', why: 'w', plan: 'required', pins: 'pins: x',
   })
   const main = removalsOfRole({ main: true, dispatched: false })
   assert.equal(main.size, WORKER_TOOL_NAMES.length, 'the main agent is no worker: the removals are the worker tools')
@@ -568,6 +568,90 @@ test('removalsOfRole: the main agent keeps everything but the worker tools; a no
   const child = removalsOfRole({ main: false, dispatched: true })
   for (const name of WORKER_TOOL_NAMES) assert.ok(child.has(name), `a read-only child keeps ${name}`)
   assert.ok(child.has('graph_edit') && !child.has('graph_show'), `a read-only child's graph removals are wrong: ${[...child].join(', ')}`)
+})
+
+test('worker-git allows git subdirectories inside the worktree (-C, cd, --work-tree, --index-output) while refusing outside paths (H1)', async () => {
+  const seam = await dispatchedWorker(['pwsh'])
+  const { project, cleanup, childId, worktree, child, exec } = seam
+  try {
+    mkdirSync(join(worktree, 'site', 'sub'), { recursive: true })
+    for (const command of [
+      'git -C site status',
+      'cd site/sub && git status',
+      `git --work-tree=${join(worktree, 'site')} status`,
+      'git read-tree --index-output=site/idx HEAD',
+    ]) {
+      const allowed = await exec('pwsh', { command }, { agent: child })
+      assert.ok(!allowed.isError, `${command} was refused: ${allowed.content.map(part => part.text ?? '').join('')}`)
+    }
+    const escaped = await exec('pwsh', { command: 'git -C ../.. status' }, { agent: child })
+    assert.ok(escaped.isError && escaped.content.map(part => part.text ?? '').join('').includes('runs in another checkout'), `escaped -C ran: ${escaped.content.map(part => part.text ?? '').join('')}`)
+    cleanup(childId)
+  }
+  finally {
+    dispose(project)
+  }
+})
+
+test('design + execute coexistence: worker-graph-readonly owns worker graph tool calls regardless of load order, and worker graph CLI shell calls trigger no snapshot before denial when execute is outer (M4)', async () => {
+  for (const order of ['design-first', 'execute-first'] as const) {
+    const project = await presetProject([{ ...WORK_TASK, id: 'task-1', writeScope: ['site/index.md'] }])
+    const { deps, cleanup } = depsFor(project, fakeSubagents().service)
+    const runtime = fakeRuntime({ natives: ['pwsh', 'graph_edit', 'graph_approve'] })
+    const execService: ExecuteService = {
+      isWorker: agentId => registeredAttempt(agentId) !== undefined,
+      inApprovedScope: () => false,
+      trunkAdvanceFor: () => undefined,
+      runAction: () => Promise.resolve({ outcome: 'skipped', reason: 'test' }),
+    }
+    runtime.services.set(EXECUTE_SERVICE, execService)
+    const designRules = () => {
+      designApply({ ...runtime.ctx, commands: { register: () => () => {} } } as never)
+    }
+    const execRules = () => {
+      rulesOver(project, deps.cache)(runtime)
+    }
+    if (order === 'design-first') {
+      designRules()
+      execRules()
+    }
+    else {
+      execRules()
+      designRules()
+    }
+    const summary = await dispatch(deps, project.root, { id: 'task-1', model: 'probe-model', why: 'one file, no plan needed', quick: true }) as { childId: string }
+    const worktree = join(project.root, '.worktrees', 'hz-task-1')
+    const child = childAgent(summary.childId, worktree, 'main-1')
+    const exec = execTool(runtime)
+    try {
+      const delegations = await exec('graph_edit', { id: 'norm-delegations', set: { title: 'x' } }, { agent: child })
+      assert.equal(delegations.isError, true, `${order}: norm-delegations must be refused`)
+      const relayEdit = await exec('graph_edit', { id: 'goal-1', set: { stage: 'execute' }, relay: 'go' }, { agent: child })
+      assert.equal(relayEdit.isError, true, `${order}: relay edit must be refused`)
+      const approve = await exec('graph_approve', { id: 'goal-1' }, { agent: child })
+      assert.equal(approve.isError, true, `${order}: approve must be refused`)
+      const cli = await exec('pwsh', { command: 'git reset --hard && npm run -s graph -- edit \'{"id":"goal-1"}\'' }, { agent: child })
+      assert.equal(cli.isError, true, `${order}: graph CLI shell call must be refused`)
+      assert.equal(existsSync(join(project.root, '.llm', 'snapshots.jsonl')), false, `${order}: graph CLI denial must not take a snapshot`)
+      const violationsPath = join(project.root, '.llm', 'audit', 'violations.jsonl')
+      let violations: Array<{ rule: string, tool: string }> = []
+      for (let waited = 0; waited < 2_000; waited += 20) {
+        const text = existsSync(violationsPath) ? readFileSync(violationsPath, 'utf8') : ''
+        violations = text.split('\n').filter(Boolean).map(line => JSON.parse(line) as { rule: string, tool: string })
+        if (violations.length >= 4) break
+        await new Promise(resolve => setTimeout(resolve, 20))
+      }
+      const graphViolations = violations.filter(v => v.tool === 'graph_edit' || v.tool === 'graph_approve')
+      assert.equal(graphViolations.length, 3, `${order}: expected 3 graph tool violations`)
+      assert.ok(graphViolations.every(v => v.rule === 'worker-graph-readonly'), `${order}: expected worker-graph-readonly, got ${graphViolations.map(v => v.rule).join(', ')}`)
+      const cliViolation = violations.find(v => v.tool === 'pwsh')
+      assert.equal(cliViolation?.rule, 'main-agent-graph-cli', `${order}: expected main-agent-graph-cli`)
+      cleanup(summary.childId)
+    }
+    finally {
+      dispose(project)
+    }
+  }
 })
 
 test('the review dispatch carries the reviewed task\'s 政策差 classes into the reviewer brief, and the gate does not refuse for them (reval §4.3, §8)', async () => {

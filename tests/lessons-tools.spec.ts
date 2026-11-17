@@ -115,7 +115,7 @@ test('a delegated child is refused with the way to hand back; it may query', asy
   await withFixture(async (f) => {
     const refusal = await refusalOf(f.call('lessons_merge', LESSON, CHILD))
     assert.equal(refusal.code, 'role')
-    assert.ok(refusal.hint?.includes('handback'), refusal.hint)
+    assert.ok(refusal.hint?.includes('handback'), refusal.hint ?? '')
     assert.deepEqual(f.journal(), [])
     await merge(f, LESSON)
     assert.deepEqual(((await f.call('lessons_query', { file: 'docs/graph/nodes/x.json' }, CHILD)).lessons as unknown[]).length, 1)

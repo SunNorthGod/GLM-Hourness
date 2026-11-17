@@ -39,7 +39,7 @@ import { setMetricSink, type MetricEvent } from '../src/execute/metrics.ts'
 import {
   buildCovers, limitOf, modelTakesImages, pendingWalks, readWalkReport, reconcileWalks,
   runWalkJob, stepExits, walkAgreementOf, walkBlockers, walkBriefLines, walkCommitsOf,
-  WALK_JOB_MS, WALK_REVIEW_SCHEMA,
+  WALK_JOB_MS, WALK_REVIEW_MS, WALK_REVIEW_SCHEMA,
   type WalkDeps, type WalkJobSpec, type WalkLimitLine, type WalkLine, type WalkOutcome, type WalkReport, type WalkStart,
 } from '../src/execute/walk.ts'
 import type { LiveAgentLike, SubagentActivation } from '../src/shared/dsh-min.ts'
@@ -178,8 +178,8 @@ test('limitOf: three measured runs set the cap at three times the slowest within
 
 test('stepExits follows the one rule: ok is exit 0, a contradiction fails the entry step with the command exit, a review verdict overrides, an artifact rides along', () => {
   const flow = flowOf(libraryGraph(), 'flow-1')
-  const reportOf = (steps: readonly { readonly id: string, readonly ok: boolean, readonly said?: string }): WalkReport => ({ ok: true, steps })
-  const exitsOf = (steps: readonly { readonly id: string, readonly ok: boolean, readonly said?: string }[], commandExit: number, judged?: ReadonlyMap<string, { readonly ok: boolean, readonly why?: string }>): readonly (readonly (string | number)[])[] =>
+  const reportOf = (steps: readonly { readonly id: string, readonly ok: boolean, readonly said?: string, readonly artifact?: string }[]): WalkReport & { readonly ok: true } => ({ ok: true, steps })
+  const exitsOf = (steps: readonly { readonly id: string, readonly ok: boolean, readonly said?: string, readonly artifact?: string }[], commandExit: number, judged?: ReadonlyMap<string, { readonly ok: boolean, readonly why?: string }>): readonly (readonly (string | number)[])[] =>
     stepExits(flow, reportOf(steps), commandExit, judged).map(entry => [entry.id, entry.exit, entry.result])
 
   assert.deepEqual(exitsOf([{ id: 'step-1', ok: true, said: '记好了' }, { id: 'step-2', ok: false, said: '看不到' }], 0), [
@@ -192,7 +192,10 @@ test('stepExits follows the one rule: ok is exit 0, a contradiction fails the en
   ], 'a non-zero exit while every listed step says ok fails the entry step with the command own exit; the rest keep their ok')
   assert.deepEqual(exitsOf([{ id: 'step-1', ok: true, said: 'a' }], 0, new Map([['step-1', { ok: false, why: '看不清' }]])), [
     ['step-1', 1, '没过：看不清'],
-  ], 'the walk-review verdict overrides the report')
+  ], 'the walk-review verdict overrides a passing report')
+  assert.deepEqual(exitsOf([{ id: 'step-1', ok: false, said: '脚本没过' }], 0, new Map([['step-1', { ok: true, why: '看起来还行' }]])), [
+    ['step-1', 1, '没过：脚本没过'],
+  ], 'a review pass never flips a failing report step into exit 0')
   assert.deepEqual(stepExits(flow, reportOf([{ id: 'step-1', ok: true, artifact: 'shot.png' }]), 0, undefined).map(entry => entry.artifact), ['shot.png'])
   assert.deepEqual(stepExits(flow, reportOf([]), 0, undefined), [], 'a report that lists no step writes no evidence (§2.7 rule 5)')
 })
@@ -361,7 +364,7 @@ interface Rig {
   readonly reports: string[]
   readonly starts: Parameters<WalkStart>[0][]
   readonly metrics: MetricEvent[]
-  run(): Promise<void>
+  run(signal?: AbortSignal): Promise<void>
   journal(): Promise<readonly WalkLine[]>
   walkHistory(stepId: string): Promise<readonly HistoryEntry[]>
   dispose(): void
@@ -374,6 +377,7 @@ interface RigOptions {
   readonly now?: () => Date
   readonly start?: WalkStart
   readonly lockSetup?: GateLockSetup
+  readonly reviewTimeoutMs?: number
 }
 
 let jobs = 0
@@ -436,6 +440,7 @@ async function walkRig(options: RigOptions = {}): Promise<Rig> {
     ...(options.now === undefined ? {} : { now: options.now }),
     ...(start === undefined ? {} : { start }),
     ...(options.lockSetup === undefined ? {} : { lockSetup: options.lockSetup }),
+    ...(options.reviewTimeoutMs === undefined ? {} : { reviewTimeoutMs: options.reviewTimeoutMs }),
   }
   const spec: WalkJobSpec = {
     job: `walk-goal-1-${String(++jobs).padStart(2, '0')}`,
@@ -462,8 +467,8 @@ async function walkRig(options: RigOptions = {}): Promise<Rig> {
     reports,
     starts,
     metrics,
-    async run(): Promise<void> {
-      await runWalkJob(deps, spec, new AbortController().signal)
+    async run(signal?: AbortSignal): Promise<void> {
+      await runWalkJob(deps, spec, signal ?? new AbortController().signal)
     },
     async journal(): Promise<readonly WalkLine[]> {
       try {
@@ -844,5 +849,67 @@ test('buildCovers: a commit is covered when everything after it touches only the
   }
   finally {
     repo.dispose()
+  }
+})
+
+test('aborting during walk-review disposes the activation and returns not_run on the first attempt instead of retrying 3 times', { timeout: 15_000 }, async () => {
+  const controller = new AbortController()
+  let disposed = 0
+  const r = await walkRig({
+    walkLine: '`walk 截图 $ node walk-driver.mjs {flow}`',
+    flows: [{ id: 'flow-shot', body: '走法：截图 · 预计 5 秒', steps: ['step-1'] }],
+    start: () => {
+      setTimeout(() => controller.abort(), 15)
+      return Promise.resolve({
+        childId: 'stub-abort',
+        result: new Promise(() => {}),
+        dispose: () => {
+          disposed += 1
+          return Promise.resolve()
+        },
+      })
+    },
+  })
+  try {
+    await r.run(controller.signal)
+    assert.equal(r.starts.length, 1, 'aborted review stops after the active attempt without retrying 3 times')
+    assert.equal(disposed, 1, 'started activation is disposed on abort')
+    assert.equal((await r.walkHistory('step-1')).length, 0)
+    const end = (await flowEndsOf(r)).at(-1)
+    assert.deepEqual([end?.flow, end?.outcome], ['flow-shot', 'not_run'])
+    assert.deepEqual(r.emitted.filter(event => event.event === 'hourness.stopped'), [])
+    assert.deepEqual(r.emitted.at(-1)?.payload.flows, ['flow-shot not_run'])
+  }
+  finally {
+    r.dispose()
+  }
+})
+
+test('per-flow walk-review timeout disposes a hanging activation, clears its timer, and marks review_failed', { timeout: 15_000 }, async () => {
+  assert.equal(WALK_REVIEW_MS, 10 * 60_000)
+  let disposed = 0
+  const r = await walkRig({
+    walkLine: '`walk 截图 $ node walk-driver.mjs {flow}`',
+    flows: [{ id: 'flow-shot', body: '走法：截图 · 预计 5 秒', steps: ['step-1'] }],
+    reviewTimeoutMs: 40,
+    start: () => Promise.resolve({
+      childId: 'stub-timeout',
+      result: new Promise(() => {}),
+      dispose: () => {
+        disposed += 1
+        return Promise.resolve()
+      },
+    }),
+  })
+  try {
+    await r.run()
+    assert.equal(r.starts.length, 1, 'per-flow review timeout stops after spending the flow review budget')
+    assert.equal(disposed, 1, 'hanging activation is disposed on timeout')
+    assert.equal((await r.walkHistory('step-1')).length, 0)
+    const end = (await flowEndsOf(r)).at(-1)
+    assert.deepEqual([end?.flow, end?.outcome], ['flow-shot', 'review_failed'])
+  }
+  finally {
+    r.dispose()
   }
 })

@@ -10,6 +10,7 @@ import test from 'node:test'
 import { apply, Config, dialectSections, type GlmPromptConfig } from '../src/glm-prompt/index.ts'
 import { readReportingDepth, REPORTING_DEPTH_SECTION, reportingDepthSection } from '../src/glm-prompt/reporting-depth.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
+import { MEMORY_SERVICE } from '../src/shared/memory-service.ts'
 import { fakeRuntime } from './fake-rc3.ts'
 import { captureWarnings } from './graph-helpers.ts'
 
@@ -62,8 +63,8 @@ test('the schema has reportingDepth and the old persona, neither with a default,
   assert.deepEqual(Config({ persona: 'concise' }).persona, 'concise')
   assert.equal('reportingDepth' in Config({ persona: 'concise' }), false)
   assert.equal('persona' in Config({ reportingDepth: 'detailed' }), false)
-  assert.throws(() => Config({ reportingDepth: 'loud' }))
-  assert.throws(() => Config({ persona: 'loud' }))
+  assert.throws(() => Config({ reportingDepth: 'loud' as unknown as 'balanced' }))
+  assert.throws(() => Config({ persona: 'loud' as unknown as 'balanced' }))
   assert.match(descriptionOf(Config.dict?.reportingDepth), /缺省为 balanced/)
   assert.match(descriptionOf(Config.dict?.persona), /已改名为 reportingDepth，只为读旧配置/)
 })
@@ -73,7 +74,7 @@ test('only the old key persona: it decides, once warned, and the row health says
   assert.equal(result.depth, BEFORE.concise)
   assert.deepEqual(result.warnings, [`dsh-glm-hourness/glm-prompt: ${RENAMED}`])
   assert.ok(result.activation.includes(RENAMED), result.activation)
-  assert.ok(result.session?.includes(RENAMED), result.session)
+  assert.ok(result.session?.includes(RENAMED), result.session ?? '')
 })
 
 test('only reportingDepth: it decides and nothing is said', async () => {
@@ -87,7 +88,7 @@ test('both keys and different: reportingDepth wins and it is warned once', async
   const result = await run({ persona: 'concise', reportingDepth: 'detailed' })
   assert.equal(result.depth, BEFORE.detailed)
   assert.deepEqual(result.warnings, [`dsh-glm-hourness/glm-prompt: ${DIFFERENT}`])
-  assert.ok(result.session?.includes(DIFFERENT), result.session)
+  assert.ok(result.session?.includes(DIFFERENT), result.session ?? '')
 })
 
 test('both keys and the same: no warning, the row health says the old key can go', async () => {
@@ -95,7 +96,7 @@ test('both keys and the same: no warning, the row health says the old key can go
   assert.equal(result.depth, BEFORE.concise)
   assert.deepEqual(result.warnings, [])
   assert.ok(result.activation.includes(REDUNDANT), result.activation)
-  assert.ok(result.session?.includes(REDUNDANT), result.session)
+  assert.ok(result.session?.includes(REDUNDANT), result.session ?? '')
 })
 
 test('neither key: balanced, no warning, no remark', async () => {
@@ -121,4 +122,26 @@ test('a value that is not a depth counts as not written', () => {
   assert.deepEqual(readReportingDepth({ reportingDepth: 'loud', persona: 'concise' }), { depth: 'concise', note: RENAMED, warn: true })
   assert.deepEqual(readReportingDepth({ reportingDepth: 7, persona: 'loud' }), { depth: 'balanced', note: undefined, warn: false })
   assert.deepEqual(readReportingDepth({}), { depth: 'balanced', note: undefined, warn: false })
+})
+
+test('MEMORY_SERVICE unavailable at agent/created is resolved lazily during system-prompt/assemble (M4)', async () => {
+  const rt = fakeRuntime()
+  apply(rt.ctx, Config({ reportingDepth: 'balanced' }) as GlmPromptConfig)
+  await rt.create()
+  let reads = 0
+  rt.services.set(MEMORY_SERVICE, {
+    depth: () => {
+      reads += 1
+      return 'concise'
+    },
+    stats: () => ({}),
+    hygiene: () => [],
+  })
+  const first = await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })
+  assert.equal(first.sections.find(section => section.name === REPORTING_DEPTH_SECTION)?.text, BEFORE.concise)
+  assert.equal(reads, 1)
+  // Once resolved at assemble, subsequent assemblies keep the session depth without re-reading.
+  const second = await rt.assemble({ provider: 'glm-zcode', model: 'glm-5.3' })
+  assert.equal(second.sections.find(section => section.name === REPORTING_DEPTH_SECTION)?.text, BEFORE.concise)
+  assert.equal(reads, 1)
 })

@@ -194,6 +194,7 @@ export function designHost(options: { readonly graph?: boolean, readonly project
       return () => { tools.delete(definition.name) }
     },
     get: name => tools.get(name),
+    schemas: () => [...tools.values()].map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters })),
     execute: () => Promise.reject(new Error('the design host runs tools through callTool')),
   }
 

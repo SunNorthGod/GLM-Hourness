@@ -91,19 +91,20 @@ const runTest = fixtureTest(async (): Promise<Fixture> => {
   const agents = new Map<string, MutableAgent>([[MAIN, main]])
   const catalog: Array<{ id: string, mode: string, label: string }> = []
   values.set(MAIN, { subagentCatalog: catalog })
-  const services: InjectableServices = {
+  const services: Partial<InjectableServices> = {
     sessionProjections: {
       register: () => () => {},
       snapshot: (session, keys) => ({ values: Object.fromEntries(Object.entries(values.get(session.id) ?? {}).filter(([key]) => keys.includes(key))) }),
+      stateOf: () => undefined,
     },
     agents: { get: id => agents.get(id) },
     subagents: {
-      interrupt: (target, authority) => {
+      interrupt: (target: string, authority: { readonly parentSessionId?: string }) => {
         if (!catalog.some(entry => entry.id === target)) return
         if (authority.parentSessionId !== MAIN) throw Object.assign(new Error(`subagent "${target}" belongs to another parent session`), { code: 'UNAUTHORIZED' })
         calls.push({ agent: target, call: 'interrupt', authority })
       },
-    },
+    } as unknown as InjectableServices['subagents'],
   }
   const host = fakeInjector(services)
   const registered: Array<CommandDefinitionLike<AgentCommandInvocationLike>> = []

@@ -18,8 +18,8 @@ import test from 'node:test'
 import { CHECK_CONCURRENT, commandText, GATE_CONCURRENT, GATE_QUEUE_MAX, GATE_TIMEOUT_MAX_MS, GATE_TIMEOUT_MS, OUTPUT_DEFAULT_BYTES, OUTPUT_MAX_BYTES, resolveProgram, runCommand, runScript, scriptSha256, sweepRunCopies, WORK_TIMEOUT_MAX_MS, WORK_TIMEOUT_MS, type HookEnvelope } from '../src/loops/script.ts'
 
 /** A project that is a real directory; removed after the case. */
-function projectTest(name: string, body: (project: string) => Promise<void>): void {
-  test(name, async () => {
+function projectTest(name: string, body: (project: string) => Promise<void> | void, options?: { readonly timeout?: number }): void {
+  test(name, options ?? {}, async () => {
     const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'loops-script-')))
     try {
       await body(root)
@@ -405,4 +405,8 @@ projectTest('a gating script that is called off while it waits is refused as abo
   await Promise.all(running)
   const early = await runScript({ project, script: quick, envelope: gateEnvelope(project, 61), purpose: 'gate', signal: AbortSignal.abort() })
   assert.deepEqual([early.kind, early.kind === 'refused' && early.reason], ['refused', 'aborted'], 'a run called off before it starts does not start')
+  const markerFile = join(project, 'should-not-spawn.txt')
+  const abortedCmd = await runCommand({ queue: 'direct', project, argv: ['node', '-e', `require('node:fs').writeFileSync(${JSON.stringify(markerFile)}, 'ran')`], signal: AbortSignal.abort() })
+  assert.deepEqual([abortedCmd.kind, abortedCmd.kind === 'refused' && abortedCmd.reason], ['refused', 'aborted'], 'a direct command with an already-aborted signal does not spawn')
+  assert.equal(existsSync(markerFile), false)
 })

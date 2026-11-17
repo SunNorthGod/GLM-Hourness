@@ -20,6 +20,7 @@ import {
   type MemoryState,
 } from '../src/memory/model.ts'
 import type { JournalRecord, NewRecord } from '../src/data/journal.ts'
+import type { JsonValue } from '../src/shared/json.ts'
 
 const NOW = Date.parse('2026-11-10T10:00:00.000Z')
 const HOUR = 3_600_000
@@ -33,14 +34,14 @@ const PROPOSAL_FIELDS = {
   scope: 'project',
   description: 'Commit messages stay in English',
   body: 'Commit messages stay in English.\n**Why:** the person made this request in 2 session(s).\n**How to apply:** nothing yet — a proposal waits for the person to confirm it.',
-}
+} as const
 
 const EVIDENCE = ['transcripts/s1.txt', 'transcripts/s2.txt']
 
 /** A `propose` record as the fold reads it, fields unchecked — the fold's own rejections need raw data. */
 const propose = (data: Record<string, unknown>): NewRecord => {
   const name = typeof data.name === 'string' ? data.name : ''
-  return { actor: 'harness', by: { tool: 'dream' }, op: 'propose', id: memoryId('project', name), data }
+  return { actor: 'harness', by: { tool: 'dream' }, op: 'propose', id: memoryId('project', name), data: data as JsonValue }
 }
 
 /** A transcript export the way the transcript row renders it: a five-line header, then entries. */
@@ -177,7 +178,7 @@ test('extractCandidates: a sentence that still reads like a credential is droppe
   assert.deepEqual(extractCandidates([
     input('s1', transcript([{ seq: 1, kind: 'user', text: secret }]), 20),
     input('s2', transcript([{ seq: 1, kind: 'user', text: secret }]), 30),
-  ]), [], 'the export redacts, and the extractor does not trust it blindly')
+  ], NOW), [], 'the export redacts, and the extractor does not trust it blindly')
 })
 
 // --- The fold ---------------------------------------------------------------
@@ -186,8 +187,8 @@ const fold = (records: readonly NewRecord[], from: MemoryState = emptyMemory('pr
   foldRecords(applyRecord, records.map(record => at(record)), from)
 
 const storeOf = (): NewRecord => {
-  const request = { ...PROPOSAL_FIELDS, source: [], relay: '以后都把提交说明写成英文', confirmNew: false }
-  return storeRecord(request as Parameters<typeof storeRecord>[0], { actor: 'llm', relay: '以后都把提交说明写成英文', by: { session: 's1', tool: 'memory_store' } })
+  const request = { ...PROPOSAL_FIELDS, source: [], confirmNew: false, relay: '以后都把提交说明写成英文' }
+  return storeRecord(request, { actor: 'llm', by: { session: 's1', tool: 'memory_store' } })
 }
 
 test('a propose lands as a proposal, and no entry: recall never sees it', () => {

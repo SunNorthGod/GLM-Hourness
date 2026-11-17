@@ -36,7 +36,7 @@ const codeOf = (built: RulesView, id: string): RulesView['code'][number] => {
   return entry
 }
 
-test('the view has its version, the moment and the writing host; the code group is the catalog without the five entries of the peak, and execute is absent', () => {
+test('the view has its version, the moment and the writing host; the code group is the catalog without the five entries of the peak, and execute reflects live row state', () => {
   const built = view()
   assert.equal(built.version, RULES_VIEW_VERSION)
   assert.equal(built.at, new Date(NOW_MS).toISOString())
@@ -45,6 +45,8 @@ test('the view has its version, the moment and the writing host; the code group 
   assert.deepEqual(built.code.map(entry => entry.id), CATALOG.map(entry => entry.id).filter(id => !id.startsWith('builtin:')))
   assert.equal(built.code.some(entry => entry.id.includes('credential')), false, 'there is no credential-read rule')
   assert.equal(built.rows.execute, 'absent')
+  assert.equal(view({ rows: { execute: 'active' } }).rows.execute, 'active')
+  assert.equal(view({ rows: { execute: 'degraded' } }).rows.execute, 'degraded')
   assert.deepEqual(Object.keys(built.rows).sort(), [...VIEW_ROWS, 'execute'].sort())
 })
 

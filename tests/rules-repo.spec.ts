@@ -262,7 +262,7 @@ gitTest('repo-adopt writes the file\'s decisions into the state as one record of
   const record = records.at(-1)!
   assert.equal(records.length, before + 1, 'one record')
   assert.deepEqual([record.op, record.actor, record.target, record.reason], ['repo-adopt', 'human', 'rules.json', '人照仓库里的规则文件改了'])
-  assert.deepEqual(record.changes.map(change => (change.path as string[]).join('/')), ['repo', 'rules/r-lint-gate', 'rules/r-no-evening-push', 'scripts/r-lint-gate'])
+  assert.deepEqual(record.changes.map(change => (change.path as readonly string[]).join('/')), ['repo', 'rules/r-lint-gate', 'rules/r-no-evening-push', 'scripts/r-lint-gate'])
   const state = loadState(paths).state
   assert.equal(state.rules?.['r-no-evening-push']?.reason, 'Edited by hand.')
   assert.equal(state.rules?.['r-no-evening-push']?.origin.at, FULL_RULES_FILE.rules?.['r-no-evening-push']?.origin.at, 'the rule keeps its own origin; the record says who adopted')

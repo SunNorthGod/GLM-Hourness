@@ -133,8 +133,8 @@ test('a pass proposes once, settles the second time, and merges new evidence the
     const deps = stubDeps()
     const first = await runDream(deps, DREAM_ACTION, event(scope.root))
     assert.equal(first.outcome, 'done', JSON.stringify(first))
-    assert.ok(first.outcome === 'done' && /1 new memory proposal/.test(first.tell), first.outcome === 'done' ? first.tell : '')
-    assert.ok(first.outcome === 'done' && first.tell.includes('memory.dream-nightly') && first.tell.includes('memory_store'))
+    assert.ok(first.outcome === 'done' && first.tell !== undefined && /1 new memory proposal/.test(first.tell), first.outcome === 'done' ? (first.tell ?? '') : '')
+    assert.ok(first.outcome === 'done' && first.tell !== undefined && first.tell.includes('memory.dream-nightly') && first.tell.includes('memory_store'))
     const state = await foldState(scope.llm)
     assert.equal(state.proposals.size, 1)
     const [proposal] = [...state.proposals.values()]
@@ -146,7 +146,7 @@ test('a pass proposes once, settles the second time, and merges new evidence the
 
     writeFileSync(join(scope.llm, 'transcripts', 's3.txt'), transcriptText([REQUEST_A]), 'utf8')
     const third = await runDream(deps, DREAM_ACTION, event(scope.root))
-    assert.ok(third.outcome === 'done' && /refreshed 1/.test(third.tell), JSON.stringify(third))
+    assert.ok(third.outcome === 'done' && third.tell !== undefined && /refreshed 1/.test(third.tell), JSON.stringify(third))
     const merged = await foldState(scope.llm)
     assert.deepEqual([...(merged.proposals.get(proposal.name)?.evidence ?? [])].sort(),
       ['transcripts/s1.txt', 'transcripts/s2.txt', 'transcripts/s3.txt'])
@@ -238,7 +238,7 @@ test('the confirming store and the dropping forget, through the real row', { ski
   // `/memory forget` drops a candidate the same way, as the person at the keyboard.
   await proposeAgain('the pass proposes again: the person dropped it once')
   const answer = await row.run(`forget ${proposal.name} project`)
-  assert.equal(answer.kind, 'success', answer.text)
+  assert.equal(answer.kind, 'success', answer.text ?? '')
   assert.equal((await foldState(row.project)).proposals.size, 0)
 
   // The person says yes this time: memory_store with their words lands the entry and takes the candidate.

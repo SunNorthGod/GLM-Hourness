@@ -497,7 +497,7 @@ test('the write verifies the decision against the stored round and refuses stale
 test('the consent seam: args is the canonical quote — a verbatim copy records on the first try, a reworded call is refused changed and closes nothing (§7.2, §7.4)', async () => {
   const exec = { agent: { id: 'a1' }, callId: 'call-1' } as unknown as ToolExecutionContext
   /** openRound as the runtime writes it: the stored round with its digests. */
-  const keepRound = (kept: { round?: RoundRecord }): ReviewDeps['openRound'] => (t, round, view, detail, digest, snapshot) => {
+  const keepRound = (kept: { round?: RoundRecord }): ReviewDeps['openRound'] => (t, round, _view, detail, digest, snapshot) => {
     kept.round = {
       attach: `bootstrap:${t.id}:list-${round}`,
       askDigest: digest,
@@ -591,7 +591,7 @@ test('the six steps run on the real engine: approve, reject the duplicate, close
   const state = await openTakeoverOf(ws)
   assert.ok(state !== undefined && state.stage === 'apply')
   // first try: the journal refuses the wish and the close, so the graph holds steps 1–4 but the takeover is open
-  const half = await applyAgreement({ ancestor: sha => Promise.resolve(gitCode(ws, ['merge-base', '--is-ancestor', sha, 'HEAD']) === 0) }, state, stored, qid, async (records) => {
+  const half = await applyAgreement({ ancestor: sha => Promise.resolve(gitCode(ws, ['merge-base', '--is-ancestor', sha, 'HEAD']) === 0), journal: () => Promise.resolve(true) }, state, stored, qid, async (records) => {
     if (records.some(record => record.op === 'apply' || record.op === 'takeover-closed')) return false
     return await appendTakeover(ws, state.id, records.map(record => ({ op: record.op as 'setup', data: record.data as Record<string, never> })))
   })
@@ -605,7 +605,7 @@ test('the six steps run on the real engine: approve, reject the duplicate, close
   // the resume: everything is judged against the graph, nothing is written twice, and the wish and the close land
   const resumed = await openTakeoverOf(ws)
   assert.ok(resumed !== undefined && resumed.stage === 'apply')
-  const result = await applyAgreement({ ancestor: sha2 => Promise.resolve(gitCode(ws, ['merge-base', '--is-ancestor', sha2, 'HEAD']) === 0) }, resumed, stored, qid, async (records) => appendTakeover(ws, resumed.id, records.map(record => ({ op: record.op as 'setup', data: record.data as Record<string, never> }))))
+  const result = await applyAgreement({ ancestor: sha2 => Promise.resolve(gitCode(ws, ['merge-base', '--is-ancestor', sha2, 'HEAD']) === 0), journal: () => Promise.resolve(true) }, resumed, stored, qid, async (records) => appendTakeover(ws, resumed.id, records.map(record => ({ op: record.op as 'setup', data: record.data as Record<string, never> }))))
   assert.equal(result.ok, true, result.ok ? '' : result.why)
   assert.equal(result.ok ? result.wish : undefined, '把这事做完', 'the wish went back to the main agent')
   assert.deepEqual(result.ok ? result.totals : {}, { approved: 9, skipped: 0, rejected: 1, done: 1 })
@@ -617,7 +617,7 @@ test('the six steps run on the real engine: approve, reject the duplicate, close
   assert.ok(duplicate !== undefined, 'the later duplicate was rejected')
   assert.ok((duplicate?.history ?? []).some(entry => entry.op === 'reject' && (entry.reason ?? '').includes('重复')))
   // the message M3 hands back: the graph commit is two calls the trunk guard lets through, with the way through on a refusal and the verification before the claim (§7.6, the empty-graph-commit finding)
-  const statuses = await questionStatus(final, { ...takeover, round: 1 }, undefined, ws)
+  const statuses = await questionStatus(final, { id: takeover.id, openedAt: takeover.openedAt }, undefined, ws)
   const message = appliedMessage({ id: takeover.id, round: 1 }, result.ok ? result.totals : { approved: 0, skipped: 0, rejected: 0, done: 0 }, statuses, dir, undefined)
   assert.match(message, /approved 9/)
   assert.match(message, /rejected 1 duplicates/)

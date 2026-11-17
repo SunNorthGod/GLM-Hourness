@@ -11,7 +11,7 @@ const COLUMNS_BODY = '理由：想少做一次\n架构：一个脚本\n查过的
 
 /** The live view of a main agent that is between turns; `recent` holds the tool results the fold keeps. */
 function liveAt(fields: Partial<LiveView> = {}): LiveView {
-  return { focus: 'goal-1', model: null, turnSince: null, steps: 0, tool: null, recent: [], ...fields }
+  return { focus: 'goal-1', model: null, turnSince: null, steps: 0, tool: null, recent: [], ...fields } as LiveView
 }
 
 const HANDED_OVER: LiveView['recent'] = [{ name: 'propose_to_human', at: 1, ok: true }]

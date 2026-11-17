@@ -241,7 +241,7 @@ test('a timing journal that cannot be written is a note on the graph row health;
 const KEY = 'tool-1/slow'
 const DIGEST = argvDigest(['node', 'slow.mjs', '{files}'])
 const at = '2026-11-05T01:00:00.000Z'
-const run = (ms: number, argv = DIGEST): TimingLine => ({ kind: 'run', at, check: KEY, argv, ms })
+const run = (ms: number, argv = DIGEST): Extract<TimingLine, { kind: 'run' }> => ({ kind: 'run', at, check: KEY, argv, ms })
 
 test('parseTiming keeps the five kinds and counts what it cannot read; readTiming reads no file as an empty journal and names any other failure', async () => {
   const text = [JSON.stringify(run(1)), 'not json', JSON.stringify({ kind: 'other', at, check: KEY, argv: DIGEST }), JSON.stringify({ kind: 'run', at, argv: DIGEST }), '', JSON.stringify({ kind: 'queue', at, check: KEY, argv: DIGEST, waitedMs: 60_000, running: 2, outcome: 'not-run' })].join('\n')
@@ -275,7 +275,7 @@ test('nextValue: the source of each value (estimate with the session the graph t
   const standing = nextValue({ lines: [estimate, first.line], bad: 0 }, { check: KEY, argv: DIGEST, estimateS: 1, origin }, new Date(at))
   assert.equal(standing.line, undefined, 'the same value under the same command writes nothing')
   // A run stopped at its 5 s limit counts as 5 s: the next value is 15 s, from the harness, with the old value.
-  const after = nextValue({ lines: [first.line, { ...run(5_000), censored: true }], bad: 0 }, { check: KEY, argv: DIGEST, estimateS: 1, origin }, new Date(at))
+  const after = nextValue({ lines: [first.line, { ...run(5_000), censored: true as const }], bad: 0 }, { check: KEY, argv: DIGEST, estimateS: 1, origin }, new Date(at))
   assert.deepEqual([after.line?.limitMs, after.line?.previousMs, after.line?.source], [15_000, 5_000, { by: 'harness', runs: [5_000], factor: 3, floorMs: 5_000 }])
   assert.equal(valueSourceText(after.line!), '系统按最近 1 次，最慢 5 秒')
   const ceiling = nextValue({ lines: [], bad: 0 }, { check: KEY, argv: DIGEST }, new Date(at)).line

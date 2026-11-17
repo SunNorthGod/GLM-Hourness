@@ -8,7 +8,9 @@ import { runtimeUserAgent, upstreamSessionId, type SessionHeaderLike } from '../
 import { apply as loginApply } from '../src/glm-llm/login-row.ts'
 import { saveCredential, type StoreFs } from '../src/glm-llm/auth/store.ts'
 import type { Credential } from '../src/glm-llm/auth/types.ts'
-import type { GenerateOptionsLike, StreamChunk } from '../src/shared/lm-min.ts'
+import type { StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { CommandDefinitionLike } from '../src/shared/dsh-min.ts'
+import type { GenerateOptionsLike } from '../src/shared/lm-min.ts'
 import { QuotaJournal, loginFingerprintOf } from '../src/glm-llm/quota-journal.ts'
 import { fakeProjectToken, memoryJournal, memoryStore, patPlane, PAT_KEY_ID, sealedSigningKey, TRANSPORT_HEADERS, wireRecorder, zcodeDataDir } from './glm-fixtures.ts'
 
@@ -155,7 +157,7 @@ test('coding-plan stream walks the full chain: store → headers → unsigned si
   const captured: { url?: string, headers?: Record<string, string>, body?: Record<string, unknown> } = {}
   const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', journal: memoryJournal(), fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv() })
   const chunks: StreamChunk[] = []
-  for await (const chunk of adapter.stream(request())) chunks.push(chunk)
+  for await (const chunk of adapter.stream(request() as never)) chunks.push(chunk)
   assert.equal(captured.url, UPSTREAM)
   // 3.16.3 account mode: the project access token in both auth headers.
   assert.equal(headerIn(captured.headers, 'authorization'), `Bearer ${FIRST_PAT}`)
@@ -538,7 +540,7 @@ test('x-session-id is one value per DSH session (the gateway cache affinity key)
   const captured: { headers?: Record<string, string> } = {}
   const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', journal: memoryJournal(), fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv() })
   const sessionOf = async (sessionId: string | undefined): Promise<string> => {
-    for await (const chunk of adapter.stream({ ...request(), ...(sessionId === undefined ? {} : { sessionId }) })) void chunk
+    for await (const chunk of adapter.stream({ ...request(), ...(sessionId === undefined ? {} : { sessionId }) } as never)) void chunk
     return captured.headers?.['x-session-id'] ?? ''
   }
   const uuid = '2770bbd7-1a5c-4734-b10f-c6c6284d63e8'
@@ -748,7 +750,7 @@ test('the DSH system prompt arrives as leading system messages and lands in the 
       { role: 'developer', content: [{ type: 'text', text: 'harness notice' }] },
     ],
   } as unknown as typeof base
-  for await (const _chunk of adapter.stream(options)) { void _chunk }
+  for await (const _chunk of adapter.stream(options as never)) { void _chunk }
   assert.deepEqual(captured.body!.system, [{ type: 'text', text: 'You are ZCode, an interactive coding agent' }])
   const messages = captured.body!.messages as Array<{ role: string, content: Array<{ type: string, text?: string }> }>
   assert.equal(messages[0].role, 'user') // the leading system message left the history
@@ -763,7 +765,7 @@ test('start-plan wraps the system in the 3-block assembly and pins the currentDa
   const captured: { body?: Record<string, unknown> } = {}
   const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', journal: memoryJournal(), plan: 'start-plan', fetchImpl: makeUpstream(captured), storeFs: fs, env: isolatedEnv() })
   const options = request()
-  for await (const _chunk of adapter.stream(options)) { void _chunk }
+  for await (const _chunk of adapter.stream(options as never)) { void _chunk }
   const system = captured.body!.system as Array<{ type: string, text: string, cache_control?: unknown }>
   assert.equal(system.length, 3)
   assert.equal(system[0].text, 'You are ZCode, an interactive agent')
@@ -777,7 +779,7 @@ test('start-plan wraps the system in the 3-block assembly and pins the currentDa
     { role: 'user', content: [{ type: 'text', text: '<system-reminder>\n# currentDate\nToday\u0027s date is 2026-10-27.\n</system-reminder>' }] },
   ]
   const second = { ...request(), messages: again } as GenerateOptionsLike
-  for await (const _chunk of adapter.stream(second)) { void _chunk }
+  for await (const _chunk of adapter.stream(second as never)) { void _chunk }
   const secondMessages = (captured.body!.messages as Array<{ role: string, content: Array<{ type: string, text?: string }> }>)
   assert.equal(secondMessages.length, 1)
 })
@@ -785,7 +787,7 @@ test('start-plan wraps the system in the 3-block assembly and pins the currentDa
 test('a missing credential fails the stream with the re-login instruction', async () => {
   const { fs } = memoryStore()
   const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', journal: memoryJournal(), fetchImpl: makeUpstream(), storeFs: fs })
-  await assert.rejects(async () => { for await (const chunk of adapter.stream(request())) void chunk }, /\/glm-login/)
+  await assert.rejects(async () => { for await (const chunk of adapter.stream(request() as never)) void chunk }, /\/glm-login/)
   const status = await adapter.status()
   assert.equal(status.logged, false)
 })
@@ -818,7 +820,7 @@ test('status calls a stored login the plan cannot use not logged in, naming the 
 })
 
 test('login row registers the three commands and /glm-login returns the authorize URL', async () => {
-  const registered: Array<{ definitionId: string, name: string, handler: (invocation: { rawInput: string }) => Promise<{ kind: string, text: string }> }> = []
+  const registered: CommandDefinitionLike[] = []
   const dispose = loginApply({ commands: { register: definition => { registered.push(definition); return () => {} } } }, { home: 'C:/ws/.llm' })
   assert.deepEqual(registered.map(row => row.name), ['glm-login', 'glm-status', 'glm-logout'])
   dispose()
