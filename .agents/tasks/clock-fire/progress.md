@@ -84,3 +84,9 @@ desktop-l4-new 的 finding 1 与此吻合：S5 提议通道（4b40e9ea）造出�
 - probe：**620/620 passed**，exit 0，日志 `MAIN 检出 .llm/logs/clk-probe.log`（跑在 `.llm/probe-lock-2`，1 号槽被并行的 runner 占着——锁机制按 §3 自己等位）。`npm test` 日志 `.llm/logs/clk-test.log`。
 - 提交：一个提交（代码 + 测试接线 + 文档 + 本记录）；origin/main 合并前仍在 fcffef5d，无需 rebase。
 - 已知边界（留给桌面 L4）：钟管条目的 `once` 在钟第一次见到它之前已过的，不补跑（无 remembered due，§6.8 只认记下的 nextDue）；`view.json` 的「下次」对钟管条目在第一次拍之前按 `nextOccurrence` 兜底，桌面版待核对。
+
+## 落地
+
+- 提交 `39441048`（clock-fire，基 fcffef5d，origin/main 未动、无需 rebase），主检出 `git merge --ff-only` 快进（合并前删掉主检出未跟踪的同名记录目录、checkout 丢弃两份与提交逐字一致的 docs 工作树改动，patch-id d870efa8 核对过一致）。
+- 合并后主检出 `npm run build` exit 0，`build-info.json` 的 commit = HEAD `3944104`（dirty 为真是未跟踪文稿，§1.1 §32 允许）；前后 `git status --untracked-files=no` 为空。
+- 推送：Gitee `origin/main` fcffef5d..39441048；GitHub 镜像 `github` main 同一快进。
