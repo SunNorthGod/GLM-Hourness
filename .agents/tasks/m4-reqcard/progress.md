@@ -43,11 +43,23 @@ guard-request-goal / guard-request-worker）都在。图节点停在 `approved` 
 - brief shaping guidance 与落地实现的偏差（同意词表独立于 AGREE_WORDS）记录在
   design.md §4，属改权限，本车道未动，待人裁定。
 
-## 4. 收尾清单
+## 4. 探针
+
+- 第 1 次（03:01 起跑，slot 等 ~20 分钟）：595/620，25 败。根因是本车道自己的错误：
+  探针在跑的同时我重跑了 `npm run build`（clean-dist 删 packages/*/dist，探针场景经
+  junction 加载），后半段场景 0 request、runtime 起不来。25 个失败全部是这个形状
+  （exec skeleton / exec walk / user graph / guard-request-worker 的 worker steps 0），
+  与改动无关。证据 `$TEMP/m4-reqcard-rc-probe.log`（运行目录
+  `glm-hourness-probe-2026-11-18T19-01-34-553Z-jRmxCg`）。
+- 第 2 次（05:2x 完成，干净重跑，跑前清 GIT_CONFIG_*，无并发构建）：**620/620，exit 0**。
+  证据 `$TEMP/m4-reqcard-rc-probe2.log`，回拷主检出 `.llm/logs/rc-probe.log`。
+  地板 620 持平；车道不加新 L3 场景（五条 guard-request 系列已在 run-probe.mjs）。
+
+## 5. 收尾清单
 
 - [x] 设计补记
 - [x] 实现与 L2
 - [x] ROADMAP
 - [x] 收尾门禁重跑（build/preflight/test，日志 rc-build/rc-preflight/rc-test.log + 临时目录副本）
-- [ ] 全量探针 ≥620/620（runner 自管锁，跑前清 GIT_CONFIG_*，证据留系统临时目录）
+- [x] 全量探针 620/620（runner 自管锁，跑前清 GIT_CONFIG_*，证据留系统临时目录）
 - [ ] 推分支 origin（代理 127.0.0.1:7890；不推 main、不合并 main）
