@@ -119,10 +119,26 @@ interface PreExecuteFrame {
 
 const preExecuteFrames = new WeakMap<object, PreExecuteFrame>()
 
-/** Defer side effects or late allow checks until the outermost `withPreExecuteFrame` settles. */
+/** Whether the frame-less drop has already warned: one line per process, not one per call. */
+let framelessDropWarned = false
+
+/**
+ * Defer side effects or late allow checks until the outermost `withPreExecuteFrame` settles.
+ * Precondition: the caller runs inside a `withPreExecuteFrame` for `payload` — every gate
+ * listener wraps its body, and the framework's own call sites all do. Outside a frame the
+ * effect has no outer frame to settle in and is dropped; it warns once per process, so a
+ * future caller outside the waterfall loses its record loudly instead of silently.
+ */
 export function deferPreExecuteEffect(payload: ToolExecutionPayload, effect: PreExecuteEffect): void {
   const frame = preExecuteFrames.get(payload)
-  if (frame !== undefined) frame.effects.push(effect)
+  if (frame !== undefined) {
+    frame.effects.push(effect)
+    return
+  }
+  if (!framelessDropWarned) {
+    framelessDropWarned = true
+    console.warn(`dsh-glm-hourness/guard: deferPreExecuteEffect outside a withPreExecuteFrame (call ${payload.name}); the effect is dropped`)
+  }
 }
 
 /** Run a `tools/pre-execute` listener inside a per-payload recursion frame so deferred effects settle once at the outermost frame. */

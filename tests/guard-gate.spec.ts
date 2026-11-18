@@ -281,6 +281,28 @@ test('withPreExecuteFrame: beforeAllow short-circuits on deny and skips onAllow,
   assert.deepEqual(events, ['before-1', 'deny-1', 'deny-2'])
 })
 
+test('deferPreExecuteEffect outside a frame drops the effect and warns once per process; a framed call still defers', async () => {
+  const warn = console.warn
+  const warnings: string[] = []
+  console.warn = (message: string) => { warnings.push(message) }
+  try {
+    const payload = write(agentAt('a1'))
+    deferPreExecuteEffect(payload, { onAllow: () => { throw new Error('must not run') } })
+    deferPreExecuteEffect(payload, { onAllow: () => { throw new Error('must not run') } })
+    assert.equal(warnings.length, 1, 'one warning per process, not one per call')
+    assert.match(warnings[0], /outside a withPreExecuteFrame/)
+    const events: string[] = []
+    await withPreExecuteFrame(payload, () => {
+      deferPreExecuteEffect(payload, { onAllow: () => { events.push('allow') } })
+      return Promise.resolve({ kind: 'allow' })
+    })
+    assert.deepEqual(events, ['allow'], 'a framed call still settles its effects')
+  }
+  finally {
+    console.warn = warn
+  }
+})
+
 test('cross-row H2: an outer gate denying after next() releases carried grants without consuming them and skips allowed()', async () => {
   const store = memoryFs()
   const listeners: Array<{ event: string, listener: Listener, prepend?: boolean }> = []
