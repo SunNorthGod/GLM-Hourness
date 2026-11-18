@@ -66,10 +66,11 @@ import { cachedWorktrees, projectOf } from '../data/project-root.ts'
 import { writesInto } from '../guard/directory-writes.ts'
 import { ID_PATTERN, MAX_ENTRIES } from '../metrics/schema.ts'
 import * as followup from '../guard/followup.ts'
-import { withPreExecuteFrame } from '../guard/gate.ts'
+import { lose, withPreExecuteFrame } from '../guard/gate.ts'
 import { originOf } from '../guard/origin.ts'
 import { renderCorrection, type ToolCall } from '../guard/rules.ts'
 import { keyOf, type GuardRecord } from '../guard/records.ts'
+import type { JournalOutcome } from '../memory/audit.ts'
 import { dialectNames, dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
 import type { AgentLike, PreExecuteDecision, PreExecuteHost, ServiceLookup, ToolExecutionPayload } from '../shared/dsh-min.ts'
 import { sessionIdOf, type RowHealth } from '../shared/health.ts'
@@ -106,8 +107,8 @@ export interface GateDeps {
   /** The project of a working directory, as the row reads it; it throws when the files cannot be read. */
   readonly project: (cwd: string) => ProjectView | undefined
   readonly peak: () => PeakReading
-  /** Where the gate hands its record, with the working directory of the session it is about: the row's per-project journal (projectJournal), which writes it into that session's project; the gate does not read the outcome (design §3.2). */
-  readonly journal: { readonly violation: (record: GuardRecord, cwd: string | undefined) => Promise<unknown> }
+  /** Where the gate hands its record, with the working directory of the session it is about: the row's per-project journal (projectJournal), which writes it into that session's project. The gate reads the outcome: a write that failed counts against the session like any lost record (design §3.2), the way the guard framework's gate counts its own (§16.11). */
+  readonly journal: { readonly violation: (record: GuardRecord, cwd: string | undefined) => Promise<JournalOutcome> }
   readonly health: RowHealth
   /** The waiting tickets of the calls a rule queues. */
   readonly tickets: TicketDesk
@@ -189,6 +190,20 @@ export function installRulesGate(deps: GateDeps): () => void {
     return handleLateVerdicts(lateDeps, call, scripts)
   })
 
+  /**
+   * Hand one record to the journal without waiting for it, counting a write
+   * that failed against the session like any lost record (design §3.1 step 7,
+   * §16.11): the journal itself reports the first failure of each sink on the
+   * console and holds the gap, and the count names it on the row health, the
+   * way the guard framework's gate counts its own writes.
+   */
+  function handOff(record: GuardRecord, cwd: string | undefined, sessionId: string | undefined): void {
+    void (async () => {
+      const outcome = await deps.journal.violation(record, cwd)
+      if (outcome === 'failed') lose('rules', sessionId, deps.health)
+    })().catch(() => lose('rules', sessionId, deps.health))
+  }
+
   /** A line for the violation journal; the journal never rejects into the call, the call does not wait for the write (the guard does not either), and a journal that cannot be reached never changes what the rules said about the call. Returns the line's record key, for the follow-up recorder. */
   function note(agent: AgentLike, exec: ToolExecutionPayload, claimed: boolean, line: Line): string {
     const record: GuardRecord = {
@@ -199,25 +214,21 @@ export function installRulesGate(deps: GateDeps): () => void {
       ...originOf(claimed, sessionRoute(agent.session)),
       ...line,
     }
-    try {
-      void deps.journal.violation(record, cwdOf(agent))
-    }
-    catch (error) {
-      warnFault(`a violation line could not be handed to the journal: ${message(error)}`)
-    }
+    handOff(record, cwdOf(agent), sessionIdOf(agent))
     return keyOf(record)
   }
 
   /** Note one refusal as the agent's pending follow-up (design §3.3): the rules have no right path of their own, so only a repeat, something else or no next call can settle it. The origin is the refusal line's. */
   function noteFollowup(agent: AgentLike, exec: ToolExecutionPayload, claimed: boolean, rule: string, call: ToolCall, key: string): void {
     if (typeof exec.callId !== 'string') return
+    const sessionId = sessionIdOf(agent)
     const sessionCwd = cwdOf(agent)
     followup.noteDenial(agent, exec.callId, {
       rule,
       call,
       key,
       origin: originOf(claimed, sessionRoute(agent.session)),
-      write: record => { void deps.journal.violation(record, sessionCwd).catch(() => {}) },
+      write: record => { handOff(record, sessionCwd, sessionId) },
     })
   }
 
@@ -418,7 +429,7 @@ export function installRulesGate(deps: GateDeps): () => void {
     if (agent !== undefined && typeof exec.callId === 'string') {
       const sessionId = agent.session?.id
       const sessionCwd = cwdOf(agent)
-      if (sessionId !== undefined) followup.hookJournal(sessionId, record => { void deps.journal.violation(record, sessionCwd).catch(() => {}) })
+      if (sessionId !== undefined) followup.hookJournal(sessionId, record => { handOff(record, sessionCwd, sessionId) })
       followup.observe(agent, { name: toNativeTool(dialectService(deps.ctx, warn), exec.name, warn), arguments: (exec.arguments ?? {}) as JsonValue }, exec.callId)
     }
     const decision = await next()

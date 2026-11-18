@@ -21,6 +21,7 @@ import { creditPricing } from '../src/glm-llm/credits.ts'
 import { worktreesOf } from '../src/data/project-root.ts'
 import { MAIN_AGENT_KEY } from '../src/graph/main-agent.ts'
 import { installExecuteRules, type CommandRecordLine } from '../src/guard/execute-rules.ts'
+import * as followup from '../src/guard/followup.ts'
 import { installRuleGate } from '../src/guard/gate.ts'
 import { realSnapshotEnvironment } from '../src/guard/git-snapshot.ts'
 import type { GuardRecord } from '../src/guard/records.ts'
@@ -613,6 +614,27 @@ rowTest('a journal that cannot be reached never turns a refusal into a call that
   assert.equal(result.isError, true)
   assert.deepEqual(calls, [])
 }, { rules: file([BLOCK_PROBE]), services: { glmHournessData: { get userHome(): never { throw new Error('data service gone') } } } })
+
+rowTest('a journal that cannot write counts the lost records against the session health, denial line and settled follow-up alike', async ({ runtime, exec, until }) => {
+  // The lost count lives on the gate module and the fake session id repeats across tests, so the
+  // assertions are relative to the count this test starts from.
+  const lostOf = (reason: string): number => Number(/(\d+) 条违规没有落盘/.exec(reason)?.[1] ?? 0)
+  const result = await exec('pwsh', shell('echo rules-probe-blocked'))
+  assert.equal(result.isError, true, 'the refusal still refuses')
+  await until(() => lostOf(health(runtime).reason) >= 1)
+  const afterDenial = lostOf(health(runtime).reason)
+  // The turn ends without a next call: the pending denial settles as `none` (followup.sessionEvent is
+  // what the guard row's session/event listener calls for every row) and its write fails the same way.
+  followup.sessionEvent(runtime.agent.session!, { type: 'turn/end', seq: 1, time: Date.now() })
+  await until(() => lostOf(health(runtime).reason) === afterDenial + 1)
+}, {
+  rules: file([BLOCK_PROBE]),
+  setup: async ({ root }) => {
+    // violations.jsonl exists as a directory: every append fails and the journal reports 'failed'.
+    await mkdir(join(root, '.llm', 'audit'), { recursive: true })
+    await mkdir(join(root, '.llm', 'audit', 'violations.jsonl'))
+  },
+})
 
 rowTest('a call of an agent with no session runs', async ({ runtime, exec }) => {
   const bare = { id: 'x', ctx: runtime.ctx }

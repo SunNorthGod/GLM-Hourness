@@ -423,8 +423,13 @@ function noteRuleErrors(options: RuleGateOptions, sessionId: string | undefined,
   }
 }
 
-/** Count one lost record against the session and name it on the row health (design §3.1 step 7); the count survives a recovered write. */
-function lose(row: string, sessionId: string | undefined, health: RuleGateOptions['health']): void {
+/**
+ * Count one lost record against the session and name it on the row health
+ * (design §3.1 step 7); the count survives a recovered write. The rules
+ * board's tool gate reuses this for its own journal writes, so "a lost
+ * record is never silent" stays one design line across both rows.
+ */
+export function lose(row: string, sessionId: string | undefined, health: RuleGateOptions['health']): void {
   const lost = (lostRecords.get(keyOf(row, sessionId)) ?? 0) + 1
   lostRecords.set(keyOf(row, sessionId), lost)
   health?.note(sessionId, 'violations-lost', cut(`${lost} 条违规没有落盘`))
