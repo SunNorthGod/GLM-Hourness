@@ -535,6 +535,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "clock-fire 落地：时间触发的 script/check 条目由循环行自己的钟点火（design 0.6 §6.2，不走 DSH 绑定）——clockBeat 拍内臂钟/点火/重臂，停机 late 补跑认 remembered due，排队保 occurrenceAt；L2 loops-clock 9 例，probe 620/620，随 2ff16348 进 main（2026-11-18）。桌面 L4 攒批。"
+    },
+    {
+      "at": "2026-11-18T02:18:54.883Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "loops-rc3 落地：两处 rc.3 适配缺口均根修——①ended 分支补记 loop-fired/done 与 state.last（一次任务投递即置 ended 的宿主行为，缺陷自 2026-11-01 起潜伏）；②孤儿清理只删本项目持有者会话上的绑定任务（断掉跨项目同 id 互删互建的通知洪水）。双探针 620/620，随 ca950d93 进 main（2026-11-18）。修复后桌面复验攒批。"
     }
   ]
 }
