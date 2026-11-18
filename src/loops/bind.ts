@@ -28,13 +28,18 @@
  *    repair, no move, no delete-and-recreate — and says the count once a day;
  * 4. take in or remove a reminder of the board's that no binding names: after
  *    the state file was lost it is taken back, and once the entry is certainly
- *    gone it is removed. "Certainly" is the point: an entry missing because the
- *    row that hands it over has not handed it over yet is waited for, not
- *    deleted (design §6.2, review F41).
+ *    gone it is removed — and only a reminder bound to this project's holder
+ *    session. Another project's board writes the same title and the same first
+ *    line, so the writing alone proves nothing across compositions; a reminder
+ *    of another board's is left alone. "Certainly" is the point: an entry
+ *    missing because the row that hands it over has not handed it over yet is
+ *    waited for, not deleted (design §6.2, review F41).
  *
  * After the due time the board only reads: a delivery the host made is one run
- * of the entry, and a delivery it did not make in five minutes is one failure,
- * which the board delivers itself once.
+ * of the entry — read off the catalog row even when that delivery ended a
+ * one-shot, which the host commits in the same write — and a delivery it did
+ * not make in five minutes is one failure, which the board delivers itself
+ * once.
  *
  * Nothing here throws into the beat; every host call is caught and becomes a
  * line of the row's health.
@@ -271,7 +276,23 @@ export async function reconcile(deps: BindDeps): Promise<BindOutcome> {
     // A one-shot that has fired stays as DSH left it: ended, and not made again (design §6.2).
     if (binding?.done === true && task !== undefined) continue
     if (task?.status === 'ended') {
-      state.bindings[item.entry.id] = { ...binding, done: true }
+      // The host ends a one-shot at the delivery commit itself, with the receipt on the same row
+      // (rc.3 dsh-schedule `advanced`, index.js:1435–1445): that delivery is still one run of the
+      // entry, recorded at the first reconciliation that sees it. Without this, loop_note's run
+      // gate has nothing to hang on — the step that claimed the message reconciles after the host
+      // has already committed the ended row.
+      const receipt = task.lastDelivery
+      if (receipt !== undefined && receipt.messageId !== binding?.deliveredMessageId) {
+        const run = runId()
+        const at = new Date(deps.now()).toISOString()
+        deps.record(firedRecord({ at, project: deps.paths.projectRoot, run, entry: item.entry, from: item, events: 1 }))
+        deps.record({ kind: 'loop-done', at, project: deps.paths.projectRoot, entry: item.entry.id, run, outcome: 'delivered', delivery: 'dsh', messageId: receipt.messageId })
+        state.last[item.entry.id] = { run, at, outcome: 'delivered' }
+        state.bindings[item.entry.id] = { ...binding, done: true, deliveredMessageId: receipt.messageId }
+      }
+      else {
+        state.bindings[item.entry.id] = { ...binding, done: true }
+      }
       out.lines.push(`「${item.entry.title}」已跑过（${task.lastDelivery?.deliveredAt ?? task.scheduledAt}）`)
       continue
     }
@@ -318,14 +339,19 @@ export async function reconcile(deps: BindDeps): Promise<BindOutcome> {
     if (!isOurs(new Set(), task)) continue
     const entry = entryIdOfPrompt(task.prompt)
     if (entry === undefined) continue
+    // A reminder shaped like the board's but bound to another session is another composition's:
+    // every project's board writes the same title and the same first line, so the writing alone
+    // proves nothing across compositions, and only this project's holder session is ours to
+    // account for. Deleting by the writing alone had two boards delete and remake each other's
+    // reminders, every write a [SCHEDULE CHANGE] to the other holder (the desktop-l4-new flood).
+    // It is skipped quietly: a permanent neighbour is not a this-beat refusal, and the DSH task
+    // page shows both reminders with their target sessions. The one cost — a reminder a lost
+    // state file left behind after the holder moved — is the person's to delete on that page.
+    if (targetSessionIdOf(task) !== session) continue
     const item = wanted.get(entry)
-    if (!mayRemoveHolderTasks(holder) && targetSessionIdOf(task) === session) {
+    if (!mayRemoveHolderTasks(holder)) {
       out.kept.push(`${task.id}：此刻看不清主 Agent 的会话，多出来的提醒先不删`)
       if (sayOnce(state, task.id, deps.now())) out.lines.push('DSH 里多了一条循环板的提醒，此刻不删')
-      continue
-    }
-    if (item !== undefined && targetSessionIdOf(task) !== session) {
-      await drop(task, 'moved', entry)
       continue
     }
     if (item !== undefined) {

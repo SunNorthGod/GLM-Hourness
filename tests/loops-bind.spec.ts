@@ -393,21 +393,66 @@ test('bind: a delivery DSH made is one run of the entry, and one it owes for fiv
   })
 })
 
-test('bind: a one-shot entry that has fired is left as DSH left it and not made again', async () => {
+test('bind: a one-shot entry that has fired is left as DSH left it, its delivery is one run, and it is not made again', async () => {
   await bench(async (it) => {
     const once: RunnableEntry = { entry: { ...tellEntry('u-once0001'), when: { kind: 'once', at: new Date(NOW + 3_600_000).toISOString() } }, source: 'person' }
     it.entries = [once]
     await reconcile(it.deps)
     const task = it.schedule.tasks()[0]
     assert.equal(task.kind, 'at')
+    // The host ends the one-shot at the delivery commit itself, receipt on the row (rc.3 `advanced`).
     it.schedule.fire(task.id)
+    const ended = it.schedule.tasks()[0]
+    assert.equal(ended.status, 'ended')
     const done = await reconcile(it.deps)
     assert.equal(it.state.bindings['u-once0001'].done, true)
     assert.ok(done.lines.some(line => line.includes('已跑过')))
+    // The delivery the host made is recorded as one run: without it loop_note's run gate has nothing to hang on.
+    assert.equal(it.records.filter(record => record.kind === 'loop-fired').length, 1)
+    const finished = it.records.filter(record => record.kind === 'loop-done')
+    assert.equal(finished.length, 1)
+    assert.deepEqual([finished[0].kind === 'loop-done' ? finished[0].outcome : '', finished[0].kind === 'loop-done' ? finished[0].delivery : ''], ['delivered', 'dsh'])
+    assert.deepEqual(finished[0].kind === 'loop-done' ? finished[0].messageId : '', ended.lastDelivery?.messageId)
+    assert.equal(it.state.last['u-once0001']?.outcome, 'delivered')
+    assert.equal(it.state.bindings['u-once0001'].deliveredMessageId, ended.lastDelivery?.messageId)
     const again = await reconcile(it.deps)
     assert.deepEqual([...again.created], [])
+    assert.equal(it.records.filter(record => record.kind === 'loop-fired').length, 1, 'the same delivery is not one run twice')
     assert.equal(it.schedule.tasks().length, 1)
   })
+})
+
+test('bind: a reminder of the board\'s writing bound to another session is another board\'s and stays', async () => {
+  await bench(async (it) => {
+    it.entries = [plugin()]
+    await reconcile(it.deps)
+    assert.equal(it.schedule.tasks().length, 1)
+    const own = it.schedule.tasks()[0]?.id
+    // Another project's board bound its own reminder of the same default entry to its holder session.
+    const theirs = it.schedule.seed('session-other', { title: titleOf(plugin().entry), prompt: promptOf(plugin()) })
+    const done = await reconcile(it.deps)
+    assert.deepEqual([...done.removed], [], 'the other board\'s reminder is neither moved nor duplicated away')
+    assert.equal(done.kept.length, 0, 'a permanent neighbour is not a this-beat refusal either')
+    assert.deepEqual(deletions(it.records), [])
+    assert.equal(it.schedule.tasks().length, 2)
+    assert.equal(it.schedule.tasks().some(task => task.id === theirs.id), true)
+    // The own reminder stays bound and answered for.
+    assert.equal(it.state.bindings['operate.morning']?.scheduleId, own)
+  })
+})
+
+test('bind: the other project\'s reminder of an entry this project never had is not entry-gone either', async () => {
+  await bench(async (it) => {
+    it.entries = [weekly()]
+    await reconcile(it.deps)
+    it.schedule.seed('session-other', { title: `${TASK_TITLE_PREFIX}theirs`, prompt: promptOf(plugin()) })
+    it.at.ms += ENTRY_GONE_WARMUP_MS + ENTRY_GONE_GAP_MS + 120_000
+    const first = await reconcile(it.deps)
+    const second = await reconcile(it.deps)
+    assert.deepEqual([...first.removed, ...second.removed], [], 'an entry absent from this table does not make the other board\'s reminder gone')
+    assert.deepEqual(deletions(it.records), [])
+    assert.equal(it.schedule.tasks().length, 2)
+  }, { startedAgo: 0 })
 })
 
 test('bind: a task the person paused is left alone — no repair, no not-delivered remake, no removal — and counted once a day', async () => {
@@ -572,4 +617,59 @@ test('removeTask: a reminder bound to a holder session the board cannot see clea
     assert.equal(it.schedule.tasks().length, 1)
     assert.deepEqual(it.records, [])
   })
+})
+
+test('bind: two projects\' boards over one host each keep their own reminder — the mutual delete-and-remake stays broken', async () => {
+  const roots = [realpathSync.native(mkdtempSync(join(tmpdir(), 'loops-bind-a-'))), realpathSync.native(mkdtempSync(join(tmpdir(), 'loops-bind-b-')))]
+  try {
+    const at = { ms: NOW }
+    const now = (): number => at.ms
+    const schedule = fakeSchedule({ now })
+    const boards: Array<{ readonly state: RuntimeState, readonly records: LoopRecord[], readonly deps: BindDeps }> = []
+    for (const [index, root] of roots.entries()) {
+      const paths = loopsPaths(root)
+      await ensureRuntimeDir(paths)
+      const state = emptyState()
+      const records: LoopRecord[] = []
+      const session = index === 0 ? HOLDER : 'session-second'
+      boards.push({
+        state,
+        records,
+        deps: {
+          paths,
+          io: quickIo({ now }),
+          now,
+          state: () => state,
+          schedule: () => schedule.service,
+          holder: () => ({ kind: 'ok', session }),
+          entries: () => [plugin()],
+          deleted: () => false,
+          startedAt: new Date(NOW - 10 * 60_000).toISOString(),
+          record: (record) => { if (journalTakesRecord(record)) records.push(record) },
+          report: () => {},
+          deliver: () => Promise.resolve({ kind: 'delivered' as const, how: 'followup' as const }),
+          timeZone: () => ZONE,
+        } satisfies BindDeps,
+      })
+    }
+    const [a, b] = boards
+    await reconcile(a.deps)
+    await reconcile(b.deps)
+    assert.equal(schedule.tasks().length, 2, 'each board made its own reminder')
+    // Ten rounds of settle-on-changed, the way the two boards traded deletions and remakes before the guard.
+    for (let round = 0; round < 10; round += 1) {
+      await reconcile(a.deps)
+      await reconcile(b.deps)
+    }
+    assert.equal(schedule.tasks().length, 2, 'each board keeps its own reminder')
+    assert.deepEqual([...a.records, ...b.records].filter(record => record.kind === 'loop-task-delete'), [], 'neither board deletes the other\'s reminder')
+    const bindingA = a.state.bindings['operate.morning']
+    const bindingB = b.state.bindings['operate.morning']
+    assert.ok(bindingA !== undefined && bindingB !== undefined)
+    assert.notEqual(bindingA.scheduleId, bindingB.scheduleId)
+    assert.deepEqual(schedule.tasks().map(task => task.target.kind === 'session' ? task.target.sessionId : task.target.kind).sort(), [HOLDER, 'session-second'])
+  }
+  finally {
+    for (const root of roots) rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  }
 })
