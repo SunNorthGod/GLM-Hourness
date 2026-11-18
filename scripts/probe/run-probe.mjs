@@ -6172,7 +6172,7 @@ if (ONLY === undefined) {
 else {
   const selected = [...ONLY]
   console.log(`probe: partial run (${selected.length} scenario${selected.length === 1 ? '' : 's'}: ${selected.join(', ')})`)
-  console.log(`probe: ${checks.length - skippedChecks - failed}/${checks.length - skippedChecks} passed, ${skippedChecks} skipped (${unlistedChecks} of them without an entry in CHECK_SCENARIO_OWNERS; ${skippedScenarios.length} scenario(s) not booted)`)
+  console.log(`probe: ${checks.length - skippedChecks - failed}/${checks.length - skippedChecks} passed, ${skippedChecks} skipped (${unlistedChecks} of them without an entry in CHECK_SCENARIO_PREFIXES/CHECK_SCENARIO_LABELS; ${skippedScenarios.length} scenario(s) not booted)`)
   console.log('probe: the net, quota and data sweeps ran over the scenarios this run booted only')
 }
 
