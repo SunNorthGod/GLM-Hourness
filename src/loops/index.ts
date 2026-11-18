@@ -251,16 +251,27 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
   const problems: string[] = []
   /** Lines that say what this process does not do; they are not faults (design §11.1). */
   const notes: string[] = []
+  /**
+   * What a state of a project says for as long as the state lasts (run.ts
+   * `reportState`): one line per family, the newest word standing alone. A
+   * beat's own words go here and not into `notes`, so a condition that holds
+   * across beats does not write its line again and a condition that cleared
+   * takes its line back (desktop-l4-rc3: ten 「有 N 条 DSH 提醒这一拍没删」lines
+   * with different N stayed in the health long after the deletions were done).
+   */
+  const states = new Map<string, { readonly text: string, readonly level: 'info' | 'degraded' }>()
   /** What the setup of the command, the tools, the gate and the projection says: undefined once it is in place. */
   const setup: { command: string | undefined, tools: string | undefined, gate: string | undefined, projection: string | undefined } = { command: '/loops 还没注册', tools: '工具还没注册', gate: '文件门还没装', projection: WAITING_PROJECTION }
   const activation = (): readonly [HealthState, string] => {
     const faults = [setup.command, setup.tools, setup.gate, setup.projection].flatMap(fault => fault ?? [])
+    const stated = [...states.values()]
     const listed = [...problems, ...boards.problems()]
     return [
-      faults.length + listed.length === 0 ? 'active' : 'degraded',
+      faults.length + listed.length + stated.filter(line => line.level === 'degraded').length === 0 ? 'active' : 'degraded',
       [
         `循环板自己的 ${registry.entries().length} 项条目已登记`,
         ...notes,
+        ...stated.map(line => line.text),
         ...(setup.command === undefined ? [`命令 /${LOOPS_COMMAND} 已注册`] : []),
         ...(setup.tools === undefined ? [`工具 ${LOOP_TOOL_NAMES.join('、')} 已注册`] : []),
         ...(setup.gate === undefined ? [`${LOOPS_FILES_ONLY} 与 ${LOOPS_SCHEDULE_TOOLS} 已装上`] : []),
@@ -274,6 +285,16 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
   const say = (text: string, level: 'info' | 'degraded'): void => {
     const lines = level === 'degraded' ? problems : notes
     if (!lines.includes(text)) lines.push(text)
+    health.reactivate(...activation())
+  }
+  const reportState = (family: string, text: string | undefined, level: 'info' | 'degraded'): void => {
+    if (text === undefined) {
+      if (states.delete(family)) health.reactivate(...activation())
+      return
+    }
+    const known = states.get(family)
+    if (known?.text === text && known.level === level) return
+    states.set(family, { text, level })
     health.reactivate(...activation())
   }
   const hasPricing = (): boolean => pricingService(ctx, text => { say(text, 'info') }) !== undefined
@@ -393,6 +414,7 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
       boot: () => config.lock?.bootTime?.() ?? realLockEnvironment.bootTime?.() ?? Date.now(),
       ctx,
       report: say,
+      reportState,
       peak: () => {
         const pricingRead = pricingService(ctx)
         return pricingRead === undefined ? undefined : (atMs: number): boolean => pricingRead.peak(atMs)

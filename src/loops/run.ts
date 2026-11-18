@@ -121,6 +121,17 @@ export interface ProjectDeps {
   /** How the main agent's session reads; holder.ts over `ctx` when absent. Tests replace it. */
   readonly holder?: () => HolderState
   readonly report: (text: string, level: 'info' | 'degraded') => void
+  /**
+   * One line of the row's health about a state, for as long as the state lasts
+   * (design §6.2, §6.4): a family's newest word replaces its previous one, and
+   * `undefined` takes the family's line back. The words of a beat go here and
+   * not through `report`, so a condition that holds across beats does not write
+   * its line again and a condition that cleared does not leave the line behind
+   * (desktop-l4-rc3: ten 「有 N 条 DSH 提醒这一拍没删」lines with different N, and
+   * the wait for the first holder record, stayed in the health long after the
+   * deletions were done).
+   */
+  readonly reportState?: (family: string, text: string | undefined, level: 'info' | 'degraded') => void
   /** The channel's peak reading, while a pricing service is there (design §4.3). */
   readonly peak?: () => ((atMs: number) => boolean) | undefined
   /** Told when a peak edge was emitted, so the page's view of the level is written again (design §6.9 item 3). */
@@ -1138,11 +1149,18 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     startedAt,
     record,
     report: deps.report,
+    ...(deps.reportState === undefined ? {} : { reportState: deps.reportState }),
     deliver,
   }
 
-  /** One reconciliation, with what it did told to the row (design §6.2). */
-  async function settleTasks(): Promise<void> {
+  /** What a reconciliation says to the row's health (design §6.2): the entry lines through `report`, the kept count as the one word of its family. */
+  function told(done: BindOutcome): void {
+    for (const line of done.lines) deps.report(line, 'info')
+    deps.reportState?.('loops-kept', done.kept.length > 0 ? `有 ${done.kept.length} 条 DSH 提醒这一拍没删` : undefined, 'info')
+  }
+
+  /** One reconciliation, with what it says to the row (design §6.2). Runs only through `settleTasks`. */
+  async function runSettle(): Promise<void> {
     if (stopped) return
     try {
       const done = await reconcile(bindDeps)
@@ -1154,10 +1172,30 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     }
   }
 
-  /** What a reconciliation and the holder state say to the row's health (design §6.2, §6.4). */
-  function told(done: BindOutcome): void {
-    for (const line of done.lines) deps.report(line, 'info')
-    if (done.kept.length > 0) deps.report(`有 ${done.kept.length} 条 DSH 提醒这一拍没删`, 'info')
+  /**
+   * Reconcile now, behind the beat that may be running: the same chain the
+   * clock's beat runs on, and one queued settle at a time, with a settle that
+   * was asked for while one ran re-running once it ended. Every road into a
+   * reconciliation — the beat, a `schedule/changed`, the holder session's
+   * archive, the step that took a reminder — goes through here, so two
+   * reconciliations of a project never overlap (design §6.2, §18.9: the
+   * desktop-l4-rc3 arm of a board raced its own schedule/changed settles and
+   * made one reminder several times, then deleted the duplicates).
+   */
+  function settleTasks(): Promise<void> {
+    if (settleQueued) {
+      settleAgain = true
+      return Promise.resolve()
+    }
+    settleQueued = true
+    const run = (async () => {
+      do {
+        settleAgain = false
+        await beatChain.then(runSettle, runSettle)
+      }
+      while (settleAgain)
+    })()
+    return run.finally(() => { settleQueued = false })
   }
 
   /** The `loop-holder` record of a change of state, so "the messages waited because the session was archived" can be looked up afterwards (design §6.10). */
@@ -1167,11 +1205,8 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     inbox.state().holder = { state: state.kind, at: iso(), ...(state.reason === undefined ? {} : { reason: state.reason }), ...(state.session === undefined ? {} : { session: state.session }) }
     record({ kind: 'loop-holder', at: iso(), project: deps.root, state: state.kind, ...(state.reason === undefined ? {} : { reason: state.reason }), ...(state.session === undefined ? {} : { session: state.session }) })
     const fault = holderFault(state)
-    if (fault !== undefined) deps.report(fault, 'degraded')
-    else {
-      const line = holderLine(state)
-      if (line !== undefined) deps.report(line, 'info')
-    }
+    if (fault !== undefined) deps.reportState?.('loops-holder', fault, 'degraded')
+    else deps.reportState?.('loops-holder', holderLine(state), 'info')
   }
 
   const lock = createRunLock({
@@ -1198,6 +1233,9 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
    * second reader of the same journal bytes.
    */
   let beatChain: Promise<void> = Promise.resolve()
+  /** One settle is queued on the chain; a settle asked for while it runs makes it run once more (the cascade of a beat's own writes). */
+  let settleQueued = false
+  let settleAgain = false
   function beat(): Promise<void> {
     const run = beatChain.then(runBeat, runBeat)
     beatChain = run.catch(() => {})
@@ -1235,7 +1273,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
         elsewhereSince ??= deps.now()
         if (deps.now() - elsewhereSince >= WRITER_HELD_MS) {
           const running = [...flight.values()][0]
-          deps.report(running === undefined ? '主 Agent 的会话在另一个 DSH 窗口里，这块板交不过去' : `主 Agent 的会话在另一个 DSH 窗口里，这块板等手上的「${running}」跑完就交过去`, 'degraded')
+          deps.reportState?.('loops-holder', running === undefined ? '主 Agent 的会话在另一个 DSH 窗口里，这块板交不过去' : `主 Agent 的会话在另一个 DSH 窗口里，这块板等手上的「${running}」跑完就交过去`, 'degraded')
         }
       }
       else elsewhereSince = undefined

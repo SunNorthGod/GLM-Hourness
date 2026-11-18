@@ -29,12 +29,15 @@ import type { UsagePricing } from '../src/shared/pricing.ts'
 import { hostRestartedKey } from '../src/loops/events.ts'
 import { currentRun } from '../src/loops/harness.ts'
 import type { LoopEntryDefinition, PersonEntry } from '../src/loops/model.ts'
-import type { DoneRecord, FiredRecord, HandoverRecord, HolderRecord as LoopHolderRecord, LoopRecord } from '../src/loops/records.ts'
+import type { DoneRecord, FiredRecord, HandoverRecord, HolderRecord as LoopHolderRecord, LoopRecord, TaskDeleteRecord } from '../src/loops/records.ts'
 import { DEFER_MAX_MS, DEFER_RETRY_MS, type LoopChecks, type WaitingItem } from '../src/loops/run.ts'
 import type { DeliverResult } from '../src/loops/deliver.ts'
 import type { HarnessResult, LoopEventDeclaration } from '../src/loops/service.ts'
 import type { LoopStore } from '../src/loops/store.ts'
 import { EXECUTE_SOURCE as EXECUTE, gitProjectTest, loopWorldOf, seedRule, scriptEntry, seedAgreed, sha256, SCRIPT_TEXT, tellEntry, type LoopWorld as World } from './loops-helpers.ts'
+import type { HolderState } from '../src/loops/holder.ts'
+import type { ScheduleService } from '../src/shared/dsh-min.ts'
+import { fakeSchedule } from './fake-rc3.ts'
 
 const HANDBACK: LoopEventDeclaration = {
   id: 'hourness.handback',
@@ -755,3 +758,164 @@ test('the shared executor is the one module of src/loops/ that starts a process 
   const executor = await readFile(new URL('script.ts', dir), 'utf8')
   assert.equal(executor.includes('node:child_process'), true, 'script.ts is where runScript and runCommand live')
 })
+
+// ---------------------------------------- the reconciliations of one project run in one chain (desktop-l4-rc3, loops-sweep-churn)
+
+/** A time entry the registry hands the runner, the way the operate row hands 晨报 over. */
+const timeEntry = (id: string, when: LoopEntryDefinition['when']): LoopEntryDefinition => ({
+  id,
+  title: `对账用的 ${id}`,
+  why: '这一项在测试里替插件交的一条到点条目，看板子怎样对上 DSH 的任务',
+  when,
+  action: { kind: 'tell-main', text: TELL, wake: true },
+})
+
+const deletionsOf = (records: readonly LoopRecord[]): Array<{ readonly entry: string, readonly deleted: boolean }> =>
+  records.flatMap((record): TaskDeleteRecord[] => record.kind === 'loop-task-delete' ? [record] : []).map(record => ({ entry: record.entry ?? '', deleted: record.deleted }))
+
+/** Let the next `ms` of promises settle, the way the event loop would between two host calls. */
+const breathe = async (): Promise<void> => {
+  for (let round = 0; round < 5; round += 1) await new Promise(resolve => setImmediate(resolve))
+}
+
+gitProjectTest('two reconciliations of a project never overlap: a settle that arrives while the beat is making a reminder queues behind it, and one reminder is made', async ({ root }) => {
+  const schedule = fakeSchedule()
+  let current: ScheduleService = schedule.service
+  let release: (() => void) | undefined
+  const held = new Promise<void>((resolve) => { release = resolve })
+  let creates = 0
+  // The first create suspends inside the host, as a real serialize queue over storage would.
+  current = {
+    ...schedule.service,
+    create: (request, actor) => {
+      creates += 1
+      return (creates === 1 ? held : Promise.resolve()).then(() => schedule.service.create(request, actor))
+    },
+  }
+  const world = await worldOf(root, {
+    entries: [timeEntry('operate.morning', { kind: 'daily', time: '08:30', timeZone: 'Asia/Shanghai' })],
+    schedule: () => current,
+    holder: () => ({ kind: 'ok', session: 's-main' }),
+  })
+  // The clock's beat and a settle of the same project start together, the way a schedule/changed
+  // arrives in the middle of a beat (desktop-l4-rc3: two reconciliations made 晨报 twice, and the
+  // duplicate delete churn that followed filled the row health and the page's last runs). The
+  // settle that finds the beat's create still in flight must not make its own reminder behind it.
+  const beat = world.runtime.beat()
+  const settle = world.runtime.settleTasks()
+  for (let round = 0; round < 40 && creates < 2; round += 1) await breathe()
+  release?.()
+  await Promise.all([beat, settle])
+  assert.equal(creates, 1, 'one create, not one per overlapping reconciliation')
+  assert.equal(schedule.tasks().length, 1, 'one reminder for the entry')
+  await world.runtime.stop()
+})
+
+gitProjectTest('the disarm cascade of a holder that went away does not re-attempt a reminder it already deleted: one loop-task-delete per reminder, all true', async ({ root }) => {
+  const entries = [
+    timeEntry('operate.morning', { kind: 'daily', time: '08:30', timeZone: 'Asia/Shanghai' }),
+    timeEntry('operate.weekly', { kind: 'weekly', time: '09:00', weekdays: [1], timeZone: 'Asia/Shanghai' }),
+  ]
+  let holderNow: HolderState = { kind: 'none', reason: 'no-record' }
+  const schedule = fakeSchedule({
+    // The row's wiring (src/loops/index.ts): every schedule/changed of the host reconciles the project at once.
+    changed: () => { void world?.runtime.settleTasks() },
+  })
+  let current: ScheduleService = schedule.service
+  const world: World = await worldOf(root, { entries, schedule: () => current, holder: () => holderNow })
+  // Arm: holder ok, both reminders are made.
+  holderNow = { kind: 'ok', session: 's-main' }
+  await world.tick()
+  const tasks = schedule.tasks()
+  assert.equal(tasks.length, 2, 'one reminder per entry')
+  const byId = new Map(tasks.map(task => [task.id, task]))
+  const firstId = [...byId.keys()].sort()[0]
+  const secondId = [...byId.keys()].sort()[1]
+  // Disarm: the holder record is gone. Two reconciliations a minute apart read none; the third one removes.
+  holderNow = { kind: 'none', reason: 'no-record' }
+  await world.tick()
+  world.move(61_000)
+  // The race the desktop hit: the beat's delete of the first reminder fires a settle, whose catalog
+  // read lands between the two deletes and still sees the second reminder. Stage the host so the
+  // cascade's catalog waits, the beat's delete of the second reminder suspends, and the cascade's
+  // own delete of the same row commits first — what the real host's serialize queue makes of it.
+  let cascadeGate: Promise<void> | undefined
+  let cascadeParked = false
+  let releaseEdit: (() => void) | undefined
+  const parkedEdit = new Promise<void>((resolve) => { releaseEdit = resolve })
+  let releaseCatalog: (() => void) | undefined
+  const parkedCatalog = new Promise<void>((resolve) => { releaseCatalog = resolve })
+  let firstSeen = false
+  let secondSeen = false
+  current = {
+    ...schedule.service,
+    catalog: () => {
+      if (cascadeGate === undefined) return schedule.service.catalog()
+      const wait = cascadeGate
+      cascadeGate = undefined
+      cascadeParked = true
+      return wait.then(() => schedule.service.catalog())
+    },
+    edit: (request, actor) => {
+      if (request.action !== 'delete') return schedule.service.edit(request, actor)
+      if (request.id === firstId && !firstSeen) {
+        firstSeen = true
+        cascadeGate = parkedCatalog
+        return schedule.service.edit(request, actor)
+      }
+      if (request.id === secondId && !secondSeen) {
+        secondSeen = true
+        return parkedEdit.then(() => schedule.service.edit(request, actor))
+      }
+      return schedule.service.edit(request, actor)
+    },
+  }
+  const disarm = world.runtime.beat()
+  // While the beat holds both deletes open, the settle asked for by the first delete must wait for
+  // the beat: queued behind it, it reads a catalog with nothing left and re-attempts nothing.
+  for (let round = 0; round < 20 && !cascadeParked; round += 1) await breathe()
+  releaseCatalog?.()
+  await breathe()
+  releaseEdit?.()
+  await disarm
+  releaseCatalog?.()
+  await breathe()
+  await world.runtime.settleTasks()
+  assert.equal(schedule.tasks().length, 0, 'no reminder survives the disarm')
+  const deletions = deletionsOf(runsOf(world)).filter(record => record.entry === 'operate.weekly')
+  assert.deepEqual(deletions, [{ entry: 'operate.weekly', deleted: true }], 'the second reminder is attempted once and deleted once, not once per overlapping reconciliation')
+  const morning = deletionsOf(runsOf(world)).filter(record => record.entry === 'operate.morning')
+  assert.deepEqual(morning, [{ entry: 'operate.morning', deleted: true }])
+  await world.runtime.stop()
+})
+
+gitProjectTest('a reminder the beat cannot delete keeps one line of the row\'s health, and the line goes when the deletion succeeds', async ({ root }) => {
+  const entries = [timeEntry('operate.morning', { kind: 'daily', time: '08:30', timeZone: 'Asia/Shanghai' })]
+  let holderNow: HolderState = { kind: 'ok', session: 's-main' }
+  const schedule = fakeSchedule()
+  const world = await worldOf(root, { entries, schedule: () => schedule.service, holder: () => holderNow })
+  await world.tick()
+  const task = schedule.tasks()[0]
+  assert.ok(task !== undefined)
+  const lastOf = (family: string): string | undefined => world.states.filter(line => line.family === family).at(-1)?.text
+  // Disarm: the holder record is gone. The first beat waits for a second reading and says so.
+  holderNow = { kind: 'none', reason: 'no-record' }
+  await world.tick()
+  assert.deepEqual(lastOf('loops-wait'), '还没读到主 Agent 的记录，再看一拍才动那几条提醒', 'the wait is the one word of its family')
+  assert.deepEqual(lastOf('loops-kept'), undefined)
+  // The beat that removes: one reminder cannot be deleted, and the beat says so once — one line, not one per beat.
+  schedule.conflictOnce(task.id)
+  world.move(61_000)
+  await world.tick()
+  assert.deepEqual(lastOf('loops-wait'), undefined, 'the wait is taken back once the removal went ahead')
+  assert.deepEqual(lastOf('loops-kept'), '有 1 条 DSH 提醒这一拍没删', 'one word about the kept reminder')
+  schedule.conflictOnce(task.id)
+  await world.tick()
+  assert.deepEqual(lastOf('loops-kept'), '有 1 条 DSH 提醒这一拍没删', 'a beat that keeps it again does not say it a second time')
+  // The conflict over: the deletions succeed, and the family's line is taken back.
+  await world.tick()
+  assert.equal(schedule.tasks().length, 0, 'the conflict is over, the reminder goes')
+  assert.deepEqual(lastOf('loops-kept'), undefined, 'the word is taken back once nothing is kept')
+  await world.runtime.stop()
+})
+

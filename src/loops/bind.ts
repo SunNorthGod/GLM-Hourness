@@ -153,6 +153,8 @@ export interface BindDeps {
   readonly startedAt: string
   readonly record: (record: LoopRecord) => void
   readonly report: (text: string, level: 'info' | 'degraded') => void
+  /** One line of the row's health about a state, for as long as it lasts (run.ts `reportState`): the wait for the first holder record, gone once it is read. */
+  readonly reportState?: (family: string, text: string | undefined, level: 'info' | 'degraded') => void
   /** Deliver one message the host owed and did not deliver (design §6.2 "after the due time"). */
   readonly deliver: Deliver
   /** The time zone an entry that names none is read in; the host's own zone. */
@@ -177,6 +179,8 @@ const EMPTY: BindOutcome = { created: [], moved: [], updated: [], adopted: [], r
 
 /** One reconciliation of the project's reminders. Never throws. */
 export async function reconcile(deps: BindDeps): Promise<BindOutcome> {
+  // The word of the last reconciliation's wait is taken back first; this pass says it again while it still waits (run.ts `reportState`).
+  deps.reportState?.('loops-wait', undefined, 'info')
   const schedule = deps.schedule()
   if (schedule === undefined) return EMPTY
   const holder = deps.holder()
@@ -230,7 +234,7 @@ export async function reconcile(deps: BindDeps): Promise<BindOutcome> {
   if (!canDeliver(holder)) {
     const why: RemoveReason = holder.kind === 'archived' ? 'holder-archived' : holder.kind === 'not-found' ? 'holder-not-found' : 'no-holder'
     if (holder.kind === 'none' && !noRecordTwice(state, deps.now())) {
-      out.lines.push('还没读到主 Agent 的记录，再看一拍才动那几条提醒')
+      deps.reportState?.('loops-wait', '还没读到主 Agent 的记录，再看一拍才动那几条提醒', 'info')
       return out
     }
     if (!mayRemoveHolderTasks(holder)) return out
