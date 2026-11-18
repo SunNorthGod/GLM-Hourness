@@ -35,7 +35,7 @@ Worktree: `.worktrees/m7-handback`, `node_modules` is a junction to the main che
 - First probe run findings (both fixed in the scenario):
   - The tester's fixture must be a `.json` file: M4's `scratch-only` refuses a quick dispatch's new script-shaped file (`.ts` is in SCRIPT_EXTENSIONS) and the approved-plan exemption needs an approved plan, which a `quick` dispatch skips; `.json` is data and passes, and `isTestPath` reads the `tests/` directory segment.
   - `glm-exec-merge`'s rework worker hands back on a reopened task too (the reopen is already in that scenario), so its handback carries a `cause` — without it `handback-cause` refused the call, the handback was lost, and the trunk advance correctly kept the task in progress with 审查还没过.
-- Probe floor: see `.llm/logs/hb-probe.log` result line (the runner manages its own lock; `GIT_CONFIG_*` cleared before the run).
+- Probe: 624/624 passed, exit 0 (`.llm/logs/hb-probe.log`; the runner manages its own lock, `GIT_CONFIG_*` cleared before the run; evidence in the system temp directory).
 
 ## Gates
 
@@ -45,4 +45,4 @@ Worktree: `.worktrees/m7-handback`, `node_modules` is a junction to the main che
 ## Commits
 
 1. `feat(execute): <m7-habits>` — the cause flow and the standing brief sentences, code + L2 + docs.
-2. `feat(execute): <m7-handback-path-check>` — the deterministic path check, code + L2 + docs + the probe scenario extension.
+2. `feat(execute): <m7-handback-path-check>` — the deterministic path check, code + L2 + docs + the probe scenario extension (the L3 reopening scenario rides this commit: one scenario file carries both flows).

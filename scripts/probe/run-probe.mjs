@@ -3108,16 +3108,25 @@ const execPlan = designScenario(EXEC_PLAN, 'glm-5.3-flash', () => [
 // recorded with record_human_answer, decide the question. The pass round
 // after it is pinned by tests/execute-handback.spec against the real
 // engine and git (the headless runner's shutdown timing at that boundary
-// decides nothing).
+// decides nothing). m7-habits closes the task and reopens it (the reason
+// rides the reopen), dispatches the rework: its brief carries the
+// find-the-cause sentence with the reopen reason, the causeless handback is
+// refused by handback-cause (journaled), the retry with the cause is
+// accepted and lands as the 原因 line of the summary comment. A second task
+// (m7-handback-path-check) commits only a test file: declared light, the
+// handback escalates to 全审 with 改动全在测试文件里 as the annotation.
 const EXEC_REVIEW = 'glm-exec-review'
 const execReviewSeeds = [
   ['human', { type: 'goal', title: '静态博客', stage: 'release', acceptance: ['the blog builds'] }],
   ['human', { type: 'task', id: 'task-1', title: 'Add the feed', parent: 'goal-1', kind: 'implement', writeScope: ['site/feed/feed.json'], acceptance: ['the feed builds', 'every item has a title'], worktree: true }],
+  ['human', { type: 'task', id: 'task-2', title: 'Test the feed', parent: 'goal-1', kind: 'implement', writeScope: ['tests/feed.spec.json'], acceptance: ['the feed tests pass'], worktree: true }],
   ['human', { type: 'norm', id: 'norm-merge-gate', title: '合入前检查', parent: 'goal-1', acceptance: ['`$ npm test`'] }],
   ['human', { type: 'norm', id: 'norm-review-floor', title: '必须全审的改动', parent: 'goal-1', acceptance: ['碰到必须全审：`files site/feed/`'] }],
 ]
 await stageGraph(EXEC_REVIEW, execReviewSeeds)
 const REVIEW_WHY = 'probe: the review flow needs a running model'
+const REOPEN_WHY = 'the titles came out wrong again; find the cause this time'
+const REWORK_CAUSE = 'the feed writer did not escape item titles; the rework escapes them at the writer, which is where the bad output comes from'
 const REVIEW_BLOCKING = [
   { id: 'f1', blocking: true, criterion: 'acceptance:0', where: 'site/feed/feed.json', what: 'the titles are not escaped', fix: 'escape them' },
   { id: 'f2', blocking: true, criterion: 'acceptance:9', where: 'site/feed/feed.json', what: 'no rate limit', fix: 'add one' },
@@ -3128,15 +3137,31 @@ const execReviewWorker = [
   { tool: { name: 'structured_output', arguments: { status: 'done', summary: 'wrote site/feed/feed.json and committed it', commits: ['{git-head}'], files: ['site/feed/feed.json'], checks: [], questions: [], assumptions: [], lessons: [] } } },
   { text: 'worker done' },
 ]
+const execReviewRework = [
+  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_REVIEW, 'ws', '.worktrees', 'hz-task-1', 'site', 'feed', 'feed.json'), content: 'probe feed, escaped\n' } } },
+  { tool: { name: 'Bash', arguments: { command: 'git add -A; git -c user.name=t -c user.email=t@example.invalid commit -m probe:feed-rework; git log --oneline -1', description: 'probe: commit the rework' } } },
+  // The causeless handback: handback-cause refuses it, the worker writes the cause and calls again.
+  { tool: { name: 'structured_output', arguments: { status: 'done', summary: 'reworked site/feed/feed.json', commits: ['{git-head}'], files: ['site/feed/feed.json'], checks: [], questions: [], assumptions: [], lessons: [] } } },
+  { tool: { name: 'structured_output', arguments: { status: 'done', summary: 'reworked site/feed/feed.json', commits: ['{git-head}'], files: ['site/feed/feed.json'], checks: [], questions: [], assumptions: [], lessons: [], cause: REWORK_CAUSE } } },
+  { text: 'rework done' },
+]
+const execReviewTester = [
+  // A .json fixture: scratch-only refuses a quick dispatch's new script-shaped file, .json is data.
+  { tool: { name: 'Write', arguments: { file_path: join(runDir, EXEC_REVIEW, 'ws', '.worktrees', 'hz-task-2', 'tests', 'feed.spec.json'), content: 'probe: covers the feed\n' } } },
+  { tool: { name: 'Bash', arguments: { command: 'git add -A; git -c user.name=t -c user.email=t@example.invalid commit -m probe:feed-tests; git log --oneline -1', description: 'probe: commit the test' } } },
+  { tool: { name: 'structured_output', arguments: { status: 'done', summary: 'added tests/feed.spec.json', commits: ['{git-head}'], files: ['tests/feed.spec.json'], checks: [], questions: [], assumptions: [], lessons: [] } } },
+  { text: 'tester done' },
+]
 const execReviewVerdict = (verdict, checked, findings) => [
   { tool: { name: 'Bash', arguments: { command: 'git diff main...HEAD --stat', description: 'probe: see the change' } } },
   { tool: { name: 'structured_output', arguments: { verdict, commit: '{head:task-1}', findings, checked, lessons: [] } } },
   { text: 'review done' },
 ]
 const execReviewDispatch = { id: '{review:task-1}', model: 'glm-5.3-flash', why: REVIEW_WHY, depth: 'full', depthWhy: 'probe: full it is' }
+const execReviewTaskDispatch = (id, why) => ({ id, model: 'glm-5.3-flash', why: REVIEW_WHY, quick: true, review: { depth: 'light', why } })
 const execReview = designScenario(EXEC_REVIEW, 'glm-5.3-flash', () => [
   { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
-  { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: REVIEW_WHY, quick: true, review: { depth: 'light', why: 'probe: one file' } } } },
+  { tool: { name: 'dispatch_task', arguments: execReviewTaskDispatch('task-1', 'probe: one file') } },
   // The person widens the floor while the worker runs (reval design §4.1): the dispatch digested the one-line floor, the handback compares against the two-line one.
   { tool: { name: 'probe_human_write', arguments: { mutation: { op: 'edit', id: 'norm-review-floor', set: { acceptance: ['碰到必须全审：`files site/feed/`', '动了删除：`deletes`'] }, reason: 'probe: the floor gains a class while the worker runs' } } } },
   { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let the worker hand back' } } },
@@ -3152,6 +3177,14 @@ const execReview = designScenario(EXEC_REVIEW, 'glm-5.3-flash', () => [
   { tool: { name: 'Bash', arguments: { command: 'ping -n 4 127.0.0.1 | Out-Null', description: 'probe: let the decide settle' } } },
   { tool: { name: 'dispatch_task', arguments: execReviewDispatch } },
   { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let the passing round finish' } } },
+  // m7-habits: close the task and reopen it with the reason, dispatch the rework; a causeless handback is refused, the retry with the cause is accepted.
+  { tool: { name: 'graph_status', arguments: { id: 'task-1', rev: '{rev:task-1}', to: 'done', evidence: [{ kind: 'check', ref: 'review passed', exit: 0 }], reason: 'probe: the round passed, close it' } } },
+  { tool: { name: 'graph_status', arguments: { id: 'task-1', rev: '{rev:task-1}', to: 'doing', reason: REOPEN_WHY } } },
+  { tool: { name: 'dispatch_task', arguments: execReviewTaskDispatch('task-1', 'probe: one file') } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let the rework hand back' } } },
+  // m7-handback-path-check: a change of test files only, declared light, escalates to 全审.
+  { tool: { name: 'dispatch_task', arguments: execReviewTaskDispatch('task-2', 'probe: one test file') } },
+  { tool: { name: 'Bash', arguments: { command: 'ping -n 9 127.0.0.1 | Out-Null', description: 'probe: let the tester hand back' } } },
   { text: 'done', status: true },
 ], { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...dispatchRow(join(runDir, EXEC_REVIEW, 'dispatch.jsonl'))], others: [
   execReviewWorker,
@@ -3159,6 +3192,8 @@ const execReview = designScenario(EXEC_REVIEW, 'glm-5.3-flash', () => [
   execReviewVerdict('APPROVED', ['acceptance:0'], []),
   execReviewVerdict('CHANGES_REQUESTED', ['acceptance:0', 'acceptance:1'], REVIEW_BLOCKING),
   execReviewVerdict('APPROVED', ['acceptance:0', 'acceptance:1'], []),
+  execReviewRework,
+  execReviewTester,
 ] })
 
 // E6b (docs-at-hand design 0.3 §4.4, §6, §6.4; scenario glm-exec-docs): the
@@ -3276,10 +3311,10 @@ const mergeSquash = (branch, subject, wt = mergeWt) => mergeBash([
   `git -C '${wt}' log --oneline -1`,
 ].join('; '), 'probe: squash the task branch into one commit for the main branch')
 const mergeDispatch = { tool: { name: 'dispatch_task', arguments: { id: 'task-1', model: 'glm-5.3-flash', why: MERGE_WHY, quick: true, review: { depth: 'skip', why: 'probe: one data file' } } } }
-const mergeWorker = (file, message, wt = mergeWt) => [
+const mergeWorker = (file, message, wt = mergeWt, cause) => [
   { tool: { name: 'Write', arguments: { file_path: join(wt, 'src', file), content: `${JSON.stringify({ message })}\n` } } },
   { tool: { name: 'Bash', arguments: { command: `git add -A; git -c user.name=t -c user.email=t@example.invalid commit -m ${message}; git log --oneline -1`, description: 'probe: commit the work' } } },
-  { tool: { name: 'structured_output', arguments: { status: 'done', summary: `wrote src/${file} and committed it`, commits: ['{git-head}'], files: [`src/${file}`], checks: [], questions: [], assumptions: [], lessons: [] } } },
+  { tool: { name: 'structured_output', arguments: { status: 'done', summary: `wrote src/${file} and committed it`, commits: ['{git-head}'], files: [`src/${file}`], checks: [], questions: [], assumptions: [], lessons: [], ...(cause === undefined ? {} : { cause }) } } },
   { text: 'worker done' },
 ]
 /** The named merge-gate close of task-1: squash, check, fast-forward, the trunk wait; the scenarios' `at()` name each step (glm-exec-skeleton, glm-exec-walk, glm-user-graph). */
@@ -3326,7 +3361,7 @@ const execMerge = designScenario(EXEC_MERGE, 'glm-5.3-flash', (ws) => {
     mergeSleep(5, 'let the check after the move run'),
     { text: 'done', status: true },
   ]
-}, { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...clockRow(OFF_PEAK_AT)], others: [mergeWorker('feed.json', 'probe:feed'), mergeWorker('feed2.json', 'probe:rework')] })
+}, { wish: true, git: true, extra: ['- id: glm-hourness/execute', '  disabled: false', ...clockRow(OFF_PEAK_AT)], others: [mergeWorker('feed.json', 'probe:feed'), mergeWorker('feed2.json', 'probe:rework', mergeWt, 'the first feed was written from a stale draft; the rework regenerates it from the builder that ships with the data')] })
 
 // The upstream half of §9.1's glm-exec-merge (D17: a second run). A bare
 // origin in the run directory; another clone pushed one unchecked commit
@@ -4682,6 +4717,16 @@ function reviewChecks() {
   const firstReviewer = reviewerChildId === undefined ? [] : bySession(execReview, reviewerChildId)
   const reviewerBrief = firstReviewer[0]?.messages.find(message => message.source === 'user')?.text ?? ''
   const DELTA = '- Policy changed since the dispatch: floor. The forms now in force: gate/norm-merge-gate and floor/norm-review-floor — read with graph_show; rules — the rules board page. Judge the change against the forms as they stand now.'
+  // m7-habits + m7-handback-path-check: the reopened flow and the all-test escalation.
+  const reopen = history.find(entry => entry.op === 'status' && entry.from === 'done' && entry.to === 'doing')
+  const violations = (() => { try { return readFileSync(join(runDir, name, 'home', 'audit', 'violations.jsonl'), 'utf8') } catch { return '' } })()
+  const briefOfChild = childId => childId === undefined ? '' : bySession(execReview, childId)[0]?.messages.find(message => message.source === 'user')?.text ?? ''
+  const firstWorkerBrief = briefOfChild((() => { try { return JSON.parse(result(main[2])).childId } catch { return undefined } })())
+  const reworkBrief = briefOfChild((() => { try { return JSON.parse(result(main[19])).childId } catch { return undefined } })())
+  const reworkHandback = history.filter(entry => entry.op === 'comment' && String(entry.text ?? '').startsWith('第 2 次交回')).at(-1)
+  const testerHandback = (nodeId('task-2.json')?.history ?? []).filter(entry => entry.op === 'comment' && String(entry.text ?? '').startsWith('第 1 次交回')).at(-1)
+  const STANDING = '- Leave nothing this change strands: delete code nothing uses after it and text it no longer holds true; rewrite a clause that no longer holds as a whole instead of stacking a patch on it; do not add IDE- or tool-specific directories or configuration to the repository (ones the project already commits stay as they are).'
+  const CAUSE_SENTENCE = `- This task was reopened after being done; the reopen was for: ${REOPEN_WHY}. Find the cause before you change code, and hand back with the handback field "cause" saying what the cause is and why this change fixes the cause and not only a symptom.`
   return [
     [`exec review: the worker's done handback lands as one summary comment with the counts, and the floor hit upgrades the light dispatch to 全审 with the annotation`, handbackComment !== undefined && /有效深浅 全审/.test(String(handbackComment.text)) && /审查改为全审：碰到必须全审清单第 0 类/.test(String(handbackComment.text)) && /问题 0 · 假设 0/.test(String(handbackComment.text)), String(handbackComment?.text ?? 'no handback comment').split('\n').slice(0, 4).join(' | ')],
     [`exec review: the review task exists under the task with the source edge, and the handback notice names its dispatch`, reviewNode !== undefined && reviewNode.parent === 'task-1' && (reviewNode.edges ?? []).some(edge => edge.type === 'source' && edge.to === 'task-1') && executeNotices.some(message => message.text.includes(`review dispatch of ${reviewId}`)), `review task ${reviewId ?? 'none'}: ${reviewNode?.status ?? 'none'}; notices ${executeNotices.length}`],
@@ -4694,6 +4739,10 @@ function reviewChecks() {
     [`exec review: the blocking round stops at once (the seed is the person's word): the round comment carries · 停下 and the stop draft reaches the main agent`, roundComments[0] !== undefined && String(roundComments[0].text).endsWith('· 停下') && /^第 1 轮：挡路 1，不挡路 1 · 全审 · /.test(String(roundComments[0].text)) && stopDrafts.length >= 1 && stopDrafts.some(message => message.text.includes('review rounds, 1 blocking findings left') && message.text.includes('propose_to_human')), `${roundComments.map(entry => String(entry.text)).join(' | ') || 'no rounds'}; drafts ${stopDrafts.length}`],
     [`exec review: a dispatch while stopped is refused waiting_human, and the recorded answer of the person decides the question with their words as the relay`, stoppedRefusal !== undefined && recorded !== undefined && questionNode?.status === 'done' && String(questionNode.history.at(-1)?.relay ?? '').includes('先修挡路的那一处'), `${result(stoppedRefusal ?? main[10]).slice(0, 80)} | ${String(questionNode?.history.at(-1)?.relay ?? 'no relay')} | ${result(recorded ?? main[13]).slice(0, 60)}`],
     [`exec review: after the answer the pass round is dispatched and runs: the review task is doing or done with the patch-id evidence when the round settles (the pass path itself is pinned by tests/execute-handback.spec against the real engine and git)`, reviewNode !== undefined && dispatchComments.length >= 4 && ['doing', 'done'].includes(reviewNode.status) && (reviewNode.status !== 'done' || roundComments.length >= 2), `status ${reviewNode?.status ?? 'none'}; dispatches ${dispatchComments.length}; rounds ${roundComments.map(entry => String(entry.text).slice(0, 30)).join(' | ') || 'none'}`],
+    [`exec review (m7-habits): the task was closed and reopened with a reason, and the reopen is on its history`, reopen !== undefined && String(reopen.reason ?? '').includes(REOPEN_WHY), `reopen ${reopen === undefined ? 'none' : String(reopen.reason).slice(0, 60)}`],
+    [`exec review (m7-habits): the first brief carries the standing sentence but no cause sentence; the rework brief carries both and the reopen's reason`, firstWorkerBrief.includes(STANDING) && !firstWorkerBrief.includes('reopened after being done') && reworkBrief.includes(STANDING) && reworkBrief.includes(CAUSE_SENTENCE), `first ${firstWorkerBrief.length} chars has cause: ${firstWorkerBrief.includes('reopened after being done')}; rework has cause: ${reworkBrief.includes('reopened after being done')}`],
+    [`exec review (m7-habits): the causeless rework handback is refused by handback-cause with the rule id in the violation journal, and the accepted one lands as the 原因 line of the 第 2 次交回 comment`, violations.includes('"rule":"handback-cause"') && reworkHandback !== undefined && String(reworkHandback.text).split('\n').some(line => line.startsWith(`原因 ${REWORK_CAUSE}`)), `journal has the denial: ${violations.includes('"rule":"handback-cause"')}; rework handback ${String(reworkHandback?.text ?? 'none').split('\n').find(line => line.startsWith('原因')) ?? 'no cause line'}`],
+    [`exec review (m7-handback-path-check): the tester's change is test files only and its declared-light handback escalates to 全审 with the path check as the annotation`, testerHandback !== undefined && /有效深浅 全审（审查改为全审：改动全在测试文件里）/.test(String(testerHandback.text)), String(testerHandback?.text ?? 'no tester handback').split('\n').find(line => line.startsWith('有效深浅')) ?? 'no depth line'],
     [`exec review: the run ends in the pinned rc.1 exit shape with nothing from the execute row on stderr`, tailOk(execReview, name, 'dsh-glm-hourness/execute'), `exit ${execReview.status}; main ${main.length} step(s)`],
   ]
 }

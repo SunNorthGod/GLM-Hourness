@@ -20,7 +20,7 @@ import test from 'node:test'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { openEngine } from '../src/graph/engine.ts'
 import { goalCompletion } from '../src/graph/execute-stage.ts'
 import { pinsOf, renderPins, staleness } from '../src/graph/pins.ts'
@@ -60,9 +60,10 @@ const git = (root: string, args: readonly string[]): string => {
  * A repository with a released goal over one task, a worktree on the task's
  * branch, and one commit on top of the base; with `docs`, the base also
  * carries a component document at `src/guarded/AGENTS.md`, so it exists at
- * the handback's head (docs-at-hand design 0.3 §6.1).
+ * the handback's head (docs-at-hand design 0.3 §6.1); `file` names the file
+ * the worker's commit holds instead of `src/guarded/writer.js`.
  */
-async function presetProject(options: { readonly docs?: boolean } = {}): Promise<Project> {
+async function presetProject(options: { readonly docs?: boolean, readonly file?: string } = {}): Promise<Project> {
   const root = mkdtempSync(join(tmpdir(), 'glm-hourness-handback-'))
   mkdirSync(join(root, 'docs', 'graph'), { recursive: true })
   const graphDir = join(root, 'docs', 'graph')
@@ -77,9 +78,10 @@ async function presetProject(options: { readonly docs?: boolean } = {}): Promise
   const baseSha = git(root, ['rev-parse', 'HEAD']).trim()
   git(root, ['worktree', 'add', '--quiet', join('.worktrees', 'hz-task-1'), '-b', 'hz/task-1'])
   const worktree = join(root, '.worktrees', 'hz-task-1')
-  mkdirSync(join(worktree, 'src', 'guarded'), { recursive: true })
-  writeFileSync(join(worktree, 'src', 'guarded', 'writer.js'), 'guarded\n')
-  git(worktree, ['add', 'src/guarded/writer.js'])
+  const file = options.file ?? 'src/guarded/writer.js'
+  mkdirSync(dirname(join(worktree, file)), { recursive: true })
+  writeFileSync(join(worktree, file), 'guarded\n')
+  git(worktree, ['add', file])
   git(worktree, ['commit', '-q', '-m', 'task-1: guard the writer'])
   const commit = git(worktree, ['rev-parse', 'HEAD']).trim()
   return { root, graphDir, worktree, commit, baseSha }
@@ -245,6 +247,20 @@ test('a floor hit upgrades a light dispatch; the comment names the hit and the r
   }
 })
 
+/** The rig of a light second attempt run to its done handback; `assertComment` reads the depth facts, the project is disposed at the end. */
+async function runLightDone(project: Project, childId: string, over: Record<string, unknown>, assertComment: (comment: HandbackComment, rig1: Rig) => void): Promise<void> {
+  const attempt = workerAttempt(project, childId, { attempt: 2, review: 'light' })
+  const rig1 = await rig(project, attempt)
+  try {
+    const { comment } = await runDoneHandback(rig1, project, childId, over)
+    assertComment(comment, rig1)
+  }
+  finally {
+    forgetAttempt(childId)
+    rmSync(project.root, { recursive: true, force: true })
+  }
+}
+
 test('a handback that carries the cause records it as the 原因 line of the summary comment, on the node (m7-habits)', async () => {
   const project = await presetProject()
   const attempt = workerAttempt(project, 'hz-task-1-a3-cccccc', { attempt: 3 })
@@ -259,6 +275,39 @@ test('a handback that carries the cause records it as the 原因 line of the sum
     forgetAttempt(attempt.childId)
     rmSync(project.root, { recursive: true, force: true })
   }
+})
+
+
+// ---- the handback path check (m7-handback-path-check) ----
+
+test('a light dispatch whose change is all test files upgrades to full with the path check as the annotation; the floor stays quiet', async () => {
+  const project = await presetProject({ file: 'src/guarded/writer.test.js' })
+  await runLightDone(project, 'hz-task-1-a2-bbbbbb', { files: ['src/guarded/writer.test.js'] }, (comment, rig1) => {
+    assert.equal(comment.depth, '全审')
+    assert.equal(comment.floorHit, '审查改为全审：改动全在测试文件里')
+    const event = rig1.emitted.find(item => item.event === 'hourness.handback')
+    assert.equal(event?.payload.depth, 'full')
+    assert.equal(event?.payload.floorHit, '', 'the path check is no floor class, the event names none')
+  })
+})
+
+test('a light dispatch whose change touches none of the paths the acceptance names upgrades to full with the named paths as the annotation', async () => {
+  const project = await presetProject()
+  const engine = openEngine(project.graphDir)
+  const before = await engine.load()
+  const edited = await engine.apply('human', { op: 'edit', id: 'task-1', rev: before.revisions.get('task-1')!, set: { acceptance: ['the change touches `site/feed/feed.json`'] }, reason: 'test: name a path the change does not touch' })
+  assert.ok(edited.ok, `the acceptance edit failed: ${JSON.stringify(edited.ok ? {} : edited.error)}`)
+  await runLightDone(project, 'hz-task-1-a2-bbbbbb', {}, (comment) => {
+    assert.equal(comment.depth, '全审')
+    assert.equal(comment.floorHit, '审查改为全审：验收点名的路径一个都没改（site/feed/feed.json）')
+  })
+})
+
+test('a light dispatch that neither hits the floor nor trips the path check stays light', async () => {
+  await runLightDone(await presetProject(), 'hz-task-1-a2-bbbbbb', {}, (comment) => {
+    assert.equal(comment.depth, '轻审', 'the declared depth stands; no floor node, no path check trigger')
+    assert.equal(comment.floorHit, undefined)
+  })
 })
 
 // ---- the policy drift of a handback (reval design §4.1, §4.5) ----

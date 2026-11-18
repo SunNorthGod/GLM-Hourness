@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FLOOR_FORMS, floorHits, floorPathIn, parseFloor, type FloorCall } from '../src/execute/floor.ts'
+import { acceptancePathsOf, FLOOR_FORMS, floorHits, floorPathIn, isTestPath, parseFloor, pathEscalationReason, type FloorCall } from '../src/execute/floor.ts'
 import { node } from './execute-helpers.ts'
 
 const floorNode = (acceptance: readonly string[]) => node({ id: 'norm-review-floor', type: 'norm', acceptance }, 0, 'human')
@@ -81,4 +81,40 @@ test('floorHits: an unsplitable shell text hits every commands line, and matchin
 test('a file-tool call has no shell words to split, so it does not hit a commands line', () => {
   const floor = parseFloor(floorNode(['跑了危险命令 `commands git push`']))
   assert.deepEqual(floorHits(floor, { paths: [], deleted: [] }, [call({ tool: 'write', words: undefined, writes: true, shell: false })], '/w'), [])
+})
+
+// ---- the handback path check (m7-handback-path-check) ----
+
+test('isTestPath: a test directory segment or a test-shaped basename, case-insensitively; look-alikes stay out', () => {
+  const yes = ['tests/feed.spec.ts', 'src/__tests__/feed.ts', 'site/feed/feed.spec.js', 'site/feed/feed_test.go', 'tests/test_feed.py', 'spec/loader.ts', 'test.ts', 'Site/Feed/SPEC.ts']
+  for (const path of yes) assert.equal(isTestPath(path), true, path)
+  const no = ['src/feed.ts', 'site/feed/feed.json', 'src/contest.ts', 'src/latest.ts', 'src/probertest.mjs', 'docs/testing.md']
+  for (const path of no) assert.equal(isTestPath(path), false, path)
+})
+
+test('acceptancePathsOf: the backtick spans that name a path by shape; prose, commands and identifiers stay out', () => {
+  assert.deepEqual(acceptancePathsOf(['改动落在 `src/execute/` 里', '文档照 `docs/ORCHESTRATION.md` §3']), ['src/execute/', 'docs/ORCHESTRATION.md'])
+  assert.deepEqual(acceptancePathsOf(['`npm run -s graph -- show m7-habits` 能跑', '按 `briefGate` 判，规则在 `worker-scope`']), [])
+  assert.deepEqual(acceptancePathsOf(['路径 `src/../etc` 与绝对 `/etc/x` 与通配 `a/*.ts` 都不算']), [])
+  assert.deepEqual(acceptancePathsOf(['同名段落只记一次 `src/a.ts` `src/a.ts`']), ['src/a.ts'])
+  assert.deepEqual(acceptancePathsOf([]), [])
+})
+
+test('pathEscalationReason: an all-test change and untouched acceptance paths escalate, other changes do not (m7-handback-path-check)', () => {
+  // Escalation one: every changed path a test file.
+  assert.equal(pathEscalationReason(['the feed builds'], { paths: ['tests/feed.spec.ts', 'src/feed.test.js'], deleted: [] }), '审查改为全审：改动全在测试文件里')
+  // A change the diff did not answer for is unknown: nothing escalates.
+  assert.equal(pathEscalationReason(['the feed builds'], { paths: [], deleted: [] }), undefined)
+  // Escalation two: the acceptance names backtick paths and none was touched; a directory prefix counts as touched.
+  const named = ['the change touches `site/feed/` and `docs/notes.md`']
+  assert.match(pathEscalationReason(named, { paths: ['src/other.js'], deleted: [] }) ?? '', /^审查改为全审：验收点名的路径一个都没改（site\/feed\/, docs\/notes\.md）$/)
+  assert.equal(pathEscalationReason(named, { paths: ['site/feed/feed.json'], deleted: [] }), undefined)
+  // No backtick paths in the acceptance: the second trigger has nothing to check.
+  assert.equal(pathEscalationReason(['the feed builds'], { paths: ['src/other.js'], deleted: [] }), undefined)
+  // All-test wins over the named-path reason when both fire.
+  const both = ['the change touches `site/feed/feed.json`']
+  assert.equal(pathEscalationReason(both, { paths: ['tests/feed.spec.ts'], deleted: [] }), '审查改为全审：改动全在测试文件里')
+  // The named-path reason lists at most three paths.
+  const many = ['碰到 `a/1.ts` `a/2.ts` `a/3.ts` `a/4.ts` 一个都没改就全审']
+  assert.match(pathEscalationReason(many, { paths: ['src/x.js'], deleted: [] }) ?? '', /（a\/1\.ts, a\/2\.ts, a\/3\.ts, …）$/)
 })

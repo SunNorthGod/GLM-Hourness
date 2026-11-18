@@ -57,7 +57,7 @@ import type { LoopEmit } from './loop-link.ts'
 import { communicationOf, forgetAttempt, parseDispatchComment, parseHandbackComment, renderHandbackComment, REVIEW_TASK_ACCEPTANCE, taskReviewOf } from './attempts.ts'
 import type { CommandRunner, GraphCache } from './dispatch.ts'
 import { sha256Hex } from './digest.ts'
-import { floorHits, parseFloor, type FloorCall, type FloorChange } from './floor.ts'
+import { floorHits, parseFloor, pathEscalationReason, type FloorCall, type FloorChange } from './floor.ts'
 import { policyDigests, policyStaleness, type RulesRead } from './policy-digest.ts'
 import { rulesPaths } from '../rules/store.ts'
 import { emitMetric, executeMetricWhere } from './metrics.ts'
@@ -406,7 +406,18 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
       floorHit = `审查改为全审：碰到必须全审清单第 ${hits[0].index} 类（${entry?.text ?? hits[0].reason}）`
       hitClass = hits[0].index
     }
-    else depth = declared === 'light' ? '轻审' : declared === 'skip' ? undefined : '全审'
+    else {
+      // The deterministic path check (m7-handback-path-check), judged from the
+      // change list the diff read, at the same place and with the same
+      // strictness as the floor: the declared full stands, a lighter one
+      // rises, and the reason lands in the annotation.
+      const escalation = pathEscalationReason(node.acceptance ?? [], change)
+      if (escalation !== undefined && declared !== 'full') {
+        depth = '全审'
+        floorHit = escalation
+      }
+      else depth = declared === 'light' ? '轻审' : declared === 'skip' ? undefined : '全审'
+    }
     // The docs gaps (§6.1): which components exist is read from the head commit's tree, so a worktree nobody cleaned cannot answer for the handback. A git that will not say — the diff or the tree — leaves the gaps uncomputed and says so once, degraded.
     const withAgents = new Set<string>()
     let gitReason = changed !== undefined && !changed.ok ? changed.reason : undefined
