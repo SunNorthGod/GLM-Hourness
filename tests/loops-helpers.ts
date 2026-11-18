@@ -15,15 +15,27 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
+import { DATA_SERVICE } from '../src/shared/data-home.ts'
+import type { ServiceLookup } from '../src/shared/dsh-min.ts'
+import type { EmittedEvent } from '../src/shared/metrics.ts'
+import { METRICS_SERVICE } from '../src/shared/metrics.ts'
+import { CHANNEL_EVENTS } from '../src/loops/channel.ts'
 import type { EntryImage, JournalRecord } from '../src/loops/journal.ts'
 import { metricEventOf } from '../src/loops/metrics.ts'
+import { createRegistry } from '../src/loops/registry.ts'
+import { createProjectRuntime, type LoopChecks, type ProjectDeps, type ProjectRuntime, type WaitingItem } from '../src/loops/run.ts'
+import type { DeliverRequest, DeliverResult } from '../src/loops/deliver.ts'
+import type { LoopEntryDefinition } from '../src/loops/model.ts'
 import { entryFileText, type PersonEntry } from '../src/loops/model.ts'
 import type { LoopRecord } from '../src/loops/records.ts'
+import type { Contribution, ContributionSource, HarnessResult, LoopEventDeclaration } from '../src/loops/service.ts'
 import { appendJournal, ensureRuntimeDir, openLoopStore, type LoopStore, type LoopStoreOptions } from '../src/loops/store.ts'
+import { rulesPaths } from '../src/rules/store.ts'
 import { METRICS_KINDS } from '../src/metrics/kinds/index.ts'
 import { checkEvent, FORMAT_VERSION } from '../src/metrics/schema.ts'
 import type { StoreIo } from '../src/rules/store.ts'
-import type { EmittedEvent } from '../src/shared/metrics.ts'
+import { injectRecord } from './rules-helpers.ts'
+import { ruleOf } from './rules-fixtures.ts'
 import { quickIo as quickStoreIo } from './rules-helpers.ts'
 
 /** The moment the person agreed to the entries these specs seed. */
@@ -208,3 +220,161 @@ export function heldTimers(): { readonly timers: Array<{ readonly ms: number, re
 }
 
 
+
+// ------------------------------------------------- the runner's world
+
+/** The source the specs hand their harness actions and entries over with. */
+export const EXECUTE_SOURCE: ContributionSource = { plugin: 'dsh-hourness', row: 'glm-hourness/execute' }
+
+/** One host process over a project: its own runtime, lock identity and clock, sharing the project's files. */
+export interface LoopWorld {
+  readonly runtime: ProjectRuntime
+  readonly store: LoopStore
+  readonly records: LoopRecord[]
+  readonly told: Array<{ text: string, level: 'info' | 'degraded' }>
+  readonly delivered: DeliverRequest[]
+  readonly timers: Array<{ ms: number, run: () => void }>
+  readonly now: () => number
+  readonly move: (ms: number) => void
+  /** Fire every armed timer, then beat. */
+  readonly tick: (ms?: number) => Promise<void>
+}
+
+export interface LoopWorldOptions {
+  readonly pid?: number
+  readonly entries?: readonly LoopEntryDefinition[]
+  readonly actions?: readonly { readonly id: string, readonly title: string }[]
+  readonly run?: (action: string, event: { readonly id: string }) => Promise<HarnessResult>
+  readonly deliver?: (request: DeliverRequest) => Promise<DeliverResult>
+  readonly holderHere?: () => string | undefined
+  readonly peak?: () => ((atMs: number) => boolean) | undefined
+  readonly waiting?: () => Promise<readonly WaitingItem[]>
+  /** The events of the world's own contribution, handed over with `baseEvents` in one piece. */
+  readonly events?: readonly LoopEventDeclaration[]
+  /** The events the world's contribution opens with, before `events` (the specs' own fixtures). */
+  readonly baseEvents?: readonly LoopEventDeclaration[]
+  /** The environment row's seam, faked; absent is the state of main, where a check is refused check-missing. */
+  readonly checks?: () => LoopChecks | undefined
+  readonly at?: number
+  /** The channel's entries, as the row reads them from the pricing service; the channel events are in the table with them. */
+  readonly channel?: readonly LoopEntryDefinition[]
+}
+
+/**
+ * The runner world the loop board's specs share: the clock, the timers, the
+ * lock's view of the machine, the pricing service's peak reading, the graph
+ * reading and the delivery are injected. Two worlds over one project
+ * directory stand for two host processes, as design §1.4 asks. The scripts
+ * themselves are real Node processes; a case waits for the run to settle
+ * instead of assuming the beat waited for it.
+ */
+export async function loopWorldOf(root: string, options: LoopWorldOptions = {}, boot: number = Date.parse('2026-11-01T00:00:00.000Z')): Promise<LoopWorld> {
+  let clock = options.at ?? Date.parse('2026-11-02T03:00:00.000Z')
+  const records: LoopRecord[] = []
+  const told: LoopWorld['told'] = []
+  const delivered: DeliverRequest[] = []
+  const timers: LoopWorld['timers'] = []
+  const store = openLoopStore(root, { io: quickIo({ now: () => clock }) })
+  // The board hands its records to the metrics journal; this fake is the journal, keeping for the
+  // assertions the events the journal's field tables take (a refused one is lost, as in the real one).
+  // The data service points the holder reads at the fixture's own directories, like the loop-peak
+  // fixture does, so nothing outside the temporary root is read.
+  const ctx: ServiceLookup = {
+    get: (name: string): unknown => {
+      if (name === METRICS_SERVICE) {
+        return {
+          emit: (event: EmittedEvent): void => {
+            if (journalTakes(event)) records.push({ ...event.body, kind: event.k } as LoopRecord)
+          },
+        }
+      }
+      if (name === DATA_SERVICE) return { userHome: join(root, 'user'), projectHome: join(root, '.llm') }
+      return undefined
+    },
+  }
+  await ensureRuntimeDir(store.paths)
+  // The channel events are in the table while a pricing service is there, as the row's registry has them.
+  const registry = createRegistry({
+    now: () => new Date(clock),
+    report: (text) => { told.push({ text, level: 'degraded' }) },
+    channel: () => options.peak === undefined && options.channel === undefined ? [] : CHANNEL_EVENTS,
+    channelEntries: () => options.channel ?? [],
+  })
+  const base = options.baseEvents
+  const contribution: Contribution = {
+    ...(base === undefined ? {} : { events: [...base, ...(options.events ?? [])] }),
+    entries: options.entries ?? [],
+    ...(options.actions === undefined ? {} : { actions: options.actions }),
+    ...(options.run === undefined ? {} : { run: options.run }),
+  }
+  if (contribution.entries.length > 0 || contribution.events !== undefined) registry.contribute(EXECUTE_SOURCE, contribution)
+  const deps: ProjectDeps = {
+    root,
+    store,
+    registry,
+    ctx,
+    io: quickIo({ now: () => clock }),
+    now: () => clock,
+    delay: (run, ms) => {
+      const timer = { ms, run }
+      timers.push(timer)
+      return () => {
+        const index = timers.indexOf(timer)
+        if (index >= 0) timers.splice(index, 1)
+      }
+    },
+    pid: options.pid ?? 4001,
+    boot: () => boot,
+    report: (text, level) => { told.push({ text, level }) },
+    deliver: async (request) => {
+      delivered.push(request)
+      return options.deliver === undefined ? { kind: 'delivered', how: 'followup' } : await options.deliver(request)
+    },
+    appStamp: () => 'app-1',
+    // No real file is watched unless a case asks for one.
+    watch: () => undefined,
+    read: (_path, previous) => Promise.resolve({ size: 'gone', mtimeMs: previous?.mtimeMs ?? 0 }),
+    ...(options.checks === undefined ? {} : { checks: options.checks }),
+    ...(options.holderHere === undefined ? {} : { holderHere: options.holderHere }),
+    ...(options.peak === undefined ? {} : { peak: options.peak }),
+    ...(options.waiting === undefined ? {} : { waiting: options.waiting }),
+  }
+  const runtime = createProjectRuntime({ ...deps, report: (text, level) => { told.push({ text, level }) } })
+  // Every record of this process is kept for the assertions as well as handed to the metrics journal.
+  return {
+    runtime,
+    store,
+    records,
+    told,
+    delivered,
+    timers,
+    now: () => clock,
+    move: (ms) => { clock += ms },
+    tick: async (ms = 0) => {
+      clock += ms
+      for (const timer of timers.splice(0)) timer.run()
+      await runtime.beat()
+      // A run the beat started is a promise of its own: let it settle before the case looks.
+      await new Promise(resolve => setImmediate(resolve))
+    },
+  }
+}
+
+/** A rule of the person that judges the loop board's commands, seeded active or lifted the way the board's own writer leaves it. */
+export async function seedRule(root: string, action: 'block' | 'queue', at: string, seq: number, status: 'active' | 'lifted' = 'active', matches = 'docs/loops/scripts'): Promise<string> {
+  const id = `r-${action === 'block' ? 'freeze' : 'hold'}-scripts-${seq}`
+  await injectRecord(
+    rulesPaths(root),
+    [{ path: ['rules', id], value: ruleOf({
+      id,
+      title: action === 'block' ? '代码冻结期不跑脚本' : '先排队',
+      action: { kind: action },
+      filter: { command: { matches } },
+      status,
+    }) }],
+    at,
+    'human',
+    'test-seed',
+  )
+  return id
+}

@@ -224,6 +224,8 @@ export interface ViewRuntime {
   readonly last: Readonly<Record<string, { readonly at: string, readonly outcome: string, readonly reason?: string }>>
   /** Whether each script or check entry passed its last run. */
   readonly passing: Readonly<Record<string, boolean>>
+  /** The next moment of each entry the board's own clock fires (clock.ts), entry id to ISO; a `tell-main` time entry has none (DSH's is not this map). */
+  readonly next?: Readonly<Record<string, string>>
   readonly waiting: number
   /** The latest records, oldest first. */
   readonly records: readonly ViewRecord[]
@@ -507,9 +509,20 @@ export function buildView(input: {
   const now = new Date(input.at)
   const zone = systemTimeZone()
   const labels = new Map(input.plugin.map(item => [item.entry.id, pluginLabel(item.entry.source.plugin)]))
-  const timing = (id: string, when: Trigger | undefined, state: string, label: string | undefined): Pick<ViewEntry, 'trigger' | 'last' | 'next'> => {
+  /**
+   * The next run of one entry (design §8.2 item 5): an entry the board's own
+   * clock fires reads the clock's due (an `every` entry's anchor is that
+   * arming, not DSH's), falling back to what the clock would arm while it has
+   * not beaten yet; an entry DSH times reads the trigger's next moment, with
+   * `every` left out (the host aligns it to its task's anchor) and cron left
+   * to the host.
+   */
+  const timing = (id: string, when: Trigger | undefined, state: string, label: string | undefined, clockRun = false): Pick<ViewEntry, 'trigger' | 'last' | 'next'> => {
     const last = runtime.last[id]
-    const next = when === undefined || when.kind === 'every' || !runs(state) ? undefined : nextOccurrence(when, now, zone)
+    const due = clockRun ? runtime.next?.[id] : undefined
+    const next: Date | undefined = when === undefined || !runs(state) || (when.kind === 'every' && due === undefined)
+      ? undefined
+      : due === undefined ? nextOccurrence(when, now, zone) : new Date(due)
     return {
       trigger: when === undefined || when.kind === 'event' || when.kind === 'command' ? 'event' : 'time',
       ...(last === undefined ? {} : { last: { at: last.at, outcome: last.outcome, text: outcomeText({ outcome: last.outcome, reason: last.reason, passed: runtime.passing[id] }, label) } }),
@@ -525,7 +538,7 @@ export function buildView(input: {
       source: 'plugin',
       state: item.state,
       ...(item.reason === undefined ? {} : { note: item.reason }),
-      ...timing(item.entry.id, item.entry.when, item.state, label),
+      ...timing(item.entry.id, item.entry.when, item.state, label, item.entry.action.kind === 'harness'),
       action: item.entry.action.kind,
       when: whenText(item.entry.when, input.events),
       does: doesText(item.entry.action, label),
@@ -558,7 +571,7 @@ export function buildView(input: {
       source: 'person',
       state: board.status.kind,
       ...(note === undefined ? {} : { note }),
-      ...timing(board.id, entry?.when, board.status.kind, undefined),
+      ...timing(board.id, entry?.when, board.status.kind, undefined, entry?.action.kind === 'script' || entry?.action.kind === 'check'),
       ...(entry === undefined ? {} : { action: entry.action.kind }),
       when: entry === undefined ? '读不出' : whenText(entry.when, input.events),
       does: entry === undefined ? '读不出' : doesText(entry.action, '你'),

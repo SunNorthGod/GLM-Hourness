@@ -114,6 +114,25 @@ test('the next time is there for a once, daily or weekly entry that runs now; no
   assert.deepEqual([view.waiting, view.recent, view.holder], [0, [], undefined], 'no runtime: nothing waits, nothing ran, no main agent line')
 })
 
+test('the next time of an entry the board\'s own clock fires is the clock\'s due, and an every entry has one there', () => {
+  const script = (file: string) => ({ kind: 'script', script: { file, sha256: 'a'.repeat(64), lang: 'node' }, timeoutSeconds: 30, report: 'always' }) as const
+  const daily = personBoardEntry('u-00000005', '每天跑一遍', script('docs/loops/scripts/u-00000005.mjs'), { kind: 'daily', time: '09:00', timeZone: ZONE })
+  const every = personBoardEntry('u-00000006', '每半小时看一眼', script('docs/loops/scripts/u-00000006.mjs'), { kind: 'every', seconds: 1800 })
+  const board = { entries: [daily, every], journal: { unacknowledged: [] as number[] }, git: undefined }
+  const view = buildView({
+    at: AT,
+    project: 'p',
+    plugin: [],
+    events: LOOP_EVENT_TABLE,
+    board,
+    runtime: { last: {}, passing: {}, waiting: 0, records: [], next: { 'u-00000005': '2026-11-03T01:00:00.000Z', 'u-00000006': '2026-11-02T01:25:00.000Z' } },
+  })
+  assert.equal(entryOf(view, 'u-00000005').next, '2026-11-03T01:00:00.000Z', 'the clock\'s due, not the wall time of the trigger')
+  assert.equal(entryOf(view, 'u-00000006').next, '2026-11-02T01:25:00.000Z', 'an every entry\'s anchor is the clock\'s arming, so it has a next here')
+  const unarmed = buildView({ at: AT, project: 'p', plugin: [], events: LOOP_EVENT_TABLE, board: { entries: [daily], journal: { unacknowledged: [] }, git: undefined } })
+  assert.equal(entryOf(unarmed, 'u-00000005').next, nextOccurrence({ kind: 'daily', time: '09:00', timeZone: ZONE }, new Date(AT), ZONE)!.toISOString(), 'before the clock has armed, the moment it would arm')
+})
+
 /** The last run's words of one entry for one outcome. */
 function lastText(outcome: string, reason?: string, passed?: boolean, id = 'u-00000001'): string | undefined {
   const runtime: ViewRuntime = {

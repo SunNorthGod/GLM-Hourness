@@ -99,10 +99,12 @@ export function holderViewOf(known: RuntimeState['holder'], nowMs: number): Hold
 async function runtimeOf(store: LoopStore, nowMs: number): Promise<ViewRuntime> {
   const state = readState(store.paths, nowMs)
   const holder = holderViewOf(state.holder, nowMs)
+  const due = Object.entries(state.due)
   return {
     last: state.last,
     passing: state.passing,
     waiting: Object.keys(state.pending).length + state.held.length + Object.keys(state.deferred).length,
+    ...(due.length === 0 ? {} : { next: Object.fromEntries(due.map(([id, armed]) => [id, armed.at])) }),
     records: await recentRecords(store.paths.projectRoot, nowMs, RECENT_RUNS),
     ...(holder === undefined ? {} : { holder }),
   }

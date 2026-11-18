@@ -196,6 +196,8 @@ export function firedRecord(input: {
   readonly entry: { readonly id: string, readonly when: { readonly kind: string } }
   readonly from: { readonly source: 'plugin' | 'person', readonly plugin?: string, readonly row?: string }
   readonly event?: { readonly event: string, readonly at: string }
+  /** A run of the board's own clock: when it should have happened (design §6.10, §6.8). */
+  readonly occurrenceAt?: string
   readonly events: number
   readonly cause?: string
   readonly late?: boolean
@@ -212,6 +214,7 @@ export function firedRecord(input: {
     trigger: {
       kind: input.entry.when.kind,
       ...(input.event === undefined ? {} : { event: input.event.event, occurrenceAt: input.event.at }),
+      ...(input.occurrenceAt === undefined || input.event !== undefined ? {} : { occurrenceAt: input.occurrenceAt }),
     },
     events: input.events,
     ...(input.cause === undefined ? {} : { cause: input.cause }),

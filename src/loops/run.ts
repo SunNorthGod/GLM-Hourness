@@ -69,6 +69,7 @@ import { emitMetric } from '../shared/metrics.ts'
 import { nextPeakChange } from '../shared/pricing.ts'
 import { reconcile, scheduleOf, type BindDeps, type BindOutcome } from './bind.ts'
 import { CHANNEL_PEAK_CHANGED, peakChangedKey } from './channel.ts'
+import { armAndPick, clockEntries, rearm, type ClockFire } from './clock.ts'
 import { createDelivery, HELD_MS, type Deliver, type DeliverResult, type LoopDelivery } from './deliver.ts'
 import { PEAK_END_ACTION, PEAK_START_ENTRY } from './defaults.ts'
 import { fileChangedKey, hostRestartedKey, waitingOnHumanKey } from './events.ts'
@@ -79,7 +80,7 @@ import { createRunLock, type LockStand } from './lock.ts'
 import { watchPaths, type WatchDeps, type Watched } from './file-watch.ts'
 import { metricEventOf } from './metrics.ts'
 import { createPeakEnd, peakLevelOf, type PeakEnd } from './peak.ts'
-import { firedRecord, reasonCode, ruleReason, runId, type LoopRecord, type RunOutcome, type RunReason } from './records.ts'
+import { eventId, firedRecord, reasonCode, ruleReason, runId, type LoopRecord, type RunOutcome, type RunReason } from './records.ts'
 import type { LoopsRegistry } from './registry.ts'
 import { commandText, runCommand, runScript, sweepRunCopies, WORK_TIMEOUT_MS, type HookEnvelope, type ScriptResult } from './script.ts'
 import { matchesFilter } from './trigger.ts'
@@ -583,6 +584,55 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     }
   }
 
+  // ------------------------------------------------------------- the clock
+
+  /** The entries whose clock run is going on: one run of an entry at a time (design §6.7), and the lock is not handed over while one is. */
+  const clockInFlight = new Set<string>()
+
+  /**
+   * The board's own clock (clock.ts, design §6.2, §6.8): arm what is not armed
+   * yet, fire what is due through the same execution an event takes, and re-arm
+   * from now. A fire waits out its own previous run (one run at a time), keeping
+   * its past due; the next beat takes it. The arming persists with the beat's
+   * save of the state (`inbox.beat` follows).
+   */
+  function clockBeat(): void {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const state = inbox.state()
+    let fires: readonly ClockFire[]
+    try {
+      fires = armAndPick(state.due, clockEntries(entries()), deps.now(), zone, Date.parse(startedAt))
+    }
+    catch (error) {
+      deps.report(`循环板的钟出错：${message(error)}`, 'degraded')
+      return
+    }
+    for (const fire of fires) {
+      const id = fire.item.entry.id
+      if (clockInFlight.has(id)) continue
+      clockInFlight.add(id)
+      try {
+        rearm(state.due, fire.item, deps.now(), zone)
+      }
+      catch (error) {
+        deps.report(`「${fire.item.entry.title}」的下一次算不出：${message(error)}`, 'degraded')
+        clockInFlight.delete(id)
+        continue
+      }
+      const batch: RunBatch = {
+        entry: fire.item,
+        // The record is a stand-in the executor reads little of; the envelope and the fired record take the time shape from `time`.
+        group: `clock:${id}`,
+        time: { occurrenceAt: fire.occurrenceAt },
+        ...(fire.late ? { late: true } : {}),
+        record: { id: eventId(), event: 'time', at: iso(), project: deps.root, key: '', payload: {}, merged: [] },
+      }
+      void execute(batch)
+        .catch((error: unknown) => { deps.report(`「${fire.item.entry.title}」到点的一次跑出错：${message(error).slice(0, 80)}`, 'degraded') })
+        .finally(() => { clockInFlight.delete(id) })
+    }
+  }
+
   // ------------------------------------------------------------- the scripts
 
   /** What the rules board made of one command (design §6.9 item 1). */
@@ -620,21 +670,22 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
     }
   }
 
-  /** What a script reads on its standard input (design §6.6): this run's events, merged by the debounce. */
+  /** What a script reads on its standard input (design §6.6): this run's events, merged by the debounce; a clock run says `time` and when it should have happened. */
   function envelopeOf(item: RunnableEntry, run: string, batch: RunBatch): HookEnvelope {
     return {
       version: 1,
       board: 'loops',
       entry: item.entry.id,
       run,
-      event: batch.record.event,
-      id: batch.record.id,
+      event: batch.time === undefined ? batch.record.event : 'time',
+      ...(batch.time === undefined ? { id: batch.record.id } : {}),
       at: batch.record.at,
       project: deps.root,
       ...(batch.record.session === undefined ? {} : { session: batch.record.session }),
-      key: batch.record.key,
+      ...(batch.time === undefined ? { key: batch.record.key } : {}),
       payload: batch.record.payload,
-      merged: batch.record.merged,
+      ...(batch.time === undefined ? { merged: batch.record.merged } : {}),
+      ...(batch.time === undefined ? {} : { occurrenceAt: batch.time.occurrenceAt }),
     }
   }
 
@@ -808,7 +859,8 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
       : result.kind === 'crashed'
         ? result.reason
         : verdict.unavailable && !speaks ? 'rules-unavailable' : undefined
-    if (timedOut) inbox.retry(batch)
+    // An unfinished run's events wait for the next trigger (design §6.6); a clock run has none, its next time comes from the clock (§6.6, §6.8).
+    if (timedOut && batch.time === undefined) inbox.retry(batch)
     return {
       outcome,
       ...(reason === undefined ? {} : { reason }),
@@ -830,6 +882,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
       record: batch.record,
       since: iso(),
       nextAt: deps.now() + DEFER_RETRY_MS,
+      ...(batch.time === undefined ? {} : { time: batch.time }),
     }
   }
 
@@ -881,7 +934,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
           finish('blocked', verdict.rule)
           continue
         }
-        const parts = await runWorkEntry(item, run, { entry: item, group: held.group, record: held.record }, verdict)
+        const parts = await runWorkEntry(item, run, { entry: item, group: held.group, record: held.record, ...(held.time === undefined ? {} : { time: held.time }) }, verdict)
         finish(parts.outcome, parts.reason, parts)
       }
       catch (error) {
@@ -902,7 +955,10 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
       run,
       entry: item.entry,
       from: item,
-      event: { event: batch.record.event, at: batch.record.at },
+      // A clock run names the moment it should have happened instead of an event (design §6.10, §6.8).
+      ...(batch.time === undefined
+        ? { event: { event: batch.record.event, at: batch.record.at } }
+        : { occurrenceAt: batch.time.occurrenceAt }),
       events: 1 + batch.record.merged.length,
       ...(batch.cause === undefined ? {} : { cause: batch.cause }),
       ...(batch.late === true ? { late: true } : {}),
@@ -1188,6 +1244,7 @@ export function createProjectRuntime(deps: ProjectDeps): ProjectRuntime {
       inbox.state().files = Object.fromEntries([...files.states()])
       await peakChanged()
       await waitingOnHuman()
+      clockBeat()
       told(await reconcile(bindDeps))
       await delivery.flush()
       await rerunPeakEnd()

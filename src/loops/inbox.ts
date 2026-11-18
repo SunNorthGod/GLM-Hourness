@@ -30,6 +30,7 @@
  * a caller: `emit` answers with a code, and the beat reports a fault.
  */
 import { open, rename, stat } from 'node:fs/promises'
+import type { ArmedDue } from './clock.ts'
 import { matchesFilter, type LoopEventDeclaration } from './trigger.ts'
 import { ROTATE_BYTES, appendLine, readText, stamp, writeAtomic, type StoreIo } from '../rules/store.ts'
 import type { HolderMemory } from './holder.ts'
@@ -99,6 +100,8 @@ export interface RunBatch {
   readonly cause?: string
   /** The event waited in the inbox across a stop of the host. */
   readonly late?: boolean
+  /** A run of the board's own clock, not of an event: the record is a stand-in, the envelope says `time` (clock.ts, design §6.6). */
+  readonly time?: { readonly occurrenceAt: string }
 }
 
 interface KeyMemory {
@@ -145,6 +148,8 @@ export interface RuntimeState {
   waitingHour?: string
   /** The runs whose own execution is going on, with the entry they belong to: the self-loop window is measured from them. */
   causes: Record<string, { entry: string, at: string }>
+  /** The next moment of each entry the board's own clock fires, with the digest of the trigger it was armed from (clock.ts, design §6.8). */
+  due: Record<string, ArmedDue>
   /** The DSH reminder of each time entry, by entry id (design §6.2 `bindings`). */
   bindings: Record<string, Binding>
   /** The messages that could not be delivered yet, oldest first (design §6.4). */
@@ -173,6 +178,8 @@ interface DeferredRun {
   readonly group: string
   /** The event that triggered the run, as the inbox read it, with what the debounce merged in. */
   readonly record: LoopEventRecord
+  /** A clock run keeps its time shape while the rules board has it queued (run.ts `deferRun`). */
+  readonly time?: { readonly occurrenceAt: string }
   /** When the deferral was made; a day without a verdict ends the run `expired`. */
   readonly since: string
   /** When to ask the rules board again. */
@@ -219,7 +226,7 @@ export interface HeldMessage {
 
 /** The state a project starts from, and the one a state file that cannot be read is rebuilt as (design §6.8). */
 export function emptyState(): RuntimeState {
-  return { position: { bytes: 0 }, keys: {}, pending: {}, last: {}, files: {}, waiting: {}, causes: {}, bindings: {}, held: [], holderMemory: {}, missing: {}, said: {}, deferred: {}, passing: {} }
+  return { position: { bytes: 0 }, keys: {}, pending: {}, last: {}, files: {}, waiting: {}, causes: {}, due: {}, bindings: {}, held: [], holderMemory: {}, missing: {}, said: {}, deferred: {}, passing: {} }
 }
 
 export interface InboxDeps {
@@ -800,6 +807,7 @@ export function readState(paths: LoopsPaths, nowMs: number): RuntimeState {
       files: value.files ?? {},
       waiting: value.waiting ?? {},
       causes: value.causes ?? {},
+      due: value.due ?? {},
       bindings: value.bindings ?? {},
       held: Array.isArray(value.held) ? value.held : [],
       holderMemory: value.holderMemory ?? {},
