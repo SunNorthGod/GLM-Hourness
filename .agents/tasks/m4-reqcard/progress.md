@@ -22,14 +22,17 @@ guard-request-goal / guard-request-worker）都在。图节点停在 `approved` 
 
 ## 2. 门禁（worktree 内跑，日志写主检出 .llm/logs/rc-*.log）
 
-- build：过（exit 0）。
-- preflight：过（exit 0）。
-- test：过（exit 0），棘轮 eslint 69 / knip 18 / jscpd 1 持平（首轮 knip 报 common.tsx Bold
-  多余导出、jscpd 报 tool-names.ts 两段解析样板重复，已改掉重跑）。
+收尾全量重跑（HEAD 0a76b958），退出码直传，全部通过：
+
+- build 0 / preflight 0 / test 0；棘轮 eslint 69 suppressed / knip 18 baseline / jscpd 1 clone 持平。
+- 日志副本（主检出 .llm/logs 的 rc-*.log 被并行车道反复删除，系统临时目录的副本为持久证据，
+  SHA-256 前 16 位）：rc-build 1b75f8ed7bf76a9e、rc-preflight 9e2798806e735d3f、
+  rc-test c20331e434901a02，路径 `%TEMP%/m4-reqcard-rc-*.log`；收尾时已回拷主检出。
 - 注：tests/lessons-seed.spec 需要 `.agents/tasks/m5/lessons-seed.json`（不进 git 的
   设置文件），已从主检出复制到 worktree。
-- 2026-11-19 02:2x 主检出 .llm/logs 的 rc-*.log 被并行车道清掉过一次；收尾门禁重跑后
-  以重跑那次为准（见 §4）。
+- 首轮跑出的两个棘轮新发现已修：knip 报 ui/src/graph/common.tsx Bold 的多余导出
+  （RequestCard 收进 common.tsx 后内部化）、jscpd 报 tool-names.ts 两段工具结果解析
+  样板重复（提为 resultObject 一份）。
 
 ## 3. 待人动作（编排方转交）
 
@@ -45,6 +48,6 @@ guard-request-goal / guard-request-worker）都在。图节点停在 `approved` 
 - [x] 设计补记
 - [x] 实现与 L2
 - [x] ROADMAP
-- [ ] 收尾门禁重跑（build/preflight/test，日志 rc-build/rc-preflight/rc-test.log）
+- [x] 收尾门禁重跑（build/preflight/test，日志 rc-build/rc-preflight/rc-test.log + 临时目录副本）
 - [ ] 全量探针 ≥620/620（runner 自管锁，跑前清 GIT_CONFIG_*，证据留系统临时目录）
 - [ ] 推分支 origin（代理 127.0.0.1:7890；不推 main、不合并 main）
