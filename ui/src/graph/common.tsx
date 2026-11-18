@@ -145,7 +145,7 @@ export function Part({ title, children }: { readonly title: ReactNode, readonly 
 }
 
 /** One line's words with its one `**…**` span in bold (M3's splitBold); a line without one as it is. The request card's four lines render through it too (m4-request-card design §5.8). */
-function Bold({ text }: { readonly text: string }): ReactElement {
+export function Bold({ text }: { readonly text: string }): ReactElement {
   const bold = splitBold(text)
   return bold === undefined ? <>{text}</> : <>{bold.before}<strong>{bold.bold}</strong>{bold.after}</>
 }

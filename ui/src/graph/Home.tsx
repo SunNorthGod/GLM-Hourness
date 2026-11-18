@@ -19,7 +19,7 @@ import {
 } from '../../../src/graph/plain-view.ts'
 import { boards, checkedBoardState, type Board } from './boards.ts'
 import type { AgentLive } from './agents.ts'
-import { NowContext, Options, Part, RequestCard, useServices, When } from './common.tsx'
+import { Bold, NowContext, Options, Part, RequestCard, useServices, When } from './common.tsx'
 import { CopyWish } from './Guide.tsx'
 import { MainChatLine } from './MainChat.tsx'
 import { headlineGoals, statusText } from './model.ts'
@@ -47,19 +47,28 @@ function GoalRow({ graph, goal, awaiting, onModules, onUser }: { readonly graph:
  * One need (done conditions 1 and 6): the first is shown whole — a
  * question's ask and the lines of its way of asking (common.tsx Options), a
  * request plan its title and four lines (common.tsx RequestCard,
- * m4-request-card design §5.8) — the rest show their title and ask; a
- * matter only the main agent's chat holds shows its text. The answer is in
- * the main agent's chat.
+ * m4-request-card design §5.8) — the rest show their title and ask (a
+ * request plan its recommendation line); a matter only the main agent's
+ * chat holds shows its text. The answer is in the main agent's chat.
  */
 function NeedCard({ need, first }: { readonly need: NeedEntry, readonly first: boolean }): ReactElement {
   const { open } = useServices()
   const node = need.node
   if (need.request !== undefined) {
+    if (first) {
+      return (
+        <>
+          <RequestCard request={need.request} since={need.since} />
+          <MainChatLine />
+        </>
+      )
+    }
     return (
-      <>
-        <RequestCard request={need.request} since={need.since} />
-        {first ? <MainChatLine /> : null}
-      </>
+      <div className="glmg-card wait">
+        <div className="glmg-row-title">{need.request.title}</div>
+        <div className="glmg-meta"><When at={need.since} /></div>
+        <p className="glmg-text"><Bold text={need.request.proposal} /></p>
+      </div>
     )
   }
   if (node === undefined) {
