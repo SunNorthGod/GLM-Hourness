@@ -541,6 +541,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "loops-rc3 落地：两处 rc.3 适配缺口均根修——①ended 分支补记 loop-fired/done 与 state.last（一次任务投递即置 ended 的宿主行为，缺陷自 2026-11-01 起潜伏）；②孤儿清理只删本项目持有者会话上的绑定任务（断掉跨项目同 id 互删互建的通知洪水）。双探针 620/620，随 ca950d93 进 main（2026-11-18）。修复后桌面复验攒批。"
+    },
+    {
+      "at": "2026-11-18T21:25:06.852Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-19 合入批（rc.3 桌面 L4 九项全过后两件跟进）：其一，板面消息教的 /loops accept id 改为提议记录 id lp-（4a761086，缺陷根修：e0dc0a06 起工具侧误喂条目 id，命令/两步窗/attach/规则板同款全认 lp-，不做双 id 宽容）；其二，拆臂清理刷屏与板页重复行根修（ecc18403）——四条对账路全排进 beatChain（此前只有钟拍在链上，级联对账看不见在途绑定就重复 create 互删互建，schedule_not_found 落成 deleted:false），行健康改 reportState 按族替换收行（loops-kept/loops-wait/loops-holder），L2 红绿对照，ORCHESTRATION §18.10 同批。桌面 L4 已过九项：schedule_edit 形状相符（UNVERIFIED 注记可清）、/loops accept 两步+reject、m4-checks 真跑、超时行四来源、指标板+/glm-status metrics 行、状态板块条目、四答晨报+面板条件 17、lessons 路径提醒、unsynced-daily 板面（真火 18:05 另察）。已知项：两步同意的板路缺省桌面组合不可达（/wish 硬依赖图行），loader isolate 配方在 desktop-l4-rc3/progress.md，是否转缺省等人定。"
     }
   ]
 }

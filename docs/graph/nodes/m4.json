@@ -407,6 +407,12 @@
           "to": "七件活做完，拦截、检查与环境这一整块就完整了"
         }
       }
+    },
+    {
+      "at": "2026-11-18T21:25:06.262Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-19：m4-request-card 关单——第 1–9 条 2026-11-04 的 G4 批（11306b6e）已在 main，本次落地第 10 条面板半边（graphLive.requests 折叠、RequestCard 两页呈现、L2 两组）与 ROADMAP M4 行，逐条判定见 .agents/tasks/m4-reqcard/progress.md。两件待办：申报卡桌面 L4 与用户图 U6/U7 攒一批；m8-plain-language 验收第 6 条「三种事→四种事」的措辞改等人拍板（验收原话按 plain-ui 0.9 预留归人）。"
     }
   ]
 }

@@ -765,6 +765,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "docs-at-hand gen/sync 对本模块的请求（2026-11-10 记录）：execute.release 的提示加一句组件文档（gen 节点验收第三句）；设计 §5.5 简报上下文栏的 docsFor 块未实现（对已放行 M7 设计的请求）——记批注或立下一批，待人定。sync 主体已落地（交回 docs 行 + 审查清单常在，504048ea）。"
+    },
+    {
+      "at": "2026-11-18T21:25:05.661Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-19 合入批：m7-habits 与 m7-handback-path-check 落地关单（591548f3、0fd555f3 系），探针地板 620→624。前提修正记入 M7 设计修订记录第⑦次：拒收落位在 structured_output 调用边界而非 settle 之后（同会话补写重交，不整场作废）；cause 以摘要批注「原因」行落位；验收反引号路径加形状判（仓库相对、无空白），命令反引号不误升全审。已知取舍：isTestPath 按形状判，测试样子的数据文件名会从严升全审。"
     }
   ]
 }

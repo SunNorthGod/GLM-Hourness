@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1575" height="19796" viewBox="0 0 1575 19796" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="6089e3a99522">
-<title>项目图 · 修订 6089e3a99522 · 280 个节点</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1575" height="19796" viewBox="0 0 1575 19796" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" data-revision="acd892a8b590">
+<title>项目图 · 修订 acd892a8b590 · 280 个节点</title>
 <defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6b7280"/></marker><marker id="graph-arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7c3aed"/></marker></defs>
 <rect width="1575" height="19796" fill="#ffffff"/>
 <g data-legend="true" transform="translate(20 20)">
 <rect width="596" height="134" rx="8" fill="#f9fafb" stroke="#e5e7eb"/>
-<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 6089e3a99522 · 280 个节点</text>
+<text x="10" y="23" font-size="13" font-weight="600" fill="#111827">项目图 · 修订 acd892a8b590 · 280 个节点</text>
 <text x="10" y="48.2" font-size="12" fill="#6b7280">状态</text>
 <rect x="54" y="37" width="28" height="14" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="88" y="48.2" font-size="12" fill="#111827">完成</text>
@@ -830,10 +830,10 @@ m4-reanchor-norms · 任务 · 完成</title>
 <text x="1067.5" y="3151.6" text-anchor="middle" font-size="13" fill="#111827">规范再给模型看一遍</text>
 <text x="1067.5" y="3167.4" text-anchor="middle" font-size="11" fill="#6b7280">m4-reanchor-norms</text>
 </g>
-<g data-id="m4-request-card" data-type="task" data-status="approved" data-tone="todo">
+<g data-id="m4-request-card" data-type="task" data-status="done" data-tone="done">
 <title>guard 申报通道接决策卡
-m4-request-card · 任务 · 已批准</title>
-<rect x="925" y="3189" width="285" height="49" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+m4-request-card · 任务 · 完成</title>
+<rect x="925" y="3189" width="285" height="49" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1067.5" y="3210.6" text-anchor="middle" font-size="13" fill="#111827">guard 申报通道接决策卡</text>
 <text x="1067.5" y="3226.4" text-anchor="middle" font-size="11" fill="#6b7280">m4-request-card</text>
 </g>
@@ -1595,18 +1595,18 @@ m7-9 · 任务 · 完成</title>
 <text x="1067.5" y="9607.6" text-anchor="middle" font-size="13" fill="#111827">交付的四个数</text>
 <text x="1067.5" y="9623.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-9</text>
 </g>
-<g data-id="m7-handback-path-check" data-type="task" data-status="approved" data-tone="todo">
+<g data-id="m7-handback-path-check" data-type="task" data-status="done" data-tone="done">
 <title>子 agent 交回时，确认它改的是该改的文件
-m7-handback-path-check · 任务 · 已批准</title>
-<rect x="925" y="9645" width="285" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+m7-handback-path-check · 任务 · 完成</title>
+<rect x="925" y="9645" width="285" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1067.5" y="9666.6" text-anchor="middle" font-size="13" fill="#111827">子 agent 交回时，确认它</text>
 <text x="1067.5" y="9684.6" text-anchor="middle" font-size="13" fill="#111827">改的是该改的文件</text>
 <text x="1067.5" y="9700.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-handback-path-check</text>
 </g>
-<g data-id="m7-habits" data-type="task" data-status="approved" data-tone="todo">
+<g data-id="m7-habits" data-type="task" data-status="done" data-tone="done">
 <title>返工的活先查原因再改，交回写明原因
-m7-habits · 任务 · 已批准</title>
-<rect x="925" y="9722" width="285" height="67" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+m7-habits · 任务 · 完成</title>
+<rect x="925" y="9722" width="285" height="67" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
 <text x="1067.5" y="9743.6" text-anchor="middle" font-size="13" fill="#111827">返工的活先查原因再改，交</text>
 <text x="1067.5" y="9761.6" text-anchor="middle" font-size="13" fill="#111827">回写明原因</text>
 <text x="1067.5" y="9777.4" text-anchor="middle" font-size="11" fill="#6b7280">m7-habits</text>
