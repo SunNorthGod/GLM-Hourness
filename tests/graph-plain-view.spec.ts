@@ -10,7 +10,7 @@
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { AwaitingEntry } from '../src/graph/live.ts'
+import type { AwaitingEntry, RequestLiveEntry } from '../src/graph/live.ts'
 import type { LoadedGraph } from '../src/graph/parse.ts'
 import { blockersOf } from '../src/graph/projection.ts'
 import {
@@ -231,6 +231,27 @@ test('needsOf: questions, proposals and awaiting, oldest first; the stages filte
   assert.deepEqual(inDesign.map(entry => entry.kind), ['question', 'proposal', 'awaiting'], 'a release waits in design — the goal is there')
   const lateConfirm = needsOf(graph, [{ kind: 'confirm', goal: 'goal-design', module: '', at: Date.parse(at(6)) }])
   assert.deepEqual(lateConfirm.map(entry => entry.kind), ['question', 'proposal'], 'a confirm past the interview does not list')
+})
+
+test('needsOf: the request plans the guard row put to the human, oldest first, the stale ones dropped at 2 hours', () => {
+  const graph = graphOf([node({ id: 'goal-1', type: 'goal', status: 'doing', stage: 'execute' }, 0, 'human')])
+  const plan = (ref: string, at: number): RequestLiveEntry => ({
+    ref, at,
+    title: `要改工作区外的文件：C:\\out\\${ref}.md`,
+    background: 'agent 要**改工作区外的文件**，系统先拦下了',
+    proposal: '**放行这一次**，旧内容先备份，改坏了能找回',
+    doubt: '这个文件若**不归这件活管**，就不该放行',
+    notTaken: '**不放行**，文件不动，agent 换在工作区里做',
+  })
+  const fresh = plan('r-fresh123', NOW - 1000)
+  const stale = plan('r-stale123', NOW - 2 * 60 * 60 * 1000 - 5000)
+  const needs: readonly NeedEntry[] = needsOf(graph, [], [stale, fresh], NOW)
+  assert.deepEqual(needs.map(entry => entry.kind), ['request'], 'the plan older than 2 hours does not list')
+  assert.equal(needs[0]?.request?.ref, 'r-fresh123')
+  assert.equal(needs[0]?.since, new Date(fresh.at).toISOString())
+  const atLimit = needsOf(graph, [], [plan('r-edge4567', NOW - 2 * 60 * 60 * 1000)], NOW)
+  assert.deepEqual(atLimit.map(entry => entry.kind), ['request'], 'exactly 2 hours still lists')
+  assert.deepEqual(needsOf(graph, [], [], NOW), [], 'no plans, no entries')
 })
 
 test('changesSince: the answer rows, the merged approvals, the block-done rows and the merges', () => {

@@ -2,12 +2,14 @@
  * 需要你 (plain-ui 1.3 §4.3): the entries that wait for the human — the
  * second-layer page (the home section takes its first three), every entry
  * with its question open. The panel only looks: the answer is said in the
- * main agent's chat, and every card says so.
+ * main agent's chat, and every card says so. A request plan
+ * (m4-request-card design §5.8) shows its title and four lines; the human
+ * answers it in the filing agent's chat, the panel never approves it.
  */
 import type { ReactElement } from 'react'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { NeedEntry } from '../../../src/graph/plain-view.ts'
-import { Options, When, useServices } from './common.tsx'
+import { Options, RequestCard, When, useServices } from './common.tsx'
 import { MainChatLine } from './MainChat.tsx'
 
 /** 需要你, all of it (plain-ui 1.3 §4.3): every entry with its question open — the page behind the home section's 还有 N 件. */
@@ -18,6 +20,14 @@ export function NeedsPage({ graph, needs }: { readonly graph: LoadedGraph, reado
     <div className="glmg-view">
       <div className="glmg-notice">需要你 · {needs.length} 件</div>
       {needs.map((need, index) => {
+        if (need.request !== undefined) {
+          return (
+            <div key={`request:${need.request.ref}`}>
+              <RequestCard request={need.request} since={need.since} />
+              <MainChatLine />
+            </div>
+          )
+        }
         const node = need.node
         if (node === undefined) {
           return (

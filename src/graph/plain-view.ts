@@ -16,7 +16,7 @@
 import { answerCallOf, answerKindOf } from '../shared/answer-marks.ts'
 import { compareText } from './format.ts'
 import { isDesignReview, isPostRelease } from './execute-stage.ts'
-import type { AwaitingEntry } from './live.ts'
+import type { AwaitingEntry, RequestLiveEntry } from './live.ts'
 import type { LoadedGraph } from './parse.ts'
 import { ancestorsOf, blockersOf, childrenIndex, deciderOf, askFieldsOf, OPEN_STATUSES, subtreeOf, waitsForHuman } from './projection.ts'
 import type { AskForm } from './proposal.ts'
@@ -448,7 +448,10 @@ export function moduleRowText(graph: LoadedGraph, goal: GraphNode, awaiting: rea
 
 // --- Needs you ---------------------------------------------------------------
 
-type NeedKind = 'question' | 'awaiting' | 'proposal'
+type NeedKind = 'question' | 'awaiting' | 'proposal' | 'request'
+
+/** How long a request plan waits before the panel drops it (m4-request-card design §5.8); the guard row's own timer closes it at the same age. */
+const REQUEST_WAIT_MS = 2 * 60 * 60 * 1000
 
 export interface NeedEntry {
   readonly kind: NeedKind
@@ -458,6 +461,8 @@ export interface NeedEntry {
   readonly node?: GraphNode
   /** The matter the main agent put to the human and has not recorded an answer for. */
   readonly matter?: AwaitingEntry
+  /** The request plan the guard row put to the human and no closing notice has settled (m4-request-card design §5.8). */
+  readonly request?: RequestLiveEntry
   /** How many proposed nodes hide under a top proposal. */
   readonly includes?: number
   /** Whether the question carries the legacy option card. */
@@ -470,8 +475,8 @@ function awaitingStageOk(kind: 'confirm' | 'release', stage: ReturnType<typeof e
   return kind === 'confirm' ? stage === 'wish' || stage === 'interview' : stage === 'design'
 }
 
-/** What waits for the human, oldest first (plain-ui 1.3 §4.3): open questions the human decides, the matters in the main agent's awaiting, and proposals to approve. */
-export function needsOf(graph: LoadedGraph, awaiting: readonly AwaitingEntry[]): NeedEntry[] {
+/** What waits for the human, oldest first (plain-ui 1.3 §4.3): open questions the human decides, the matters in the main agent's awaiting, the request plans the guard row put to the human, and proposals to approve. */
+export function needsOf(graph: LoadedGraph, awaiting: readonly AwaitingEntry[], requests: readonly RequestLiveEntry[] = [], now = Date.now()): NeedEntry[] {
   const entries: NeedEntry[] = []
   for (const node of graph.nodes.values()) {
     if (waitsForHuman(node)) {
@@ -506,6 +511,12 @@ export function needsOf(graph: LoadedGraph, awaiting: readonly AwaitingEntry[]):
     }
     else if (!awaitingStageOk(matter.kind, stage)) continue
     entries.push({ kind: 'awaiting', since: new Date(matter.at).toISOString(), matter })
+  }
+  // The request channel's open asks (m4-request-card design §5.8): a closing notice settles one;
+  // a session that never steps again lets the 2-hour cap drop its stale ones here.
+  for (const request of requests) {
+    if (now - request.at > REQUEST_WAIT_MS) continue
+    entries.push({ kind: 'request', since: new Date(request.at).toISOString(), request })
   }
   return entries.sort((a, b) => compareText(a.since, b.since))
 }
