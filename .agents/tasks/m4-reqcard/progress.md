@@ -62,4 +62,4 @@ guard-request-goal / guard-request-worker）都在。图节点停在 `approved` 
 - [x] ROADMAP
 - [x] 收尾门禁重跑（build/preflight/test，日志 rc-build/rc-preflight/rc-test.log + 临时目录副本）
 - [x] 全量探针 620/620（runner 自管锁，跑前清 GIT_CONFIG_*，证据留系统临时目录）
-- [ ] 推分支 origin（代理 127.0.0.1:7890；不推 main、不合并 main）
+- [x] 推分支 origin（代理 127.0.0.1:7890；不推 main、不合并 main）：0818c510 推成 origin/m4-reqcard
