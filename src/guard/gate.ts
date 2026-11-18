@@ -108,7 +108,16 @@ export type GateHost = PreExecuteHost & ServiceLookup & SessionEventHost
 
 export interface PreExecuteEffect {
   readonly beforeAllow?: (() => Promise<PreExecuteDecision | undefined>) | undefined
+  /**
+   * Runs at the outermost frame when everything allowed. Must not reject: the
+   * effects commit in order, and a rejection mid-loop falls into the frame's
+   * catch, which runs `onDeny` for every effect — including ones whose
+   * `onAllow` already committed (benign today: the only `onDeny` is the
+   * grant's release, and a consumed grant cannot come back). The current
+   * effects are reject-safe by construction; keep new ones that way.
+   */
   readonly onAllow?: (() => void | Promise<void>) | undefined
+  /** Runs at the outermost frame when the waterfall denied or the listener threw. */
   readonly onDeny?: (() => void) | undefined
 }
 
@@ -161,6 +170,8 @@ export async function withPreExecuteFrame(payload: ToolExecutionPayload, run: ()
         }
       }
       if (decision.kind === 'allow') {
+        // The commit loop; see PreExecuteEffect.onAllow — a rejection here would
+        // reach the catch below and run `onDeny` for already-committed effects.
         for (const effect of frame.effects) {
           await effect.onAllow?.()
         }
