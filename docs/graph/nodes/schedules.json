@@ -529,6 +529,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "loops-s5 落地：循环板的同意路径齐了——loop_propose / loop_show / loop_note 三个工具、提议盘与 /loops accept·reject、attach 表的 loops: 行、周报的两个提议过滤；人只拍板，script 按人看过的字节钉住；L2 全栈 13 例，probe 612/612，随 4b40e9ea 进 main（2026-11-18）。"
+    },
+    {
+      "at": "2026-11-18T01:34:52.047Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "clock-fire 落地：时间触发的 script/check 条目由循环行自己的钟点火（design 0.6 §6.2，不走 DSH 绑定）——clockBeat 拍内臂钟/点火/重臂，停机 late 补跑认 remembered due，排队保 occurrenceAt；L2 loops-clock 9 例，probe 620/620，随 2ff16348 进 main（2026-11-18）。桌面 L4 攒批。"
     }
   ]
 }
