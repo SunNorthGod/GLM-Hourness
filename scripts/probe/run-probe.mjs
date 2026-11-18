@@ -6071,6 +6071,8 @@ const CHECK_SCENARIO_PREFIXES = {
   'exec plan': ['glm-exec-plan'],
   'exec review': ['glm-exec-review'],
   'exec review (reval)': ['glm-exec-review'],
+  'exec review (m7-habits)': ['glm-exec-review'],
+  'exec review (m7-handback-path-check)': ['glm-exec-review'],
   'exec skeleton': ['glm-exec-skeleton'],
   'exec walk': ['glm-exec-walk'],
   'glm announcement': ['glm'],
