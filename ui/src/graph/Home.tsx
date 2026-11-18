@@ -12,14 +12,14 @@ import type { ReactElement } from 'react'
 import { useSyncExternalStore, useContext } from 'react'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { GraphNode } from '../../../src/graph/schema.ts'
-import type { AwaitingEntry } from '../../../src/graph/live.ts'
+import type { AwaitingEntry, RequestLiveEntry } from '../../../src/graph/live.ts'
 import {
   changesSince, liveLine, moduleRowText, needsOf, planOf, progressLine,
   type ChangeRow, type NeedEntry,
 } from '../../../src/graph/plain-view.ts'
 import { boards, checkedBoardState, type Board } from './boards.ts'
 import type { AgentLive } from './agents.ts'
-import { NowContext, Options, Part, When, useServices } from './common.tsx'
+import { NowContext, Options, Part, RequestCard, useServices, When } from './common.tsx'
 import { CopyWish } from './Guide.tsx'
 import { MainChatLine } from './MainChat.tsx'
 import { headlineGoals, statusText } from './model.ts'
@@ -45,13 +45,23 @@ function GoalRow({ graph, goal, awaiting, onModules, onUser }: { readonly graph:
 
 /**
  * One need (done conditions 1 and 6): the first is shown whole — a
- * question's ask and the lines of its way of asking (common.tsx Options) —
- * the rest show their title and ask; a matter only the main agent's chat
- * holds shows its text. The answer is in the main agent's chat.
+ * question's ask and the lines of its way of asking (common.tsx Options), a
+ * request plan its title and four lines (common.tsx RequestCard,
+ * m4-request-card design §5.8) — the rest show their title and ask; a
+ * matter only the main agent's chat holds shows its text. The answer is in
+ * the main agent's chat.
  */
 function NeedCard({ need, first }: { readonly need: NeedEntry, readonly first: boolean }): ReactElement {
   const { open } = useServices()
   const node = need.node
+  if (need.request !== undefined) {
+    return (
+      <>
+        <RequestCard request={need.request} since={need.since} />
+        {first ? <MainChatLine /> : null}
+      </>
+    )
+  }
   if (node === undefined) {
     return (
       <div className="glmg-card wait">
@@ -86,6 +96,8 @@ export interface HomeProps {
   readonly graph: LoadedGraph
   readonly agents: readonly AgentLive[]
   readonly awaiting: readonly AwaitingEntry[]
+  /** The request plans the human has not answered yet (m4-request-card design §5.8). */
+  readonly requests: readonly RequestLiveEntry[]
   readonly since: number | undefined
   readonly quiet: ReadonlySet<string>
   readonly sessionId: string
@@ -102,7 +114,7 @@ export interface HomeProps {
 }
 
 /** The home page's body. */
-export function Home({ graph, agents, awaiting, since, quiet, sessionId, mainHere, onPlan, onChanges, onLive, onNeeds, onModules, onUser, onBoard }: HomeProps): ReactElement {
+export function Home({ graph, agents, awaiting, requests, since, quiet, sessionId, mainHere, onPlan, onChanges, onLive, onNeeds, onModules, onUser, onBoard }: HomeProps): ReactElement {
   const now = useContext(NowContext)
   // An empty graph (no node at all; closed goals are not empty) shows only 效果是 and the way to start (§4.10).
   if (graph.nodes.size === 0) {
@@ -117,7 +129,7 @@ export function Home({ graph, agents, awaiting, since, quiet, sessionId, mainHer
     )
   }
   const goals = headlineGoals(graph)
-  const needs = needsOf(graph, awaiting)
+  const needs = needsOf(graph, awaiting, requests, now)
   const plan = planOf(graph, now, agents.find(agent => agent.main && agent.running)?.view?.focus ?? undefined)
   const changes: readonly ChangeRow[] = since === undefined
     ? changesSince(graph, new Date(now - 24 * 60 * 60 * 1000).toISOString(), quiet)
@@ -133,7 +145,7 @@ export function Home({ graph, agents, awaiting, since, quiet, sessionId, mainHer
       <Part title={`需要你 · ${needs.length}`}>
         {needs.length === 0
           ? <div className="glmg-meta">现在没有要你回话的事</div>
-          : needs.slice(0, 3).map((need, index) => <NeedCard key={need.node?.id ?? `awaiting:${index}`} need={need} first={index === 0} />)}
+          : needs.slice(0, 3).map((need, index) => <NeedCard key={need.request !== undefined ? `request:${need.request.ref}` : need.node?.id ?? `awaiting:${index}`} need={need} first={index === 0} />)}
         {needs.length > 3 ? <button type="button" className="glmg-more" onClick={onNeeds}>还有 {needs.length - 3} 件 · 讲细点</button> : null}
       </Part>
       <Part title="现在">

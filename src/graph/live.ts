@@ -27,8 +27,18 @@
  * messages nor the turn ends touch it — only a recorded answer does. At
  * most three (the design row asks at most three matters per reply), the
  * newest replacing the same matter.
+ *
+ * `requests` (m4-request-card design §5.8): the guard row's request plans
+ * the human has not answered yet. Added when the result of a
+ * request_exception call reads as an ask (tool-names.ts shownRequestOf),
+ * removed when its `approved` replay is read or when a closing
+ * hourness-request notice (source.request.outcome approved, declined,
+ * closed, expired, lapsed) is folded; the still-open notices keep it. The
+ * 2-hour cap is the panel's own display filter (plain-view.ts), not a fold
+ * rule — a session that never steps again still drops its stale asks there.
+ * At most eight, the oldest out.
  */
-import { PROPOSE_TO_HUMAN, RECORD_HUMAN_ANSWER, shownProposalOf } from '../shared/tool-names.ts'
+import { PROPOSE_TO_HUMAN, RECORD_HUMAN_ANSWER, REQUEST_EXCEPTION, REQUEST_NOTICE_SOURCE, shownProposalOf, shownRequestOf } from '../shared/tool-names.ts'
 import { DEFERRED_TOOL_CALL_NAME } from '../shared/zcode-notice.ts'
 
 /** The tool that sets the focus node (tools.ts); the step projection (reminder.ts) and this fold find its calls in the history. */
@@ -43,6 +53,12 @@ const RECENT = 6
 /** Matters kept in `awaiting` (the design row asks at most three per reply). */
 const AWAITING_MAX = 3
 
+/** Request plans kept in `requests` (m4-request-card design §5.8; the desk holds one open per session, the cap bounds the residue of settled asks). */
+const REQUESTS_MAX = 8
+
+/** The request notice outcomes that close an ask (m4-request-card design §5.5); `open` keeps it. */
+const CLOSED_REQUEST_OUTCOMES: ReadonlySet<string> = new Set(['approved', 'declined', 'closed', 'expired', 'lapsed'])
+
 /** The code points an argument keeps (plain-ui 1.3 §4.9: keep the projection small). */
 const ARGS_MAX = 200
 
@@ -56,6 +72,18 @@ export interface AwaitingEntry {
   /** The question as the human read it; absent when the result was not readable. */
   readonly text?: string
   /** When the result returned (ms epoch). */
+  readonly at: number
+}
+
+/** One request plan the human has not answered yet (m4-request-card design §5.8); the panel reads the entries off the view, the four lines verbatim with their bold marks. */
+export interface RequestLiveEntry {
+  readonly ref: string
+  readonly title: string
+  readonly background: string
+  readonly proposal: string
+  readonly doubt: string
+  readonly notTaken: string
+  /** When the ask result returned (ms epoch). */
   readonly at: number
 }
 
@@ -77,6 +105,8 @@ export interface LiveView {
   readonly tool: { readonly name: string, readonly since: number } | null
   readonly recent: readonly LiveCall[]
   readonly awaiting: readonly AwaitingEntry[]
+  /** The request plans the human has not answered yet (m4-request-card design §5.8). */
+  readonly requests: readonly RequestLiveEntry[]
 }
 
 interface Pending {
@@ -110,7 +140,7 @@ export interface LiveEvent {
 }
 
 const EMPTY: Omit<LiveState, 'inherited'> = {
-  focus: null, model: null, turnSince: null, steps: 0, tool: null, recent: [], awaiting: [], pending: {},
+  focus: null, model: null, turnSince: null, steps: 0, tool: null, recent: [], awaiting: [], requests: [], pending: {},
 }
 
 export function initialLive(inherited: number): LiveState {
@@ -172,6 +202,18 @@ const sameAsk = (a: { readonly kind: string, readonly goal: string, readonly mod
 function withAwaiting(state: LiveState, entry: AwaitingEntry): readonly AwaitingEntry[] {
   const next = [...state.awaiting.filter(prior => !sameAsk(prior, entry)), entry]
   return next.length > AWAITING_MAX ? next.slice(next.length - AWAITING_MAX) : next
+}
+
+/** `requests` with one plan added: the same ref replaced, the oldest dropped past REQUESTS_MAX. */
+function withRequest(entries: readonly RequestLiveEntry[], entry: RequestLiveEntry): readonly RequestLiveEntry[] {
+  const next = [...entries.filter(prior => prior.ref !== entry.ref), entry]
+  return next.length > REQUESTS_MAX ? next.slice(next.length - REQUESTS_MAX) : next
+}
+
+/** `requests` without one ref; the same array when nothing matched, so the fold stays referential. */
+function withoutRequest(entries: readonly RequestLiveEntry[], ref: string): readonly RequestLiveEntry[] {
+  const next = entries.filter(entry => entry.ref !== ref)
+  return next.length === entries.length ? entries : next
 }
 
 /**
@@ -251,14 +293,34 @@ export function foldLive(state: LiveState, event: LiveEvent): LiveState {
         if (entry !== undefined) awaiting = withAwaiting(state, entry)
       }
       else if (call.name === RECORD_HUMAN_ANSWER && ok) awaiting = withoutRecorded(state, call)
+      // The request channel's ask (m4-request-card design §5.8): an ask adds its plan, an approved replay settles it.
+      let requests = state.requests
+      if (call.name === REQUEST_EXCEPTION) {
+        const shown = shownRequestOf(!ok, textContentOf(message.content))
+        if (shown !== undefined) {
+          requests = shown.outcome === 'ask'
+            ? withRequest(state.requests, { ...shown.request, at: event.time })
+            : withoutRequest(state.requests, shown.ref)
+        }
+      }
       return {
         ...state,
         pending,
         tool: runningOf(pending),
         awaiting,
+        requests,
         recent: [...state.recent, { name: call.name, at: event.time, ok }].slice(-RECENT),
         focus: ok && call.focus !== undefined ? call.focus : state.focus,
       }
+    }
+    case 'user/message': {
+      // A request notice's close (m4-request-card design §5.8): the reminder's facts carry the ref and the outcome.
+      const source = record(data.source)
+      if (source.kind !== REQUEST_NOTICE_SOURCE) return state
+      const request = record(source.request)
+      if (typeof request.ref !== 'string' || typeof request.outcome !== 'string' || CLOSED_REQUEST_OUTCOMES.has(request.outcome) === false) return state
+      const requests = withoutRequest(state.requests, request.ref)
+      return requests === state.requests ? state : { ...state, requests }
     }
     case 'request/header': {
       const model = text(record(record(data.header).config).model) ?? null
@@ -306,6 +368,18 @@ function parseAwaiting(value: unknown): void {
   }
 }
 
+/** Shape check of the request plans (m4-request-card design §5.8): at most REQUESTS_MAX, one shape each. */
+function parseRequests(value: unknown): void {
+  if (!Array.isArray(value) || value.length > REQUESTS_MAX) fail(`requests must be at most ${REQUESTS_MAX} entries`)
+  for (const entry of value) {
+    const item = record(entry)
+    if (typeof item.at !== 'number') fail('request entries must carry an at')
+    for (const field of ['ref', 'title', 'background', 'proposal', 'doubt', 'notTaken'] as const) {
+      if (typeof item[field] !== 'string') fail(`request entries must carry a ${field}`)
+    }
+  }
+}
+
 /** Shape check of a view value: checkpoint restore and the wire both parse through it. */
 function parseView(value: unknown): LiveView {
   const view = record(value)
@@ -316,6 +390,7 @@ function parseView(value: unknown): LiveView {
   if (!(tool === null || (typeof record(tool).name === 'string' && typeof record(tool).since === 'number'))) fail('tool must be {name, since} or null')
   if (!Array.isArray(view.recent) || !view.recent.every(call => typeof record(call).name === 'string' && typeof record(call).at === 'number' && typeof record(call).ok === 'boolean')) fail('recent must be a list of {name, at, ok}')
   parseAwaiting(view.awaiting)
+  parseRequests(view.requests)
   return value as LiveView
 }
 
@@ -346,7 +421,7 @@ function parseState(value: unknown): LiveState {
  */
 export const liveProjection = {
   key: LIVE_KEY,
-  stateVersion: 3,
+  stateVersion: 4,
   stateSchema: { parse: parseState },
   init: (_header: unknown, inheritedEventCount: number): LiveState => initialLive(inheritedEventCount),
   apply: foldLive,

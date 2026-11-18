@@ -8,9 +8,10 @@
  */
 import { Button, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Component, createContext, useContext, useLayoutEffect, useRef, useState, type ErrorInfo, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
+import type { RequestLiveEntry } from '../../../src/graph/live.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { askLines } from '../../../src/graph/plain-view.ts'
-import { splitBold } from '../../../src/graph/plan-text.ts'
+import { PROPOSAL_LABELS, splitBold } from '../../../src/graph/plan-text.ts'
 import { ancestorsOf } from '../../../src/graph/projection.ts'
 import type { GraphNode } from '../../../src/graph/schema.ts'
 import { absoluteTime, progressOf, progressText, statusText, timeAgo } from './model.ts'
@@ -143,7 +144,7 @@ export function Part({ title, children }: { readonly title: ReactNode, readonly 
   )
 }
 
-/** One line's words with its one `**…**` span in bold (M3's splitBold); a line without one as it is. */
+/** One line's words with its one `**…**` span in bold (M3's splitBold); a line without one as it is. The request card's four lines render through it too (m4-request-card design §5.8). */
 function Bold({ text }: { readonly text: string }): ReactElement {
   const bold = splitBold(text)
   return bold === undefined ? <>{text}</> : <>{bold.before}<strong>{bold.bold}</strong>{bold.after}</>
@@ -173,6 +174,27 @@ export function Options({ node }: { readonly node: GraphNode }): ReactElement {
         </div>
       ))}
       {node.status === 'done' && node.conclusion !== undefined ? <div className="glmg-text">定了：{node.conclusion}</div> : null}
+    </div>
+  )
+}
+
+/**
+ * A request plan as the panel shows it, whole (m4-request-card design §5.8):
+ * the title with the resolved path, then the four labelled lines — the
+ * labels not bold, each line's key words in bold — the answer said in the
+ * filing agent's chat, which the caller renders (MainChatLine). The panel
+ * never approves it: 人回话只在对话里.
+ */
+export function RequestCard({ request, since }: { readonly request: RequestLiveEntry, readonly since: string }): ReactElement {
+  return (
+    <div className="glmg-card wait">
+      <div className="glmg-row-title">{request.title}</div>
+      <div className="glmg-meta"><When at={since} /></div>
+      <div className="glmg-options">
+        {(['background', 'proposal', 'doubt', 'notTaken'] as const).map(field => (
+          <p key={field} className="glmg-text">{PROPOSAL_LABELS[field]}：<Bold text={request[field]} /></p>
+        ))}
+      </div>
     </div>
   )
 }

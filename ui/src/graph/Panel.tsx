@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
 import { changesSince, modulesView, needsOf, planOf } from '../../../src/graph/plain-view.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
-import type { AwaitingEntry } from '../../../src/graph/live.ts'
+import type { AwaitingEntry, RequestLiveEntry } from '../../../src/graph/live.ts'
 import type { SessionsClient, UiWorkspace, WorkspaceFilesRemote } from '../dsh.ts'
 import { useAgents, useNow } from './agents.ts'
 import { useBoard } from './board-state.ts'
@@ -169,6 +169,8 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   const holderValues = holderId === undefined ? undefined : projections[holderId]?.values
   const mainHere = main.chat?.kind === 'here' === true
   const awaiting: readonly AwaitingEntry[] = holderId !== undefined ? holderValues?.graphLive?.awaiting ?? [] : values?.graphLive?.awaiting ?? []
+  // The request plans ride the same session: the main agent files every request, a worker's goes through it (m4-request-card design §5.8).
+  const requests: readonly RequestLiveEntry[] = holderId !== undefined ? holderValues?.graphLive?.requests ?? [] : values?.graphLive?.requests ?? []
   const graph: LoadedGraph | undefined = snapshot.status === 'ready' ? snapshot.graph : undefined
   // The first-visit rule needs the graph's history; answered once, at the first ready snapshot (§6.4).
   useEffect(() => {
@@ -177,7 +179,7 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   }, [guide, snapshot])
 
   // The needs list and the view models, from one graph; empty stand-ins while the graph reads.
-  const needs = useMemo(() => graph === undefined ? [] : needsOf(graph, awaiting), [graph, awaiting])
+  const needs = useMemo(() => graph === undefined ? [] : needsOf(graph, awaiting, requests, now), [graph, awaiting, requests, now])
   const quiet = useMemo(
     () => new Set(needs.map(need => need.node?.id).filter(id => id !== undefined)),
     [needs],
@@ -317,6 +319,7 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
                       graph={graph}
                       agents={agents}
                       awaiting={awaiting}
+                      requests={requests}
                       since={seen.since}
                       quiet={quiet}
                       sessionId={sessionId}

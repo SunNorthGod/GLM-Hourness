@@ -85,13 +85,10 @@ export interface ShownProposal {
 }
 
 /**
- * The result of a propose_to_human call that put a matter to the human, read
- * from the text of its tool result; undefined for an error, for another
- * tool's result and for text that is not the tool's output. The one place
- * that knows the shape: the session projection hournessTalk and the panel's
- * live view both read it here.
+ * A tool result's text as a JSON object: undefined for an error result and
+ * for text that is not a JSON object. The two shape readers below share it.
  */
-export function shownProposalOf(isError: boolean, text: string): ShownProposal | undefined {
+function resultObject(isError: boolean, text: string): Record<string, unknown> | undefined {
   if (isError) return undefined
   let value: unknown
   try {
@@ -100,8 +97,19 @@ export function shownProposalOf(isError: boolean, text: string): ShownProposal |
   catch {
     return undefined
   }
-  if (typeof value !== 'object' || value === null) return undefined
-  const result = value as Record<string, unknown>
+  return typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined
+}
+
+/**
+ * The result of a propose_to_human call that put a matter to the human, read
+ * from the text of its tool result; undefined for an error, for another
+ * tool's result and for text that is not the tool's output. The one place
+ * that knows the shape: the session projection hournessTalk and the panel's
+ * live view both read it here.
+ */
+export function shownProposalOf(isError: boolean, text: string): ShownProposal | undefined {
+  const result = resultObject(isError, text)
+  if (result === undefined) return undefined
   if (result.tool !== PROPOSE_TO_HUMAN || typeof result.text !== 'string') return undefined
   if (result.kind !== 'question' && result.kind !== 'confirm' && result.kind !== 'release') return undefined
   if (result.number !== 1 && result.number !== 2 && result.number !== 3) return undefined
@@ -109,6 +117,46 @@ export function shownProposalOf(isError: boolean, text: string): ShownProposal |
   const page = result.userPage as Record<string, unknown> | null | undefined
   if (page !== undefined && (typeof page !== 'object' || page === null || typeof page.stable !== 'string' || typeof page.state !== 'string')) return undefined
   return result as unknown as ShownProposal
+}
+
+/** The guard row's request tool (src/guard/request-service.ts), exported because the graph panel's live projection cannot import the guard row. */
+export const REQUEST_EXCEPTION = 'request_exception'
+
+/** The source of every request reminder the guard row writes (src/guard/request-service.ts REQUEST_SOURCE); the panel's live view reads it the same way. */
+export const REQUEST_NOTICE_SOURCE = 'hourness-request'
+
+/** What request_exception reports when it put a plan before the human (its output's `lines`, m4-request-card design §5.3): the plan's title and its four lines, each with the bold marks. */
+export interface ShownRequest {
+  readonly ref: string
+  readonly title: string
+  readonly background: string
+  readonly proposal: string
+  readonly doubt: string
+  readonly notTaken: string
+}
+
+/**
+ * The result of a request_exception call, read from the text of its tool
+ * result: the plan the human waits on when the outcome is `ask`, and the
+ * named request's settlement when the call replayed an `approved` answer.
+ * undefined for an error, for another tool's result and for text that is not
+ * the tool's output. The one place that knows the shape (design §5.3's
+ * output): the panel's live view reads it here.
+ */
+export function shownRequestOf(isError: boolean, text: string): { readonly outcome: 'ask', readonly request: ShownRequest } | { readonly outcome: 'approved', readonly ref: string } | undefined {
+  const result = resultObject(isError, text)
+  if (result === undefined) return undefined
+  if (result.outcome === 'approved' && typeof result.ref === 'string') return { outcome: 'approved', ref: result.ref }
+  if (result.outcome !== 'ask' || typeof result.ref !== 'string' || result.ref.length === 0) return undefined
+  const lines = result.lines
+  if (typeof lines !== 'object' || lines === null) return undefined
+  const plan = lines as Record<string, unknown>
+  const request: Record<string, unknown> = { ref: result.ref }
+  for (const field of ['title', 'background', 'proposal', 'doubt', 'notTaken'] as const) {
+    if (typeof plan[field] !== 'string') return undefined
+    request[field] = plan[field]
+  }
+  return { outcome: 'ask', request: request as unknown as ShownRequest }
 }
 
 /** The memory row's tools. */

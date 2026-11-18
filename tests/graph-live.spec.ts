@@ -204,10 +204,104 @@ test('awaiting arguments are cut to 200 code points, and inherited events are sk
 test('the unit: awaiting is part of the checked shapes, and an old checkpoint is refused', () => {
   seq = 0
   const state = fold(askCall('p1', confirmArgs, 'confirm', confirmOutput))
-  assert.equal(liveProjection.stateVersion, 3)
+  assert.equal(liveProjection.stateVersion, 4)
   assert.equal(liveProjection.stateSchema.parse(JSON.parse(JSON.stringify(state))).awaiting.length, 1)
   liveProjection.wire.viewSchema.parse(liveView(state))
   assert.throws(() => liveProjection.stateSchema.parse({ ...JSON.parse(JSON.stringify(state)), awaiting: 'x' }), /awaiting/)
   assert.throws(() => liveProjection.stateSchema.parse({ ...JSON.parse(JSON.stringify(state)), awaiting: [{ kind: 'confirm', goal: 1, module: '', at: 1 }] }), /awaiting/)
   assert.throws(() => liveProjection.wire.viewSchema.parse({ ...liveView(state), awaiting: Array.from({ length: 4 }, () => ({ kind: 'confirm', goal: '', module: '', at: 1 })) }), /awaiting/)
+})
+
+// --- requests (m4-request-card design §5.8): what the guard row put to the human ---
+
+/** A request_exception call and its ask result, carrying the tool's own output with the plan's title and four lines. */
+function requestAsk(id: string, ref: string, at?: number): readonly LiveEvent[] {
+  const shown = {
+    outcome: 'ask',
+    ref,
+    lines: {
+      title: '要改工作区外的文件：C:\\Users\\me\\notes\\todo.md',
+      background: 'agent 要**改工作区外的文件**，系统先拦下了',
+      proposal: '**放行这一次**，旧内容先备份，改坏了能找回',
+      doubt: '这个文件若**不归这件活管**，就不该放行',
+      notTaken: '**不放行**，文件不动，agent 换在工作区里做',
+    },
+    message: 'Put `text` at the very end of your reply.',
+  }
+  return [
+    call(id, 'request_exception', JSON.stringify({ ref, purpose: '追加待办', reversibility: '旧内容先备份', alternatives: 'none' })),
+    event('tool/result', { turn: 1, step: 1, message: { role: 'tool', isError: false, source: { callId: id }, content: [{ type: 'text', text: JSON.stringify(shown) }] } }, at ?? 9000 + seq),
+  ]
+}
+
+/** A request_exception result event with a hand-made body. */
+const requestResult = (id: string, isError: boolean, text: string): LiveEvent =>
+  event('tool/result', { turn: 1, step: 1, message: { role: 'tool', isError, source: { callId: id }, content: [{ type: 'text', text }] } }, 9000 + seq)
+
+/** A request notice as the log carries it: the guard row's source with the ref and the outcome as its facts. */
+const requestNotice = (ref: string, outcome: string): LiveEvent =>
+  event('user/message', { id: `notice-${ref}-${outcome}`, role: 'user', source: { request: { ref, outcome }, kind: 'hourness-request', form: 'notice', summary: `Request ${ref} ${outcome}` }, content: [{ type: 'text', text: `Request ${ref} ${outcome}.` }] })
+
+test('a request ask waits in requests with its title and four lines; an approved replay settles it; other results add nothing', () => {
+  seq = 0
+  const state = fold(requestAsk('q1', 'r-7k2m9q4x'))
+  assert.deepEqual(state.requests, [{
+    ref: 'r-7k2m9q4x',
+    title: '要改工作区外的文件：C:\\Users\\me\\notes\\todo.md',
+    background: 'agent 要**改工作区外的文件**，系统先拦下了',
+    proposal: '**放行这一次**，旧内容先备份，改坏了能找回',
+    doubt: '这个文件若**不归这件活管**，就不该放行',
+    notTaken: '**不放行**，文件不动，agent 换在工作区里做',
+    at: 9000 + 1,
+  }])
+  const replay = fold([
+    call('q2', 'request_exception', JSON.stringify({ ref: 'r-7k2m9q4x', purpose: '追加待办' })),
+    requestResult('q2', false, JSON.stringify({ outcome: 'approved', ref: 'r-7k2m9q4x', message: 'The human already approved request r-7k2m9q4x.' })),
+  ], state)
+  assert.deepEqual(replay.requests, [], 'the standing grant answers, the plan is settled')
+  const failed = fold([call('q3', 'request_exception', '{"ref":"r-aaaaaaaa"}'), requestResult('q3', true, '{"code":"busy","message":"no"}')], state)
+  assert.equal(failed.requests.length, 1, 'an error result is no ask')
+  const other = fold([call('q4', 'Write', '{"file_path":"a"}'), requestResult('q4', false, '{"outcome":"ask","ref":"r-bbbbbbbb","lines":{"title":"t","background":"b","proposal":"p","doubt":"d","notTaken":"n"}}')], state)
+  assert.deepEqual(other.requests.map(entry => entry.ref), ['r-7k2m9q4x'], 'another tool is no ask')
+})
+
+test('a closing hourness-request notice removes the plan; the still-open notices keep it; the person speaking changes nothing', () => {
+  seq = 0
+  const asked = fold(requestAsk('q1', 'r-7k2m9q4x'))
+  assert.deepEqual(foldLive(asked, requestNotice('r-7k2m9q4x', 'approved')).requests, [], 'approved closes it')
+  for (const outcome of ['declined', 'closed', 'expired', 'lapsed']) {
+    assert.deepEqual(foldLive(asked, requestNotice('r-7k2m9q4x', outcome)).requests, [], outcome)
+  }
+  const open = foldLive(asked, requestNotice('r-7k2m9q4x', 'open'))
+  assert.equal(open.requests.length, 1, 'still waits, not-shown, not-client and unclear keep it')
+  assert.equal(foldLive(open, requestNotice('r-other', 'approved')).requests.length, 1, 'another ref does not close it')
+  assert.equal(foldLive(asked, event('user/message', { source: { kind: 'user' }, content: [{ type: 'text', text: '可以' }] })), asked, 'the person speaking keeps the state')
+  assert.equal(foldLive(asked, event('user/message', { source: { kind: 'hourness-request', form: 'notice' }, content: [] })), asked, 'a notice without facts keeps the state')
+})
+
+test('the same ref replaces its plan; at most eight, the earliest goes; the DeferredToolCall wrapper is seen through', () => {
+  seq = 0
+  const first = fold(requestAsk('q1', 'r-11111111'))
+  const second = fold(requestAsk('q2', 'r-11111111'), first)
+  assert.equal(second.requests.length, 1)
+  assert.equal(second.requests[0]?.at, 9003, 'the newer ask stands')
+  let state = second
+  for (let index = 2; index <= 9; index++) state = fold(requestAsk(`q${index}`, `r-${String(index).padStart(8, '0')}`), state)
+  assert.equal(state.requests.length, 8, 'eight plans at most')
+  assert.equal(state.requests[0]?.ref, 'r-00000002', 'the earliest went')
+  const wrapped = fold([
+    event('tool/call', { turn: 1, step: 1, callId: 'w1', name: 'DeferredToolCall', arguments: JSON.stringify({ name: 'request_exception', input: { ref: 'r-33333333' } }) }),
+    requestResult('w1', false, JSON.stringify({ outcome: 'ask', ref: 'r-33333333', lines: { title: 't', background: 'b', proposal: 'p', doubt: 'd', notTaken: 'n' } })),
+  ], state)
+  assert.equal(wrapped.requests.at(-1)?.ref, 'r-33333333', 'the wrapper shows the tool it runs')
+})
+
+test('the unit: requests are part of the checked shapes', () => {
+  seq = 0
+  const state = fold(requestAsk('q1', 'r-7k2m9q4x'))
+  assert.equal(liveProjection.stateSchema.parse(JSON.parse(JSON.stringify(state))).requests.length, 1)
+  liveProjection.wire.viewSchema.parse(liveView(state))
+  assert.throws(() => liveProjection.stateSchema.parse({ ...JSON.parse(JSON.stringify(state)), requests: 'x' }), /requests/)
+  assert.throws(() => liveProjection.stateSchema.parse({ ...JSON.parse(JSON.stringify(state)), requests: [{ ref: 'r-7k2m9q4x', at: 1 }] }), /carry a title/)
+  assert.throws(() => liveProjection.wire.viewSchema.parse({ ...liveView(state), requests: Array.from({ length: 9 }, (_, index) => ({ ref: `r-${index}`, title: 't', background: 'b', proposal: 'p', doubt: 'd', notTaken: 'n', at: 1 })) }), /requests/)
 })
