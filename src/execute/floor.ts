@@ -226,6 +226,71 @@ export function floorHits(floor: ParsedFloor, change: FloorChange, calls: readon
   return hits
 }
 
+// ---- the handback path check (m7-handback-path-check) ----
+
+/** The directory segments that make a path a test file's, compared case-insensitively. */
+const TEST_DIRS: ReadonlySet<string> = new Set(['test', 'tests', '__tests__', 'spec', 'specs'])
+
+/**
+ * Whether a repository-relative path is a test file's, by shape: a `test`,
+ * `tests`, `__tests__`, `spec` or `specs` directory segment anywhere above,
+ * or a basename whose stem ends in `test`/`spec` at a boundary (`feed.spec.ts`,
+ * `feed_test.go`, `test-feed.py`) or starts with the `test` marker (`test_feed.py`).
+ * Purely lexical; a data file named like a test counts, and over-matching sends
+ * work to a full review, under-matching would not.
+ */
+export function isTestPath(path: string): boolean {
+  const segments = path.toLowerCase().split('/')
+  const stem = (segments.at(-1) ?? '').replace(/\.[a-z0-9]+$/, '')
+  return segments.slice(0, -1).some(segment => TEST_DIRS.has(segment))
+    || TEST_DIRS.has(stem)
+    || /(^|[._-])(test|spec)$/.test(stem)
+    || /^test[_-]/.test(stem)
+}
+
+/**
+ * The repository-relative paths the acceptance names in backticks, in first-
+ * mention order, once each. A span counts when it names a path by shape — no
+ * whitespace, `isFloorPath`'s repository-relative form, and a `/` or a `.` in
+ * it — so prose words, commands and identifiers in backticks do not. The
+ * limitation the node records holds: only backtick paths are read.
+ */
+export function acceptancePathsOf(acceptance: readonly string[]): readonly string[] {
+  const spans: string[] = []
+  for (const line of acceptance) {
+    let rest = line
+    while (rest.length >= 2) {
+      const opening = rest.indexOf('`')
+      if (opening < 0) break
+      const closing = rest.indexOf('`', opening + 1)
+      if (closing < 0) break
+      spans.push(rest.slice(opening + 1, closing))
+      rest = rest.slice(closing + 1)
+    }
+  }
+  return [...new Set(spans.filter(span => !/\s/.test(span) && isFloorPath(span) && (span.includes('/') || span.includes('.'))))]
+}
+
+/**
+ * The deterministic escalation the handback path check asks for (node
+ * m7-handback-path-check): the reason the effective review depth must rise to
+ * full, or `undefined` when it does not. Judged from the change list the
+ * harness's own diff read, at the same place and with the same strictness as
+ * `floorHits`: every changed path a test file, or the acceptance naming
+ * backtick paths and none of them touched (`floorPathIn`'s comparison). A
+ * change the diff did not answer for is unknown — absence escalates nothing,
+ * the way an unreadable change misses the floor.
+ */
+export function pathEscalationReason(acceptance: readonly string[], change: FloorChange): string | undefined {
+  if (change.paths.length > 0 && change.paths.every(isTestPath)) return '审查改为全审：改动全在测试文件里'
+  const named = acceptancePathsOf(acceptance)
+  if (named.length > 0 && !change.paths.some(path => floorPathIn(named, path))) {
+    const shown = named.slice(0, 3).join(', ')
+    return `审查改为全审：验收点名的路径一个都没改（${shown}${named.length > 3 ? ', …' : ''}）`
+  }
+  return undefined
+}
+
 /** Whether `words` starts with `wanted`, word for word. */
 function startsWith(words: readonly string[], wanted: readonly string[]): boolean {
   return wanted.length <= words.length && wanted.every((word, index) => words[index] === word)

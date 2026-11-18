@@ -1,14 +1,16 @@
 /**
  * The execution-boundary rules of the dispatched chain (M7 design 0.6 §3.2,
- * §12.1). Four of the five gates are judged here, by the execute row's one
+ * §12.1). Five gates are judged here, by the execute row's one
  * `tools/pre-execute` listener, prepended so a write gets this correction
  * rather than another row's: worker-scope (§3.2.1), worker-graph-readonly
- * (§3.2.3), worker-git (§3.2.4) and worker-message-live-only (§3.2.5). The
- * fifth, dispatch-chain-readonly (§3.2.2), is the change to M3's
+ * (§3.2.3), worker-git (§3.2.4), worker-message-live-only (§3.2.5) and
+ * handback-cause (m7-habits: a reopened task's structured handback carries
+ * the cause, and the lift record can take the rule off). The sixth,
+ * dispatch-chain-readonly (§3.2.2), is the change to M3's
  * design-before-release (src/guard/design-release.ts): the execute row's
  * service tells that judge who a dispatch carries, and the released stage
  * stops being a pass for everyone else. The ids and first-day modes of all
- * eight code gates are EXECUTE_RULES, the constant table the full rules
+ * nine code gates are EXECUTE_RULES, the constant table the full rules
  * board maps into its code-rules catalog (§12.1, like M3's
  * MAIN_AGENT_RULES). trunk-advance-checked lives in src/execute/advance.ts
  * (E7) and completion-gate in src/execute/drive.ts (E8): the row installs
@@ -52,10 +54,12 @@
 import { isAbsolute, relative, resolve } from 'node:path'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { releaseOf, type ReleaseResult } from '../graph/execute-stage.ts'
+import { reopenCount } from '../graph/reopen.ts'
 import { projectOf } from '../data/project-root.ts'
 import type { PreExecuteDecision, PreExecuteHost, PreExecuteListener, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
 import type { JsonValue } from '../shared/json.ts'
 import { dialectService, dialectWarner, toNativeTool } from '../shared/dialect.ts'
+import { STRUCTURED_OUTPUT_TOOL } from '../shared/tool-names.ts'
 import type { HealthState } from '../shared/health.ts'
 import { repoRelative, within } from '../execute/scope.ts'
 import type { Attempt } from '../execute/attempts.ts'
@@ -64,9 +68,10 @@ import { takeSnapshot, gitInvocations, gitRisk, snapshotCorrection, type GitInvo
 import { commandName, shellWrites, simpleCommands, type ShellDialect } from './shell.ts'
 import { fileToolTargetOf, isFileWrite, renderCorrection, shellCommandOf, type Correction, type ToolCall } from './rules.ts'
 import { requestsService } from './request-service.ts'
+import { liftedRulesOf } from './lift.ts'
 import type { ViolationRecord } from './index.ts'
 
-/** The eight code gates with their first-day modes (§12.1): data for the rules board's catalog; the rules themselves are the four below, M3's changed judge, and the later steps' gates. */
+/** The nine code gates with their first-day modes (§12.1): data for the rules board's catalog; the rules themselves are the four below, M3's changed judge, and the later steps' gates. The handback gate is the one the lift paths know (src/guard/catalog.ts, row execute). */
 export const EXECUTE_RULES: readonly { readonly id: string, readonly title: string, readonly mode: 'enforce' }[] = [
   { id: 'worker-scope', title: 'worker 只写自己工作树里的写入范围：越界写被拒', mode: 'enforce' },
   { id: 'dispatch-chain-readonly', title: '派发链里不在登记表的 agent 只读：原生 subagent 派出的只读', mode: 'enforce' },
@@ -76,6 +81,7 @@ export const EXECUTE_RULES: readonly { readonly id: string, readonly title: stri
   { id: 'stopped', title: '停下标记之后、人回话之前，不再派这件活与它的审查', mode: 'enforce' },
   { id: 'trunk-advance-checked', title: '主干只能前进到跑过合入前检查的提交', mode: 'enforce' },
   { id: 'completion-gate', title: '目标完成要 harness 的核对和证据', mode: 'enforce' },
+  { id: 'handback-cause', title: '重开过的活交回要写明原因：没写原因的交回被拒', mode: 'enforce' },
 ]
 
 /**
@@ -505,6 +511,30 @@ export function installExecuteRules(ctx: PreExecuteHost, deps: ExecuteRulesDeps)
       }
       await record('refused')
       return refuse('worker-graph-readonly', graph, payload, agent.id, session.id, deps)
+    }
+
+    // handback-cause (m7-habits): a reopened task's structured handback states
+    // its cause. The task's brief asks for it; the refusal sends the worker
+    // back to the call with the cause filled. Judged only on the row's cached
+    // graph (a graph this process never read cannot tell reopened, and the
+    // handback must not wedge) and only while the rule stands on the project's
+    // lift record.
+    if (attempt?.role === 'worker' && call.name === STRUCTURED_OUTPUT_TOOL) {
+      const root = attempt.worktree ?? cwd
+      const project = root === undefined ? undefined : projectOf(root)?.root
+      const graph = project === undefined ? undefined : deps.graphOf(project)
+      const node = graph?.nodes.get(attempt.node)
+      const lifted = project === undefined ? undefined : liftedRulesOf(project).lifted
+      const args = call.arguments
+      const cause = typeof args === 'object' && args !== null && !Array.isArray(args) && typeof (args as Record<string, unknown>).cause === 'string' && ((args as Record<string, unknown>).cause as string).trim() !== ''
+      if (node !== undefined && lifted?.has('handback-cause') !== true && reopenCount(node, undefined) >= 1 && !cause) {
+        return refuse('handback-cause', {
+          fact: `You handed back task ${attempt.node} without the cause.`,
+          violation: 'This task was reopened after being done: the handback must say what the cause was and why this change fixes the cause and not only a symptom.',
+          rightPath: 'Write it in the handback field "cause" and call structured_output again.',
+          exception: 'none',
+        }, payload, agent.id, session.id, deps)
+      }
     }
 
     // worker-scope (§3.2.1): a registered caller's file write.

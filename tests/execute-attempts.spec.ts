@@ -210,3 +210,19 @@ test('the handback comment: the changed paths sit in one line after the depth an
   assert.equal(parseHandbackComment(renderHandbackComment(base))?.paths, undefined)
   assert.equal(parseHandbackComment(renderHandbackComment({ ...base, paths: [] }))?.paths, undefined)
 })
+
+test('the handback comment: the cause sits in one line between the depth and the paths, newlines flattened, and reads back; a comment without it parses no cause (m7-habits)', () => {
+  const base = { attempt: 2, status: 'done', childId: 'hz-t-a2-000001', commits: 1, head: 'abc123def456', files: 2, base: 'aaa111bbb222', questions: 0, assumptions: 0, asked: 0, answered: 0, timeouts: 0, plans: 0, incoming: 0, lessons: 0, depth: '全审' as const, problems: [] }
+  const withCause = renderHandbackComment({ ...base, cause: 'the guard checked\nthe wrong path', paths: ['src/guarded/writer.js'] })
+  const lines = withCause.split('\n')
+  assert.ok(lines[3].startsWith('有效深浅 全审'))
+  assert.equal(lines[4], '原因 the guard checked the wrong path')
+  assert.equal(lines[5], '改动 `src/guarded/writer.js`')
+  assert.equal(parseHandbackComment(withCause)?.cause, 'the guard checked the wrong path')
+  // A skip handback has no depth line: the cause line opens the tail and still reads back.
+  const { depth: _depth, ...withoutDepth } = base
+  const skip = renderHandbackComment({ ...withoutDepth, cause: 'the writer double-escaped' })
+  assert.equal(skip.split('\n')[3], '原因 the writer double-escaped')
+  assert.equal(parseHandbackComment(skip)?.cause, 'the writer double-escaped')
+  assert.equal(parseHandbackComment(renderHandbackComment(base))?.cause, undefined)
+})

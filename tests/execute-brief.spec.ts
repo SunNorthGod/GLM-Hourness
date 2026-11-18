@@ -533,14 +533,15 @@ test('renderBrief: a task with no source decisions, no non-goals and no write sc
   assert.ok(text.includes('Why it exists: "goal-1" > this task.'))
 })
 
-/** The review brief input over the plain graph, with the handback's docs and policy delta as given. */
-const reviewBriefInput = (graph: LoadedGraph, over: { readonly docs?: readonly string[], readonly policyDelta?: readonly string[] } = {}) => ({
+/** The review brief input over the plain graph, with the handback's docs, the cause and the policy delta as given. */
+const reviewBriefInput = (graph: LoadedGraph, over: { readonly docs?: readonly string[], readonly cause?: string, readonly policyDelta?: readonly string[] } = {}) => ({
   graph,
   task: get(graph, 'review-1'),
   reviewed: get(graph, 'task-1'),
   childId: 'hz-review-1-a1-k3x9ab',
   depth: 'full' as const,
   handback: { head: 'abc123def456', base: 'aaa111bbb222', status: 'done', ...(over.docs === undefined ? {} : { docs: over.docs }) },
+  ...(over.cause === undefined ? {} : { cause: over.cause }),
   ...(over.policyDelta === undefined ? {} : { policyDelta: over.policyDelta }),
   gateCommands: [] as readonly string[],
 })
@@ -564,4 +565,30 @@ test('renderReviewBrief: the latest handback\'s 政策差 classes ride as the po
   assert.ok(brief.text.indexOf('Policy changed since the dispatch') < brief.text.indexOf('## Constraints'), 'the delta rides in the context section')
   assert.ok(!renderReviewBrief(reviewBriefInput(graph)).text.includes('Policy changed since the dispatch'), 'no delta, no section')
   assert.ok(!renderReviewBrief(reviewBriefInput(graph, { policyDelta: [] })).text.includes('Policy changed since the dispatch'), 'an empty delta is no section')
+})
+
+test('renderReviewBrief: a reopened task\u2019s cause rides in the context with the symptom-only instruction (m7-habits)', () => {
+  const graph = plain()
+  const brief = renderReviewBrief(reviewBriefInput(graph, { cause: 'the guard checked the wrong path' }))
+  const line = '- The task was reopened after being done; its accepted handback states the cause: the guard checked the wrong path. When the change only treats a symptom and does not address this cause, record the gap as a non-blocking finding.'
+  assert.ok(brief.text.includes(line), brief.text.slice(brief.text.indexOf('## Context'), brief.text.indexOf('## Constraints')))
+  assert.ok(brief.text.indexOf('reopened after being done') < brief.text.indexOf('## Constraints'), 'the cause rides in the context section')
+  assert.ok(!renderReviewBrief(reviewBriefInput(graph)).text.includes('reopened after being done'), 'no cause, no line')
+})
+
+test('renderBrief: a reopened task carries the cause sentence with the last reopen\u2019s reason, every task carries the standing leave-nothing sentence, and the length stays within the limit (m7-habits)', () => {
+  const reopen = { at: at(5), actor: 'llm' as const, op: 'status' as const, from: 'done' as const, to: 'doing' as const, reason: 'the feed dropped items again' }
+  const graph = plain()
+  const task = get(graph, 'task-1')
+  const reopened = withNode(graph, { ...task, history: [...task.history, reopen] })
+  const text = renderBrief(briefInput({ graph: reopened, task: get(reopened, 'task-1') })).text
+  assert.ok(text.includes('- This task was reopened after being done; the reopen was for: the feed dropped items again. Find the cause before you change code, and hand back with the handback field "cause" saying what the cause is and why this change fixes the cause and not only a symptom.'))
+  assert.ok(text.length <= BRIEF_LIMIT, 'the reopened brief stays within the limit')
+  const bare = renderBrief(briefInput()).text
+  assert.ok(!bare.includes('reopened after being done'), 'a task never reopened carries no cause sentence')
+  const STANDING = '- Leave nothing this change strands: delete code nothing uses after it and text it no longer holds true; rewrite a clause that no longer holds as a whole instead of stacking a patch on it; do not add IDE- or tool-specific directories or configuration to the repository (ones the project already commits stay as they are).'
+  assert.ok(bare.includes(STANDING), 'the standing sentence is on every brief')
+  assert.ok(text.includes(STANDING))
+  const reasonless = withNode(graph, { ...task, history: [...task.history, { at: at(5), actor: 'llm' as const, op: 'status' as const, from: 'done' as const, to: 'doing' as const }] })
+  assert.ok(renderBrief(briefInput({ graph: reasonless, task: get(reasonless, 'task-1') })).text.includes('- This task was reopened after being done, and the reopen recorded no reason.'))
 })

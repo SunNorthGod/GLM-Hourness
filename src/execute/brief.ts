@@ -17,6 +17,7 @@
 import { MODULE_READERS, directionsOf, goalLayer, isDesignReview, isPostRelease, scopedTasks, sentBack, type ModuleReaders, type ReleaseResult } from '../graph/execute-stage.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { ancestorsOf, childrenIndex, subtreeOf, waitsForHuman } from '../graph/projection.ts'
+import { reopensAfter } from '../graph/reopen.ts'
 import { ID_PATTERN, type GraphNode } from '../graph/schema.ts'
 import { effectiveStage, goalOf } from '../graph/stage.ts'
 import { stepsServedBy } from '../graph/user-graph.ts'
@@ -481,11 +482,16 @@ function body(input: BriefInput, cut: ReadonlySet<Truncation>): string {
   if (input.plan !== undefined) lines.push(`- Approved plan (version ${input.plan.version}):`, ...input.plan.steps.split('\n').map(line => `  ${line}`))
   if (lessons.length > 0) lines.push(cut.has('lessons') ? '- Lessons that match this task: (truncated)' : `- Lessons that match this task:\n${lessons.map(lesson => `  - ${lesson}`).join('\n')}`)
   const scope = task.writeScope ?? []
+  const lastReopen = reopensAfter(task, undefined).at(-1)
   lines.push(
     '',
     '## Constraints',
     `- Write only inside: ${scope.length === 0 ? 'nothing' : scope.join(', ')}. Writes elsewhere are refused.`,
     ...(cut.has('docs') ? [] : (input.docs ?? []).map(component => `- Component doc covering your scope: ${component}/AGENTS.md. Keep it true: update it in the same commits when your change alters what it says; otherwise say in the handback field "docs" why it still holds.`)),
+    '- Leave nothing this change strands: delete code nothing uses after it and text it no longer holds true; rewrite a clause that no longer holds as a whole instead of stacking a patch on it; do not add IDE- or tool-specific directories or configuration to the repository (ones the project already commits stay as they are).',
+    ...(lastReopen === undefined ? [] : [
+      `- This task was reopened after being done${lastReopen.reason === undefined ? ', and the reopen recorded no reason' : `; the reopen was for: ${lastReopen.reason.slice(0, 300)}`}. Find the cause before you change code, and hand back with the handback field "cause" saying what the cause is and why this change fixes the cause and not only a symptom.`,
+    ]),
     input.plan !== undefined
       ? `- Your plan (version ${input.plan.version}) is already approved: write inside it. To change it, submit a new version with submit_plan and wait for approval.`
       : input.quick ? '- Quick task: no plan needed.' : '- Before writing, submit a plan with submit_plan and wait for approval.',
@@ -611,6 +617,8 @@ export interface ReviewBriefInput {
   readonly depth: 'full' | 'light'
   /** The done handback under review, as the task's comment carries it; `docs` are its component-doc lines (docs-at-hand design 0.3 §6.2). */
   readonly handback?: { readonly head?: string, readonly base?: string, readonly status: string, readonly docs?: readonly string[] }
+  /** The cause the accepted handback states (m7-habits), present when the reviewed task was reopened after being done. */
+  readonly cause?: string
   /** The previous round's blocking findings, one line each (§3.7.3). */
   readonly findings?: readonly string[]
   /** The policy classes the latest handback reports as changed since the dispatch (reval design §4.3); the reviewer judges against the forms as they stand now. */
@@ -642,6 +650,7 @@ export function renderReviewBrief(input: ReviewBriefInput): Brief {
     '## Context',
     `- Reviewed: commit ${head}, made from base ${base}. Read the change with git diff ${base}..${head} in the worktree.`,
     `- The handback status was ${input.handback?.status ?? 'unknown'}; the task body carries its summary comment and the plan section.`,
+    ...(input.cause !== undefined && input.cause !== '' ? [`- The task was reopened after being done; its accepted handback states the cause: ${input.cause}. When the change only treats a symptom and does not address this cause, record the gap as a non-blocking finding.`] : []),
     ...(input.handback?.docs !== undefined && input.handback.docs.length > 0 ? ['- The handback says of the component docs:', ...input.handback.docs.map(line => `  - ${line}`)] : []),
     ...(input.findings === undefined || input.findings.length === 0 ? [] : ['- Findings of the previous round (these come first):', ...input.findings.map(finding => `  - ${finding}`)]),
     ...(input.policyDelta !== undefined && input.policyDelta.length > 0 ? [`- Policy changed since the dispatch: ${input.policyDelta.join(', ')}. The forms now in force: gate/norm-merge-gate and floor/norm-review-floor — read with graph_show; rules — the rules board page. Judge the change against the forms as they stand now.`] : []),

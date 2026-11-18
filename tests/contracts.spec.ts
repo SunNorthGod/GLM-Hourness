@@ -237,6 +237,10 @@ test('guard catalog: each listed rule is the id of a rule object its row install
     loops: [loopsFilesOnly(['C:/work/app'], 'C:/work/app').id, loopsScheduleTools(true).id],
     metrics: [metricsFilesOnly('C:/work/app', 'C:/work/app').id],
     memory: [habitAskFirst({}).id],
+    // The execute row's rules are its listener's deny reasons, not GuardRule
+    // objects (src/guard/execute-rules.ts); handback-cause (m7-habits) is the
+    // one the lift paths know, judged there with the lift record consulted.
+    execute: ['handback-cause'],
   }
   const listed = (row: string): string[] => GUARD_RULES.filter(rule => rule.row === row).map(rule => rule.id)
   assert.deepEqual(listed('guard').sort(), [...installed.guard].sort())
@@ -244,10 +248,11 @@ test('guard catalog: each listed rule is the id of a rule object its row install
   assert.deepEqual(listed('loops'), installed.loops)
   assert.deepEqual(listed('metrics'), installed.metrics)
   assert.deepEqual(listed('memory'), installed.memory)
-  assert.deepEqual([...new Set(GUARD_RULES.map(rule => rule.row))].sort(), ['graph', 'guard', 'loops', 'memory', 'metrics'], 'only rows that exist on main')
-  // m4-gate acceptance 6 as the human worded it, plus the memory row's habit-ask-first (m5-habit-rule): six, one, two, one, one.
-  assert.deepEqual(['guard', 'graph', 'loops', 'metrics', 'memory'].map(row => listed(row).length), [6, 1, 2, 1, 1])
-  assert.equal(GUARD_RULES.length, 11)
+  assert.deepEqual(listed('execute'), installed.execute)
+  assert.deepEqual([...new Set(GUARD_RULES.map(rule => rule.row))].sort(), ['execute', 'graph', 'guard', 'loops', 'memory', 'metrics'], 'only rows that exist on main')
+  // m4-gate acceptance 6 as the human worded it, plus the memory row's habit-ask-first (m5-habit-rule) and the execute row's handback-cause (m7-habits): six, one, two, one, one, one.
+  assert.deepEqual(['guard', 'graph', 'loops', 'metrics', 'memory', 'execute'].map(row => listed(row).length), [6, 1, 2, 1, 1, 1])
+  assert.equal(GUARD_RULES.length, 12)
   assert.equal(MAIN_AGENT_RULES.length, 10, 'the main agent\'s ten rules are unchanged (the tenth is the nowait rule)')
   // No mode column: a rule of the catalog denies from the day its row is enabled (d-code-rules-enforce).
   for (const entry of GUARD_RULES) {
