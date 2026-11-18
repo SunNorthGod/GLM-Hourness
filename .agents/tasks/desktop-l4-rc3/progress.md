@@ -204,3 +204,17 @@ ws-b 2（19s+3s）、ws-e 1（约 20s）、ws-c 4（/wish 35s、rules_propose、
 - 人的 `~/.dsh` 只读复制凭证，值未打印；`.worktrees/ablation-trial`、
   `.worktrees/comms-split` 未触碰；主检出跟踪文件零改动（build 产物 dist 与
   本任务目录除外）。
+
+## Observation 3 closed by loops-sweep-churn (2026-11-19, branch loops-churn)
+
+- 根因坐实为并发对账——`schedule/changed` 等三路的 settle 不进拍链，臂板的拍
+  在建任务时被自己的 create 触发的对账互踩，一条条目建出 2–7 条 DSH 任务再按
+  `duplicate` 互删互建，拆臂侧级联对账拿旧 catalog 重删已删任务，宿主答
+  `schedule_not_found` 记 `deleted:false`（「没删成」的 16 条与重试风暴同根；
+  「页面把已删的画出来」证伪，视图如实渲染记录）；行健康十条「有 N 条没删」
+  是逐拍 push 且 N 变多行、条件过去不收行。修：四条对账路全排进 beatChain
+  （同拍触发合并一趟）+ `reportState` 按族替换收行（`loops-kept`/`loops-wait`/
+  `loops-holder`），docs ORCHESTRATION §18.10 同批；L2 红转绿（还原 src 复现
+  级联重试与 wait 残行），门禁全绿、探针 620/620（`.llm/logs/lch-*.log`）。
+  桌面证据实读 `%TEMP%\l4rc3\ws-d\`（metrics/removed-tasks/state）与
+  `.llm/l4rc3/ws-d-glmstatus.txt`。

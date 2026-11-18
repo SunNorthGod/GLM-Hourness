@@ -40,6 +40,8 @@ interface Bench {
   readonly schedule: FakeSchedule
   readonly records: LoopRecord[]
   readonly said: Array<{ readonly text: string, readonly level: string }>
+  /** What the reconciliation said through `reportState`, in order: a family's newest word is its line of the row's health. */
+  readonly states: Array<{ readonly family: string, readonly text: string | undefined, readonly level: string }>
   readonly delivered: DeliverRequest[]
   /** The moment every reading is taken at; a case moves it. */
   at: { ms: number }
@@ -60,6 +62,7 @@ async function bench(body: (it: Bench) => Promise<void>, options: { readonly sta
     const state = emptyState()
     const records: LoopRecord[] = []
     const said: Bench['said'] = []
+    const states: Bench['states'] = []
     const delivered: DeliverRequest[] = []
     const schedule = fakeSchedule({ now })
     const it: Bench = {
@@ -68,6 +71,7 @@ async function bench(body: (it: Bench) => Promise<void>, options: { readonly sta
       schedule,
       records,
       said,
+      states,
       delivered,
       at,
       holder: { kind: 'ok', session: HOLDER },
@@ -87,6 +91,7 @@ async function bench(body: (it: Bench) => Promise<void>, options: { readonly sta
         // The records the metrics journal would take (a refused one is lost, as in the real one).
         record: (record) => { if (journalTakesRecord(record)) records.push(record) },
         report: (text, level) => void said.push({ text, level }),
+        reportState: (family, text, level) => void states.push({ family, text, level }),
         deliver: (request) => {
           delivered.push(request)
           return Promise.resolve(it.deliverResult)
@@ -298,12 +303,13 @@ test('bind: no main agent must be read twice, a minute apart, before the reminde
     it.holder = { kind: 'none', reason: 'no-record' }
     const first = await reconcile(it.deps)
     assert.deepEqual([...first.removed], [])
-    assert.ok(first.lines.some(line => line.includes('再看一拍')))
+    assert.deepEqual(it.states.filter(line => line.family === 'loops-wait').at(-1)?.text, '还没读到主 Agent 的记录，再看一拍才动那几条提醒', 'the wait is the one word of its family')
     assert.equal(it.schedule.tasks().length, 1)
     it.at.ms += ENTRY_GONE_GAP_MS + 1_000
     const second = await reconcile(it.deps)
     assert.equal(second.removed.length, 1)
     assert.deepEqual(deletions(it.records), [{ why: 'no-holder', deleted: true }])
+    assert.deepEqual(it.states.filter(line => line.family === 'loops-wait').at(-1)?.text, undefined, 'the wait is taken back once the removal went ahead')
     assert.equal(it.schedule.tasks().length, 0)
     assert.deepEqual(it.state.bindings, {})
   })

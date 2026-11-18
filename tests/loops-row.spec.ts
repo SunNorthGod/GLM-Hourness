@@ -475,3 +475,46 @@ rowTest('with the GLM channel\'s pricing service the row lists its four entries 
   assert.match(words, /插件带来的（9 项，只能看）/)
   for (const entry of GLM_LOOP_DEFAULTS) assert.ok(words.includes(entry.title), `${entry.id} is listed`)
 })
+
+test('the beat\'s word about a reminder it cannot delete stands alone in the row health and is taken back when the deletions succeed', async () => {
+  let clock = NOW
+  await withLoopsRow(async ({ root, runtime, beats, health, schedule }) => {
+    const since = new Date(NOW - 3_600_000).toISOString()
+    const holder = holderFileOf(join(root, 'user'), join(root, 'docs', 'graph'))
+    await mkdir(dirname(holder), { recursive: true })
+    await writeFile(holder, `${JSON.stringify({ version: 1, sessionId: runtime.agent.id, graphDir: join(root, 'docs', 'graph'), since, commandId: 'command-1' })}\n`)
+    // The session appears: the project starts running here (the agent/created road of src/loops/index.ts).
+    await runtime.create()
+    /** Run one beat and wait for its words to have landed. */
+    const beat = async (until: () => boolean): Promise<void> => {
+      beats[0]?.run()
+      const started = Date.now()
+      while (!until() && Date.now() - started < 5_000) await new Promise(resolve => setTimeout(resolve, 25))
+      await new Promise(resolve => setTimeout(resolve, 120))
+    }
+    const count = (text: string): number => text.split('有 1 条 DSH 提醒这一拍没删').length - 1
+    // Arm: the one time entry of the row's own defaults becomes one reminder.
+    await beat(() => schedule.tasks().length === 1)
+    const task = schedule.tasks()[0]
+    assert.ok(task !== undefined, 'the reminder of loops.unsynced-daily was made')
+    assert.equal(count(health().reason), 0)
+    // Disarm: the holder record goes the way /wish off takes it. The first beat waits for a second reading.
+    const { unlink } = await import('node:fs/promises')
+    await unlink(holder).catch(() => {})
+    await beat(() => health().reason.includes('还没读到主 Agent 的记录'))
+    assert.match(health().reason, /还没读到主 Agent 的记录，再看一拍才动那几条提醒/)
+    // The second reading: the removal goes ahead, and one reminder cannot go (a person's edit keeps conflicting it).
+    schedule.conflictOnce(task.id)
+    clock += 61_000
+    await beat(() => health().reason.includes('条 DSH 提醒这一拍没删'))
+    assert.equal(health().reason.includes('还没读到主 Agent 的记录'), false, 'the wait is taken back once the removal went ahead')
+    assert.equal(count(health().reason), 1, 'one line about the kept reminder')
+    schedule.conflictOnce(task.id)
+    await beat(() => false)
+    assert.equal(count(health().reason), 1, 'still one line, not one per beat')
+    // The conflict over: the reminder goes, and its line goes with it.
+    await beat(() => schedule.tasks().length === 0)
+    assert.equal(schedule.tasks().length, 0)
+    assert.equal(count(health().reason), 0, 'the line is taken back once nothing is kept')
+  }, { now: () => clock })
+})

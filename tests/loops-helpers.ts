@@ -16,13 +16,14 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { DATA_SERVICE } from '../src/shared/data-home.ts'
-import type { ServiceLookup } from '../src/shared/dsh-min.ts'
+import type { ScheduleService, ServiceLookup } from '../src/shared/dsh-min.ts'
 import type { EmittedEvent } from '../src/shared/metrics.ts'
 import { METRICS_SERVICE } from '../src/shared/metrics.ts'
 import { CHANNEL_EVENTS } from '../src/loops/channel.ts'
 import type { EntryImage, JournalRecord } from '../src/loops/journal.ts'
 import { metricEventOf } from '../src/loops/metrics.ts'
 import { createRegistry } from '../src/loops/registry.ts'
+import type { HolderState } from '../src/loops/holder.ts'
 import { createProjectRuntime, type LoopChecks, type ProjectDeps, type ProjectRuntime, type WaitingItem } from '../src/loops/run.ts'
 import type { DeliverRequest, DeliverResult } from '../src/loops/deliver.ts'
 import type { LoopEntryDefinition } from '../src/loops/model.ts'
@@ -232,6 +233,8 @@ export interface LoopWorld {
   readonly store: LoopStore
   readonly records: LoopRecord[]
   readonly told: Array<{ text: string, level: 'info' | 'degraded' }>
+  /** What the runner said through `reportState`, in order: a family's newest word is its line of the row's health. */
+  readonly states: Array<{ family: string, text: string | undefined, level: 'info' | 'degraded' }>
   readonly delivered: DeliverRequest[]
   readonly timers: Array<{ ms: number, run: () => void }>
   readonly now: () => number
@@ -258,6 +261,10 @@ export interface LoopWorldOptions {
   readonly at?: number
   /** The channel's entries, as the row reads them from the pricing service; the channel events are in the table with them. */
   readonly channel?: readonly LoopEntryDefinition[]
+  /** The host's schedule service, which the runner binds time entries to (design §6.2); absent mounts none. */
+  readonly schedule?: () => ScheduleService | undefined
+  /** How the main agent's session reads; the default is what the holder record file says. */
+  readonly holder?: () => HolderState
 }
 
 /**
@@ -272,6 +279,7 @@ export async function loopWorldOf(root: string, options: LoopWorldOptions = {}, 
   let clock = options.at ?? Date.parse('2026-11-02T03:00:00.000Z')
   const records: LoopRecord[] = []
   const told: LoopWorld['told'] = []
+  const states: LoopWorld['states'] = []
   const delivered: DeliverRequest[] = []
   const timers: LoopWorld['timers'] = []
   const store = openLoopStore(root, { io: quickIo({ now: () => clock }) })
@@ -289,6 +297,7 @@ export async function loopWorldOf(root: string, options: LoopWorldOptions = {}, 
         }
       }
       if (name === DATA_SERVICE) return { userHome: join(root, 'user'), projectHome: join(root, '.llm') }
+      if (name === 'schedule') return options.schedule?.()
       return undefined
     },
   }
@@ -326,6 +335,7 @@ export async function loopWorldOf(root: string, options: LoopWorldOptions = {}, 
     pid: options.pid ?? 4001,
     boot: () => boot,
     report: (text, level) => { told.push({ text, level }) },
+    reportState: (family, text, level) => { states.push({ family, text, level }) },
     deliver: async (request) => {
       delivered.push(request)
       return options.deliver === undefined ? { kind: 'delivered', how: 'followup' } : await options.deliver(request)
@@ -336,6 +346,7 @@ export async function loopWorldOf(root: string, options: LoopWorldOptions = {}, 
     read: (_path, previous) => Promise.resolve({ size: 'gone', mtimeMs: previous?.mtimeMs ?? 0 }),
     ...(options.checks === undefined ? {} : { checks: options.checks }),
     ...(options.holderHere === undefined ? {} : { holderHere: options.holderHere }),
+    ...(options.holder === undefined ? {} : { holder: options.holder }),
     ...(options.peak === undefined ? {} : { peak: options.peak }),
     ...(options.waiting === undefined ? {} : { waiting: options.waiting }),
   }
@@ -346,6 +357,7 @@ export async function loopWorldOf(root: string, options: LoopWorldOptions = {}, 
     store,
     records,
     told,
+    states,
     delivered,
     timers,
     now: () => clock,
