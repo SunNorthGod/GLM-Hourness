@@ -201,17 +201,17 @@ test('the execute row registers dispatch_task, check_commit and await_human, dis
   assert.deepEqual(await service.runAction('execute.no-such-action', { id: 'ev-0000000000000000', event: 'hourness.host-started', at: '2026-11-04T08:00:00.000Z', project: process.cwd(), key: 'host-started:main-1:1', payload: {}, merged: [] }), { outcome: 'failed', reason: 'unknown action execute.no-such-action' })
 })
 
-test('EXECUTE_RULES carries the eight code gates, all enforce on day one (§12.1)', () => {
+test('EXECUTE_RULES carries the nine code gates, all enforce on day one (§12.1)', () => {
   const ids = new Set(EXECUTE_RULES.map(rule => rule.id))
-  for (const wanted of ['worker-scope', 'dispatch-chain-readonly', 'worker-graph-readonly', 'worker-git', 'worker-message-live-only', 'stopped', 'trunk-advance-checked', 'completion-gate']) {
+  for (const wanted of ['worker-scope', 'dispatch-chain-readonly', 'worker-graph-readonly', 'worker-git', 'worker-message-live-only', 'stopped', 'trunk-advance-checked', 'completion-gate', 'handback-cause']) {
     assert.ok(ids.has(wanted), `${wanted} is not in EXECUTE_RULES`)
   }
 })
 
 // ---- the dispatched chain's rules on the fake host ----
 
-/** One dispatched no-plan task over a preset project with the four rules installed; `extra` adds services the rules' lookup reads (the request seam's fake desk). */
-async function dispatchedWorker(natives: readonly string[], extra?: (project: Project) => Partial<Record<string, unknown>>): Promise<{
+/** One dispatched no-plan task over a preset project with the four rules installed; `extra` adds services the rules' lookup reads (the request seam's fake desk); `reopen` moves the task done and back to doing before the dispatch (m7-habits's reopened-node flow). */
+async function dispatchedWorker(natives: readonly string[], extra?: (project: Project) => Partial<Record<string, unknown>>, reopen = false): Promise<{
   readonly project: Project
   readonly cleanup: (childId: string) => void
   readonly childId: string
@@ -221,6 +221,15 @@ async function dispatchedWorker(natives: readonly string[], extra?: (project: Pr
   readonly exec: ReturnType<typeof execTool>
 }> {
   const project = await presetProject([{ ...WORK_TASK, id: 'task-1', writeScope: ['site/index.md'] }])
+  if (reopen) {
+    const engine = openEngine(project.graphDir)
+    const first = await engine.load()
+    const done = await engine.apply('harness', { op: 'status', id: 'task-1', rev: first.revisions.get('task-1')!, to: 'done', evidence: [{ kind: 'check', ref: 'test seed', exit: 0 }], reason: 'test: done' })
+    assert.ok(done.ok, `the done move failed: ${JSON.stringify(done.ok ? {} : done.error)}`)
+    const again = await engine.load()
+    const reopened = await engine.apply('llm', { op: 'status', id: 'task-1', rev: again.revisions.get('task-1')!, to: 'doing', reason: 'the feed dropped items again' })
+    assert.ok(reopened.ok, `the reopen failed: ${JSON.stringify(reopened.ok ? {} : reopened.error)}`)
+  }
   const { deps, cleanup } = depsFor(project, fakeSubagents().service)
   const runtime = fakeRuntime({ natives: [...natives] })
   rulesOver(project, deps.cache, extra?.(project) ?? {})(runtime)
@@ -315,6 +324,53 @@ test('worker-git keeps the index writes to the worker\u2019s own worktree: read-
   }
   finally {
     dispose(project)
+  }
+})
+
+const HANDBACK_CORE = { status: 'done', summary: 'done', commits: [], files: [], checks: [], questions: [], assumptions: [], lessons: [] }
+
+test('handback-cause (m7-habits): a reopened task\u2019s causeless structured_output is refused with the rule id journaled, the cause passes, a task never reopened passes, and a lifted rule passes', async () => {
+  // The reopened flow: the reopen lands before the dispatch, so the row's cached graph carries it.
+  const seam = await dispatchedWorker(['structured_output'], undefined, true)
+  const { project, cleanup, childId, child, exec } = seam
+  try {
+    const without = await exec('structured_output', HANDBACK_CORE, { agent: child })
+    const text = without.content.map(part => part.text ?? '').join('')
+    assert.ok(without.isError && text.includes('without the cause') && text.includes('handback field "cause"'), `the causeless handback ran: ${text}`)
+    const violations = readFileSync(join(project.root, '.llm', 'audit', 'violations.jsonl'), 'utf8')
+    assert.ok(violations.includes('"rule":"handback-cause"'), 'the handback-cause denial is not in the violation journal')
+    // With the cause: the gate passes (the fake host has no structured_output body; the denial is gone).
+    const withCause = await exec('structured_output', { ...HANDBACK_CORE, cause: 'the feed dropped items; the fix escapes at the writer' }, { agent: child })
+    assert.ok(!withCause.content.map(part => part.text ?? '').join('').includes('without the cause'), 'the handback with the cause was refused')
+    // Whitespace alone is no cause.
+    const blank = await exec('structured_output', { ...HANDBACK_CORE, cause: '   ' }, { agent: child })
+    assert.ok(blank.isError && blank.content.map(part => part.text ?? '').join('').includes('without the cause'), 'a whitespace cause passed the gate')
+    cleanup(childId)
+  }
+  finally {
+    dispose(project)
+  }
+  // A task never reopened: no cause asked for.
+  const plain = await dispatchedWorker(['structured_output'])
+  try {
+    const result = await plain.exec('structured_output', HANDBACK_CORE, { agent: plain.child })
+    assert.ok(!result.content.map(part => part.text ?? '').join('').includes('without the cause'), 'a first build was asked for the cause')
+  }
+  finally {
+    plain.cleanup(plain.childId)
+    dispose(plain.project)
+  }
+  // The rule lifted on the project's record: the gate stands down.
+  const lifted = await dispatchedWorker(['structured_output'], undefined, true)
+  try {
+    mkdirSync(join(lifted.project.root, 'docs', 'guard'), { recursive: true })
+    appendFileSync(join(lifted.project.root, 'docs', 'guard', 'lifts.jsonl'), `${JSON.stringify({ at: '2026-11-19T00:00:00.000Z', rule: 'handback-cause', action: 'lift', via: 'board', words: '/rules lift handback-cause' })}\n`, 'utf8')
+    const handed = await lifted.exec('structured_output', HANDBACK_CORE, { agent: lifted.child })
+    assert.ok(!handed.content.map(part => part.text ?? '').join('').includes('without the cause'), 'the lifted rule still refused the handback')
+  }
+  finally {
+    lifted.cleanup(lifted.childId)
+    dispose(lifted.project)
   }
 })
 

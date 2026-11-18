@@ -431,6 +431,8 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
       unparsed: hitClass === 'unparsed',
     }, executeMetricWhere(projectRoot, attempt.parentSession))
   }
+  // The cause the worker handed back (m7-habits): the reopened-task sentence in the brief asks for it, the handback gate refuses the handback without it; a non-empty one lands as the 原因 line of the summary comment, on the node.
+  const cause = typeof structured.cause === 'string' && structured.cause.trim() !== '' ? structured.cause.trim() : undefined
   const counts = communicationOf(attempt.childId)
   const summary: HandbackComment = {
     attempt: attempt.attempt,
@@ -452,6 +454,7 @@ async function workerHandback(deps: HandbackDeps, attempt: Attempt, graph: Loade
     ...(lessonsResult.rejected === undefined ? {} : { lessonsRejected: lessonsResult.rejected }),
     ...(depth === undefined ? {} : { depth }),
     ...(floorHit === undefined ? {} : { floorHit }),
+    ...(cause === undefined ? {} : { cause }),
     ...(changedPaths === undefined || changedPaths.length === 0 ? {} : { paths: changedPaths }),
     ...(drift.length > 0 ? { policyDrift: drift.map(change => change.id) } : {}),
     ...(docs.length > 0 ? { docs } : {}),

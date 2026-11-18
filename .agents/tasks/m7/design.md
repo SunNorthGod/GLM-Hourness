@@ -574,6 +574,8 @@ Decisions it follows: <source decisions and decided questions: id, title, chosen
 
 ## Constraints
 - Write only inside: <writeScope>. Writes elsewhere are refused.
+- Leave nothing this change strands: delete code nothing uses after it and text it no longer holds true; rewrite a clause that no longer holds as a whole instead of stacking a patch on it; do not add IDE- or tool-specific directories or configuration to the repository (ones the project already commits stay as they are).
+- <This task was reopened after being done; the reopen was for: <上一次重开的理由>. Find the cause before you change code, and hand back with the handback field "cause" saying what the cause is and why this change fixes the cause and not only a symptom.>   # only when the task was reopened after being done（reopenCount(task, undefined) >= 1，理由取 reopensAfter 最后一条的 reason）
 - <Before writing, submit a plan with submit_plan and wait for approval. | Quick task: no plan needed.>
 - Questions that need the main agent: ask_main (state the assumption you will use if no answer comes). Do not end your turn to wait.
 - Commit on your branch; start every commit message with "<id>: ". Do not push, and do not touch other branches or worktrees; the main agent integrates your branch.
@@ -590,7 +592,7 @@ Decisions it follows: <source decisions and decided questions: id, title, chosen
 brief <digest> · graph <revision>
 ```
 
-审查任务的简报同形，目标栏写「Review task <被审 id> at commit <sha> against its acceptance」，约束栏写「You write nothing except your report under .hourness/」、挡路的三类标准（§3.7.2）与这一轮的深浅（全审或轻审的那一句，§3.7.1），完成栏的交回是审查结论。
+审查任务的简报同形，目标栏写「Review task <被审 id> at commit <sha> against its acceptance」，约束栏写「You write nothing except your report under .hourness/」、挡路的三类标准（§3.7.2）与这一轮的深浅（全审或轻审的那一句，§3.7.1），完成栏的交回是审查结论。上下文栏在任务重开过（m7-habits）且最近一次 done 交回带了 `cause` 时多一行：交回写明的原因原样带上，附一句「改动只处理了表现、没碰到这个原因时，记一条不挡路的发现」（`renderReviewBrief` 的 `cause`；挡不挡路见 §3.7.2 的三类，这里默认不挡路，不改变判定）。
 
 #### 3.5.3 pins 与过期
 
@@ -639,6 +641,7 @@ brief <digest> · graph <revision>
   assumptions: string[]                               // ask_main 超时后用的假设，及其他假设
   lessons: Array<{ problem: string, fix: string, files: string[], commands: string[], tools: string[],
                    errors?: string[], scope?: 'project' | 'all' }>   // errors 至多 5 项、每项 8–300 字符（M5 §8.1 第 2 处）
+  cause?: string                                      // 任务重开过时：找到的原因，以及这次为什么修的是原因而不只是表现（m7-habits）
   report?: string                                     // 长报告的路径：工作树里的 .hourness/<childId>.md
 }
 ```
@@ -652,9 +655,9 @@ brief <digest> · graph <revision>
 worker 的 `result` 落定后（`{output, stopReason, structured?}`，subagent:1098–1117；`caller` 模式下由 harness 自己收，2049）：
 
 1. `stopReason` 不是 `completed`（`aborted`、`error`、`max-tokens`、`refusal`）：批注「第 <n> 次结束：<原因>」，任务保持进行中；给主 Agent 送一条事实通知（§3.4.3 的 `handback` 事件），建议重新派发或在下一批里问人。
-2. 有结构化结果：语义校验（提交号是 7–40 位十六进制且在分支上，`git merge-base --is-ancestor <基线> <提交>` 与 `git branch --contains`；文件是仓库相对路径）。校验不过的项记进批注，不丢整份交回。
+2. 有结构化结果：语义校验（提交号是 7–40 位十六进制且在分支上，`git merge-base --is-ancestor <基线> <提交>` 与 `git branch --contains`；文件是仓库相对路径）。校验不过的项记进批注，不丢整份交回。任务重开过而 `cause` 为空时，这份交回根本到不了这里：`handback-cause` 门在 `structured_output` 的调用边界把它拒下（§3.2 与 §12.1 的第九道门，登记的 worker、行缓存的图里 `reopenCount(task, undefined) >= 1`、`cause` 空或全空白时拒，违规流水记规则 id，撤下走规则板；图读不出时放行，交回不许被楔住），worker 写上原因再交一次，投影只收成功的那次（m7-habits）。
 3. 长报告：`report` 指向 `<工作树>/.hourness/<childId>.md` 时复制到 `<exec>/reports/<childId>.md`（工作树之后会删），批注里写后者。
-4. 批注交回摘要：状态、提交数与最新提交、文件数、问题与假设各几条、通信计数（§3.4.4）、候选经验的计数（§3.5.5）、报告路径。
+4. 批注交回摘要：状态、提交数与最新提交、文件数、问题与假设各几条、通信计数（§3.4.4）、候选经验的计数（§3.5.5）、报告路径。`cause` 非空时摘要多一行 `原因 <cause>`（换行压平成空格）——收下的原因以批注写在任务节点上，就是第二次重开提醒要的「写进这件活」的留痕（m7-habits）。
 5. 候选经验按 §3.5.5 处理。
 6. pins 过期 → `stale` 通知，停在这里。
 7. `status: done`：读这次的改动（`git diff --no-renames --name-status <merge-base> <最新提交>`）与这次派发里 worker 一方跑过的命令记录（`<exec>/tasks/<任务>/<childId>.commands.jsonl`，§3.8.5 的格式），按 `norm-review-floor` 判命中（含判不了时从严），得出有效深浅（§3.7.1）。有效深浅不是不审：确保审查任务在，经 `emit` 交 `hourness.handback`；是不审：交 `hourness.review-skipped`（§2.5）。`blocked`、`partial`、`plan-pending`：事实通知给主 Agent，由它决定重新派发、改任务或问人。
@@ -1751,11 +1754,11 @@ git 在 L2 用临时目录里的真实 git 仓库测：建工作树与分支、�
 - 沿用 0.2 的：执行阶段推出、不存；`delivery: 'caller'`；写任务一律用工作树；计划写在正文、批准记成批注；计划等待放在一次工具调用里；`ask_main` 与 `send_message` 分工；pins 只比语义字段；worker 对图只读；空转 3 拍；目标整体的审查不建节点；停下先写标记；复盘由 harness 记事实。
 - 0.2 §12 的「规矩阶梯的提议走决策队列，不用五键卡」与 §14 第 6 条（`docs/ORCHESTRATION.md` §9.2 的五键）随 `d-chat-not-cards` 失效：五键已是人说的五种话，提议经主 Agent 在对话里问。
 
-### 12.1 八道代码里的门：首日模式与转生效的办法（R4-F7，`docs/CHARTER.md` 0.7）
+### 12.1 九道代码里的门：首日模式与转生效的办法（R4-F7，`docs/CHARTER.md` 0.7）
 
-宪章 0.7（§3.2 第 3 条、§6）：规则板与循环板上人看过原文同意的条目即刻生效；写在代码里的新门禁照旧先影子后拦截（`docs/ORCHESTRATION.md` §6.5），新行默认禁用、验证通过后才启用（`AGENTS.md`）。M7 的八道门都在代码里，0.4 一个模式也没写。0.5 写在这里，并在 `src/guard/execute-rules.ts` 的常量表 `EXECUTE_RULES`（`{id, title, mode, lists?}`）里各存一份，规则板整块合入时映射进代码规则目录，模式取这张表（同 M4 0.4 §3.8 的 `GUARD_RULES`）。契约测试断言每个 id 在表里、每个模式是 `enforce` 或 `shadow`。
+宪章 0.7（§3.2 第 3 条、§6）：规则板与循环板上人看过原文同意的条目即刻生效；写在代码里的新门禁照旧先影子后拦截（`docs/ORCHESTRATION.md` §6.5），新行默认禁用、验证通过后才启用（`AGENTS.md`）。M7 的九道门都在代码里，0.4 一个模式也没写。0.5 写在这里，并在 `src/guard/execute-rules.ts` 的常量表 `EXECUTE_RULES`（`{id, title, mode, lists?}`）里各存一份，规则板整块合入时映射进代码规则目录，模式取这张表（同 M4 0.4 §3.8 的 `GUARD_RULES`）；第九道 `handback-cause`（m7-habits）随 M7 合入 main 即生效，并在 `src/guard/catalog.ts` 的 `GUARD_RULES` 里登记（row `execute`），所以撤下的两条路（一句话、`/rules lift`）今天就走得到，判定处读项目的撤下记录。契约测试断言每个 id 在表里、每个模式是 `enforce` 或 `shadow`。
 
-先说满足了宪章的哪一半：`execute`、`operate` 两行默认禁用，E9 验证通过（L3 骨架场景、真实模型一次、第一批 L4）之后一个提交才改为默认启用。没满足的一半是「先影子」：八道门首日都直接拦（`enforce`）。这是一个有意的例外，agent 定，人可推翻（人放行时在一页放行稿「替你定了的方向」一栏看到这一行）。两类理由：
+先说满足了宪章的哪一半：`execute`、`operate` 两行默认禁用，E9 验证通过（L3 骨架场景、真实模型一次、第一批 L4）之后一个提交才改为默认启用。没满足的一半是「先影子」：九道门首日都直接拦（`enforce`）。这是一个有意的例外，agent 定，人可推翻（人放行时在一页放行稿「替你定了的方向」一栏看到这一行）。两类理由：
 
 - 第一类（`worker-scope`、`dispatch-chain-readonly`、`worker-graph-readonly`、`worker-git`、`worker-message-live-only`、`stopped`）：影子期的用处是先量误伤，而这些门管的对象（worker、审查者、派发链里的只读子 agent、停下后的派发）在 M7 之前不存在，没有已有的行为可量；它们拦的是越权写、越权 git、给已结束的 worker 发消息、停下后继续派，错放的代价是写进主检出或动了别的分支，拦错的代价是一次带正路的纠偏。
 - 第二类（`trunk-advance-checked`、`completion-gate`）：它们守的是人定的保证，不是 agent 自己加的规矩：主干只前进到跑过合入前检查的提交（`d-main-agent-shell`），目标完成要 harness 的核对和证据（人批准的节点 `m7-3` 的第 2 条，加宪章 §6「门禁只认证据，不认自述」）。首日影子意味着自举期间主干的前进只在事后被发现、目标不经证据就能完成，与这两条保证本身相反；推送之后的主干收不回（§6.3）。
@@ -1770,8 +1773,9 @@ git 在 L2 用临时目录里的真实 git 仓库测：建工作树与分支、�
 | `execute:trunk-advance-checked` | `enforce` | 拦下认得出的、会让主干前进到没检查提交的写法：带正路（先 `check_commit`，拉取的三步）；认不出的写法放行，所以误伤限于认得出的 | 主干前进到没检查的提交；已推送的收不回。兜底：执行后比对立刻发现、不给证据、记违规、全量检查在那个提交上跑一遍、巡检对照远端 | 执行前判定改为只记，保留执行后比对：此时「主干只前进到检查过的提交」降为「前进之后立刻被发现、不给证据」，违背 `d-main-agent-shell` 的字面，只在人明确同意时这样做 |
 | `execute:completion-gate` | `enforce` | 主 Agent 的 `update_goal complete` 被拒并列出缺口；人在目标条上自己点完成不受这道门管（§3.9.3 末段），所以误伤不会卡死项目 | 目标不经证据就完成；兜底：凭据配对，配不到就不写完成证据，对账重算 | 缺口只记不拦：目标可以先完成，图上的完成证据仍只在门禁成立时写 |
 | `execute:stopped` | `enforce` | 停下标记之后到人回话之前，拒绝派发这个任务与它的审查任务：带正路（在对话里把它问给人）；人回话即解除 | 在审查或检查一再不过之后继续派，白花步数与积分 | 同上，标记照写，派发放行 |
+| `execute:handback-cause` | `enforce` | 拦下一次没有写原因的重开交回：正路就是门禁那句话（写上 `cause` 再交一次，同一会话内完成，不丢工作）；图读不出时放行，不楔住交回 | 没写原因的重开交回混进审查，修了表现的活不被审查者对着原因看；兜底：审查简报的原因一行与「只修表现记不挡路发现」不依赖这道门，门禁只是把漏写的先挡回去 | 只记不拦：违规流水照记，交回收下 |
 
-转生效的办法：若人要求首日先影子，把 `EXECUTE_RULES` 里对应门的 `mode` 改为 `shadow`。影子的语义取 M4 0.4 §3.1 的 `RuleMode`：判为违规时调用照常执行，违规流水里记 `mode: 'shadow', via: 'rule'`；M4 的 `installRuleGate`（G1）不在自举路径上，所以 E4 在那种情形下自己写一个十几行的影子包装（命中时记违规、放行），M4 的 G1 合入时换成 `installRuleGate`（谁后合入谁改，M4 §13.3），骨架里没有影子分支，因为首日全是 `enforce`，不留死代码。转生效的判据只有一个出处：M4 0.4 §3.5 的 `PROMOTION`（带标注的会拦样本至少 20 条含回放、实时影子至少 14 天、误伤 0），M7 不另定。转生效的过程照 M4 §3.5：达到判据时周报阶梯提一张决定者为人的待决，主 Agent 按四行在对话里问人，人同意后主 Agent 派一个任务把 `mode` 改回 `enforce`，提交带 L2、按 `norm-review-floor` 全审（这些门在 `src/guard/` 里，是第一类要全审的改动）。§3.12.2 里「影子转生效」的阈值管的是规范节点（图上带 `模式：影子 | 生效` 标签的规范，人批的），不是这八道门，两者的含义不同，M4 的 `PROMOTION` 取代 §3.12.2 的阈值这件事按 R4-F10 第 2 条在 P2 之前处理（§18.2）。
+转生效的办法：若人要求首日先影子，把 `EXECUTE_RULES` 里对应门的 `mode` 改为 `shadow`。影子的语义取 M4 0.4 §3.1 的 `RuleMode`：判为违规时调用照常执行，违规流水里记 `mode: 'shadow', via: 'rule'`；M4 的 `installRuleGate`（G1）不在自举路径上，所以 E4 在那种情形下自己写一个十几行的影子包装（命中时记违规、放行），M4 的 G1 合入时换成 `installRuleGate`（谁后合入谁改，M4 §13.3），骨架里没有影子分支，因为首日全是 `enforce`，不留死代码。转生效的判据只有一个出处：M4 0.4 §3.5 的 `PROMOTION`（带标注的会拦样本至少 20 条含回放、实时影子至少 14 天、误伤 0），M7 不另定。转生效的过程照 M4 §3.5：达到判据时周报阶梯提一张决定者为人的待决，主 Agent 按四行在对话里问人，人同意后主 Agent 派一个任务把 `mode` 改回 `enforce`，提交带 L2、按 `norm-review-floor` 全审（这些门在 `src/guard/` 里，是第一类要全审的改动）。§3.12.2 里「影子转生效」的阈值管的是规范节点（图上带 `模式：影子 | 生效` 标签的规范，人批的），不是这九道门，两者的含义不同，M4 的 `PROMOTION` 取代 §3.12.2 的阈值这件事按 R4-F10 第 2 条在 P2 之前处理（§18.2）。
 
 首日 `enforce` 之后发现误伤怎么办：误伤靠三样发现，都已经有：违规流水里这道门的拦截次数（晨报「例外」与周报）、同一任务同一规则的拦截达到 3 次时的复盘（§3.15）、M4 可用后的拦截跟进分类（`classifyRecord`：走对正路、原样重试、别的）。发现某道门误伤多，把它的 `mode` 改回 `shadow` 是一次提交，不用改门本身；降回影子同样要人拍板（M4 §3.5），改回之后要再转生效，走上一段的 `PROMOTION`。
 

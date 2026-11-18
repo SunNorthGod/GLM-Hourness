@@ -47,7 +47,7 @@ test('the view has its version, the moment and the writing host; the code group 
   assert.equal(built.rows.execute, 'absent')
   assert.equal(view({ rows: { execute: 'active' } }).rows.execute, 'active')
   assert.equal(view({ rows: { execute: 'degraded' } }).rows.execute, 'degraded')
-  assert.deepEqual(Object.keys(built.rows).sort(), [...VIEW_ROWS, 'execute'].sort())
+  assert.deepEqual(Object.keys(built.rows).sort(), [...new Set([...VIEW_ROWS, 'execute'])].sort(), 'the execute row is on the page once, whatever the catalog lists on it')
 })
 
 test('the peak mode: the factory level with no choice, the person\'s level with its moment, and how the choice came in', () => {

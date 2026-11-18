@@ -67,6 +67,7 @@ export const HANDBACK_SCHEMA: SchemaNode = {
     questions: { ...STRING_LIST, description: 'what you leave for the main agent to decide' },
     assumptions: { ...STRING_LIST, description: 'the assumptions you used, including those ask_main timed out on' },
     docs: { type: 'string', description: 'one line of at most 300 characters about the component documents your change touches: "updated: <component>" when your commits changed their AGENTS.md, or "still true: <why>" when a component\'s AGENTS.md was not changed and still holds' },
+    cause: { type: 'string', description: 'when the task was reopened after being done: the cause you found and why this change fixes the cause and not only a symptom; the handback gate refuses the handback without it then' },
     lessons: { type: 'array', items: HANDBACK_LESSON, description: 'pitfalls met and their fixes, for the lessons board' },
     report: { type: 'string', description: 'path of the long report you wrote under .hourness/ in your worktree' },
   },

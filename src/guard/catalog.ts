@@ -8,7 +8,9 @@
  *
  * There is no mode column (decision d-code-rules-enforce): a rule of this
  * catalog denies from the day its row is enabled, and the gate
- * (src/guard/gate.ts) is what installs it. `liftVia` is who can lift the
+ * (src/guard/gate.ts) is what installs it — the execute row's handback gate
+ * by its own listener (src/guard/execute-rules.ts, which reads the lift
+ * record for it). `liftVia` is who can lift the
  * rule (design §3.5): 'any' — the human tells the main agent, or types
  * /rules lift on the rules board once it offers code rules; 'board' — only
  * the rules board's command, for the rule that guards the lift record
@@ -40,4 +42,5 @@ export const GUARD_RULES: readonly GuardRuleEntry[] = [
   { id: 'schedule-tools', row: 'loops', title: '循环板自己的 DSH 提醒不经定时工具改，也不许冒充循环板建提醒', blocks: 'changes to the loop board\'s reminders through the schedule tools', liftVia: 'any' },
   { id: 'metrics-files-only', row: 'metrics', title: '指标流水只由 harness 写：写、删、移流水文件与 npm run metrics -- prune 都会被拒', blocks: 'writes, deletes and moves under the metrics journal, and npm run metrics -- prune', liftVia: 'any' },
   { id: 'habit-ask-first', row: 'memory', title: '猜出的习惯先经 memory_habit 问人：问答卡上问习惯、把人只是答应的话直接记成偏好都会被拒', blocks: 'habit questions on a question card, and preferences whose relay only agrees to a question the agent asked', liftVia: 'any' },
+  { id: 'handback-cause', row: 'execute', title: '重开过的活交回要写明原因：没写原因的交回被拒', blocks: 'a handback without the cause of a reopened task', liftVia: 'any' },
 ]

@@ -245,6 +245,22 @@ test('a floor hit upgrades a light dispatch; the comment names the hit and the r
   }
 })
 
+test('a handback that carries the cause records it as the 原因 line of the summary comment, on the node (m7-habits)', async () => {
+  const project = await presetProject()
+  const attempt = workerAttempt(project, 'hz-task-1-a3-cccccc', { attempt: 3 })
+  const rig1 = await rig(project, attempt)
+  try {
+    const { graph, comment } = await runDoneHandback(rig1, project, attempt.childId, { cause: 'the guard checked the wrong path\nbecause the seed was off' })
+    assert.equal(comment.cause, 'the guard checked the wrong path because the seed was off', 'the cause reads back, newlines flattened')
+    const text = graph.nodes.get('task-1')!.history.find(entry => entry.op === 'comment' && entry.actor === 'harness' && String(entry.text ?? '').includes(`· ${attempt.childId}`))?.text
+    assert.ok(String(text).split('\n').some(line => line.startsWith('原因 the guard checked the wrong path because the seed was off')), 'the 原因 line is on the node')
+  }
+  finally {
+    forgetAttempt(attempt.childId)
+    rmSync(project.root, { recursive: true, force: true })
+  }
+})
+
 // ---- the policy drift of a handback (reval design §4.1, §4.5) ----
 
 /** Seed the must-review floor the way the execution specs do (a proposal the harness approves directly). */
