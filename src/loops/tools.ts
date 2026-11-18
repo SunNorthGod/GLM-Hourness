@@ -150,7 +150,8 @@ const PROPOSE_SCHEMA = {
 /** The lines the result tells the main agent (design §7.1 step 1); a script or a check rides the detail through propose_to_human. */
 const MESSAGES = {
   graph: (attach: string): string => `Put it to the human with propose_to_human (kind question, attach ${attach}): one plan in four lines; the recommendation line says what describe says. For a script or a check, propose_to_human puts the exact script text or command line and every caution after your four lines: show its text to the human exactly as given, that part included, or their agreement will not count. It runs as soon as the human agrees; there is no trial run. It takes effect only when the human agrees and you record their words with record_human_answer.`,
-  board: (id: string): string => `The project graph is not available: tell the human this proposal in four lines, then quote detail.markdown exactly as given, and tell them they can type /loops accept ${id} or /loops reject ${id}.`,
+  /** The proposal record id (`lp-…`): what `/loops accept` and `/loops reject` parse and look up. */
+  board: (proposal: string): string => `The project graph is not available: tell the human this proposal in four lines, then quote detail.markdown exactly as given, and tell them they can type /loops accept ${proposal} or /loops reject ${proposal}.`,
 }
 
 export interface ProposeToolDeps {
@@ -219,7 +220,7 @@ export function loopProposeTool(deps: ProposeToolDeps): ToolDefinitionLike {
         cautions: made.image.cautions,
         attach,
         ...(via === 'board' && made.image.detail !== undefined ? { detail: made.image.detail } : {}),
-        message: via === 'graph' ? MESSAGES.graph(attach) : MESSAGES.board(made.id),
+        message: via === 'graph' ? MESSAGES.graph(attach) : MESSAGES.board(proposalId),
       }
     }
     return refuse('busy', 'the board could not give the proposal an id', 'call loop_propose again')

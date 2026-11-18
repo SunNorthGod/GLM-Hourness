@@ -393,6 +393,31 @@ test('loop_propose is the main agent\'s: a sub-agent and a root are refused, and
   await assert.rejects(tool.execute({ kind: 'delete', entry: 'execute.release', reason: '不要了' }, { agent: agentOf(undefined) }), /插件带来的条目暂时只能看/)
 })
 
+test('the board message teaches the id the command parses: walking its ids through two accepts takes the proposal in', async () => {
+  const setupped = await setup()
+  const registry = {
+    events: () => LOOP_EVENT_TABLE,
+    entries: () => [],
+  } as unknown as import('../src/loops/registry.ts').LoopsRegistry
+  const ctx: ServiceLookup = { get: (name) => name === 'sessionProjections' ? { stateOf: () => ({ active: true }) } : undefined }
+  const tool = loopProposeTool({ ctx, now: () => setupped.clock.at, storeFor: () => setupped.store, registry, checks: () => undefined })
+  // No graph directory in the session: the proposal rides the board path, so the result message names the command.
+  const done = await tool.execute({ ...scriptAdd(), reason: 'the human asked' }, { agent: { id: 's9', session: { id: 's9', header: { cwd: setupped.root } } } as unknown as AgentLike }) as { readonly ok: boolean, readonly proposal: string, readonly message: string }
+  assert.equal(done.ok, true)
+  // Every id the message tells the person to type is the proposal record id (`lp-…`), the one `/loops accept` parses and looks up.
+  const taught = [...done.message.matchAll(/\/loops (?:accept|reject) ([^\s.]+)/g)].map(match => match[1])
+  assert.deepEqual([...new Set(taught)], [done.proposal], 'the message teaches the proposal id, one and the same for accept and reject')
+  for (const id of taught) assert.match(id, /^lp-[0-9a-f]{8}$/)
+  // The taught id walks the real command: the first accept shows the text, the second within 30 minutes takes effect.
+  const first = await loopsCommand(setupped, `accept ${taught[0]}`)
+  assert.ok(first.kind === 'success' && first.text.includes(SCRIPT.trimEnd()), 'the command\'s own reply shows the script')
+  setupped.clock.at += 60_000
+  const second = await loopsCommand(setupped, `accept ${done.proposal}`)
+  assert.ok(second.kind === 'success' && second.text.includes('已加上「每小时跑一次巡查」'), JSON.stringify(second))
+  assert.equal(setupped.store.proposals().get(done.proposal)?.image.status, 'accepted')
+  assert.equal(entryOf(setupped, done.proposal).source.via, 'board', 'the person typed the command themselves')
+})
+
 test('the two examples of loop_propose pass the real checks, and a check proposal reads its command from the seam', async () => {
   const setupped = await setup()
   const table = new Map(LOOP_EVENT_TABLE)
