@@ -202,7 +202,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
 import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
@@ -255,6 +255,93 @@ import { DEFERRED_BY_A3, WORKSPACE_RULES_SHORT } from '../calibrate/ablation.mjs
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 import { CANARY } from './probe-net.mjs'
 import { acquireProbeLock, bindProbeLockExit } from './probe-lock.mjs'
+
+// `--only <name>[,<name>...]` (docs/DEVELOPMENT.md §3): boot only the named
+// scenarios and skip the rest; without the flag the full suite runs exactly
+// as before. The command line carries nothing else — this file has no other
+// flag, and a bare `--help` here would mean the whole probe runs — so any
+// other argument is refused. A name the runner does not know exits 2 with
+// the closest matches, so a typo never becomes a silent partial run. The
+// known names are read from this file's own boot sites, fail-closed: a boot
+// site the scan misses makes its scenario unselectable (visible at once),
+// never selectable without existing.
+const probeUsage = 'usage: node scripts/probe/run-probe.mjs [--only <name>[,<name>...]]'
+const editDistance = (from, to) => {
+  const row = Array.from({ length: to.length + 1 }, (_, index) => index)
+  for (let i = 1; i <= from.length; i++) {
+    let above = row[0]
+    row[0] = i
+    for (let j = 1; j <= to.length; j++) {
+      const diagonal = row[j - 1]
+      const up = row[j]
+      row[j] = Math.min(up + 1, diagonal + 1, above + (from[i - 1] === to[j - 1] ? 0 : 1))
+      above = up
+    }
+  }
+  return row[to.length]
+}
+const knownScenarioNames = () => {
+  const source = readFileSync(fileURLToPath(import.meta.url), 'utf8')
+  const constants = new Map()
+  for (const match of source.matchAll(/const ([A-Z][A-Z0-9_]*) = '([^']+)'/g)) constants.set(match[1], match[2])
+  const names = new Set()
+  for (const match of source.matchAll(/\b(?:runScenario|runPath|designScenario|execScenario|stopProbe|runFailure)\(\s*(?:'([^']+)'|`([^`]+)`|([A-Z][A-Z0-9_]*))/g)) {
+    const literal = match[1] ?? match[2]
+    if (literal !== undefined) {
+      const arms = /\[\s*'([A-Z0-9]+)'(?:\s*,\s*'([A-Z0-9]+)')*\s*\]\s*\.map\(\s*arm\b/.exec(source)
+      if (!literal.includes('${arm}')) names.add(literal)
+      else if (arms !== null) for (const value of arms[0].match(/'([A-Z0-9]+)'/g).map(entry => entry.slice(1, -1))) names.add(literal.replace(/\$\{arm\}/, value))
+    }
+    else if (constants.has(match[3])) names.add(constants.get(match[3]))
+  }
+  return names
+}
+const ONLY = (() => {
+  const argv = process.argv.slice(2)
+  const names = new Set()
+  let seen = false
+  for (let index = 0; index < argv.length; index++) {
+    const inline = argv[index].startsWith('--only=') ? argv[index].slice('--only='.length) : undefined
+    if (argv[index] !== '--only' && inline === undefined) {
+      console.error(`probe: unrecognized argument ${JSON.stringify(argv[index])}; ${probeUsage}`)
+      process.exit(2)
+    }
+    if (seen) {
+      console.error(`probe: --only given twice; ${probeUsage}`)
+      process.exit(2)
+    }
+    seen = true
+    const value = inline ?? argv[++index]
+    if (value === undefined || value.trim() === '') {
+      console.error(`probe: --only needs at least one scenario name; ${probeUsage}`)
+      process.exit(2)
+    }
+    for (const name of value.split(',')) {
+      if (name.trim() === '') {
+        console.error(`probe: empty name in --only; ${probeUsage}`)
+        process.exit(2)
+      }
+      names.add(name.trim())
+    }
+  }
+  if (seen) {
+    const known = knownScenarioNames()
+    const unknown = [...names].filter(name => !known.has(name))
+    if (unknown.length > 0) {
+      for (const name of unknown) {
+        const closest = [...known].sort((one, two) => editDistance(name, one) - editDistance(name, two) || (one < two ? -1 : 1)).slice(0, 5)
+        console.error(`probe: unknown scenario name under --only: ${name}; closest: ${closest.join(', ')}`)
+      }
+      console.error(probeUsage)
+      process.exit(2)
+    }
+    return names
+  }
+  return undefined
+})()
+
+/** Whether a scenario boots this run: everything for the full suite, its set for `--only`. */
+const booted = name => ONLY === undefined || ONLY.has(name)
 
 requireDesktop('probe')
 
@@ -381,6 +468,49 @@ const learnSeed = seq => `${JSON.stringify({ v: 1, seq, at: new Date().toISOStri
 const scenarioNames = []
 /** A scenario's net log (scripts/probe/probe-net.mjs). */
 const netLogOf = name => join(runDir, name, 'net.jsonl')
+/** The scenarios `--only` skipped, in order; the summary names their count. */
+const skippedScenarios = []
+/** The generated profiles a boot ran on, tracked so the sandbox check can scope itself to them under `--only`. */
+const bootedProfiles = new Set()
+
+/**
+ * What a scenario skipped by `--only` leaves behind: a stand-in whose every
+ * read records the scenario and answers with the stand-in itself (spreading
+ * it yields the result shape, iterating it yields nothing, coercing it
+ * yields the empty string). No boot runs, so the scenario is not in
+ * `scenarioNames` and the cross-scenario sweeps scope themselves to the
+ * booted set; the checks that name a skipped scenario are skipped by
+ * ownership (CHECK_SCENARIO_PREFIXES and CHECK_SCENARIO_LABELS below), never
+ * judged on stand-in values.
+ */
+function skippedScenario(name) {
+  const touch = () => { if (!skippedScenarios.includes(name)) skippedScenarios.push(name) }
+  const target = function skippedScenario() {}
+  const standIn = new Proxy(target, {
+    apply: () => { touch(); return standIn },
+    construct: () => { touch(); return standIn },
+    has: () => { touch(); return false },
+    ownKeys: () => { touch(); return [...Reflect.ownKeys(target), 'status', 'elapsedMs', 'cwd', 'steps', 'compactions'] },
+    getOwnPropertyDescriptor: (target, property) => {
+      touch()
+      const real = Reflect.getOwnPropertyDescriptor(target, property)
+      return real ?? { value: standIn, enumerable: true, writable: true, configurable: true }
+    },
+    get: (target, property) => {
+      touch()
+      if (property === Symbol.iterator) return () => ({ next: () => ({ done: true, value: undefined }) })
+      if (property === Symbol.toPrimitive) return () => { touch(); return '' }
+      // JSON.stringify of a function yields undefined, whose `.slice` and
+      // friends throw in the detail expressions; toJSON keeps it a string.
+      if (property === 'toJSON') return () => { touch(); return `skipped scenario ${name}` }
+      // `then` must stay non-callable: an awaited stand-in (runPath's result)
+      // would otherwise read as a thenable no handler ever settles.
+      if (property === 'then') return undefined
+      return standIn
+    },
+  })
+  return standIn
+}
 
 /**
  * Boot one headless task on `model` with a scripted reply sequence and return
@@ -399,6 +529,8 @@ const netLogOf = name => join(runDir, name, 'net.jsonl')
  * `cwd` is that directory.
  */
 function runScenario(name, model, script, task, overlay = [], cwd = repo, others = [], on = profiles['probe-full']) {
+  if (ONLY !== undefined && !ONLY.has(name)) return skippedScenario(name)
+  for (const [booted, profile] of Object.entries(profiles)) if (profile === on) bootedProfiles.add(booted)
   scenarioNames.push(name)
   const dir = join(runDir, name)
   const home = join(dir, 'home')
@@ -1051,8 +1183,12 @@ const envTimeoutProposed = (await loadGraph(envTimeoutGraph)).nodes.get('tool-1'
 // itself inside it. The timing journal holds, in order, the estimate of the
 // first part, the value from it (with that session and the llm), the
 // timeout, the censored run, the harness's 15 s value and the 7 s run.
-const envTimeoutApproved = await envTimeoutEngine.apply('human', { op: 'approve', id: 'tool-1', rev: (await loadGraph(envTimeoutGraph)).revisions.get('tool-1'), reason: 'probe: the human approves the check' })
-if (!envTimeoutApproved.ok) throw new Error(`probe: approving the env-checks-timeout tool node failed: ${JSON.stringify(envTimeoutApproved.error)}`)
+// The approve reads the proposal the env-checks-timeout boot wrote, so it
+// runs only when that scenario boots (the run-2 checks require both).
+if (booted('env-checks-timeout')) {
+  const envTimeoutApproved = await envTimeoutEngine.apply('human', { op: 'approve', id: 'tool-1', rev: (await loadGraph(envTimeoutGraph)).revisions.get('tool-1'), reason: 'probe: the human approves the check' })
+  if (!envTimeoutApproved.ok) throw new Error(`probe: approving the env-checks-timeout tool node failed: ${JSON.stringify(envTimeoutApproved.error)}`)
+}
 writeFileSync(join(envTimeoutWs, 'slow.mjs'), "setTimeout(() => { console.log('slow done') }, 7000)\n")
 const envTimeoutRunLog = join(runDir, 'env-checks-timeout-run', 'env.jsonl')
 const envTimeoutRun2 = runScenario('env-checks-timeout-run', 'deepseek-probe', [
@@ -4171,6 +4307,8 @@ const quiet = scenario => !stderrOf(scenario).includes('skipping profile bundle'
 // profiles, found through DSH_HOME, and the real profiles directory did not
 // gain them.
 const rewritten = Object.values(profiles).filter(item => readFileSync(join(item.dir, 'cordis.yml'), 'utf8').startsWith('# dsh profile root')).map(item => item.name)
+// Under `--only` the launcher saw only the profiles the selected scenarios booted, so the sandbox check scopes itself to those.
+const expectedRewritten = ONLY === undefined ? GENERATED_PROFILES : GENERATED_PROFILES.filter(name => bootedProfiles.has(name))
 const leaked = GENERATED_PROFILES.filter(name => existsSync(join(realProfiles, name)))
 
 /**
@@ -4234,7 +4372,8 @@ function stageChecks() {
 }
 function questionChecks() {
   const main = designQuestion.steps.filter(step => step.sessionId === designQuestion.steps[0]?.sessionId)
-  const nodeOf = id => JSON.parse(readFileSync(join(stageWs(QUESTION), 'docs', 'graph', 'nodes', `${id}.json`), 'utf8'))
+  // A node the run did not write reads as an empty one, so the checks fail one by one instead of the whole probe stopping.
+  const nodeOf = id => { try { return JSON.parse(readFileSync(join(stageWs(QUESTION), 'docs', 'graph', 'nodes', `${id}.json`), 'utf8')) } catch { return { history: [] } } }
   const shownResult = (() => { try { return JSON.parse(lastToolResult(main[2])?.text ?? '') } catch { return undefined } })()
   const decided = (() => { try { return JSON.parse(lastToolResult(main[4])?.text ?? '') } catch { return undefined } })()
   const question = nodeOf('question-1')
@@ -5357,7 +5496,7 @@ function metricsChecks(label, run, journal, project, options) {
   const userHome = join(runDir, label, 'dsh-home')
   const userMetrics = existsSync(userHome) ? readdirSync(userHome).filter(entry => entry.startsWith('metrics')) : []
   const llmDir = join(project.ws, '.llm')
-  const metricsNames = readdirSync(llmDir).filter(entry => entry.startsWith('metrics')).sort()
+  const metricsNames = existsSync(llmDir) ? readdirSync(llmDir).filter(entry => entry.startsWith('metrics')).sort() : []
   const journalText = JSON.stringify(journal.events)
   const calls = llm.filter(event => event.body.purpose === undefined)
   const purposes = llm.filter(event => event.body.purpose !== undefined)
@@ -5513,7 +5652,7 @@ const bootstrapChecks = [
   ['bootstrap-resume: /wish here in a second root session moves the role and the takeover writes from the graph: apply-start, the six steps, the close approved with the round\'s nodes approved or skipped (§7.4 step 1), the wish of the opening /wish in the anchor comment, and the commit lands graph-tracked (§7.4, §7.6, §9.2)', bsResumeJournal.some(record => record.op === 'apply-start') && bsResumeClosed?.data?.reason === 'approved' && (bsResumeClosed?.data?.counts?.approved ?? 0) >= 7 && bsResumeGoalComment && bsResumeTracked && (await openTakeoverOf(bsResumeWs)) === undefined && bootstrapResume.status === 0 && bsQuiet(bootstrapResume), `apply-start ${bsResumeJournal.some(record => record.op === 'apply-start')}; closed ${JSON.stringify(bsResumeClosed?.data ?? null)}; wish comment ${bsResumeGoalComment}; tracked ${bsResumeTracked}; exit ${bootstrapResume.status}`],
 ]
 const checks = [
-  ['sandbox: the runtime booted each profile generated under the run directory (its cordis.yml rewritten by the launcher); the real profiles directory has none of them', rewritten.length === GENERATED_PROFILES.length && leaked.length === 0, `rewritten: ${rewritten.join(', ') || 'none'}; under ${realProfiles}: ${leaked.join(', ') || 'none'}`],
+  ['sandbox: the runtime booted each profile generated under the run directory (its cordis.yml rewritten by the launcher); the real profiles directory has none of them', isDeepStrictEqual([...rewritten].sort(), [...expectedRewritten].sort()) && leaked.length === 0, `rewritten: ${rewritten.join(', ') || 'none'}; under ${realProfiles}: ${leaked.join(', ') || 'none'}`],
   ['glm-only: with only the GLM channel package the GLM request has the ZCode identity, the aliases and the search controls, and no graph or memory tool', glmOnlyFirst?.system.includes('You are ZCode, an interactive agent') === true && zcodeFace.every(name => glmOnlyTools.has(name)) && searchControls.every(name => glmOnlyTools.has(name)) && ![...glmOnlyTools].some(name => GRAPH_TOOL_NAMES.includes(name) || MEMORY_TOOL_NAMES.includes(name)) && glmOnlyRead?.isError !== true, glmOnlyFirst === undefined ? `no request (exit ${glmOnly.status})` : `${glmOnlyTools.size} tools; ${[...glmOnlyTools].filter(name => name.startsWith('graph_') || name.startsWith('memory_')).join(', ') || 'no graph or memory tool'}`],
   ['glm-only: the glm:memory section follows the memory tools: absent here, present in the GLM scenario on probe-full', glmOnlyFirst !== undefined && !glmOnlyFirst.system.includes(MEMORY_SECTION_LINE) && glmFirst?.system.includes(MEMORY_SECTION_LINE) === true, `glm-only ${glmOnlyFirst?.system.includes(MEMORY_SECTION_LINE) ?? 'no request'}; glm ${glmFirst?.system.includes(MEMORY_SECTION_LINE) ?? 'no request'}`],
   ['glm-only: at the peak clock the first request carries the wrapped peak reminder once', peakNotices(glmOnlyFirst).length === 1 && peakNotices(glmOnlyFirst)[0].text === PEAK_NOTICE, `${peakNotices(glmOnlyFirst).length} notice(s)`],
@@ -5638,7 +5777,7 @@ const checks = [
   // rc.1 drift (docs/FACTS.md §3): the read-first gate rode on dsh-fs-observation-policy,
   // which rc.1's composition dropped — dsh-tool-fs's destination intent defaults to
   // empty, so the write lands. The check pins that, not the rc.3 refusal.
-  ['glm execution: Write over an existing file that was never read lands on rc.1 (the runtime no longer enforces the read-first promise of the description) and the file holds the new text', overwriteResult?.isError !== true && readFileSync(unread, 'utf8') === 'clobbered\n', overwriteResult === undefined ? 'no tool result' : overwriteResult.text.slice(0, 100).replace(/\n/g, ' ')],
+  ['glm execution: Write over an existing file that was never read lands on rc.1 (the runtime no longer enforces the read-first promise of the description) and the file holds the new text', overwriteResult?.isError !== true && existsSync(unread) && readFileSync(unread, 'utf8') === 'clobbered\n', overwriteResult === undefined ? 'no tool result' : overwriteResult.text.slice(0, 100).replace(/\n/g, ' ')],
   ['glm tools: Glob, Grep, Bash and TodoWrite carry the 3.16.3 texts with the documented localizations', glmTool('Glob')?.description.startsWith('Fast file pattern matching. Supports glob patterns like') === true
     && glmTool('Grep')?.description.startsWith('Content search built on ripgrep.') === true && !glmTool('Grep').description.includes('multiline')
     && properties(glmTool('Grep')).includes('-i') && properties(glmTool('Grep')).includes('type') && !properties(glmTool('Grep')).some(key => ['-A', '-B', '-C', 'context', '-o', 'multiline'].includes(key))
@@ -5659,10 +5798,10 @@ const checks = [
   ['glm todo: a scripted turn carries two parallel tool calls', todoParallel?.length === 2, `steps: ${todo.steps.length}, calls in the first Read turn: ${todoParallel?.join(', ') ?? 'none'}`],
   ['glm todo: the reminder fires once, before the twelfth request (10 assistant turns after TodoWrite)', todo.steps.length === 12 && todoReminderSteps.length === 1 && todoReminderSteps[0] === 12 && todo.status === 0 && pluginStderrClean('glm-todo'), `reminder in request(s): ${todoReminderSteps.join(', ') || 'none'} of ${todo.steps.length}; exit ${todo.status}`],
   ['glm todo: the reminder is the wrapped ZCode text with the todo echo, after the last tool results', todoNotice !== undefined && todoNotice.text.startsWith("<system-reminder>\nThe TodoWrite tool hasn't been used recently.") && todoNotice.text.endsWith('[1. [in_progress] probe todo]\n</system-reminder>') && todoNoticeIndex > todoLastResult, todoNotice === undefined ? 'no notice' : `${todoNotice.text.slice(-60).replace(/\n/g, ' ')} (at ${todoNoticeIndex}, last tool result at ${todoLastResult})`],
-  ['glm peak: with the probe clock at Wednesday 15:00 UTC+8 the first GLM request carries the wrapped peak reminder once, worded by the factory level with the cap of one GLM subagent', peakWindowAt(peak.steps[0]?.clock) === '2026-10-28' && peakFirst.length === 1 && peakFirst[0].text === REDUCE_NOTICE, peak.steps[0] === undefined ? `no request (exit ${peak.status})` : `clock ${new Date(peak.steps[0].clock).toISOString()}, ${peakFirst.length} notice(s): ${(peakFirst[0]?.text ?? '').slice(0, 60).replace(/\n/g, ' ')}`],
+  ['glm peak: with the probe clock at Wednesday 15:00 UTC+8 the first GLM request carries the wrapped peak reminder once, worded by the factory level with the cap of one GLM subagent', peakWindowAt(peak.steps[0]?.clock) === '2026-10-28' && peakFirst.length === 1 && peakFirst[0].text === REDUCE_NOTICE, peak.steps[0] === undefined || !Number.isFinite(peak.steps[0].clock) ? `no request (exit ${peak.status})` : `clock ${new Date(peak.steps[0].clock).toISOString()}, ${peakFirst.length} notice(s): ${(peakFirst[0]?.text ?? '').slice(0, 60).replace(/\n/g, ' ')}`],
   ['glm peak: the reminder persists in the session and is not repeated on later steps', peak.steps.length === 3 && peakNotices(peak.steps.at(-1)).length === 1 && peakCountsMatch(peak) && peak.status === 0 && pluginStderrClean('glm-peak'), `notices per request: ${peak.steps.map(step => peakNotices(step).length).join(', ')}; exit ${peak.status}`],
   ['glm peak (real clock): the GLM scenario carries a reminder exactly for the peak windows its requests fell in', peakCountsMatch(glm), `windows: ${[...new Set(glm.steps.map(step => peakWindowAt(step.clock) ?? 'off-peak'))].join(', ')}; notices per request: ${glm.steps.map(step => peakNotices(step).length).join(', ')}`],
-  ['non-glm peak: a non-GLM session in peak hours gets no peak reminder', plainFirst !== undefined && peakWindowAt(plainFirst.clock) === '2026-10-28' && peakNotices(plainFirst).length === 0, plainFirst === undefined ? 'no request' : `clock ${new Date(plainFirst.clock).toISOString()}, ${peakNotices(plainFirst).length} notice(s)`],
+  ['non-glm peak: a non-GLM session in peak hours gets no peak reminder', plainFirst !== undefined && peakWindowAt(plainFirst.clock) === '2026-10-28' && peakNotices(plainFirst).length === 0, plainFirst === undefined || !Number.isFinite(plainFirst.clock) ? 'no request' : `clock ${new Date(plainFirst.clock).toISOString()}, ${peakNotices(plainFirst).length} notice(s)`],
   ['glm compact: the summarization request ends with the ZCode compact prompt', compactInstruction?.role === 'user' && compactInstruction.text.startsWith('CRITICAL: Respond with TEXT ONLY.') && compacted.status === 0 && pluginStderrClean('glm-compact'), compactRequest === undefined ? `no compaction request (exit ${compacted.status})` : `${compactInstruction?.text.slice(0, 60).replace(/\n/g, ' ')}; exit ${compacted.status}`],
   ['glm compact: the checkpoint carries the formatted summary', checkpoint !== undefined && checkpoint.text.includes('Summary:\nprobe summary') && !checkpoint.text.includes('<analysis>'), checkpoint === undefined ? 'no checkpoint in the next request' : checkpoint.text.slice(0, 80).replace(/\n/g, ' ')],
   ['glm compact transcript: with the transcript row enabled the checkpoint\'s summary ends with the ZCode 3.17.1 transcript sentence, right before the closing frame', transcriptPath !== undefined && transcriptCheckpoint.text.includes(`Summary:\nprobe summary${transcriptNote(transcriptPath)}\n</compacted-summary>`) && compactTranscript.status === 0 && pluginStderrClean('glm-compact-transcript'), transcriptCheckpoint === undefined ? `no checkpoint (exit ${compactTranscript.status}, ${compactTranscript.compactions.length} compaction(s))` : `${transcriptCheckpoint.text.slice(-300).replace(/\n/g, ' ')}; exit ${compactTranscript.status}`],
@@ -5701,7 +5840,7 @@ const checks = [
   ['guard new rules (native): the same three denials on a non-GLM route, scoped other, corrections in native names', guardNewRulesPlain.status === 0 && pluginStderrClean('guard-new-rules-plain') && [2, 3, 4].every(index => newRulesResult(guardNewRulesPlain, index)?.isError === true) && newRulesViolations('guard-new-rules-plain').length >= 3 && [...new Set(newRulesViolations('guard-new-rules-plain').map(record => record.rule))].sort().join(',') === 'checker-config,scratch-only,suppression-reason' && newRulesViolations('guard-new-rules-plain').every(record => record.scope === 'other') && newRulesResult(guardNewRulesPlain, 3).text.includes('request_exception with ref "r-') && newRulesResult(guardNewRulesPlain, 4).text.includes('.llm/scratch'), `exit ${guardNewRulesPlain.status}; ${JSON.stringify(newRulesViolations('guard-new-rules-plain').map(record => [record.rule, record.scope]))}`],
   ['guard lift: the overlay plays the human and the board; guard_lift lifts, the retry runs, the record copies are denied in both checkouts, the restore re-arms the rule (m4-gate G3, design §14.1)', guardLiftRun.status === 0 && pluginStderrClean('guard-lift') && liftGitReady && liftWorktreeReady && liftResult(5)?.isError !== true && liftResult(5)?.text.includes('"outcome":"lifted"') === true && liftResult(6)?.isError === true && liftResult(6)?.text.includes('"code":"not_said"') === true && liftResult(7)?.isError === true && liftResult(7)?.text.includes('"code":"not_said"') === true && liftResult(8)?.isError !== true && existsSync(liftFix) && liftResult(9)?.isError === true && liftResult(9)?.text.includes('lift record') === true && liftResult(10)?.isError === true && !existsSync(liftRecordWorktree) && liftResult(13)?.isError === true && liftResult(13)?.text.includes('.llm/scratch') === true && !existsSync(liftFix2), `exit ${guardLiftRun.status}; wt ${liftWorktreeReady}; lift ${(liftResult(5)?.text ?? 'no result').slice(0, 60).replace(/\n/g, ' ')}; not_said ${liftResult(6)?.text.includes('"code":"not_said"') === true}, ${liftResult(7)?.text.includes('"code":"not_said"') === true}`],
   ['guard lift: the journal carries both lifts and the denials (the judge keeps every rejecting rule: the worktree copy carries a containment rejection beside its lift-files-only one, and each denial settles as a follow-up; the file order of a denial and its follow-up is not pinned across journal instances)', liftViolations.length === 11 && liftViolations.filter(record => record.kind === 'lift').map(record => `${record.via}:${record.words}`).join('|') === 'chat:新建脚本那条先别拦了|board:/rules lift guard:scratch-only' && liftViolations.filter(record => record.kind === undefined && record.rule === 'lift-files-only').length === 2 && liftViolations.filter(record => record.kind === undefined && record.rule === 'lift-files-only').every(record => record.tool === 'Write') && liftViolations.filter(record => record.kind === undefined && record.rule === 'scratch-only').length === 2 && liftViolations.some(record => record.kind === undefined && record.rule === 'workspace-containment') && liftViolations.every(record => ['scratch-only', 'lift-files-only', 'workspace-containment'].includes(record.rule)), JSON.stringify(liftViolations.map(record => [record.kind ?? 'denial', record.rule, record.via ?? record.tool]))],
-  ['guard lift: the record file has the chat line and the board line; the overlay log has the say and the restore', readFileSync(liftRecordMain, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)).map(line => `${line.via}:${line.words}`).join('|') === 'chat:新建脚本那条先别拦了|board:/rules lift guard:scratch-only' && liftLogEntries.map(entry => entry.kind).join(',') === 'said,restore' && liftLogEntries.find(entry => entry.kind === 'restore')?.result?.ok === true && liftLogEntries.find(entry => entry.kind === 'restore')?.result.outcome === 'restored', `${liftLogEntries.length} log line(s): ${JSON.stringify(liftLogEntries.map(entry => [entry.kind, entry.result?.outcome ?? entry.result?.code ?? null]))}`],
+  ['guard lift: the record file has the chat line and the board line; the overlay log has the say and the restore', existsSync(liftRecordMain) && readFileSync(liftRecordMain, 'utf8').split('\n').filter(line => line.length > 0).map(line => JSON.parse(line)).map(line => `${line.via}:${line.words}`).join('|') === 'chat:新建脚本那条先别拦了|board:/rules lift guard:scratch-only' && liftLogEntries.map(entry => entry.kind).join(',') === 'said,restore' && liftLogEntries.find(entry => entry.kind === 'restore')?.result?.ok === true && liftLogEntries.find(entry => entry.kind === 'restore')?.result.outcome === 'restored', `${liftLogEntries.length} log line(s): ${JSON.stringify(liftLogEntries.map(entry => [entry.kind, entry.result?.outcome ?? entry.result?.code ?? null]))}`],
   ['guard lift: the section is the one sentence before and after the lift (a lifted rule stops judging, nothing in the prompt changes), and the lift tool stays discoverable', guardLiftRun.steps[0]?.system.includes(GUARD_SECTION) === true && guardLiftRun.steps.slice(0, 16).every(step => step.system.includes(GUARD_SECTION) && !step.system.includes('- New one-off scripts go in .llm/scratch/.')), `constant at ${guardLiftRun.steps.filter(step => step.system.includes(GUARD_SECTION)).length}/${guardLiftRun.steps.length}; bullet at ${guardLiftRun.steps.some(step => step.system.includes('- New one-off scripts go in .llm/scratch/.'))}`],
   ['guard fallback: the invisible shell write runs in turn 1 and lands as one late denial with the file and the call (m4-gate G3, design §14.1)', guardFallbackRun.status === 0 && pluginStderrClean('guard-fallback') && fallbackGitReady && existsSync(fallbackFile) && fallbackViolations.length === 1 && fallbackViolations[0].mode === 'late' && fallbackViolations[0].via === 'turn-end' && fallbackViolations[0].rule === 'file-tools-only' && JSON.stringify(fallbackViolations[0].paths) === '["fallback.txt"]' && fallbackViolations[0].calls?.length === 1 && fallbackViolations[0].calls[0].command === fallbackWrite && fallbackViolations[0].scope === 'dialect', `exit ${guardFallbackRun.status}; ${JSON.stringify(fallbackViolations.map(record => [record.mode, record.via, record.paths]))}`],
   ['guard fallback: the first step of turn 2 carries the hourness-guard correction naming the file, and no second one is added on the next step (the delivered notice stays in history)', guardFallbackRun.steps[3]?.messages.filter(message => message.source === GUARD_CORRECTION_SOURCE && message.text.includes('fallback.txt')).length === 1 && guardFallbackRun.steps[4]?.messages.filter(message => message.source === GUARD_CORRECTION_SOURCE).length === 1, `turn-2 first request notices: ${JSON.stringify(guardFallbackRun.steps[3]?.messages.filter(message => message.source === GUARD_CORRECTION_SOURCE).map(message => message.text.slice(0, 90))) ?? 'no request'}`],
@@ -5861,12 +6000,230 @@ const checks = [
   ['non-glm tools: no search controls, no announcement', plainFirst !== undefined && searchControls.every(name => !plainTools.has(name)) && announcements(plainFirst).length === 0, ''],
 ]
 
+/**
+ * `--only` bookkeeping: which check entry belongs to which scenario. Looked
+ * up by the label's prefix (the text before the first `: `) and, where one
+ * prefix spans scenarios, by the exact label; the `calibration ablation <arm>`
+ * prefixes map to their scenario by rule. An empty list marks an entry no
+ * boot produces (the machine guards, and the net, quota and data sweeps that
+ * iterate the scenarios this run booted — scoped to them, so they never pass
+ * on a subset silently: the summary says they ran over the booted set). A
+ * prefix or label this table does not list is skipped and named as unlisted
+ * in the summary — a new check must be entered here, which keeps a
+ * cross-scenario assertion from ever passing on a subset without a statement.
+ */
+const CHECK_SCENARIO_PREFIXES = {
+  // No boot behind them: machine guards and sweeps over the booted scenarios.
+  'sandbox': [],
+  'data': [],
+  'memory': [],
+  'net': [],
+  'quota': [],
+  'metrics-concurrent': [],
+  // One owner per prefix.
+  'both packages': ['glm'],
+  'bootstrap-existing': ['bootstrap-existing'],
+  'bootstrap-gaps': ['bootstrap-gaps'],
+  'bootstrap-new': ['bootstrap-new'],
+  'bootstrap-reopen': ['bootstrap-reopen'],
+  'bootstrap-resume': ['bootstrap-resume'],
+  'bootstrap-trial': ['bootstrap-trial'],
+  'calibration fence': ['calib-fence'],
+  'client-modules': ['client-modules'],
+  'client-modules (probe-full)': ['client-modules'],
+  'design': ['glm', 'non-glm'],
+  'design idle': ['glm-design-wish-idle', 'non-glm-design-wish-idle'],
+  'design idle (GLM)': ['glm-design-wish-idle'],
+  'design idle (non-GLM)': ['non-glm-design-wish-idle'],
+  'design main (GLM)': ['glm-design-main'],
+  'design main (non-GLM)': ['non-glm-design-main'],
+  'design modules': ['glm-design-modules'],
+  'design modules (m7 §3.2.2 coexistence)': ['glm-design-modules'],
+  'design interview': ['glm-design-interview'],
+  'design one main': ['glm-design-one-main'],
+  'design persona (GLM)': ['glm-design-persona'],
+  'design persona (non-GLM)': ['non-glm-design-persona'],
+  'design question': ['glm-design-question'],
+  'design release': ['glm-design-release'],
+  'design release (m7 §3.2.2 coexistence)': ['glm-design-release'],
+  'design released': ['glm-design-released'],
+  'design stage': ['glm-design-stage'],
+  'design stage & question': ['glm-design-stage', 'glm-design-stage-compact', 'glm-design-question', 'glm-design-released'],
+  'design stage (compact)': ['glm-design-stage-compact'],
+  'design wish off idle': ['glm-design-wish-off-idle'],
+  'design-before-release': ['glm-design-stage'],
+  'design-before-release (m7 §3.2.2 coexistence)': ['glm-design-released'],
+  'dispatch (a)': ['glm-dispatch'],
+  'dispatch (b)': ['glm-dispatch'],
+  'env-check-command': ['env-check-command'],
+  'env-checks': ['env-checks'],
+  'env-checks-ceiling': ['env-checks-ceiling'],
+  'env-checks-timeout': ['env-checks-timeout'],
+  'env-notice': ['env-notice'],
+  'exec dispatch (GLM)': ['glm-exec-dispatch'],
+  'exec dispatch (non-GLM)': ['non-glm-exec-dispatch'],
+  'exec docs': ['glm-exec-docs'],
+  'exec docs (reval negative)': ['glm-exec-docs'],
+  'exec drive': ['glm-exec-drive'],
+  'exec merge': ['glm-exec-merge'],
+  'exec merge upstream': ['glm-exec-merge-upstream'],
+  'exec modules': ['glm-exec-modules', 'glm-exec-modules-2'],
+  'exec plan': ['glm-exec-plan'],
+  'exec review': ['glm-exec-review'],
+  'exec review (reval)': ['glm-exec-review'],
+  'exec skeleton': ['glm-exec-skeleton'],
+  'exec walk': ['glm-exec-walk'],
+  'glm announcement': ['glm'],
+  'glm boot': ['glm'],
+  'glm compact': ['glm-compact'],
+  'glm compact transcript': ['glm-compact-transcript'],
+  'glm deferred call': ['glm'],
+  'glm execution': ['glm'],
+  'glm-flash image': ['glm-flash'],
+  'glm-flash wire': ['glm-flash'],
+  'glm image': ['glm', 'glm-flash'],
+  'glm peak': ['glm-peak'],
+  'glm peak (real clock)': ['glm'],
+  'glm prompt': ['glm'],
+  'glm search': ['glm'],
+  'glm todo': ['glm-todo'],
+  'glm tools': ['glm'],
+  'glm-no-dialect': ['glm-no-dialect'],
+  'glm-only': ['glm-only'],
+  'glm-rules': ['glm-rules'],
+  'graph panel': ['glm-graph-panel'],
+  'graph row': ['glm-graph'],
+  'graph run': ['glm-graph-run'],
+  'goal (c)': ['glm-goal'],
+  'goal (headless)': ['goal-headless'],
+  'guard': ['glm'],
+  'guard fallback': ['glm-shadow', 'guard-fallback'],
+  'guard followup': ['guard-followup'],
+  'guard lift': ['guard-lift'],
+  'guard new rules (GLM)': ['guard-new-rules'],
+  'guard new rules (native)': ['guard-new-rules-plain'],
+  'guard paths': ['glm-guard-paths'],
+  'guard request (GLM)': ['guard-request'],
+  'guard request (native)': ['guard-request-plain'],
+  'guard request goal': ['guard-request-goal'],
+  'guard request refuse': ['guard-request-refuse'],
+  'guard request worker (m4 §5.9, M7 §3.2.1)': ['guard-request-worker'],
+  'guard scope': ['non-glm-guard'],
+  'host instructions': ['glm-compact-instructions'],
+  'hourness-only': ['hourness-only'],
+  'lessons': ['glm', 'non-glm'],
+  'lessons failure (GLM)': ['glm-lessons-failure'],
+  'lessons failure (non-GLM)': ['non-glm-lessons-failure'],
+  'lessons path (GLM)': ['glm-lessons-path'],
+  'lessons path (non-GLM)': ['non-glm-lessons-path'],
+  'lessons (GLM)': ['glm-lessons'],
+  'lessons (non-GLM)': ['non-glm-lessons'],
+  'loops': ['loops'],
+  'loops-peak': ['loops-peak'],
+  'loops-peak restart': ['loops-peak-restart'],
+  'memory (GLM)': ['glm-memory'],
+  'memory (non-GLM)': ['non-glm-memory'],
+  'memory compaction': ['glm-memory-compact'],
+  'memory depth': ['glm-memory-depth'],
+  'memory habit': ['glm-memory-habit'],
+  'memory worker': ['glm-worker-memory'],
+  'metrics': ['metrics'],
+  'metrics-rule': ['metrics-rule'],
+  'non-glm boot': ['non-glm'],
+  'non-glm peak': ['non-glm'],
+  'non-glm prompt': ['non-glm'],
+  'non-glm tools': ['non-glm'],
+  'non-glm-metrics': ['non-glm-metrics'],
+  'non-glm-rules': ['non-glm-rules'],
+  'operate-patrol': ['operate-patrol'],
+  'operate-report': ['operate-report'],
+  'pricing': ['glm'],
+  'rules': ['glm', 'non-glm'],
+  'rules-handover': ['rules-handover'],
+  'rules-peak': ['rules-peak'],
+  'rules-peak-hourness': ['rules-peak-hourness'],
+  'rules-peak-stop': ['rules-peak-stop'],
+  'rules-peak-stop-exit': ['rules-peak-stop-exit'],
+  'rules-peak-wake': ['rules-peak-wake'],
+  'rules-queue': ['rules-queue'],
+  'rules-script': ['rules-script'],
+  'rules-stop-notice': ['rules-stop-notice'],
+  'status hub': ['glm'],
+  'subdirectory instructions': ['glm-subdir-instructions'],
+  'transcript': ['glm', 'non-glm'],
+  'user graph': ['glm-user-graph'],
+  'workflow': ['non-glm'],
+}
+const CHECK_SCENARIO_LABELS = {
+  // One prefix, several scenarios: the exact label decides.
+  'calibration ablation A3: the arm is a no-op since the 18 graph and memory tools are deferred in production (arm A3 carried, DESIGN.md 5.2a) — A3\'s request is A0\'s, A0 holds none of the 18 resident, and A0\'s deferred tools announcement lists them': ['ablation-A0', 'ablation-A3'],
+  'calibration limits: the step past maxSteps is rejected, the turn ends blocked and the run exits non-zero': ['limits-steps'],
+  'calibration limits: the time limit cancels a running 60-second shell command and no later step runs': ['limits-time'],
+  'env-checks-timeout: the first run is stopped at 5 s; the notice names the floor, the log and the next limit of 15 s': ['env-checks-timeout', 'env-checks-timeout-run'],
+  'env-checks-timeout: the journal holds the estimate, the value from it (that session, the llm), the timeout, the censored run, the harness\'s 15 s and the finished run': ['env-checks-timeout', 'env-checks-timeout-run'],
+  'env-checks-timeout: the board records the timeout as failed with its limit and time, then the run that finished': ['env-checks-timeout', 'env-checks-timeout-run'],
+  'glm compact transcript: in glm-compact (transcript row disabled by the overlay) no checkpoint names a transcript': ['glm-compact'],
+  'glm-only: the glm:memory section follows the memory tools: absent here, present in the GLM scenario on probe-full': ['glm-only', 'glm'],
+  'graph live: the session view has the model, the steps of the open turn and the finished Read, nothing running, no focus': ['glm-graph-panel'],
+  'graph live: the dispatch parent\'s subagentCatalog names the child; the child view has its own model, the scope-denied Write as an error, and token usage': ['glm-dispatch'],
+  'graph row: on a non-GLM route the graph tools are in the face and graph_open answers': ['non-glm-graph'],
+  'graph row: the graph_propose schema carries the writing rules and the plain words on title (plain-ui 1.3 §5.3); the schema is route-independent, read from the non-GLM face since A3 took the schemas off the GLM one (DESIGN.md 5.2a)': ['non-glm-graph'],
+  'graph row: after a compaction checkpoint the first request carries the projection again (compaction)': ['glm-graph', 'glm-graph-compact'],
+  'graph row: the re-anchoring after the compaction lists graph-files-only with the session\'s denial count from the journal, and the non-goals of the focus\'s goal': ['glm-graph-compact'],
+  'graph row: the re-anchoring after the compaction lists the approved norm nodes under the focus\'s goal, one per line (id: title); no other projection lists them': ['glm-graph', 'glm-graph-compact'],
+  'graph row: a goal round carries the projection (goal-round)': ['glm-graph-goal'],
+  'guard: the non-GLM system prompt ends with the same one sentence': ['non-glm'],
+  'health: the guard names the shadow fallback: on with workspace-changes mounted, off without it': ['glm-shadow', 'glm'],
+  'health: /glm-status prints the credential line and the health table of the session, one line per bundle row with its package': ['glm'],
+  'health: /hourness-status prints the same table as /glm-status for the session, without the credential line': ['non-glm'],
+  'health: on the GLM route glm-prompt, guard, memory, workflow, data and glm-login report in effect; glm-compact and hourness have not acted': ['glm'],
+  'health: on the non-GLM route glm-prompt reports why it is not in effect': ['non-glm'],
+  'health: after a GLM compaction glm-compact reports the mirror in effect': ['glm-compact'],
+  'health: the reports stay out of the model-visible conversation': ['glm', 'non-glm', 'glm-compact', 'glm-shadow'],
+  'loops: the row ships enabled since the rules-loops merge: the boot scenarios list it in effect on both routes': ['glm', 'non-glm'],
+  'memory usage: one record per GLM step with the request provider, model and session id': ['glm'],
+  'memory usage: the compaction call is recorded with purpose compaction': ['glm-compact'],
+  'rules-page: rules-peak: after /rules peak 不做 the page data says the stop level, chosen by the person, and that it is peak now (the probe clock\'s Wednesday 15:00)': ['rules-peak'],
+  'rules-page: rules-peak-hourness: without the GLM package the page data says the peak hours do not apply, has no rules/peak item, and keeps the level the person chose': ['rules-peak-hourness'],
+  'rules-page: glm-rules: the workspace\'s .llm/rules/view.json is there and parses with the panel\'s reader': ['glm-rules'],
+  'rules-page: glm-rules: rules:files-only has a denial in the last 7 days, and the newest of its last five is that rule': ['glm-rules'],
+  'rules-page: glm-rules: the person\'s rule r-probe-block has one blocked call in 7 days and none only noted': ['glm-rules'],
+  'rules-page: glm-rules: the items hold rules/denials and rules/lifts, and the text of rules/peak is the first line of the 面板 section of the same run\'s /hourness': ['glm-rules', 'glm'],
+  'rules-page: non-glm-rules: on the non-GLM route the page data parses, counts the refusal of r-probe-block (scope other) as its one blocked call, and rules:files-only as a denial': ['non-glm-rules'],
+}
+const checkOwners = (label) => {
+  const exact = CHECK_SCENARIO_LABELS[label]
+  if (exact !== undefined) return exact
+  const cut = label.indexOf(': ')
+  const prefix = cut === -1 ? label : label.slice(0, cut)
+  const ablation = /^calibration ablation ([A-Z0-9]+)$/.exec(prefix)
+  if (ablation !== null) return [`ablation-${ablation[1]}`]
+  return CHECK_SCENARIO_PREFIXES[prefix]
+}
+
 let failed = 0
+let skippedChecks = 0
+let unlistedChecks = 0
 for (const [label, ok, detail] of checks) {
+  const owners = ONLY === undefined ? undefined : checkOwners(label)
+  if (ONLY !== undefined && (owners === undefined || !owners.every(name => ONLY.has(name)))) {
+    skippedChecks += 1
+    if (owners === undefined) unlistedChecks += 1
+    console.log(`SKIP  ${label}  (${owners === undefined ? 'no owner entry in CHECK_SCENARIO_PREFIXES/CHECK_SCENARIO_LABELS; enter the label or its prefix there' : `scenario not selected: ${owners.filter(name => !ONLY.has(name)).join(', ')}`})`)
+    continue
+  }
   if (!ok) failed += 1
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? `  (${detail})` : ''}`)
 }
-console.log(`probe: ${checks.length - failed}/${checks.length} passed`)
+if (ONLY === undefined) {
+  console.log(`probe: ${checks.length - failed}/${checks.length} passed`)
+}
+else {
+  const selected = [...ONLY]
+  console.log(`probe: partial run (${selected.length} scenario${selected.length === 1 ? '' : 's'}: ${selected.join(', ')})`)
+  console.log(`probe: ${checks.length - skippedChecks - failed}/${checks.length - skippedChecks} passed, ${skippedChecks} skipped (${unlistedChecks} of them without an entry in CHECK_SCENARIO_PREFIXES/CHECK_SCENARIO_LABELS; ${skippedScenarios.length} scenario(s) not booted)`)
+  console.log('probe: the net, quota and data sweeps ran over the scenarios this run booted only')
+}
 
 // Profile guard: a change to the project part of a user profile voids the
 // run (the probe may have written there, or someone changed this project's
