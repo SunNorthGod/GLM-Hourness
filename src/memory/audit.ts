@@ -35,13 +35,11 @@ export interface DecisionRecord {
   readonly detail?: string | undefined
 }
 
-/** Journal files; a sink whose directory is unknown has no path. */
+/** Journal files; a sink whose directory is unknown has no path. The daily suppression counts are the metrics journal's `count` events (metrics step 10), not a journal here. */
 export interface AuditPaths {
   readonly violations?: string
   readonly usage?: string
   readonly decisions?: string
-  /** The daily counts of suppression comments (m4-suppressions), beside the violations journal. */
-  readonly suppressions?: string
   /** The timing journal of M4's own checks (m4-checks, design §6.3.1), under the project directory's env-checks/. */
   readonly timing?: string
   /** The main agent's ceilings of the checks (check_limit, design §6.3.1), beside the timing journal. */
@@ -50,11 +48,11 @@ export interface AuditPaths {
   readonly gaps?: string
 }
 
-/** Usage and its gaps under the user directory, violations, decisions, suppression counts and the checks' timing under the project directory. */
+/** Usage and its gaps under the user directory, violations, decisions and the checks' timing under the project directory. */
 export function auditPaths(homes: DataHomes): AuditPaths {
   const under = (home: string, file: string) => `${home.replace(/[\\/]+$/, '')}/audit/${file}`
   return {
-    ...(homes.projectHome === undefined ? {} : { violations: under(homes.projectHome, 'violations.jsonl'), decisions: under(homes.projectHome, 'decisions.jsonl'), suppressions: under(homes.projectHome, 'suppressions.jsonl'), timing: `${homes.projectHome.replace(/[\\/]+$/, '')}/env-checks/timing.jsonl`, limits: `${homes.projectHome.replace(/[\\/]+$/, '')}/env-checks/limits.jsonl` }),
+    ...(homes.projectHome === undefined ? {} : { violations: under(homes.projectHome, 'violations.jsonl'), decisions: under(homes.projectHome, 'decisions.jsonl'), timing: `${homes.projectHome.replace(/[\\/]+$/, '')}/env-checks/timing.jsonl`, limits: `${homes.projectHome.replace(/[\\/]+$/, '')}/env-checks/limits.jsonl` }),
     ...(homes.userHome === undefined ? {} : { usage: under(homes.userHome, 'usage.jsonl'), gaps: under(homes.userHome, 'usage-gaps.jsonl') }),
   }
 }

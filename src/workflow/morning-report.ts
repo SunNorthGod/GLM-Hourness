@@ -18,9 +18,8 @@ import { effectCheckLines, effectChecks, type EffectCheck, type JournalRead } fr
 import { classifyRecord, journalEarliest, type GuardRecord, type LiftRecord } from '../guard/records.ts'
 import { liftRecordPath } from '../guard/lift.ts'
 import { liftLines, renderStamp, ruleLines, type LiftsInput } from '../guard/status.ts'
-import { checkTimeouts, suppressionLineOf, timeoutLines } from '../env/status.ts'
+import { checkTimeouts, suppressionLineOf, timeoutLines, type SuppressionCount } from '../env/status.ts'
 import { runGit } from '../data/git-process.ts'
-import type { SuppressionRecord } from '../env/suppressions.ts'
 import { parseLimits, type LimitLine } from '../env/limit-tool.ts'
 import { parseTiming, type TimingLine } from '../env/timeout.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
@@ -32,6 +31,7 @@ import type { DataHomes } from '../shared/data-home.ts'
 import type { UsagePricing } from '../shared/pricing.ts'
 import type { MomentZone } from '../shared/quota.ts'
 import { readLog, type LogFindings } from '../metrics/read.ts'
+import type { MetricsEvent } from '../metrics/schema.ts'
 import { factsFor, localDate } from '../metrics/calc.ts'
 import type { MetricsCoverage } from '../shared/metrics.ts'
 
@@ -55,8 +55,8 @@ export interface ReportInput {
   /** Every journal line the period holds; classifyRecord decides what each one is. */
   readonly violations: readonly GuardRecord[]
   readonly usage: readonly UsageRecord[]
-  /** The daily suppression-comment counts the period covers (m4-suppressions), oldest first. */
-  readonly suppressions?: readonly SuppressionRecord[] | undefined
+  /** The daily suppression-comment counts the period covers (m4-suppressions, the metrics journal's `count` events since metrics step 10), oldest first. */
+  readonly suppressions?: readonly SuppressionCount[] | undefined
   readonly period: string
   /** Prices the usage section in credits; without it the section lists calls and tokens. */
   readonly pricing?: UsagePricing | undefined
@@ -323,12 +323,35 @@ async function readOnce(read: GraphReader): Promise<{ readonly graph: LoadedGrap
 }
 
 /**
+ * One read of the project's metrics journal, shared by the report's readers
+ * of it (the 指标 section and the suppression line): the events, or why the
+ * journal could not be read; undefined when the caller gave no project at
+ * all. `readEffects` keeps its own read — the operate row calls it with its
+ * own options.
+ */
+type FlowRead = { readonly events: readonly MetricsEvent[] } | { readonly failed: string } | undefined
+
+/** The `what` label of the suppression counts (`src/env/metrics.ts`), the one `count` stream the report reads. */
+const SUPPRESSION_COUNT_WHAT = 'suppression-comments'
+
+/** The daily suppression counts of the flow, in period, oldest first: one `count` event with the stream's `what` is one count. */
+function suppressionCountsOf(events: readonly MetricsEvent[], sinceMs: number | undefined): SuppressionCount[] {
+  return events.flatMap((event): SuppressionCount[] => {
+    if (event.k !== 'count') return []
+    const body = event.body
+    if (body.what !== SUPPRESSION_COUNT_WHAT || typeof body.value !== 'number') return []
+    if (sinceMs !== undefined && (Number.isNaN(Date.parse(event.at)) || Date.parse(event.at) < sinceMs)) return []
+    return [{ at: event.at, total: body.value }]
+  })
+}
+
+/**
  * Assemble the morning report from the audit journal files: dispatch calls,
- * violations and the suppression counts from the project directory, usage and
- * the gap file (the deletions of usage records) from the user directory
- * (docs/DESIGN.md §2.4); an unknown directory reads as an empty journal. The
- * asks come from the project graph `graph` reads. `since` (ISO instant) bounds
- * the period: only records stamped at or after it enter the report, so one
+ * violations and usage from the project and user directories (docs/DESIGN.md
+ * §2.4), and the suppression counts of the period from the project's metrics
+ * journal — an unknown directory reads as an empty journal. The asks come
+ * from the project graph `graph` reads. `since` (ISO instant) bounds the
+ * period: only records stamped at or after it enter the report, so one
  * period reports on that window, not on all history. The usage section names
  * the gaps that period meets.
  */
@@ -371,7 +394,14 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
   const periodStart = sinceMs === undefined || Number.isNaN(sinceMs) ? undefined : sinceMs
   const zone: MomentZone = options.offsetMinutes === undefined ? {} : { offsetMinutes: options.offsetMinutes }
   const nowAt = options.now ?? Date.now()
-  const metricsLinesOut = options.metrics === undefined ? undefined : await metricsLines(options.metrics, nowAt, options.offsetMinutes, graph)
+  // The metrics journal, read once: the 指标 section words it, the suppression line slices it.
+  const flow: FlowRead = options.metrics === undefined || !('root' in options.metrics)
+    ? undefined
+    : await readLog(options.metrics.root).then(
+      read => ({ events: read.events }),
+      (error: unknown) => ({ failed: error instanceof Error ? error.message : String(error) }),
+    )
+  const metricsLinesOut = options.metrics === undefined ? undefined : await metricsLines(options.metrics, nowAt, options.offsetMinutes, graph, flow)
   // The lift side reads the WHOLE journal, not the period (design §3.10, review finish2 round 2 F16): a lift is the project's decision, whatever day it fell on.
   const wholeViolations = await readJsonl<GuardRecord>(paths.violations)
   const liftRecords = wholeViolations.flatMap((record): LiftRecord[] => classifyRecord(record as unknown as Readonly<Record<string, unknown>>) === 'lift' ? [record as unknown as LiftRecord] : [])
@@ -396,7 +426,7 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
     decisions: inPeriod(await readJsonl<DecisionRecord>(paths.decisions)),
     violations: inPeriod(wholeViolations),
     usage: inPeriod(await readJsonl<UsageRecord>(paths.usage)),
-    suppressions: inPeriod(await readJsonl<SuppressionRecord>(paths.suppressions)),
+    suppressions: flow !== undefined && 'events' in flow ? suppressionCountsOf(flow.events, sinceMs) : [],
     // The checks' journal is read whole: its section counts its own seven days (design §6.3.1).
     timing: parseTiming(await readText(paths.timing)).lines,
     // A limits.jsonl that cannot be read is no setting (design §6.3.1).
@@ -450,13 +480,15 @@ const NO_FINDINGS: LogFindings = { events: 0, unreadable: [], missing: [], chain
  * dropped (with the code), the last background self-check, the events no
  * project could take, and the note that the graph has older history when
  * it does. A project with no journal yet names why, the rest of the
- * report unchanged.
+ * report unchanged. The journal arrives as the caller's one read (`flow`);
+ * a read that failed there words the same 读不到 line.
  */
 async function metricsLines(
   metrics: NonNullable<ReportOptions['metrics']>,
   nowMs: number,
   offsetMinutes: number | undefined,
   graph: GraphReader,
+  flow: FlowRead,
 ): Promise<string[]> {
   if (!('root' in metrics)) return [`## 指标（流水）`, `- 指标流水读不到：${metrics.reason}`]
   const zoneMinutes = offsetMinutes ?? -new Date(nowMs).getTimezoneOffset()
@@ -470,7 +502,8 @@ async function metricsLines(
   try {
     // The whole journal, not just today: the 记录 line's 最早 is the journal's
     // first entry (§5.5), and factsFor windows the facts to the day itself.
-    const read = await readLog(metrics.root)
+    if (flow === undefined || !('events' in flow)) throw new Error(flow === undefined ? '这次调用没有给出项目' : flow.failed)
+    const read = { events: flow.events }
     const lines: string[] = ['## 指标（流水，今天）']
     if (read.events.length === 0) {
       lines.push('- 指标流水还没有：指标行没启用，或这个项目还没有记录')

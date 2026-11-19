@@ -11,7 +11,7 @@
  * anyone who can rewrite the files (§5.4).
  */
 import { createHash } from 'node:crypto'
-import { createReadStream } from 'node:fs'
+import { createReadStream, readFileSync, readdirSync } from 'node:fs'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -48,6 +48,53 @@ export interface ReadLogOptions {
 const FILE_PATTERN = /^events-(\d{4}-\d{2}-\d{2})(?:-([0-9a-f]{8}|bf-[0-9a-f]{7}))?\.jsonl$/
 
 const dateOf = (instant: string): string => instant.slice(0, 10)
+
+/**
+ * Synchronous best-effort read of one `count` stream (`what`) from the
+ * newest day files of a project's journal (§5.3's layout): the status views
+ * are synchronous (`src/shared/status-host.ts`), so the env row's entry and
+ * the once-per-day gate of the suppression count read without the async
+ * reader. The last `files` day files by name, line by line JSON, an event
+ * of kind `count` with the named `what` contributes `{at, value}`; a file
+ * that is not there, or a line that does not parse or does not match, is
+ * skipped. No validation: this is a display read, the journal's chain check
+ * (`checkLog`) is what stands guard.
+ */
+export function countEventsSync(root: string, what: string, files = 3): Array<{ readonly at: string, readonly value: number }> {
+  let names: string[]
+  try {
+    names = readdirSync(join(root, '.llm', 'metrics')).filter(name => FILE_PATTERN.test(name)).sort()
+  }
+  catch {
+    return []
+  }
+  const counts: Array<{ readonly at: string, readonly value: number }> = []
+  for (const name of names.slice(-files)) {
+    let text: string
+    try {
+      text = readFileSync(join(root, '.llm', 'metrics', name), 'utf8')
+    }
+    catch {
+      continue
+    }
+    for (const line of text.split('\n')) {
+      if (line.trim() === '') continue
+      try {
+        const parsed: unknown = JSON.parse(line)
+        if (typeof parsed !== 'object' || parsed === null) continue
+        const event = parsed as { readonly k?: unknown, readonly at?: unknown, readonly body?: unknown }
+        if (event.k !== 'count' || typeof event.at !== 'string') continue
+        const body = event.body as { readonly what?: unknown, readonly value?: unknown } | undefined
+        if (body === undefined || body.what !== what || typeof body.value !== 'number') continue
+        counts.push({ at: event.at, value: body.value })
+      }
+      catch {
+        continue
+      }
+    }
+  }
+  return counts
+}
 
 /** The journal files of a project in the window, in file-name order; `limit` caps lines per file (§7.1 step 1 and 5). */
 async function journalFiles(root: string, options: ReadLogOptions): Promise<Array<{ readonly name: string, readonly limit: number }>> {
