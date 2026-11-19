@@ -205,7 +205,7 @@ import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 import { crc32, deflateSync } from 'node:zlib'
-import { DISPATCH_TOOLS } from '../../packages/hourness/dist/workflow/index.js'
+import { DISPATCH_TOOLS } from '../../packages/hourness/dist/shared/tool-names.js'
 import { openRulesBoard } from '../../packages/hourness/dist/rules/engine.js'
 import { clockText } from '../../packages/hourness/dist/rules/index.js'
 import { repoJson } from '../../packages/hourness/dist/rules/model.js'
@@ -4084,8 +4084,9 @@ const glmViolations = jsonl(join(glmDir, 'home', 'audit', 'violations.jsonl'))
 const stepLimits = jsonl(limitsRecord('limits-steps'))
 const timeLimits = jsonl(limitsRecord('limits-time'))
 const realUsageAfter = usageStamp()
-// The workflow row journals dispatch calls by tool name; the names must be
-// the ones the rc.3 composition registers.
+// The runtime's dispatch-class tools (the metrics journal records them as
+// `tool` events of category `dispatch`): the rc.3 composition registers the
+// two subagent tools of the base profile.
 const plainSubagentTools = [...plainTools].filter(name => name === 'subagent' || name === 'subagent_fork')
 
 // Row health: the probe provider ran the bundle's /glm-status handler for
@@ -4292,7 +4293,7 @@ const glmHubQuota = glmHubLines(glmHubItem('glm/quota'))
 const glmHubPeak = glmHubItem('rules/peak')
 const glmHubMetrics = sectionOf(glmHourness?.text ?? '', '指标（流水，今天）')
 // The fact groups /hourness's metrics section prints, as FACT_GROUP_TITLES in
-// src/workflow/morning-report.ts lists them (§7.3 of the metrics design: no
+// src/report/morning-report.ts lists them (§7.3 of the metrics design: no
 // scores, no burden numbers, no coverage group in the conversation).
 const HOURNESS_FACT_HEADINGS = ['### 任务', '### 拦截', '### 撤下', '### 超时', '### 额度停住', '### 汇报']
 const quotaTextBodies = scenarioNames.flatMap(name => jsonl(join(runDir, name, 'requests.jsonl')).map(request => ({ name, body: JSON.stringify({ system: request.system, tools: request.tools, messages: request.messages }) })))
@@ -5856,10 +5857,10 @@ const checks = [
   ['glm-no-dialect: the guard still denies a pwsh shell write on GLM, journals it under the called name, corrects in native names, and the turn end settles its follow-up as none', noDialectResult?.isError === true && noDialectResult.text.includes('Shell file writes are not permitted') && noDialectResult.text.includes(RIGHT_PATH_NATIVE) && !existsSync(noDialectFile) && noDialectViolations.length === 2 && noDialectViolations[0].rule === 'file-tools-only' && noDialectViolations[0].tool === 'pwsh' && noDialectViolations[0].scope === 'other' && noDialectViolations[1].kind === 'followup' && noDialectViolations[1].outcome === 'none', `${(noDialectResult?.text ?? 'no tool result').split('\n')[2] ?? ''}; ${noDialectViolations.length} record(s), scope ${noDialectViolations[0]?.scope ?? 'none'}`],
   ['glm-no-dialect: the GLM rule section is the one sentence, with no per-rule line naming native tools', noDialectFirst?.system.includes(GUARD_SECTION) === true && noDialectFirst.system.includes('\n- Modify files and code only with the dedicated write/edit tools.') === false, noDialectFirst === undefined ? 'no request' : `section at ${noDialectFirst.system.indexOf(GUARD_SECTION)}`],
   ['health: the guard names the shadow fallback: on with workspace-changes mounted, off without it', shadowHealth.guard?.status === ACTED && shadowHealth.guard.reason.endsWith('事后纠正启用：工作区变更记录') && glmHealth.guard?.reason.endsWith('事后纠正未启用（组合里没有 workspace-changes）') === true, `${JSON.stringify(shadowHealth.guard ?? null)} | ${JSON.stringify(glmHealth.guard ?? null)}`],
-  ['workflow: the runtime subagent tools are journaled dispatch names', plainSubagentTools.length === 2 && plainSubagentTools.every(name => DISPATCH_TOOLS.includes(name)), `runtime subagent tools: ${plainSubagentTools.join(', ') || 'none'}`],
+  ['dispatch: the runtime subagent tools are of the dispatch class the metrics journal records', plainSubagentTools.length === 2 && plainSubagentTools.every(name => DISPATCH_TOOLS.includes(name)), `runtime subagent tools: ${plainSubagentTools.join(', ') || 'none'}`],
   ['health: /glm-status prints the credential line and the health table of the session, one line per bundle row with its package', glmStatusText.startsWith('glm-zcode：未登录（套餐 coding-plan）') && glmStatusText.includes(`## 行健康（会话 ${statusStep(glm)?.sessionId}）\n\n${TABLE_HEAD}`) && HEALTH_ROWS.every(row => glmHealth[row] !== undefined) && Object.keys(glmHealth).length === HEALTH_ROWS.length && grouped(glmHealth), `${Object.keys(glmHealth).length} row(s), grouped ${grouped(glmHealth)}; ${glmStatusText.split('\n')[0]}`],
   ['health: /hourness-status prints the same table as /glm-status for the session, without the credential line', plainHourness?.kind === 'success' && plainHourness.text.startsWith(`## 行健康（会话 ${statusStep(plain)?.sessionId}）\n\n${TABLE_HEAD}`) && plainHourness.text === plainStatusText.slice(plainStatusText.indexOf('## 行健康')) && grouped(plainHealth), `${plainHourness?.kind ?? 'not run'}; ${(plainHourness?.text ?? '').split('\n').length} line(s); same as /glm-status: ${plainHourness?.text === plainStatusText.slice(plainStatusText.indexOf('\n\n') + 2)}`],
-  ['health: on the GLM route glm-prompt, guard, memory, workflow, data and glm-login report in effect; glm-compact and hourness have not acted', glmHealth['glm-prompt']?.status === ACTED && glmHealth['glm-prompt'].reason.startsWith('GLM 路由 glm-probe/glm-5.3：') && ['guard', 'memory', 'workflow', 'data', 'glm-login'].every(row => glmHealth[row]?.status === ACTED) && ['glm-compact', 'hourness'].every(row => glmHealth[row]?.status === IDLE), HEALTH_ROWS.map(row => healthLine(glmHealth, row)).join('; ')],
+  ['health: on the GLM route glm-prompt, guard, memory, data and glm-login report in effect; glm-compact and hourness have not acted', glmHealth['glm-prompt']?.status === ACTED && glmHealth['glm-prompt'].reason.startsWith('GLM 路由 glm-probe/glm-5.3：') && ['guard', 'memory', 'data', 'glm-login'].every(row => glmHealth[row]?.status === ACTED) && ['glm-compact', 'hourness'].every(row => glmHealth[row]?.status === IDLE), HEALTH_ROWS.map(row => healthLine(glmHealth, row)).join('; ')],
   ['pricing: /hourness on the GLM route prices the usage journal through the pricing service glm-login provides', glmHourness?.kind === 'success' && glmPanel.startsWith('- 高峰：') && glmPanel.split('\n')[1]?.startsWith('- 全部用量记录；高峰为工作日 14:00–18:00（UTC+8）') === true && /^- glm-5\.3：\d+ 次 · 积分 \d+\.\d\d/m.test(glmPanel), `${glmHourness?.kind ?? 'not run'}; ${JSON.stringify(glmPanel.split('\n').slice(0, 3))}`],
   ['status hub: the collector reads the real runtime\'s rows without a failure, and the agent audience carries no person entry', glmHub?.agent !== undefined && glmHub.agent.rows.length > 0 && glmHub.agent.rows.every(row => row.outcome !== 'error') && glmHub.agent.items.every(item => item.audience === 'agent') && isDeepStrictEqual(glmHub.agent.items.map(item => item.id), glmHub.all.items.filter(item => item.audience === 'agent').map(item => item.id)), glmHub === undefined ? 'no hub recorded' : glmHub.error ?? `read: ${glmHub.agent.rows.filter(row => row.outcome === 'ok').map(row => row.row).join(', ')}; failed: ${glmHub.agent.rows.filter(row => row.outcome === 'error').map(row => `${row.row} (${row.reason})`).join(', ') || 'none'}; agent: ${glmHub.agent.items.map(item => item.id).join(', ')}; all: ${glmHub.all.items.length}`],
   ['status hub: /hourness 面板 is the entries (the peak line first, the usage entry\'s text and detail last) and 额度 is the quota entry', glmHourness?.kind === 'success' && glmHubPeak !== undefined && glmHubPanel[0] === glmHubPeak.text && glmHubUsage !== undefined && isDeepStrictEqual(glmHubPanel.slice(-glmHubUsage.length), glmHubUsage) && glmHubQuota !== undefined && isDeepStrictEqual(glmQuotaSection, glmHubQuota), `peak ${JSON.stringify(glmHubPeak?.text ?? null)}; usage ${JSON.stringify(glmHubUsage ?? null)}; quota ${JSON.stringify(glmHubQuota ?? null)}; 面板 ${JSON.stringify(glmHubPanel)}`],
@@ -6154,7 +6155,7 @@ const CHECK_SCENARIO_PREFIXES = {
   'subdirectory instructions': ['glm-subdir-instructions'],
   'transcript': ['glm', 'non-glm'],
   'user graph': ['glm-user-graph'],
-  'workflow': ['non-glm'],
+  'dispatch': ['non-glm'],
 }
 const CHECK_SCENARIO_LABELS = {
   // One prefix, several scenarios: the exact label decides.
@@ -6178,7 +6179,7 @@ const CHECK_SCENARIO_LABELS = {
   'health: the guard names the shadow fallback: on with workspace-changes mounted, off without it': ['glm-shadow', 'glm'],
   'health: /glm-status prints the credential line and the health table of the session, one line per bundle row with its package': ['glm'],
   'health: /hourness-status prints the same table as /glm-status for the session, without the credential line': ['non-glm'],
-  'health: on the GLM route glm-prompt, guard, memory, workflow, data and glm-login report in effect; glm-compact and hourness have not acted': ['glm'],
+  'health: on the GLM route glm-prompt, guard, memory, data and glm-login report in effect; glm-compact and hourness have not acted': ['glm'],
   'health: on the non-GLM route glm-prompt reports why it is not in effect': ['non-glm'],
   'health: after a GLM compaction glm-compact reports the mirror in effect': ['glm-compact'],
   'health: the reports stay out of the model-visible conversation': ['glm', 'non-glm', 'glm-compact', 'glm-shadow'],

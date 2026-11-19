@@ -23,16 +23,15 @@ function fakeFs() {
 const USER_HOME = 'C:/users/me/.dsh/glm-hourness'
 const service = { userHome: USER_HOME, projectHome: 'C:/ws/.llm' }
 
-test('audit paths: usage and its gaps under the user directory, violations, decisions and the checks\' timing under the project directory', () => {
+test('audit paths: usage and its gaps under the user directory, violations and the checks\' timing under the project directory (the decision journal of the workflow row is retired: metrics step 10)', () => {
   assert.deepEqual(auditPaths({ userHome: USER_HOME, projectHome: 'C:\\ws\\.llm\\' }), {
     violations: 'C:\\ws\\.llm/audit/violations.jsonl',
-    decisions: 'C:\\ws\\.llm/audit/decisions.jsonl',
     timing: 'C:\\ws\\.llm/env-checks/timing.jsonl',
     limits: 'C:\\ws\\.llm/env-checks/limits.jsonl',
     usage: `${USER_HOME}/audit/usage.jsonl`,
     gaps: `${USER_HOME}/audit/usage-gaps.jsonl`,
   })
-  assert.deepEqual(auditPaths({ projectHome: 'C:/ws/.llm' }), { violations: 'C:/ws/.llm/audit/violations.jsonl', decisions: 'C:/ws/.llm/audit/decisions.jsonl', timing: 'C:/ws/.llm/env-checks/timing.jsonl', limits: 'C:/ws/.llm/env-checks/limits.jsonl' })
+  assert.deepEqual(auditPaths({ projectHome: 'C:/ws/.llm' }), { violations: 'C:/ws/.llm/audit/violations.jsonl', timing: 'C:/ws/.llm/env-checks/timing.jsonl', limits: 'C:/ws/.llm/env-checks/limits.jsonl' })
   assert.deepEqual(auditPaths({ userHome: USER_HOME }), { usage: `${USER_HOME}/audit/usage.jsonl`, gaps: `${USER_HOME}/audit/usage-gaps.jsonl` })
 })
 
@@ -40,11 +39,10 @@ test('audit journal appends one JSONL line per record; a sink without a director
   const { files, fs } = fakeFs()
   const journal = auditJournal((path, line) => fs.appendFile(path, line), auditPaths({ projectHome: 'C:/ws/.llm' }))
   await journal.violation({ at: '2026-10-27T00:00:00Z', rule: 'workspace-containment', tool: 'Write', correction: 'Boundary: …' })
-  await journal.decision({ at: '2026-10-27T00:00:02Z', kind: 'dispatch', subject: 'subagent a' })
   await assert.rejects(journal.usage({ at: '2026-10-27T00:00:01Z', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 5, outputTokens: 3 } }), /no user-level directory/)
-  const lines = (files.get('C:/ws/.llm/audit/decisions.jsonl') ?? '').trim().split('\n')
+  const lines = (files.get('C:/ws/.llm/audit/violations.jsonl') ?? '').trim().split('\n')
   assert.equal(lines.length, 1)
-  assert.deepEqual(Object.keys(JSON.parse(lines[0]!)), ['at', 'kind', 'subject'])
+  assert.ok((JSON.parse(lines[0]!) as { rule: string }).rule === 'workspace-containment')
 })
 
 test('fsAppender creates the directory before the first append', async () => {

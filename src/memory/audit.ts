@@ -1,10 +1,12 @@
 /**
  * dsh-memory (audit foundation) — durable JSONL sinks under `<dir>/audit/`:
- * usage (per model-call token accounting) in the user-level directory,
+ * usage (per model-call token accounting) in the user-level directory, and
  * violations (guard denials, the rules board's records, the fallback's
- * late records, follow-ups, lifts, gaps) and workflow decisions in the
- * project directory (docs/DESIGN.md §2.4). The filesystem is injected;
- * every sink appends one JSON object per line and never rewrites history.
+ * late records, follow-ups, lifts, gaps) in the project directory
+ * (docs/DESIGN.md §2.4). The workflow decision journal of the retired
+ * workflow row (metrics step 10) is no sink here; the dispatch calls are
+ * the metrics journal's `tool` events. The filesystem is injected; every
+ * sink appends one JSON object per line and never rewrites history.
  */
 import { appendFile, mkdir } from 'node:fs/promises'
 import { classifyRecord, type GapRecord, type GuardRecord } from '../guard/records.ts'
@@ -23,23 +25,10 @@ export interface UsageRecord {
   readonly usage: TokenUsage
 }
 
-/**
- * One workflow decision record: a dispatch call the workflow row observed.
- * Lines written before the grading was removed also carry a `level`; readers
- * ignore it.
- */
-export interface DecisionRecord {
-  readonly at: string
-  readonly kind: string
-  readonly subject: string
-  readonly detail?: string | undefined
-}
-
 /** Journal files; a sink whose directory is unknown has no path. The daily suppression counts are the metrics journal's `count` events (metrics step 10), not a journal here. */
 export interface AuditPaths {
   readonly violations?: string
   readonly usage?: string
-  readonly decisions?: string
   /** The timing journal of M4's own checks (m4-checks, design §6.3.1), under the project directory's env-checks/. */
   readonly timing?: string
   /** The main agent's ceilings of the checks (check_limit, design §6.3.1), beside the timing journal. */
@@ -48,11 +37,11 @@ export interface AuditPaths {
   readonly gaps?: string
 }
 
-/** Usage and its gaps under the user directory, violations, decisions and the checks' timing under the project directory. */
+/** Usage and its gaps under the user directory, violations and the checks' timing under the project directory. */
 export function auditPaths(homes: DataHomes): AuditPaths {
   const under = (home: string, file: string) => `${home.replace(/[\\/]+$/, '')}/audit/${file}`
   return {
-    ...(homes.projectHome === undefined ? {} : { violations: under(homes.projectHome, 'violations.jsonl'), decisions: under(homes.projectHome, 'decisions.jsonl'), timing: `${homes.projectHome.replace(/[\\/]+$/, '')}/env-checks/timing.jsonl`, limits: `${homes.projectHome.replace(/[\\/]+$/, '')}/env-checks/limits.jsonl` }),
+    ...(homes.projectHome === undefined ? {} : { violations: under(homes.projectHome, 'violations.jsonl'), timing: `${homes.projectHome.replace(/[\\/]+$/, '')}/env-checks/timing.jsonl`, limits: `${homes.projectHome.replace(/[\\/]+$/, '')}/env-checks/limits.jsonl` }),
     ...(homes.userHome === undefined ? {} : { usage: under(homes.userHome, 'usage.jsonl'), gaps: under(homes.userHome, 'usage-gaps.jsonl') }),
   }
 }
@@ -61,10 +50,9 @@ export interface AuditJournal {
   /** A guard denial, or a record of another kind the journal holds (src/guard/records.ts GuardRecord). */
   violation(record: GuardRecord): Promise<void>
   usage(record: UsageRecord): Promise<void>
-  decision(record: DecisionRecord): Promise<void>
 }
 
-/** Build the three-sink audit journal over an injected appender; a sink without a path rejects. */
+/** Build the two-sink audit journal over an injected appender; a sink without a path rejects. */
 export function auditJournal(append: AppendLine, paths: AuditPaths): AuditJournal {
   const sink = (kind: keyof AuditPaths) => (record: object): Promise<void> => {
     const path = paths[kind]
@@ -74,7 +62,7 @@ export function auditJournal(append: AppendLine, paths: AuditPaths): AuditJourna
     }
     return append(path, JSON.stringify(record))
   }
-  return { violation: sink('violations'), usage: sink('usage'), decision: sink('decisions') }
+  return { violation: sink('violations'), usage: sink('usage') }
 }
 
 /** Filesystem the appender writes through (subset of node:fs/promises). */
@@ -213,7 +201,6 @@ function gapLine(gap: LostGap, row: string, now: () => Date): string {
 export interface RowJournal {
   violation(record: GuardRecord): Promise<JournalOutcome>
   usage(record: UsageRecord): Promise<void>
-  decision(record: DecisionRecord): Promise<void>
   /** Write the pending gap record without a new record; nothing happens when there is none. */
   flush(): Promise<void>
 }
@@ -250,7 +237,6 @@ export function rowJournal(row: string, homes: () => DataHomes, fs: AuditFs = no
   return {
     violation,
     usage: record => auditJournal(append, auditPaths(homes())).usage(record).catch(report('usage')),
-    decision: record => auditJournal(append, auditPaths(homes())).decision(record).catch(report('decisions')),
     async flush() {
       const path = auditPaths(homes()).violations
       if (path === undefined) return

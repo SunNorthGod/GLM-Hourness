@@ -17,7 +17,7 @@ import { openEngine } from '../src/graph/engine.ts'
 import type { LoadedGraph } from '../src/graph/parse.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import { effectBlock, effectCheckLines, effectChecks, type JournalEvent, type JournalRead, type RuleEffect } from '../src/memory/effect.ts'
-import { morningReport, reportFromFiles } from '../src/workflow/morning-report.ts'
+import { morningReport, reportFromFiles } from '../src/report/morning-report.ts'
 import { exampleRecord } from './proposal-examples.ts'
 
 const DAY = 86_400_000
@@ -67,7 +67,7 @@ const DUE = AGREED + 14 * DAY
 const NO_JOURNAL: JournalRead = { unreadable: '这次调用没有给出项目' }
 /** A graph with nothing waiting and nothing decided, and a period with no records: only the checks section can appear. */
 const NOTHING_ASKED = { decided: { agent: 0, inChat: 0, person: 0 }, agentOwn: 0, waiting: { count: 0 } }
-const quiet = { usage: [], violations: [], decisions: [], asks: NOTHING_ASKED, period: 'p' }
+const quiet = { usage: [], violations: [], asks: NOTHING_ASKED, period: 'p' }
 
 test('a check that met its expected effect is not listed; one that missed is, with the counts of both windows and the words that nothing changes by itself', async () => {
   const w = await world()

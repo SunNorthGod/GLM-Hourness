@@ -26,7 +26,7 @@ import { liftFilesOnly } from '../src/guard/lift-files.ts'
 import { liftStatesOf } from '../src/guard/lift.ts'
 import { NO_WAIT_RULE } from '../src/guard/main-agent-rules.ts'
 import { NATIVE_FACE, type GuardRule, type ToolCall } from '../src/guard/rules.ts'
-import { morningReport } from '../src/workflow/morning-report.ts'
+import { morningReport } from '../src/report/morning-report.ts'
 import type { LiftsInput } from '../src/guard/status.ts'
 import type { AgentLike, DerivedMessage } from '../src/shared/dsh-min.ts'
 import type { LiftRecord } from '../src/guard/records.ts'
@@ -318,7 +318,6 @@ test('liftService reads the service the guard row provides through ctx, and unde
 const reportWith = (records: readonly LiftRecord[], file: LiftsInput['file'], over: Partial<LiftsInput> = {}): string =>
   morningReport({
     period: 'p',
-    decisions: [],
     violations: [],
     usage: [],
     asks: { waiting: { count: 0 }, agentOwn: 0, decided: { person: 0, inChat: 0, agent: 0 } },
@@ -400,7 +399,7 @@ test('the report derives the lifted rules from the journal alone without a file,
   writeFileSync(join(root, '.llm', 'audit', 'violations.jsonl'), `${JSON.stringify(record)}\n`)
   mkdirSync(join(root, 'docs', 'guard'), { recursive: true })
   writeFileSync(liftsPath(root), `${JSON.stringify({ at: '2026-11-04T06:00:00Z', rule: 'scratch-only', action: 'lift', via: 'chat', words: '先别拦了' })}\n`)
-  const { reportFromFiles } = await import('../src/workflow/morning-report.ts')
+  const { reportFromFiles } = await import('../src/report/morning-report.ts')
   run(['add', 'docs/guard/lifts.jsonl'])
   run(['commit', '-q', '-m', 'lifts'])
   const report = await reportFromFiles({ readFile: path => Promise.resolve(readFileSync(path, 'utf8')) }, { projectHome: join(root, '.llm') }, 'p', () => Promise.reject(new Error('no graph')), undefined, { root, now: Date.parse('2026-11-04T12:00:00Z'), offsetMinutes: 480 })
@@ -421,7 +420,7 @@ test('a record file that is not there yet reads as empty, not as a read error: a
     // The journal exists (the session ran) but no lift was ever recorded, so docs/guard/lifts.jsonl was never written.
     mkdirSync(join(root, '.llm', 'audit'), { recursive: true })
     writeFileSync(join(root, '.llm', 'audit', 'violations.jsonl'), '')
-    const { reportFromFiles } = await import('../src/workflow/morning-report.ts')
+    const { reportFromFiles } = await import('../src/report/morning-report.ts')
     // The real node:fs/promises reader: a missing file rejects, the way the ReportFs contract fails.
     const readFile = (path: string): Promise<string> => readFileUtf8(path, 'utf8')
     const report = await reportFromFiles({ readFile }, { projectHome: join(root, '.llm') }, 'p', () => Promise.reject(new Error('no graph')), undefined, { root, now: Date.parse('2026-11-04T12:00:00Z'), offsetMinutes: 480 })
@@ -440,7 +439,7 @@ test('after a worktree copy merges into the main checkout, the next report names
   writeFileSync(join(root, '.llm', 'audit', 'violations.jsonl'), '')
   mkdirSync(join(root, 'docs', 'guard'), { recursive: true })
   writeFileSync(liftsPath(root), `${JSON.stringify({ at: '2026-11-04T06:00:00Z', rule: 'scratch-only', action: 'lift', via: 'board', words: '/rules lift guard:scratch-only' })}\n`)
-  const { reportFromFiles } = await import('../src/workflow/morning-report.ts')
+  const { reportFromFiles } = await import('../src/report/morning-report.ts')
   const report = await reportFromFiles({ readFile: path => Promise.resolve(readFileSync(path, 'utf8')) }, { projectHome: join(root, '.llm') }, 'p', () => Promise.reject(new Error('no graph')), undefined, { root, now: Date.parse('2026-11-04T12:00:00Z'), offsetMinutes: 480 })
   assert.ok(report.includes('- lifts.jsonl 与流水对不上：scratch-only，文件里最后一行是撤下，流水里没有这条规则的记录'), report)
   assert.ok(report.includes('- 撤下的规则：scratch-only'), report)

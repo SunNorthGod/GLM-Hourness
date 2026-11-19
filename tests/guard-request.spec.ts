@@ -22,7 +22,7 @@ import { proposalLineRefusal } from '../src/graph/plan-text.ts'
 import { GRANT_TTL_MS, GrantBook, RefusalBook, REQUEST_TTL_MS, REFUSAL_LIMIT, REQUEST_EXAMPLE, normalizeWords, signatureOf, type GrantEntry } from '../src/guard/request.ts'
 import { QUESTION, REQUEST_ASK_MESSAGE, REQUESTS_SERVICE, REQUEST_SOURCE, createRequestDesk, requestsService } from '../src/guard/request-service.ts'
 import type { GrantPreparation, RequestDesk, RequestDeskDeps, RequestDeskFs, RequestExceptionResult, RequestsService, StepInput } from '../src/guard/request-service.ts'
-import { morningReport } from '../src/workflow/morning-report.ts'
+import { morningReport } from '../src/report/morning-report.ts'
 import type { AgentLike, DerivedMessage, UserNotice } from '../src/shared/dsh-min.ts'
 import type { GuardRecord, RequestRecord } from '../src/guard/records.ts'
 
@@ -539,7 +539,6 @@ test('the morning report counts the period\'s filings by outcome, with the grant
   ]
   const report = morningReport({
     period: 'p',
-    decisions: [],
     violations: violations as never[],
     usage: [],
     asks: { waiting: { count: 0 }, agentOwn: 0, decided: { person: 0, inChat: 0, agent: 0 } },
@@ -548,7 +547,6 @@ test('the morning report counts the period\'s filings by outcome, with the grant
   assert.ok(report.includes('- 申报 4 次：放行 1（已用 1、作废 1）、不放行 1、没答 2'), report)
   const quiet = morningReport({
     period: 'p',
-    decisions: [],
     violations: [{ rule: 'scratch-only', tool: 'write', correction: 'x' } as never],
     usage: [],
     asks: { waiting: { count: 0 }, agentOwn: 0, decided: { person: 0, inChat: 0, agent: 0 } },

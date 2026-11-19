@@ -22,8 +22,8 @@ import type { ProvideHost, ServiceLookup } from './cordis-min.ts'
 /** The GLM channel package's host rows (loader ids `glm-hourness/<row>`), in patch order. */
 export const GLM_ROWS = ['glm-llm', 'glm-login', 'glm-prompt', 'glm-compact'] as const
 
-/** The orchestration package's host rows, in patch order. */
-export const HOURNESS_ROWS = ['data', 'guard', 'memory', 'lessons', 'workflow', 'hourness', 'graph', 'graph-panel', 'rules', 'design', 'execute', 'loops', 'metrics', 'env', 'operate', 'transcript', 'bootstrap'] as const
+/** The orchestration package's host rows, in patch order (the workflow row is retired: its dispatch journal is the metrics journal's `tool` events, metrics step 10). */
+export const HOURNESS_ROWS = ['data', 'guard', 'memory', 'lessons', 'hourness', 'graph', 'graph-panel', 'rules', 'design', 'execute', 'loops', 'metrics', 'env', 'operate', 'transcript', 'bootstrap'] as const
 
 /**
  * Each package with its host rows: the runtime copy of the directory table

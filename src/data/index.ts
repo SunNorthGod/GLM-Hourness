@@ -5,9 +5,9 @@
  * `dshHome` > `$DSH_HOME` > `~/.dsh`, the DSH layout) and takes the
  * project directory (workspace `.llm`) from config, then provides both, with
  * `projectDirOf` for the per-session project directory of memory and lessons, as
- * the `glmHournessData` cordis service. The guard, memory, workflow and
- * hourness rows read it lazily and keep working without it. Activation
- * does no I/O: the journals create their directories on the first write.
+ * the `glmHournessData` cordis service. The guard, memory and hourness
+ * rows read it lazily and keep working without it. Activation does no I/O:
+ * the journals create their directories on the first write.
  * The row health (src/shared/health.ts) states which directories resolved.
  */
 import { DATA_SERVICE, userDataHome, type DataService } from '../shared/data-home.ts'

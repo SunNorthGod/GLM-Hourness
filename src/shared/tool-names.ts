@@ -33,12 +33,28 @@ export const RULES_TOOL_NAMES: readonly string[] = ['rules_show', 'rules_propose
 export const LOOP_TOOL_NAMES: readonly string[] = ['loop_show', 'loop_propose', 'loop_note']
 
 /**
- * The DSH native tools that dispatch a subagent. A call to one of them is a
- * `gate.dispatch` event of the rules board besides the `gate.tool-call` every
- * call is (src/rules/events.ts). The dispatch tool of the orchestration
- * package adds its own name when it exists. tests/contracts.spec.ts pins the
- * names to the dispatch tools the workflow row recognises, which the L3 probe
- * checks against the runtime's tool list.
+ * The dispatch tools of the rc.3 composition (metrics design §4.3: the
+ * dispatch class is this list): the Agent Team tools
+ * (dsh-experimental-tool-agent-team), `send_message` (also
+ * dsh-tool-subagent-control), the two dsh-tool-subagent rows of the
+ * base profile, `subagent` (spawn) and `subagent_fork` (fork; dsh-base
+ * cordis.patch.yml `toolName`), and the orchestration package's own
+ * dispatch (M7 design 0.6 §2.1, E4). A `tool` event of the metrics journal
+ * carries category `dispatch` for exactly these names (toolCategory), which
+ * is what the morning report counts since the workflow row retired with its
+ * decision journal (metrics step 10). tests/contracts.spec.ts pins the
+ * rules board's gate names to a subset, and the L3 probe checks the
+ * runtime's tool list against the names.
+ */
+export const DISPATCH_TOOLS: readonly string[] = ['spawn_teammate', 'team_task_create', 'team_task_update', 'send_message', 'subagent', 'subagent_fork', 'dispatch_task'] as const
+
+/**
+ * The DSH native tools that dispatch a subagent, the ones the rules board's
+ * gate watches. A call to one of them is a `gate.dispatch` event of the
+ * rules board besides the `gate.tool-call` every call is
+ * (src/rules/events.ts). A subset of DISPATCH_TOOLS: the orchestration
+ * package's own dispatch tool joins the gate when the full rules board
+ * lands. tests/contracts.spec.ts pins the subset relation.
  */
 export const DISPATCH_TOOL_NAMES: readonly string[] = ['subagent', 'subagent_fork']
 
@@ -289,7 +305,7 @@ export function toolCategory(name: string): ToolCategory {
   if (SEARCH_NAMES.includes(name)) return 'search'
   if (SHELL_NAMES.includes(name) || name.startsWith('terminal_')) return 'shell'
   if (GRAPH_TOOL_NAMES.includes(name)) return 'graph'
-  if (DISPATCH_TOOL_NAMES.includes(name)) return 'dispatch'
+  if (DISPATCH_TOOLS.includes(name)) return 'dispatch'
   if (MEMORY_TOOL_NAMES.includes(name) || LEARNING_TOOL_NAMES.includes(name)) return 'memory'
   if (name === 'web_fetch' || name === 'web_search') return 'web'
   if (name === 'todo_write' || name === 'TodoWrite') return 'todo'

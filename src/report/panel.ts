@@ -2,7 +2,7 @@
  * hourness data plane: the usage panel and the dispatch panel read the audit
  * journal — no separate bookkeeping. Pure functions over JSONL text; the
  * `/hourness` command renders them (src/report/index.ts) and the morning
- * report's usage section lists the same lines (src/workflow/morning-report.ts).
+ * report's usage section lists the same lines (src/report/morning-report.ts).
  *
  * The usage panel prices calls through the pricing service
  * (src/shared/pricing.ts, docs/ORCHESTRATION.md §11.3), which the GLM
@@ -21,7 +21,7 @@
  * quota section from the service's `quota` member. The words of the plan
  * come from the service; nothing here knows a plan's hours or coefficients.
  */
-import type { DecisionRecord, UsageRecord } from '../memory/audit.ts'
+import type { UsageRecord } from '../memory/audit.ts'
 import { PRICING_SERVICE, quotaOf, type UsagePricing } from '../shared/pricing.ts'
 import { formatMoment, peakLine, quotaLines, type MomentZone, type QuotaAsker, type QuotaView } from '../shared/quota.ts'
 import type { StatusItem } from '../shared/status.ts'
@@ -34,18 +34,6 @@ const QUOTA_WAIT_MS = 3000
 
 /** The longest message of a failure that a line quotes, in characters. */
 const FAILURE_WORDS_MAX = 80
-
-/** Parse one JSONL file into typed lines; blank lines and parse failures are skipped. */
-export function parseJsonl<T>(raw: string): T[] {
-  return raw.split('\n').filter(line => line.trim().length > 0).flatMap(line => {
-    try {
-      return [JSON.parse(line) as T]
-    }
-    catch {
-      return []
-    }
-  })
-}
 
 /** Token counts of a set of calls (DSH counts are disjoint: input excludes cache reads and writes). */
 interface TokenCounts {
@@ -512,15 +500,3 @@ export async function quotaSection(pricing: UsagePricing, now: number, zone?: Mo
   }
 }
 
-export interface DispatchPanelRow {
-  readonly at: string
-  readonly kind: string
-  readonly subject: string
-}
-
-export function dispatchPanel(decisionsRaw: string, limit = 20): DispatchPanelRow[] {
-  return parseJsonl<DecisionRecord>(decisionsRaw)
-    .slice(-limit)
-    .reverse()
-    .map(record => ({ at: record.at, kind: record.kind, subject: record.subject }))
-}

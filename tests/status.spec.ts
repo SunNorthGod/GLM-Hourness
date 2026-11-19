@@ -185,7 +185,6 @@ test('collectStatus: agent keeps only agent entries, all keeps both, and the abs
     { row: 'guard', outcome: 'ok' },
     { row: 'memory', outcome: 'absent' },
     { row: 'lessons', outcome: 'absent' },
-    { row: 'workflow', outcome: 'absent' },
     { row: 'hourness', outcome: 'ok' },
     { row: 'graph', outcome: 'absent' },
     { row: 'graph-panel', outcome: 'absent' },

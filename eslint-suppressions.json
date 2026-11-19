@@ -87,16 +87,8 @@
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     },
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    },
     "@typescript-eslint/require-await": {
       "count": 1
-    }
-  },
-  "tests/s5.spec.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
     }
   },
   "tests/todowrite.spec.ts": {
@@ -114,11 +106,6 @@
     },
     "@typescript-eslint/require-await": {
       "count": 2
-    }
-  },
-  "tests/workflow.spec.ts": {
-    "@typescript-eslint/require-await": {
-      "count": 9
     }
   }
 }

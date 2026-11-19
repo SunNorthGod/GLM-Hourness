@@ -6,7 +6,6 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
 import { loadGraph } from '../src/graph/store.ts'
-import { appendEvents } from '../src/metrics/library.ts'
 import { apply, renderHourness } from '../src/report/index.ts'
 import { cacheHitRate, parseGaps, peakStatusItems, usagePanel, usagePanelLines, usagePanelOf, usageStatusItems, type PanelLineOptions } from '../src/report/panel.ts'
 import { collectStatus } from '../src/report/status.ts'
@@ -17,6 +16,9 @@ import type { UsagePricing } from '../src/shared/pricing.ts'
 import { quotaLines, type QuotaView } from '../src/shared/quota.ts'
 import { serviceStore } from './fake-rc3.ts'
 import { engineFixture, fixtureTest } from './graph-helpers.ts'
+import { appendEvents } from '../src/metrics/library.ts'
+import type { EmittedEvent } from '../src/shared/metrics.ts'
+import { nodeMetricsFs, openWriter } from '../src/metrics/writer.ts'
 import { scratchGitProject } from './metrics-helpers.ts'
 import { exampleRecord } from './proposal-examples.ts'
 
@@ -117,42 +119,49 @@ test('without the pricing service the panel lists calls and token counts of ever
   ])
 })
 
-test('renderHourness folds report and panel summary from both directories, bounded to the local day', async () => {
-  const files = new Map<string, string>([
-    ['C:/ws/.llm/audit/decisions.jsonl', [
-      JSON.stringify({ at: '2026-10-27T01:00:00+08:00', kind: 'dispatch:spawn_teammate', subject: 'researcher' }),
-      JSON.stringify({ at: '2026-10-26T23:00:00+08:00', level: 'L3', kind: 'dispatch:subagent', subject: 'yesterday must not leak in' }),
-    ].join('\n')],
-    ['C:/u/glm-hourness/audit/usage.jsonl', [
-      JSON.stringify({ at: '2026-10-27T02:00:00+08:00', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 } }),
-      JSON.stringify({ at: '2026-10-27T15:00:00+08:00', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } }),
-    ].join('\n')],
-  ])
-  const now = new Date('2026-10-27T20:00:00+08:00')
-  const usageText = files.get(USAGE_FILE) ?? ''
-  const text = await renderHourness(homes, { pricing: creditPricing, fs: fakeFs(files), now, offsetMinutes: 480, ...statusOf(usageText, creditPricing, now.getTime()) })
-  assert.ok(text.includes('# 晨报 2026-10-27'))
-  assert.ok(text.includes('- 派遣类调用 1 次')) // yesterday's call (written with a level) filtered out
-  assert.ok(!/L[123]/.test(text), text)
-  assert.ok(!text.includes('yesterday must not leak in'))
-  // The panel reads the full journal on the credit basis: 0.0945 off-peak
-  // (02:00, half of 0.189) plus 0.0189 in peak (Tuesday 15:00). Its first line is the peak line.
-  assert.ok(text.includes('## 面板\n- 高峰：不是高峰；下一个高峰 明天 14:00（GLM 积分套餐）\n- 全部用量记录；'))
-  assert.ok(text.includes('- 合计：积分 0.11 · 高峰 17% · 缓存命中 0%'))
-  assert.ok(text.includes('- glm-5.3：2 次 · 积分 0.11 · 高峰 17% · 缓存命中 0%'))
-  assert.ok(!text.includes('## 数据目录'))
-  // Without the pricing service the same journal lists calls and tokens, and has no peak line.
-  const plain = await renderHourness(homes, { fs: fakeFs(files), now, offsetMinutes: 480, ...statusOf(usageText, undefined, now.getTime()) })
-  assert.ok(plain.includes('## 面板\n- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token\n- 范围：2 条用量记录，最早 02:00；只含经 DSH 发出的请求，ZCode 等其他客户端的消耗不在内\n- 合计：2 次 · 未命中输入 110 · 缓存读 0 · 缓存写 0 · 输出 55 · 缓存命中 0%'))
-  assert.ok(!plain.includes('积分 0.11'))
-  assert.ok(!plain.includes('高峰：'))
+test('renderHourness folds report and panel summary from both directories, bounded to the local day; the dispatch calls come from the metrics journal', async () => {
+  const root = scratchGitProject('glmh-report-dispatch-')
+  try {
+    // The `tool` fixtures go through a headless host's writer: the library entry is cli-only on purpose (host-only kinds from cli are forgeries, §5.4).
+    const writer = openWriter({ host: 'headless', fs: nodeMetricsFs })
+    const dispatchEvent = (at: string, call: string): EmittedEvent => ({ k: 'tool', by: 'host', at, body: { turn: 1, step: 1, call, name: 'subagent', cat: 'dispatch', out: 'ok' } })
+    writer.record(root, dispatchEvent('2026-10-26T17:00:00.000Z', 'today')) // 2026-10-27 01:00+08:00, inside the local day
+    writer.record(root, dispatchEvent('2026-10-26T15:00:00.000Z', 'yesterday')) // 2026-10-26 23:00+08:00, before it
+    await writer.flush()
+    await writer.close()
+    const files = new Map<string, string>([
+      ['C:/u/glm-hourness/audit/usage.jsonl', [
+        JSON.stringify({ at: '2026-10-27T02:00:00+08:00', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 } }),
+        JSON.stringify({ at: '2026-10-27T15:00:00+08:00', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } }),
+      ].join('\n')],
+    ])
+    const now = new Date('2026-10-27T20:00:00+08:00')
+    const usageText = files.get(USAGE_FILE) ?? ''
+    const text = await renderHourness(homes, { pricing: creditPricing, fs: fakeFs(files), now, offsetMinutes: 480, metrics: { root }, ...statusOf(usageText, creditPricing, now.getTime()) })
+    assert.ok(text.includes('# 晨报 2026-10-27'))
+    assert.ok(text.includes('- 派遣类调用 1 次')) // yesterday's call filtered out by the local-day bound
+    assert.ok(!text.includes('## 数据目录'))
+    // The panel reads the full journal on the credit basis: 0.0945 off-peak
+    // (02:00, half of 0.189) plus 0.0189 in peak (Tuesday 15:00). Its first line is the peak line.
+    assert.ok(text.includes('## 面板\n- 高峰：不是高峰；下一个高峰 明天 14:00（GLM 积分套餐）\n- 全部用量记录；'))
+    assert.ok(text.includes('- 合计：积分 0.11 · 高峰 17% · 缓存命中 0%'))
+    assert.ok(text.includes('- glm-5.3：2 次 · 积分 0.11 · 高峰 17% · 缓存命中 0%'))
+    // Without the pricing service the same journal lists calls and tokens, and has no peak line.
+    const plain = await renderHourness(homes, { fs: fakeFs(files), now, offsetMinutes: 480, metrics: { root }, ...statusOf(usageText, undefined, now.getTime()) })
+    assert.ok(plain.includes('## 面板\n- 没有计价服务（GLM 通道包的 glm-login 行提供积分口径），只列调用与 token\n- 范围：2 条用量记录，最早 02:00；只含经 DSH 发出的请求，ZCode 等其他客户端的消耗不在内\n- 合计：2 次 · 未命中输入 110 · 缓存读 0 · 缓存写 0 · 输出 55 · 缓存命中 0%'))
+    assert.ok(!plain.includes('积分 0.11'))
+    assert.ok(!plain.includes('高峰：'))
+  }
+  finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  }
 })
 
 test('empty journal still renders the clean report; without a place for the graph the section says so', async () => {
   const text = await renderHourness(homes, { fs: fakeFs(new Map()) })
   assert.ok(text.includes('- 无'))
   assert.ok(!text.includes('## 数据目录'))
-  assert.ok(text.includes('## 等你定的事\n- 项目图读不到：这次调用没有给出项目图的位置\n- 派遣类调用 0 次'), text)
+  assert.ok(text.includes('## 等你定的事\n- 项目图读不到：这次调用没有给出项目图的位置\n- 派遣类调用 — 次'), text)
 })
 
 test('a missing directory is named in the report', async () => {
@@ -217,17 +226,17 @@ const reasonOf = async (graph: unknown, cwd?: string): Promise<string> => {
 }
 
 test('/hourness reads the graph of the calling session and names why when it cannot: the row off, no working directory, no directory, an unreadable graph', async () => {
-  assert.equal(await reasonOf(undefined, 'C:/ws'), '- 项目图读不到：项目图行 glm-hourness/graph 没有启用\n- 派遣类调用 0 次')
+  assert.equal(await reasonOf(undefined, 'C:/ws'), '- 项目图读不到：项目图行 glm-hourness/graph 没有启用\n- 派遣类调用 — 次')
 
   const none = graphRow(() => undefined)
-  assert.equal(await reasonOf(none.service), '- 项目图读不到：这个会话没有工作目录，找不到项目图\n- 派遣类调用 0 次')
+  assert.equal(await reasonOf(none.service), '- 项目图读不到：这个会话没有工作目录，找不到项目图\n- 派遣类调用 — 次')
   assert.deepEqual(none.calls, [undefined])
 
   const root = await mkdtemp(join(tmpdir(), 'glmh-report-graph-'))
   try {
     const missing = join(root, 'docs', 'graph')
     const absent = graphRow(() => missing)
-    assert.equal(await reasonOf(absent.service, root), `- 项目图读不到：项目图目录 ${missing} 不存在\n- 派遣类调用 0 次`)
+    assert.equal(await reasonOf(absent.service, root), `- 项目图读不到：项目图目录 ${missing} 不存在\n- 派遣类调用 — 次`)
     assert.deepEqual(absent.calls, [root])
 
     // nodes is a file: the directory is there, the graph cannot be read.
@@ -240,7 +249,7 @@ test('/hourness reads the graph of the calling session and names why when it can
     // An existing directory without nodes is a graph with nothing on it.
     const empty = join(root, 'empty')
     await mkdir(empty)
-    assert.equal(await reasonOf(graphRow(() => empty).service, root), '- 等你定的 0 件\n- agent 自己要定的 0 件\n- 本期拍板 0 次：你 0 · 你在对话里说 0 · agent 0\n- 派遣类调用 0 次')
+    assert.equal(await reasonOf(graphRow(() => empty).service, root), '- 等你定的 0 件\n- agent 自己要定的 0 件\n- 本期拍板 0 次：你 0 · 你在对话里说 0 · agent 0\n- 派遣类调用 — 次')
   }
   finally {
     await rm(root, { recursive: true, force: true })

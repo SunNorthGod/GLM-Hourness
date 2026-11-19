@@ -1,4 +1,15 @@
+/**
+ * The morning report (src/report/morning-report.ts): the usage section, the
+ * sections and their order, the dispatch calls and the suppression counts
+ * out of the project's metrics journal (the workflow row's decision journal
+ * is retired with metrics step 10), the period bound, the asks of the
+ * project graph, the gap file and the checks' timeouts.
+ */
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
 import { usagePanelLines, usagePanelOf } from '../src/report/panel.ts'
@@ -6,9 +17,10 @@ import { openEngine } from '../src/graph/engine.ts'
 import type { LoadedGraph } from '../src/graph/parse.ts'
 import { loadGraph } from '../src/graph/store.ts'
 import { ANSWER_MARKS, answerCallMark } from '../src/shared/answer-marks.ts'
-import { askSummary, localDay, morningReport, reportFromFiles, type AskSummary, type ReportFs, type ReportOptions } from '../src/workflow/morning-report.ts'
-import { apply } from '../src/workflow/index.ts'
-import type { AuditJournal, DecisionRecord, UsageRecord } from '../src/memory/audit.ts'
+import { askSummary, localDay, morningReport, reportFromFiles, type AskSummary, type ReportFs, type ReportOptions } from '../src/report/morning-report.ts'
+import type { EmittedEvent } from '../src/shared/metrics.ts'
+import { nodeMetricsFs, openWriter } from '../src/metrics/writer.ts'
+import type { UsageRecord } from '../src/memory/audit.ts'
 import type { GuardRecord } from '../src/guard/records.ts'
 import { engineFixture, fixtureTest, must, type EngineFixture } from './graph-helpers.ts'
 import { exampleRecord } from './proposal-examples.ts'
@@ -19,7 +31,7 @@ const usage: UsageRecord[] = [
   { at: '2026-10-27T12:00:00+08:00', provider: 'glm', model: 'glm-5.3-flash', usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } },
 ]
 const NO_ASKS: AskSummary = { waiting: { count: 0 }, agentOwn: 0, decided: { person: 0, inChat: 0, agent: 0 } }
-const quietReport = { period: 'p', decisions: [], violations: [], asks: NO_ASKS }
+const quietReport = { period: 'p', violations: [], asks: NO_ASKS }
 const usageSectionOf = (report: string): string[] => report.slice(report.indexOf('## 用量（今天）')).split('\n')
 
 test('the usage section is the lines of the panel: credits per model with a pricing service, calls and tokens without; the basis line is left to the panel', () => {
@@ -46,14 +58,10 @@ test('a record the usage section cannot read is counted, not dropped; the pricin
 })
 
 test('morning report leads with exceptions, then what waits for the person, then usage; it has no grading', () => {
-  const decisions: DecisionRecord[] = [
-    { at: 't1', kind: 'dispatch:spawn_teammate', subject: 'researcher' },
-    { at: 't2', kind: 'dispatch:subagent', subject: 'reviewer' },
-  ]
   const asks: AskSummary = { waiting: { count: 2, oldest: '2026-10-20' }, agentOwn: 1, decided: { person: 25, inChat: 3, agent: 3 } }
   const report = morningReport({
     period: '2026-10-27',
-    decisions,
+    dispatches: 2,
     violations: [{ at: 't3', rule: 'file-tools-only', tool: 'Bash', correction: 'Boundary: …' }],
     usage,
     asks,
@@ -74,27 +82,10 @@ test('morning report leads with exceptions, then what waits for the person, then
   assert.ok(!/L[123]|决策曲线|次日报备|当次申报/.test(report), report)
 })
 
-test('the section of asks names the oldest ask only when there is one, and counts only dispatch records as dispatch calls', () => {
-  const report = morningReport({
-    period: 'p',
-    decisions: [
-      { at: 't1', kind: 'dispatch', subject: 'a' },
-      { at: 't2', kind: 'dispatch:subagent', subject: 'b' },
-      { at: 't3', kind: 'out-of-workspace', subject: 'C:\\Windows\\x' },
-      { at: 't4', kind: 'model-route', subject: 'c' },
-    ],
-    violations: [],
-    usage: [],
-    asks: NO_ASKS,
-  })
-  assert.ok(report.includes('## 等你定的事\n- 等你定的 0 件\n- agent 自己要定的 0 件\n- 本期拍板 0 次：你 0 · 你在对话里说 0 · agent 0\n- 派遣类调用 2 次'), report)
-  assert.ok(report.includes('## 例外（先看）\n- 无'))
-})
-
 test('a graph that cannot be read puts its reason in the section of asks, keeps the dispatch count, and the rest of the report stays', () => {
   const report = morningReport({
     period: 'p',
-    decisions: [{ at: 't1', kind: 'dispatch:subagent', subject: 'reviewer' }],
+    dispatches: 1,
     violations: [{ at: 't3', rule: 'file-tools-only', tool: 'Bash', correction: 'Boundary: …' }],
     usage,
     asks: { unreadable: '项目图目录 C:/ws/docs/graph 不存在' },
@@ -105,15 +96,20 @@ test('a graph that cannot be read puts its reason in the section of asks, keeps 
   assert.ok(report.includes('glm-5.3：2 次 · 未命中输入 130'))
 })
 
+test('without a journal that counts, the dispatch calls line says so instead of a zero', () => {
+  const report = morningReport({ ...quietReport, usage: [] })
+  assert.ok(report.includes('- 派遣类调用 — 次'), report)
+})
+
 test('clean period reports 无 exceptions and empty usage', () => {
-  const report = morningReport({ period: 'p', decisions: [], violations: [], usage: [], asks: NO_ASKS })
+  const report = morningReport({ ...quietReport, usage: [] })
   assert.ok(report.includes('- 无'))
   assert.ok(report.includes('- 无模型调用'))
   assert.ok(!report.includes('影子记录'))
 })
 
-/** The report over one period's journal records alone: no decisions, no usage (the tests below read the exception section). */
-const reportOf = (violations: readonly GuardRecord[]): string => morningReport({ period: 'p', decisions: [], violations: [...violations], usage: [], asks: NO_ASKS })
+/** The report over one period's journal records alone: no usage (the tests below read the exception section). */
+const reportOf = (violations: readonly GuardRecord[]): string => morningReport({ period: 'p', violations: [...violations], usage: [], asks: NO_ASKS })
 
 test('denials and late denials are the violations; a late denial is counted on its own line', () => {
   const report = reportOf([
@@ -127,22 +123,15 @@ test('denials and late denials are the violations; a late denial is counted on i
 })
 
 test('a denial of the rules board (mode enforce, effect block) is a violation like the guard\'s', () => {
-  const report = morningReport({
-    period: 'p',
-    decisions: [],
-    violations: [
+  const report = reportOf([
       { at: 't1', rule: 'rules:r-no-push', mode: 'enforce', effect: 'block', tool: 'pwsh', scope: 'other', correction: '…' },
-    ],
-    usage: [],
-    asks: NO_ASKS,
-  })
+  ])
   assert.ok(report.includes('- 违规 rules:r-no-push（其他路由） × 1'), report)
 })
 
 test('follow-up, request, grant, void, lift and gap records are not violations; a queued call, a recorded call and an unreadable line are counted apart', () => {
   const report = morningReport({
     period: 'p',
-    decisions: [],
     violations: [
       { at: 't1', rule: 'rules:r-note', mode: 'record', effect: 'record', tool: 'pwsh', scope: 'other' },
       { at: 't2', rule: 'rules:r-queue', mode: 'enforce', effect: 'queue', tool: 'pwsh', scope: 'other', correction: '…' },
@@ -180,7 +169,6 @@ test('records from routes the dialect did not claim are counted apart; records w
 test('each denied rule gets one line with its count, its last denial, its right-path ratio and its verbatim retries (m4-gate G2)', () => {
   const report = morningReport({
     period: 'p',
-    decisions: [],
     violations: [
       { at: '2026-10-31T06:02:00Z', rule: 'checker-config', tool: 'edit', scope: 'dialect', correction: '…', call: { tool: 'edit', target: 'tsconfig.json' } },
       { at: '2026-10-31T07:00:00Z', rule: 'checker-config', tool: 'edit', scope: 'dialect', correction: '…', call: { tool: 'edit', target: 'tsconfig.json' } },
@@ -234,53 +222,81 @@ function filesOf(files: ReadonlyMap<string, string>): { readFile(path: string): 
 /** A graph with no node, for the tests of the journals. */
 const emptyGraph = (): Promise<LoadedGraph> => Promise.resolve({ nodes: new Map(), revisions: new Map(), revision: '', issues: [] })
 
-test('report entry folds the journal files from both directories and tolerates missing ones', async () => {
-  const files = new Map<string, string>([
-    ['C:/ws/.llm/audit/decisions.jsonl', JSON.stringify({ at: 't1', kind: 'dispatch:spawn_teammate', subject: 'researcher' })],
-    ['C:/u/glm-hourness/audit/usage.jsonl', JSON.stringify({ at: '2026-10-27T01:00:00+08:00', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 9, outputTokens: 1 } })],
-  ])
-  const fs = filesOf(files)
-  const report = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm/', userHome: 'C:/u/glm-hourness' }, '2026-10-27', emptyGraph)
-  assert.ok(report.includes('# 晨报 2026-10-27'))
-  assert.ok(report.includes('- 派遣类调用 1 次'))
-  assert.ok(report.includes('- glm-5.3：1 次 · 未命中输入 9 · 缓存读 0 · 缓存写 0 · 输出 1 · 缓存命中 0%'))
-  assert.ok(report.includes('- 无')) // no violations journal, no exceptions
-  const projectOnly = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm' }, '2026-10-27', emptyGraph)
-  assert.ok(projectOnly.includes('- 无模型调用')) // no user directory: the usage journal reads as empty
+// The metrics journal is read through the real filesystem (readLog), so its fixtures are scratch git projects.
+
+function git(dir: string, args: readonly string[]): void {
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@localhost', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, stdio: 'ignore' })
+}
+
+/** A scratch git project: the project the writer and the report resolve, thrown away by the caller. */
+async function scratchProject(prefix: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), prefix))
+  git(dir, ['init'])
+  return dir
+}
+
+/** Record events for the project of `dir` as a headless host would. The library entry is cli-only on purpose (host-only kinds from cli are forgeries, §5.4), so the `tool` fixtures need their own writer. */
+async function appendAsHost(dir: string, events: readonly EmittedEvent[]): Promise<void> {
+  const writer = openWriter({ host: 'headless', fs: nodeMetricsFs })
+  for (const event of events) writer.record(dir, event)
+  await writer.flush()
+  await writer.close()
+}
+
+/** One dispatch-class tool call of the metrics journal (the workflow row's decision journal is retired; the `tool` events carry the category). */
+const dispatchEvent = (at: string, call: string, cat = 'dispatch'): {
+  readonly k: 'tool'
+  readonly by: 'host'
+  readonly at: string
+  readonly body: { readonly turn: number, readonly step: number, readonly call: string, readonly name: string, readonly cat: 'dispatch' | 'other', readonly out: 'ok' }
+} => ({ k: 'tool', by: 'host', at, body: { turn: 1, step: 1, call, name: 'subagent', cat: cat as 'dispatch' | 'other', out: 'ok' } })
+
+test('report entry folds the journal files from both directories and tolerates missing ones; the dispatch calls come from the metrics journal', async () => {
+  const root = await scratchProject('mr-flow-')
+  try {
+    await appendAsHost(root, [
+      dispatchEvent('2026-10-27T01:00:00.000Z', 'c1'),
+      dispatchEvent('2026-10-27T01:01:00.000Z', 'c2', 'other'),
+    ])
+    const files = new Map<string, string>([
+      ['C:/u/glm-hourness/audit/usage.jsonl', JSON.stringify({ at: '2026-10-27T01:00:00+08:00', provider: 'glm', model: 'glm-5.3', usage: { inputTokens: 9, outputTokens: 1 } })],
+    ])
+    const fs = filesOf(files)
+    const report = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm/', userHome: 'C:/u/glm-hourness' }, '2026-10-27', emptyGraph, undefined, { metrics: { root } })
+    assert.ok(report.includes('# 晨报 2026-10-27'))
+    assert.ok(report.includes('- 派遣类调用 1 次'), 'one dispatch call: the subagent tool call; the shell tool call of the same journal is not one')
+    assert.ok(report.includes('- glm-5.3：1 次 · 未命中输入 9 · 缓存读 0 · 缓存写 0 · 输出 1 · 缓存命中 0%'))
+    assert.ok(report.includes('- 无')) // no violations journal, no exceptions
+    const projectOnly = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm' }, '2026-10-27', emptyGraph)
+    assert.ok(projectOnly.includes('- 无模型调用')) // no user directory: the usage journal reads as empty
+    assert.ok(projectOnly.includes('- 派遣类调用 — 次'), 'no journal given: the dispatch count is not a zero')
+  }
+  finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  }
 })
 
 test('report entry honors the period bound: older records stay out', async () => {
-  const files = new Map<string, string>([
-    ['C:/ws/.llm/audit/decisions.jsonl', [
-      JSON.stringify({ at: '2026-10-26T23:00:00+08:00', kind: 'dispatch:subagent', subject: 'old' }), // lexically after the bound, instant before it
-      JSON.stringify({ at: '2026-10-27T01:00:00Z', kind: 'dispatch:subagent', subject: 'new' }),
-    ].join('\n')],
-  ])
-  const fs = filesOf(files)
-  const report = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm' }, '2026-10-27', emptyGraph, '2026-10-27T00:00:00Z')
-  assert.ok(report.includes('- 派遣类调用 1 次')) // today's record counted, yesterday's not
-})
-
-test('records written before the grading was removed still read: the level is ignored, a graded line is no exception, and only dispatch kinds count as dispatch calls', async () => {
-  const files = new Map<string, string>([
-    ['C:/ws/.llm/audit/decisions.jsonl', [
-      JSON.stringify({ at: '2026-10-27T01:00:00Z', level: 'L1', kind: 'dispatch:spawn_teammate', subject: 'researcher' }),
-      JSON.stringify({ at: '2026-10-27T02:00:00Z', level: 'L3', kind: 'out-of-workspace', subject: 'C:\\Windows\\x' }),
-      JSON.stringify({ at: '2026-10-27T03:00:00Z', level: 'L2' }), // no kind at all
-    ].join('\n')],
-  ])
-  const fs = filesOf(files)
-  const report = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm' }, '2026-10-27', emptyGraph, '2026-10-27T00:00:00Z')
-  assert.ok(report.includes('## 例外（先看）\n- 无'))
-  assert.ok(report.includes('- 派遣类调用 1 次'))
-  assert.ok(!/L[123]|out-of-workspace/.test(report), report)
+  const root = await scratchProject('mr-bound-')
+  try {
+    await appendAsHost(root, [
+      dispatchEvent('2026-10-26T23:00:00.000Z', 'old'),
+      dispatchEvent('2026-10-27T01:00:00.000Z', 'new'),
+    ])
+    const fs = filesOf(new Map())
+    const report = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm' }, '2026-10-27', emptyGraph, '2026-10-27T00:00:00Z', { metrics: { root } })
+    assert.ok(report.includes('- 派遣类调用 1 次')) // today's call counted, yesterday's not
+  }
+  finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  }
 })
 
 test('a graph reader that rejects, or throws at once, puts its reason in the section and the report still comes out', async () => {
   const fs = filesOf(new Map())
   const homes = { projectHome: 'C:/ws/.llm' }
   const rejected = await reportFromFiles(fs, homes, 'p', () => Promise.reject(new Error('项目图行 glm-hourness/graph 没有启用')))
-  assert.ok(rejected.includes('## 等你定的事\n- 项目图读不到：项目图行 glm-hourness/graph 没有启用\n- 派遣类调用 0 次'), rejected)
+  assert.ok(rejected.includes('## 等你定的事\n- 项目图读不到：项目图行 glm-hourness/graph 没有启用\n- 派遣类调用 — 次'), rejected)
   const thrown = await reportFromFiles(fs, homes, 'p', () => { throw new Error('boom') })
   assert.ok(thrown.includes('- 项目图读不到：boom'), thrown)
   assert.ok(thrown.includes('## 用量（今天）\n- 无模型调用'))
@@ -384,7 +400,7 @@ graphTest('the report entry reads the graph it is given: the section, then the p
     `- 等你定的 1 件，最早一件是 ${localDay(new Date(Date.UTC(2026, 9, 27, 8, 0, 1)))} 提出的`,
     '- agent 自己要定的 0 件',
     '- 本期拍板 1 次：你 1 · 你在对话里说 0 · agent 0',
-    '- 派遣类调用 0 次',
+    '- 派遣类调用 — 次',
   ].join('\n')), report)
   const next = await reportFromFiles(fs, { projectHome: 'C:/ws/.llm' }, '2026-10-28', () => loadGraph(g.dir), '2026-10-28T00:00:00Z')
   assert.ok(next.includes('- 本期拍板 0 次：你 0 · 你在对话里说 0 · agent 0'), next)
@@ -461,109 +477,6 @@ test('report entry: the usage section prices through the service in the options,
   // With no period bound nothing is filtered by time: the record without a time is counted as unreadable, the broken line is not seen by the report.
   const all = usageSectionOf(await reportFromFiles(memoryFs(files), homes, 'p', emptyGraph, undefined, { pricing: creditPricing }))
   assert.ok(all.includes('- 无法读取的记录 1 条，未计入'), all.join('\n'))
-})
-
-test('apply journals dispatch decisions and always delegates', async () => {
-  const decisions: unknown[] = []
-  const journal = { decision: async (record: unknown) => { decisions.push(record) } } as unknown as Pick<AuditJournal, 'decision'>
-  const listeners: Array<(payload: unknown, next: () => Promise<unknown>) => Promise<unknown>> = []
-  const dispose = apply({
-    on: (_event, listener) => { listeners.push(listener as typeof listeners[number]); return () => {} },
-  }, journal)
-  let delegated = false
-  const result = await listeners[0]({ name: 'spawn_teammate', arguments: { name: 'researcher' } }, async () => { delegated = true; return { kind: 'allow' } })
-  await new Promise(resolve => setImmediate(resolve))
-  await listeners[0]({ name: 'read', arguments: {} }, async () => { delegated = true; return { kind: 'allow' } })
-  await listeners[0]({ name: 'spawn_teammate', arguments: {}, parent: 'token' }, async () => { delegated = true; return { kind: 'allow' } })
-  dispose()
-  assert.equal(delegated, true)
-  assert.deepEqual(result, { kind: 'allow' })
-  assert.equal(decisions.length, 1) // only the root dispatch; nested + non-dispatch skipped
-  const record = decisions[0] as DecisionRecord
-  assert.deepEqual(Object.keys(record), ['at', 'kind', 'subject']) // no level
-  assert.equal(record.kind, 'dispatch:spawn_teammate')
-  assert.equal(record.subject, 'researcher')
-})
-
-test('both subagent tools of the rc.3 base profile are dispatches', async () => {
-  // dsh-base cordis.patch.yml mounts dsh-tool-subagent twice: toolName subagent (spawn) and subagent_fork (fork).
-  const decisions: DecisionRecord[] = []
-  const journal = { decision: async (record: DecisionRecord) => { decisions.push(record) } }
-  const listeners: Array<(payload: unknown, next: () => Promise<unknown>) => Promise<unknown>> = []
-  apply({ on: (_event, listener) => { listeners.push(listener as typeof listeners[number]); return () => {} } }, journal)
-  for (const name of ['subagent', 'subagent_fork']) {
-    await listeners[0]({ name, arguments: { description: `${name} task` } }, async () => ({ kind: 'allow' }))
-  }
-  await new Promise(resolve => setImmediate(resolve))
-  assert.deepEqual(decisions.map(record => [record.kind, record.subject]), [['dispatch:subagent', 'subagent task'], ['dispatch:subagent_fork', 'subagent_fork task']])
-})
-
-test('the installer form journals decisions into the row home, else the data service project directory', async () => {
-  const files = new Map<string, string>()
-  const fs = { mkdir: async () => undefined, appendFile: async (path: string, data: string) => { files.set(path, (files.get(path) ?? '') + data) } }
-  const run = async (config: { home?: string }, data: unknown) => {
-    const listeners: Array<(payload: unknown, next: () => Promise<unknown>) => Promise<unknown>> = []
-    apply({ on: (_event, listener) => { listeners.push(listener as typeof listeners[number]); return () => {} }, get: name => name === 'glmHournessData' ? data : undefined }, { ...config, fs })
-    await listeners[0]({ name: 'subagent', arguments: { description: 'task' } }, async () => ({ kind: 'allow' }))
-    await new Promise(resolve => setImmediate(resolve))
-  }
-  await run({}, { userHome: 'C:/u/glm-hourness', projectHome: 'C:/svc/.llm' })
-  await run({ home: 'C:/row/.llm' }, { userHome: 'C:/u/glm-hourness', projectHome: 'C:/svc/.llm' })
-  const warn = console.warn
-  console.warn = () => {}
-  try {
-    await run({}, undefined) // no directory: dispatch still delegates, the record is reported and dropped
-  }
-  finally {
-    console.warn = warn
-  }
-  assert.deepEqual([...files.keys()].sort(), ['C:/row/.llm/audit/decisions.jsonl', 'C:/svc/.llm/audit/decisions.jsonl'])
-})
-
-test('a failing decision journal warns and reports degraded health without blocking dispatch', async () => {
-  const origWarn = console.warn
-  const listeners: Array<(payload: unknown, next: () => Promise<unknown>) => Promise<unknown>> = []
-  const warnings: string[] = []
-  console.warn = (...args: unknown[]) => warnings.push(args.map(String).join(' '))
-  const store = new Map<string, unknown>()
-  try {
-    const dispose = apply(
-      {
-        on: (_event, listener) => { listeners.push(listener as typeof listeners[number]); return () => {} },
-        get: name => store.get(name),
-        provide: (name, value) => { store.set(name, value); return () => { store.delete(name) } },
-      },
-      {
-        home: 'C:/row/.llm',
-        fs: {
-          mkdir: () => Promise.resolve(undefined),
-          appendFile: () => Promise.reject(new Error('disk full')),
-        },
-      },
-    )
-    const result = await listeners[0]({ name: 'subagent', arguments: { description: 'task' }, agent: { id: 's-wf', session: { id: 's-wf', header: { id: 's-wf' } } } }, () => Promise.resolve({ kind: 'allow' }))
-    assert.deepEqual(result, { kind: 'allow' })
-    await new Promise(resolve => setImmediate(resolve))
-    assert.ok(warnings.some(warning => warning.includes('disk full')))
-
-    // Direct applyOverJournal rejection also warns and triggers onError without blocking next().
-    const { applyOverJournal } = await import('../src/workflow/index.ts')
-    const directListeners: Array<(payload: unknown, next: () => Promise<unknown>) => Promise<unknown>> = []
-    const errors: string[] = []
-    applyOverJournal(
-      { on: (_event, listener) => { directListeners.push(listener as typeof directListeners[number]); return () => {} } },
-      { decision: () => Promise.reject(new Error('io failed')) },
-      undefined,
-      (_payload, error) => { errors.push((error as Error).message) },
-    )
-    assert.deepEqual(await directListeners[0]({ name: 'subagent', arguments: { description: 'task' } }, () => Promise.resolve({ kind: 'allow' })), { kind: 'allow' })
-    await new Promise(resolve => setImmediate(resolve))
-    assert.deepEqual(errors, ['io failed'])
-    dispose()
-  }
-  finally {
-    console.warn = origWarn
-  }
 })
 
 test('the checks\' timeouts: one line per check with its value and source, the timeouts of seven days, the queue drops, a ceiling the main agent raised (m4-checks, design §6.3.1, P13-01)', async () => {

@@ -1,7 +1,7 @@
 /**
  * The daily suppression-comment count (src/env/suppressions.ts), the
  * suppression line the env module owns (src/env/status.ts) and the morning
- * report that shows it (src/workflow/morning-report.ts): what counts on a
+ * report that shows it (src/report/morning-report.ts): what counts on a
  * real repository, what is skipped (untracked, oversized, binary), the
  * once-per-repository-and-day gate over the metrics journal's `count`
  * events (no suppressions.jsonl since metrics step 10), the `count` event
@@ -19,7 +19,7 @@ import { apply as envApply } from '../src/env/index.ts'
 import { countMarkers, countRepository, dailySuppressions, suppressionDay, type SuppressionTally } from '../src/env/suppressions.ts'
 import { DATA_SERVICE } from '../src/shared/data-home.ts'
 import { METRICS_SERVICE } from '../src/shared/metrics.ts'
-import { morningReport, type ReportInput } from '../src/workflow/morning-report.ts'
+import { morningReport, type ReportInput } from '../src/report/morning-report.ts'
 import { suppressionLineOf, type SuppressionCount } from '../src/env/status.ts'
 import { fakeRuntime } from './fake-rc3.ts'
 
@@ -85,7 +85,7 @@ test('dailySuppressions counts once per repository and day; the journal of the s
 })
 
 const input = (suppressions: SuppressionCount[]): ReportInput => ({
-  decisions: [], violations: [], usage: [], suppressions, period: '2026-11-02',
+violations: [], usage: [], suppressions, period: '2026-11-02',
   asks: { waiting: { count: 0 }, agentOwn: 0, decided: { person: 0, inChat: 0, agent: 0 } },
 })
 

@@ -24,7 +24,7 @@ import { parseTiming } from '../src/env/timeout.ts'
 import { collectStatus } from '../src/report/status.ts'
 import { validateStatusItem } from '../src/shared/status.ts'
 import { statusServiceName, type RowStatusView } from '../src/shared/status-host.ts'
-import { morningReport } from '../src/workflow/morning-report.ts'
+import { morningReport } from '../src/report/morning-report.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 
 const record = (at: string, total: number): SuppressionCount => ({ at, total })
@@ -151,7 +151,7 @@ test('the morning report\'s 检查的超时 section is timeoutLines over checkTi
   const timing = parseTiming(TIMING).lines
   const limits = parseLimits(RAISED).lines
   const lines = timeoutLines(checkTimeouts(timing, limits, NOW), 480)
-  const report = morningReport({ period: 'p', decisions: [], violations: [], usage: [], asks: NO_ASKS, timing, limits, now: NOW, offsetMinutes: 480 })
+  const report = morningReport({ period: 'p', violations: [], usage: [], asks: NO_ASKS, timing, limits, now: NOW, offsetMinutes: 480 })
   const section = report.slice(report.indexOf('## 检查的超时')).split('\n\n')[0]?.split('\n')
   assert.deepEqual(section, ['## 检查的超时', ...lines])
   assert.equal(lines.length, 3)

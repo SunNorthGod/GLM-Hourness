@@ -1,19 +1,21 @@
 /**
- * Morning report: fold one period of the audit journal (dispatch calls,
- * violations, usage) and the project graph (the asks waiting for the person
- * and who settled the others) into the harvest report. Pure — reads parsed
- * JSONL lines and a loaded graph, emits text. Granularity: exceptions first,
- * then what waits for the person, then plain facts; no padding, no
- * restatement of completed work. The usage section is the usage panel's
- * list (src/report/panel.ts), priced through the pricing service when there
- * is one. The journal's lines are classified through the one classifier
- * every reader shares (src/guard/records.ts classifyRecord, m4-gate G1):
- * denials and late denials are the violations, a late denial is counted on
- * its own line, the rules board's recorded calls and the gaps the journal
- * itself wrote get their own lines, and anything unreadable is counted at
- * the end instead of silently shaping the numbers.
+ * Morning report: fold one period of the audit journal (violations, usage),
+ * the project's metrics journal (the suppression counts and the dispatch
+ * calls, whose decision ledger the workflow row journaled until metrics
+ * step 10 retired the row) and the project graph (the asks waiting for the
+ * person and who settled the others) into the harvest report. Pure — reads
+ * parsed JSONL lines, parsed journal events and a loaded graph, emits text.
+ * Granularity: exceptions first, then what waits for the person, then plain
+ * facts; no padding, no restatement of completed work. The usage section is
+ * the usage panel's list (src/report/panel.ts), priced through the pricing
+ * service when there is one. The journal's lines are classified through the
+ * one classifier every reader shares (src/guard/records.ts classifyRecord,
+ * m4-gate G1): denials and late denials are the violations, a late denial
+ * is counted on its own line, the rules board's recorded calls and the gaps
+ * the journal itself wrote get their own lines, and anything unreadable is
+ * counted at the end instead of silently shaping the numbers.
  */
-import { auditPaths, type DecisionRecord, type UsageRecord } from '../memory/audit.ts'
+import { auditPaths, type UsageRecord } from '../memory/audit.ts'
 import { effectCheckLines, effectChecks, type EffectCheck, type JournalRead } from '../memory/effect.ts'
 import { classifyRecord, journalEarliest, type GuardRecord, type LiftRecord } from '../guard/records.ts'
 import { liftRecordPath } from '../guard/lift.ts'
@@ -26,7 +28,7 @@ import type { LoadedGraph } from '../graph/parse.ts'
 import { listOpenItems } from '../graph/projection.ts'
 import type { HistoryEntry } from '../graph/schema.ts'
 import { answerKindOf } from '../shared/answer-marks.ts'
-import { gapLines, parseGaps, usagePanelLines, usagePanelOf, type PanelLineOptions } from '../report/panel.ts'
+import { gapLines, parseGaps, usagePanelLines, usagePanelOf, type PanelLineOptions } from './panel.ts'
 import type { DataHomes } from '../shared/data-home.ts'
 import type { UsagePricing } from '../shared/pricing.ts'
 import type { MomentZone } from '../shared/quota.ts'
@@ -51,7 +53,8 @@ export interface AskSummary {
 }
 
 export interface ReportInput {
-  readonly decisions: readonly DecisionRecord[]
+  /** The dispatch-class tool calls the period covers, out of the project's metrics journal (`tool` events of category `dispatch`); undefined when there is no journal to count. */
+  readonly dispatches?: number | undefined
   /** Every journal line the period holds; classifyRecord decides what each one is. */
   readonly violations: readonly GuardRecord[]
   readonly usage: readonly UsageRecord[]
@@ -195,9 +198,9 @@ function timingSection(timing: readonly TimingLine[], limits: readonly LimitLine
   return lines.length === 0 ? [] : ['', '## 检查的超时', ...lines]
 }
 
-/** The section of the asks: what waits for the person, who settled the rest, and how many dispatch calls were made. */
-function askLines(asks: AskSummary | GraphUnreadable, dispatches: number): string[] {
-  const calls = `- 派遣类调用 ${dispatches} 次`
+/** The section of the asks: what waits for the person, who settled the rest, and how many dispatch calls were made (— when no journal could count them). */
+function askLines(asks: AskSummary | GraphUnreadable, dispatches: number | undefined): string[] {
+  const calls = `- 派遣类调用 ${dispatches ?? '—'} 次`
   if ('unreadable' in asks) return [`- 项目图读不到：${asks.unreadable}`, calls]
   const { waiting, agentOwn, decided } = asks
   return [
@@ -206,12 +209,6 @@ function askLines(asks: AskSummary | GraphUnreadable, dispatches: number): strin
     `- 本期拍板 ${decided.person + decided.inChat + decided.agent} 次：你 ${decided.person} · 你在对话里说 ${decided.inChat} · agent ${decided.agent}`,
     calls,
   ]
-}
-
-/** Whether a decision record is a dispatch call (the only kind the workflow row writes). */
-function isDispatch(record: DecisionRecord): boolean {
-  // The journal is read from disk without a schema: a line without a text kind is not a dispatch.
-  return typeof record.kind === 'string' && (record.kind === 'dispatch' || record.kind.startsWith('dispatch:'))
 }
 
 /** Render the morning report for one period. */
@@ -263,7 +260,7 @@ export function morningReport(input: ReportInput): string {
 
   lines.push('')
   lines.push('## 等你定的事')
-  lines.push(...askLines(input.asks, input.decisions.filter(isDispatch).length))
+  lines.push(...askLines(input.asks, input.dispatches))
 
   if (input.metrics !== undefined && input.metrics.length > 0) {
     lines.push('')
@@ -345,15 +342,23 @@ function suppressionCountsOf(events: readonly MetricsEvent[], sinceMs: number | 
   })
 }
 
+/** The dispatch-class tool calls of the flow in period (`tool` events of category `dispatch`), what the retired workflow row journaled (metrics design §2). */
+function dispatchesOf(events: readonly MetricsEvent[], sinceMs: number | undefined): number | undefined {
+  return events.filter((event) => {
+    if (event.k !== 'tool' || event.body.cat !== 'dispatch') return false
+    return sinceMs === undefined || (!Number.isNaN(Date.parse(event.at)) && Date.parse(event.at) >= sinceMs)
+  }).length
+}
+
 /**
- * Assemble the morning report from the audit journal files: dispatch calls,
- * violations and usage from the project and user directories (docs/DESIGN.md
- * §2.4), and the suppression counts of the period from the project's metrics
- * journal — an unknown directory reads as an empty journal. The asks come
- * from the project graph `graph` reads. `since` (ISO instant) bounds the
- * period: only records stamped at or after it enter the report, so one
- * period reports on that window, not on all history. The usage section names
- * the gaps that period meets.
+ * Assemble the morning report from the audit journal files: violations and
+ * usage from the project and user directories (docs/DESIGN.md §2.4), and
+ * the dispatch calls and suppression counts of the period from the
+ * project's metrics journal — an unknown directory reads as an empty
+ * journal. The asks come from the project graph `graph` reads. `since`
+ * (ISO instant) bounds the period: only records stamped at or after it
+ * enter the report, so one period reports on that window, not on all
+ * history. The usage section names the gaps that period meets.
  */
 export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: string, graph: GraphReader, since?: string, options: ReportOptions = {}): Promise<string> {
   // A reader may throw before it returns a promise: both ways of failing read as an empty file.
@@ -423,7 +428,7 @@ export async function reportFromFiles(fs: ReportFs, homes: DataHomes, period: st
     : await runGit(root, ['status', '--porcelain', '--', 'docs/guard/lifts.jsonl']).then(run => run.code === 0 && run.out.trim().length > 0, () => undefined)
   const loaded = await readOnce(graph)
   return morningReport({
-    decisions: inPeriod(await readJsonl<DecisionRecord>(paths.decisions)),
+    dispatches: flow !== undefined && 'events' in flow ? dispatchesOf(flow.events, sinceMs) : undefined,
     violations: inPeriod(wholeViolations),
     usage: inPeriod(await readJsonl<UsageRecord>(paths.usage)),
     suppressions: flow !== undefined && 'events' in flow ? suppressionCountsOf(flow.events, sinceMs) : [],
