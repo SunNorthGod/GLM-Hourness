@@ -22,7 +22,8 @@ import { readFileSync, statSync } from 'node:fs'
 import { copyFile, mkdir, open, rename as renameFile, truncate, unlink, writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { ensureIgnored } from '../data/project-root.ts'
-import { canonicalJson, compareCodePoints, emptyState, stateProblem, withoutEmptyCollections, type Change, type JournalRecord, type ProjectState, type RecoveryReason, type SkippedRecord } from './model.ts'
+import { canonicalJson, compareCodePoints } from '../shared/json.ts'
+import { emptyState, stateProblem, withoutEmptyCollections, type Change, type JournalRecord, type ProjectState, type RecoveryReason, type SkippedRecord } from './model.ts'
 
 /** The rules directory in the repository, relative to the project root. */
 export const DEFAULT_RULES_DIR = 'docs/rules'

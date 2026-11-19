@@ -45,7 +45,7 @@
  * line of the row's health.
  */
 import { createHash } from 'node:crypto'
-import { canonicalJson } from '../rules/model.ts'
+import { canonicalJson } from '../shared/json.ts'
 import type { StoreIo } from '../rules/store.ts'
 import type { ScheduleCatalogEntry, ScheduleRecordLike, ScheduleSelector, ScheduleService, ScheduleTiming, ServiceLookup } from '../shared/dsh-min.ts'
 import { canDeliver, mayRemoveHolderTasks, type HolderState } from './holder.ts'

@@ -444,12 +444,40 @@ test('GrantBook: matched once — in use hides it, release gives it back, consum
   assert.equal(grants.get('r-11111111'), undefined)
 })
 
-test('signatureOf: the resolved target is part of the signature, one changed character is another call', () => {
+test('signatureOf: the canonical form — key order does not count, one changed value is another call', () => {
   const base = 'C:/work/app'
   const same = signatureOf('write', { file_path: 'notes/todo.md', content: 'a' }, base)
+  assert.equal(signatureOf('write', { content: 'a', file_path: 'notes/todo.md' }, base), same, 'the same arguments in another top-level key order')
+  const nested = signatureOf('write', { file_path: 'notes/todo.md', content: 'a', edits: [{ old: 'x', new: 'y' }] }, base)
+  assert.equal(signatureOf('write', { edits: [{ new: 'y', old: 'x' }], content: 'a', file_path: 'notes/todo.md' }, base), nested, 'nested key order')
+  assert.notEqual(nested, same, 'an added field is another call')
   assert.equal(signatureOf('write', { file_path: 'C:/work/app/notes/todo.md', content: 'a' }, undefined), same, 'relative and absolute spellings of one target')
   assert.notEqual(signatureOf('write', { file_path: 'notes/todo.md', content: 'b' }, base), same)
   assert.notEqual(signatureOf('edit', { file_path: 'notes/todo.md', content: 'a' }, base), same)
+})
+
+test('a retry with the same arguments in another key order consumes the one grant; different arguments are a new denial', async () => {
+  const environment = deskOf()
+  // GrantBook.find reads the real clock, so the desk's movable clock sits on it.
+  environment.setClock(new Date().toISOString())
+  const { target, ref, agent } = standingOf(environment)
+  const filed = askOf(await environment.desk.requestException({ ref, purpose: 'p', reversibility: 'r', alternatives: 'a' }, agent, environment.root))
+  const approved = await environment.desk.readReply({ admitted: [person('可以', 'rpc-2')], history: [assistant(filed.text)], step: 1, session: agent.session as never, agent })
+  assert.ok(noticeText(approved).includes(`The human approved request ${ref}`), noticeText(approved))
+  assert.ok(environment.desk.books.grants.get(ref) !== undefined)
+  // The gate's match: the retry spells the same arguments in another key order (signatureOf over the reordered call).
+  const retrySignature = signatureOf('write', { content: 'hello', file_path: target }, environment.root)
+  const matched = environment.desk.books.grants.find(retrySignature, agent.id)
+  assert.ok(matched !== undefined && matched.ref === ref, 'the reordered retry matches the grant')
+  environment.desk.books.grants.consume(matched.ref)
+  assert.equal(environment.desk.books.grants.find(retrySignature, agent.id), undefined, 'the grant is spent: once, not again')
+  // Different arguments stay another call: no grant matches, the denial is fresh, the signature differs.
+  const different = signatureOf('write', { content: 'other', file_path: target }, environment.root)
+  assert.equal(environment.desk.books.grants.find(different, agent.id), undefined, 'a changed argument is a new call')
+  const again = denyOf(environment, target, { content: 'other', file_path: target })
+  assert.notEqual(again.ref, ref)
+  assert.notEqual(again.signature, retrySignature)
+  rmSync(environment.root, { recursive: true, force: true })
 })
 
 test('RefusalBook keeps at most 64 refusals, the oldest out', () => {

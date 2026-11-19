@@ -17,7 +17,7 @@
  */
 import { createHash } from 'node:crypto'
 import type { RunnableEntry } from './inbox.ts'
-import { canonicalJson } from '../rules/model.ts'
+import { canonicalJson } from '../shared/json.ts'
 import { nextOccurrence, type Trigger } from './trigger.ts'
 
 /** The time triggers the clock reads; cron is the schedule service's, event and command are the inbox's (design §6.2). */
