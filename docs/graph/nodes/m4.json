@@ -413,6 +413,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-19：m4-request-card 关单——第 1–9 条 2026-11-04 的 G4 批（11306b6e）已在 main，本次落地第 10 条面板半边（graphLive.requests 折叠、RequestCard 两页呈现、L2 两组）与 ROADMAP M4 行，逐条判定见 .agents/tasks/m4-reqcard/progress.md。两件待办：申报卡桌面 L4 与用户图 U6/U7 攒一批；m8-plain-language 验收第 6 条「三种事→四种事」的措辞改等人拍板（验收原话按 plain-ui 0.9 预留归人）。"
+    },
+    {
+      "at": "2026-11-19T20:32:24.868Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-20 缺陷根修（desktop-l4-ug 批次缺陷 1）：放行签名 signatureOf 文档写 canonical JSON、实现保序 spread，模型重试键序颠倒即被当新申报（桌面实证 r-6jzanzjf/r-o3ri536p）。修法走仓库现成 canonicalJson——移 src/shared/json.ts，guard/rules/loops 七个消费点改 import（79a5add8）；L2 钉顶层与嵌套换键序同签名消耗同一放行、加字段是另一调用；账本是进程内存（设计 §5.6）无存量迁移。探针 626/626。另记录：followup.ts 的 canonical 是 UTF-16 序，与码点序只在代理对键名上有差，留置作后续可选收敛（progress.md）。"
     }
   ]
 }
