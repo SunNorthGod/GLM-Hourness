@@ -1,13 +1,15 @@
 /**
  * The env module's status entries (src/env/status.ts, status hub design 0.3
  * §3.1, §12 M4 row): the one `env/suppressions` entry over the project's
- * daily counts, and the row providing it as glmHournessStatus/env for the
- * collector — withdrawn with the row, no entry without a journal or a
- * session the row knows, a journal that cannot be read into the collector's
- * placeholder, a line that cannot be parsed skipped. The checks' timeouts
- * (batch 9, §12 M4 row): checkTimeouts and timeoutLines are the morning
- * report's 检查的超时 section line for line, env/timeouts hands the same
- * lines, a raise or a reset of limits.jsonl shows at the next read.
+ * metrics journal's daily `count` events (the suppressions.jsonl ledger is
+ * retired with metrics step 10), and the row providing it as
+ * glmHournessStatus/env for the collector — withdrawn with the row, no
+ * entry without a journal or a session the row knows, a check journal that
+ * cannot be read into the collector's placeholder, a line that cannot be
+ * parsed skipped. The checks' timeouts (batch 9, §12 M4 row):
+ * checkTimeouts and timeoutLines are the morning report's 检查的超时
+ * section line for line, env/timeouts hands the same lines, a raise or a
+ * reset of limits.jsonl shows at the next read.
  */
 import assert from 'node:assert/strict'
 import { writeFileSync } from 'node:fs'
@@ -17,25 +19,24 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { apply as envApply } from '../src/env/index.ts'
 import { parseLimits } from '../src/env/limit-tool.ts'
-import { checkTimeouts, envStatusItems, envTimeoutItems, pageChecks, suppressionLineOf, suppressionTotalLine, timeoutLines } from '../src/env/status.ts'
-import type { SuppressionRecord } from '../src/env/suppressions.ts'
+import { checkTimeouts, envStatusItems, envTimeoutItems, pageChecks, suppressionLineOf, suppressionTotalLine, timeoutLines, type SuppressionCount } from '../src/env/status.ts'
 import { parseTiming } from '../src/env/timeout.ts'
 import { collectStatus } from '../src/report/status.ts'
 import { validateStatusItem } from '../src/shared/status.ts'
 import { statusServiceName, type RowStatusView } from '../src/shared/status-host.ts'
-import { morningReport } from '../src/workflow/morning-report.ts'
+import { morningReport } from '../src/report/morning-report.ts'
 import { fakeRuntime, type FakeRuntime } from './fake-rc3.ts'
 
-const record = (at: string, total: number): SuppressionRecord => ({ at, repo: 'r', total, byMarker: {} })
+const record = (at: string, total: number): SuppressionCount => ({ at, total })
 
 test('envStatusItems: the latest count is the text, the field, the moment; no count, no entry', () => {
-  assert.deepEqual(envStatusItems([], 'suppressions.jsonl'), [])
-  const [only] = envStatusItems([record('2026-11-04T00:30:00Z', 7)], 'suppressions.jsonl')
+  assert.deepEqual(envStatusItems([], 'metrics'), [])
+  const [only] = envStatusItems([record('2026-11-04T00:30:00Z', 7)], 'metrics')
   assert.equal(only?.id, 'env/suppressions')
   assert.equal(only?.owner, 'env')
   assert.equal(only?.audience, 'agent')
   assert.equal(only?.asOf, '2026-11-04T00:30:00Z')
-  assert.equal(only?.source, 'suppressions.jsonl')
+  assert.equal(only?.source, 'metrics')
   assert.equal(only?.text, '压制注释 7 处')
   assert.deepEqual(only?.fields, { total: 7 })
   assert.ok((only?.staleAfterMs ?? 0) > 0, 'a count that stopped refreshing grows stale')
@@ -48,17 +49,21 @@ test('the count line is one wording for the entry and the report\'s no-churn lin
   assert.equal(suppressionLineOf([record('2026-11-03T00:30:00Z', 3), record('2026-11-04T00:30:00Z', 7)]), `${suppressionTotalLine(7)}（本期 +4 / −0）`)
 })
 
-/**
- * A fixture whose daily gate must not run: the journal's last record is
- * today's (UTC+8), so the row skips the count and with it the git call.
- */
-const settledJournal = (): string => `${JSON.stringify(record(`${new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)}T00:00:00Z`, 7))}\n`
+/** One `count` event line as the journal stores it (the reader takes `at` and `body.value` of the named `what`). */
+const countLine = (at: string, total: number): string => JSON.stringify({ s: 3, k: 'count', at, w: '0123abcd', n: 1, h: '000000000000', by: 'env', body: { what: 'suppression-comments', value: total } })
 
-async function withRow(body: (view: RowStatusView, workspace: string, rt: FakeRuntime) => void, options: { readFile?: (path: string) => string, journal?: string, timing?: string, limits?: string } = {}): Promise<void> {
+/**
+ * A fixture whose daily gate must not run: the journal's latest count event
+ * is today's (UTC+8), so the row skips the count and with it the git call.
+ */
+const settledFlow = (): string => `${countLine(`${new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)}T00:00:00Z`, 7)}\n`
+
+async function withRow(body: (view: RowStatusView, workspace: string, rt: FakeRuntime) => void, options: { readFile?: (path: string) => string, flow?: string | null, timing?: string, limits?: string } = {}): Promise<void> {
   const workspace = await mkdtemp(join(tmpdir(), 'env-status-'))
   try {
-    await mkdir(join(workspace, '.llm', 'audit'), { recursive: true })
-    await writeFile(join(workspace, '.llm', 'audit', 'suppressions.jsonl'), options.journal ?? settledJournal())
+    // The metrics journal of the project (the directory's presence also makes the workspace a project, no git needed); `flow: null` is no journal at all.
+    await mkdir(join(workspace, '.llm', 'metrics'), { recursive: true })
+    if (options.flow !== null) await writeFile(join(workspace, '.llm', 'metrics', `events-${new Date().toISOString().slice(0, 10)}.jsonl`), options.flow ?? settledFlow())
     if (options.timing !== undefined || options.limits !== undefined) await mkdir(join(workspace, '.llm', 'env-checks'), { recursive: true })
     if (options.timing !== undefined) await writeFile(join(workspace, '.llm', 'env-checks', 'timing.jsonl'), options.timing)
     if (options.limits !== undefined) await writeFile(join(workspace, '.llm', 'env-checks', 'limits.jsonl'), options.limits)
@@ -82,19 +87,20 @@ test('the env row provides glmHournessStatus/env: the latest count as the one en
     assert.equal(item?.id, 'env/suppressions')
     assert.equal(item?.text, '压制注释 7 处')
     assert.deepEqual(item?.fields, { total: 7 })
-    assert.equal(item?.source, join(workspace, '.llm', 'audit', 'suppressions.jsonl'))
+    assert.equal(item?.source, join(workspace, '.llm', 'metrics'))
     const collected = collectStatus(rt.services, 'agent-1', 'agent', Date.now())
     assert.equal(collected.items.some(entry => entry.id === 'env/suppressions'), true)
     assert.deepEqual(view.items('agent-1').map(entry => entry.id), ['env/suppressions'], 'no timing journal, no timeouts entry')
   })
 })
 
-test('a session the row does not know has no entry; a journal that cannot be read throws for the collector', async () => {
+test('a session the row does not know has no entry; a check journal that cannot be read throws for the collector', async () => {
   await withRow((view) => {
     assert.deepEqual(view.items('no-such-session'), [])
     assert.throws(() => view.items('agent-1'), /EACCES/, 'the view throws; the collector takes the placeholder')
   }, {
     readFile: (path) => {
+      if (!path.includes('env-checks')) return ''
       const error = new Error(`EACCES: permission denied, access '${path}'`) as NodeJS.ErrnoException
       error.code = 'EACCES'
       throw error
@@ -106,6 +112,7 @@ test('a journal that is not there yet is no entry, not an error', async () => {
   await withRow((view) => {
     assert.deepEqual(view.items('agent-1'), [])
   }, {
+    flow: null,
     readFile: (path) => {
       const error = new Error(`ENOENT: no such file or directory, open '${path}'`) as NodeJS.ErrnoException
       error.code = 'ENOENT'
@@ -115,11 +122,11 @@ test('a journal that is not there yet is no entry, not an error', async () => {
 })
 
 test('a line the journal cannot parse is skipped, the rest counted', async () => {
-  const corrupt = `${'not json'}\n${settledJournal()}`
+  const corrupt = `${'not json'}\n${settledFlow()}`
   await withRow((view) => {
     const [item] = view.items('agent-1')
     assert.equal(item?.text, '压制注释 7 处')
-  }, { journal: corrupt })
+  }, { flow: corrupt })
 })
 
 // --- The checks' timeouts: one set of facts for the morning report and the env/timeouts entry ---
@@ -144,7 +151,7 @@ test('the morning report\'s 检查的超时 section is timeoutLines over checkTi
   const timing = parseTiming(TIMING).lines
   const limits = parseLimits(RAISED).lines
   const lines = timeoutLines(checkTimeouts(timing, limits, NOW), 480)
-  const report = morningReport({ period: 'p', decisions: [], violations: [], usage: [], asks: NO_ASKS, timing, limits, now: NOW, offsetMinutes: 480 })
+  const report = morningReport({ period: 'p', violations: [], usage: [], asks: NO_ASKS, timing, limits, now: NOW, offsetMinutes: 480 })
   const section = report.slice(report.indexOf('## 检查的超时')).split('\n\n')[0]?.split('\n')
   assert.deepEqual(section, ['## 检查的超时', ...lines])
   assert.equal(lines.length, 3)

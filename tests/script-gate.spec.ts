@@ -27,7 +27,7 @@ import { prepareProposal } from '../src/rules/proposal.ts'
 import type { ScriptResult } from '../src/loops/script.ts'
 import { loadState } from '../src/rules/store.ts'
 import { nextPeakChange } from '../src/shared/pricing.ts'
-import { morningReport } from '../src/workflow/morning-report.ts'
+import { morningReport } from '../src/report/morning-report.ts'
 import { OFFPEAK_CREDIT_RUNS } from './rules-fixtures.ts'
 import { quickIo } from './rules-helpers.ts'
 
@@ -704,7 +704,7 @@ gateTest('the journal on disk (item 26, item 16): a block of the real checkCall 
   assert.equal(twice[0], once[0])
 
   const report = morningReport({
-    decisions: [],
+     
     violations: twice.map(line => JSON.parse(line) as GuardRecord),
     usage: [],
     period: '2026-10-28',

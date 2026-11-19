@@ -7,8 +7,9 @@
  * repository makes the project's `.llm/` git-ignored
  * (src/data/llm-ignore.ts), so the harness's runtime records never show up
  * in git; and once per repository and day counts the repository's
- * suppression comments into the project's `.llm/audit/
- * suppressions.jsonl` (suppressions.ts, m4-suppressions).
+ * suppression comments into the project's metrics journal as a `count`
+ * event (suppressions.ts, metrics.ts, m4-suppressions; the
+ * suppressions.jsonl ledger is retired with metrics step 10).
  *
  * For the loop board (m4-checks, design §6.1.2, §6.2, §6.8) it provides the
  * service `glmHournessEnv` (env-service.ts: the command of one approved
@@ -23,14 +24,12 @@
  * agent raises or resets the ceiling of one check held at it, which the
  * root agent's environment notice says. Ships enabled since m4-checks B6.
  */
-import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { ensureLlmIgnored } from '../data/llm-ignore.ts'
 import { projectHomeFor } from '../data/project-home.ts'
 import { projectOf } from '../data/project-root.ts'
-import { dataService } from '../shared/data-home.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
 import type { AgentLike, ProvideHost, ServiceLookup, SessionLike, ToolExecutionContext, ToolsLike } from '../shared/dsh-min.ts'
@@ -43,8 +42,9 @@ import { CHECKS_ENTRY_ID, envContribution, ENV_ROW_SOURCE } from './loop-entry.t
 import { envNotice } from './notice.ts'
 import { createChecker, readOwnChecks } from './runner.ts'
 import { emitSuppressionCount } from './metrics.ts'
-import { dailySuppressions, type SuppressionRecord } from './suppressions.ts'
-import { checkTimeouts, envStatusItems, envTimeoutItems } from './status.ts'
+import { dailySuppressions, suppressionDay } from './suppressions.ts'
+import { countEventsSync } from '../metrics/read.ts'
+import { checkTimeouts, envStatusItems, envTimeoutItems, type SuppressionCount } from './status.ts'
 import { parseTiming, timingFile } from './timeout.ts'
 
 /** The row's context: the agent lifecycle event, service lookup and provision, the tools service, and cordis inject when the host has it. */
@@ -96,12 +96,12 @@ export function installEnvNotice(ctx: EnvContext, agent: AgentLike, health: RowH
 /**
  * The first-install work for one session's repository, in order: the
  * `.llm/` ignore (its outcome goes to the row health), then the daily
- * suppression count in the background. The count is fire-and-forget: a
- * failure reaches the row health, never a step. The journal is in the data
- * service's project directory of the session (`<root>/.llm`, or the
- * override a probe, calibration or test sets, so a run from a work tree of
- * this repository never writes the main checkout's `.llm/`), else
- * `<root>/.llm`.
+ * suppression count in the background, whose tally goes to the project's
+ * metrics journal as a `count` event (no ledger file since metrics step
+ * 10). The count is fire-and-forget: a failure reaches the row health,
+ * never a step. The once-per-day gate reads the latest count event back
+ * through the journal's own files (countEventsSync), so a restart does not
+ * write a second event for the same day.
  */
 function installWork(ctx: EnvContext, session: SessionLike, health: RowHealth, sessionId: string | undefined): Promise<void> {
   return (async () => {
@@ -110,36 +110,20 @@ function installWork(ctx: EnvContext, session: SessionLike, health: RowHealth, s
     const outcome = root === undefined ? undefined : await ensureLlmIgnored(root)
     if (sessionId !== undefined) health.report(sessionId, ...envHealth(graphService(ctx)?.dirFor(cwd), outcome))
     if (root === undefined) return
-    const home = dataService(ctx)?.projectDirOf?.(cwd) ?? join(root, '.llm')
-    void dailySuppressions(root, record => appendSuppression(home, record).then(() => emitSuppressionCount(ctx, record)), {
-      lastRecord: () => lastSuppression(home),
+    const lastDay = (): string | undefined => {
+      const last = countEventsSync(root, 'suppression-comments').at(-1)
+      return last === undefined ? undefined : suppressionDay(new Date(last.at))
+    }
+    void dailySuppressions(root, {
+      lastDay,
       problem: (message) => {
         if (sessionId !== undefined) health.report(sessionId, 'degraded', `压制注释计数失败：${message}`)
         console.warn(`${name}: suppression count failed: ${message}`)
       },
+    }).then((tally) => {
+      if (tally !== undefined) emitSuppressionCount(ctx, root, tally)
     }).catch(() => {})
   })()
-}
-
-/** The suppression journal under the project directory `home`: the one file the daily count appends to and the status entry reads. */
-const suppressionsPath = (home: string): string => join(home, 'audit', 'suppressions.jsonl')
-
-/** The last record of the suppression journal under the project directory `home`, undefined when there is none. */
-async function lastSuppression(home: string): Promise<SuppressionRecord | undefined> {
-  try {
-    const lines = (await readFile(suppressionsPath(home), 'utf8')).split('\n').filter(line => line.trim() !== '')
-    return lines.at(-1) === undefined ? undefined : JSON.parse(lines.at(-1)!) as SuppressionRecord
-  }
-  catch {
-    return undefined
-  }
-}
-
-/** Append one count record to `<home>/audit/suppressions.jsonl` (home: the project directory). */
-async function appendSuppression(home: string, record: SuppressionRecord): Promise<void> {
-  const file = suppressionsPath(home)
-  await mkdir(dirname(file), { recursive: true })
-  await appendFile(file, `${JSON.stringify(record)}\n`)
 }
 
 /** Provide `glmHournessEnv`; the disposer withdraws it. A host without provide, or a failing one, is the reason returned instead. */
@@ -197,26 +181,16 @@ export function apply(ctx: EnvContext, config: EnvConfig = {}): () => void {
     const cwd = sessionId === undefined ? undefined : sessions.get(sessionId)
     const root = typeof cwd === 'string' && cwd.length > 0 ? projectOf(cwd)?.root : undefined
     if (root === undefined) return []
-    const file = suppressionsPath(dataService(ctx)?.projectDirOf?.(cwd) ?? join(root, '.llm'))
     // The checks' journals are where the runner writes them (runner.ts: projectHomeFor with no row home).
     const home = projectHomeFor(ctx, undefined, cwd)
     const nowMs = Date.now()
     const timeouts = home === undefined
       ? []
       : envTimeoutItems(checkTimeouts(parseTiming(readJournal(timingFile(home))).lines, parseLimits(readJournal(limitsFile(home))).lines, nowMs), timingFile(home), nowMs)
-    const raw = readJournal(file)
-    const records = raw.split('\n').filter(line => line.trim().length > 0).flatMap(line => {
-      try {
-        const parsed: unknown = JSON.parse(line)
-        if (typeof parsed !== 'object' || parsed === null) return []
-        const record = parsed as Partial<SuppressionRecord>
-        return typeof record.at === 'string' && typeof record.total === 'number' ? [parsed as SuppressionRecord] : []
-      }
-      catch {
-        return []
-      }
-    })
-    return [...envStatusItems(records, file), ...timeouts]
+    // The daily counts are the metrics journal's `count` events (metrics step 10): the same
+    // synchronous read the once-per-day gate takes, source named for the collector.
+    const counts: readonly SuppressionCount[] = countEventsSync(root, 'suppression-comments').map(event => ({ at: event.at, total: event.value }))
+    return [...envStatusItems(counts, join(root, '.llm', 'metrics')), ...timeouts]
   })
   disposers.push(() => { status.dispose() })
   disposers.push(ctx.on('agent/created', ({ agent }) => {

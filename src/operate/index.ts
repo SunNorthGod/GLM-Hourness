@@ -44,7 +44,7 @@ import { collectStatus, statusPlaceholders } from '../report/status.ts'
 import { fourAnswers } from '../report/four-answers.ts'
 import { dora, doraBody } from '../report/metrics.ts'
 import { weeklyReport } from '../report/weekly.ts'
-import { askSummary, localDay, readEffects } from '../workflow/morning-report.ts'
+import { askSummary, localDay, readEffects } from '../report/morning-report.ts'
 import { patrolRun } from './patrol.ts'
 import { OPERATE_ENTRIES, OPERATE_ROW_SOURCE } from './entries.ts'
 

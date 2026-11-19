@@ -38,7 +38,7 @@ import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
 import { OUTPUT_STYLE_SECTION } from '../src/shared/output-style.ts'
 import { PRICING_SERVICE, peakHoursOf, pricingService, quotaOf, type UsagePricing } from '../src/shared/pricing.ts'
 import type { QuotaView } from '../src/shared/quota.ts'
-import { BOOTSTRAP_TOOL_NAMES, DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, ENV_TOOL_NAMES, EXECUTE_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_HABIT, MEMORY_TOOL_NAMES, OPERATE_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES, STRUCTURED_OUTPUT_TOOL, WORKER_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { BOOTSTRAP_TOOL_NAMES, DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, DISPATCH_TOOLS, ENV_TOOL_NAMES, EXECUTE_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_HABIT, MEMORY_TOOL_NAMES, OPERATE_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES, STRUCTURED_OUTPUT_TOOL, WORKER_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { emitMetric, setMetricSink, type MetricEvent } from '../src/execute/metrics.ts'
 import { HANDBACK_SCHEMA, REVIEW_SCHEMA, handbackProblems, mergeHandbackSchema, reviewProblems } from '../src/execute/schemas.ts'
 import { GRAPH_WRITE_TOOLS } from '../src/execute/faces.ts'
@@ -51,7 +51,6 @@ import { renderTranscript } from '../src/data/transcript.ts'
 import { apply as transcriptApply } from '../src/data/transcript-row.ts'
 import type { LlmStreamOptions } from '../src/shared/dsh-min.ts'
 import type { StreamChunk } from '../src/shared/lm-min.ts'
-import { DISPATCH_TOOLS } from '../src/workflow/index.ts'
 import { PACKAGES } from '../scripts/packages.mjs'
 import { designHost } from './design-host.ts'
 import { fakeRuntime, serviceStore, type FakeRuntime } from './fake-rc3.ts'
@@ -77,7 +76,6 @@ const ROW_IDS = [
   'glm-hourness/guard',
   'glm-hourness/memory',
   'glm-hourness/lessons',
-  'glm-hourness/workflow',
   'glm-hourness/hourness',
   'glm-hourness/graph',
   'glm-hourness/graph-panel',
@@ -128,9 +126,9 @@ test('memory service readers: absent and malformed services read as none; a wide
   assert.equal(problems.length, 1)
 })
 
-test('tool names: the rules row registers exactly the contract names, and the dispatch names are tools the workflow row records', () => {
+test('tool names: the rules row registers exactly the contract names, and the gate\'s dispatch names are of the dispatch class the metrics journal categorises', () => {
   assert.ok(DISPATCH_TOOL_NAMES.length > 0)
-  for (const name of DISPATCH_TOOL_NAMES) assert.ok((DISPATCH_TOOLS as readonly string[]).includes(name), `${name} is not a dispatch tool the workflow row knows`)
+  for (const name of DISPATCH_TOOL_NAMES) assert.ok(DISPATCH_TOOLS.includes(name), `${name} is not a tool of the dispatch class`)
   const rt = fakeRuntime({ natives: [] })
   const stop = rulesApply({ ...rt.ctx, commands: { register: () => () => {} } }, {})
   assert.deepEqual(rt.scoped.map(tool => tool.name), [...RULES_TOOL_NAMES])

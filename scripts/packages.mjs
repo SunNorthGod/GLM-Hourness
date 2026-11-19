@@ -7,7 +7,7 @@
  * scripts/preflight-bundle.mjs checks src/, the manifests, the patches and
  * the build output against it. The GLM channel package holds the channel,
  * the dialect and tool search; the orchestration package holds the data,
- * guard, memory, workflow, report and graph rows. src/shared/ is the shared
+ * guard, memory, report and graph rows. src/shared/ is the shared
  * library, compiled into every package that imports it; it imports no
  * package directory.
  */
@@ -51,13 +51,12 @@ export const PACKAGES = [
     key: 'hourness',
     name: 'dsh-hourness',
     dir: 'packages/hourness',
-    src: ['data', 'guard', 'memory', 'workflow', 'report', 'graph', 'rules', 'execute', 'design', 'loops', 'lessons', 'metrics', 'env', 'operate', 'bootstrap'],
+    src: ['data', 'guard', 'memory', 'report', 'graph', 'rules', 'execute', 'design', 'loops', 'lessons', 'metrics', 'env', 'operate', 'bootstrap'],
     rows: [
       { id: 'glm-hourness/data', module: 'data/index' },
       { id: 'glm-hourness/guard', module: 'guard/index' },
       { id: 'glm-hourness/memory', module: 'memory/index' },
       { id: 'glm-hourness/lessons', module: 'lessons/index' },
-      { id: 'glm-hourness/workflow', module: 'workflow/index' },
       { id: 'glm-hourness/hourness', module: 'report/index' },
       { id: 'glm-hourness/graph', module: 'graph/index' },
       { id: 'glm-hourness/graph-panel', module: 'graph/panel-row' },

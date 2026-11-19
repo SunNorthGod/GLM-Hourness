@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { emitSuppressionCount, markerKey } from '../src/env/metrics.ts'
-import type { SuppressionRecord } from '../src/env/suppressions.ts'
+import type { SuppressionTally } from '../src/env/suppressions.ts'
 import { apply as envApply } from '../src/env/index.ts'
 import { envNotice, envNoticeBody, ENV_NOTICE_SOURCE, NO_BOARD_LINE, NO_CHECKS_LINE, SCRATCH_LINE } from '../src/env/notice.ts'
 import { openEngine } from '../src/graph/engine.ts'
@@ -270,16 +270,16 @@ test('markers travel as id-shaped byKey keys: the whole marker table shapes, dis
 test('a count over real-shaped markers passes the journal validator as handed in, counts queryable under the shaped keys', () => {
   const events: EmittedEvent[] = []
   const ctx = { get: (name: string): unknown => (name === METRICS_SERVICE ? { emit: (event: EmittedEvent): void => { events.push(event) } } : undefined) } as unknown as ServiceLookup
-  const record: SuppressionRecord = { at: '2026-11-16T08:00:00.000Z', repo: 'C:/repo', total: 7, byMarker: { 'eslint-disable-next-line': 2, '# noqa': 3, '# type: ignore': 1, '#[allow(': 1 } }
-  emitSuppressionCount(ctx, record)
+  const tally: SuppressionTally = { total: 7, byMarker: { 'eslint-disable-next-line': 2, '# noqa': 3, '# type: ignore': 1, '#[allow(': 1 } }
+  emitSuppressionCount(ctx, 'C:/repo', tally)
   const count = events[0] as Extract<EmittedEvent, { k: 'count' }> | undefined
   assert.ok(count !== undefined)
   assert.equal(count.by, 'env')
   assert.deepEqual(count.body.byKey, { 'eslint-disable-next-line': 2, __noqa: 3, '__type:_ignore': 1, __allow_: 1 })
   const check = checkEvent(storedCount(count.body), METRICS_KINDS)
   assert.ok(check.ok, check.ok ? '' : `${check.field} ${check.reason}`)
-  // The readable marker names stay in the audit record, which the status entry and the morning report read.
-  assert.ok('# noqa' in record.byMarker)
+  // The readable marker names travel only as the sender's own tally; the journal sees the id-shaped keys.
+  assert.ok('# noqa' in tally.byMarker)
 })
 
 test('the verbatim marker map the emitter used to hand in stays rejected at byKey (the id pattern is the contract)', () => {

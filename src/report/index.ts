@@ -5,7 +5,7 @@
  * directory (dispatch calls, violations), the project graph of the calling
  * session (the asks) and the user-level directory (usage and its gap file,
  * docs/DESIGN.md §2.4). Pure data plane from src/report/panel.ts and
- * src/workflow/morning-report.ts; no separate bookkeeping. The panel prices
+ * src/report/morning-report.ts; no separate bookkeeping. The panel prices
  * calls through the pricing service the GLM channel package's glm-login row
  * provides (src/shared/pricing.ts), read per invocation; without it the
  * panel lists calls and tokens. The same service gives the peak line and,
@@ -32,7 +32,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { graphService } from '../graph/service.ts'
 import { loadGraph } from '../graph/store.ts'
 import { auditPaths } from '../memory/audit.ts'
-import { localDay, reportFromFiles, type GraphReader, type ReportOptions } from '../workflow/morning-report.ts'
+import { localDay, reportFromFiles, type GraphReader, type ReportOptions } from './morning-report.ts'
 import { gapLines, NO_PRICING_LINE, parseGaps, peakStatusItems, quotaSection, quotaStatusItems, rangeLine, usagePanel, usageStatusItems } from './panel.ts'
 import { collectStatus, statusPlaceholders, statusViewOf } from './status.ts'
 import { dataHomes, type DataHomes } from '../shared/data-home.ts'

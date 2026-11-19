@@ -2,10 +2,12 @@
 # for any model. Rows are independent: disable any line and the session
 # degrades gracefully (fail-open). The data row defaults its project
 # directory to this repository's `.llm` (USERPROFILE-relative); the user's
-# profile patch overrides per row (it sets `home` for memory, workflow and
+# profile patch overrides per row (it sets `home` for memory and
 # hourness; the memory row ignores `home` since M5: its project directory
 # follows the working directory of each session). Row ids stay `glm-hourness/<row>` across the split: profile
-# overrides match by id (docs/DESIGN.md §2.3).
+# overrides match by id (docs/DESIGN.md §2.3). The workflow row is retired
+# (metrics step 10): its dispatch journal is the metrics journal's `tool`
+# events; a user profile that still carries its override is ignored.
 # Rows are named through this package (docs/DESIGN.md §2.3): a host row by
 # its export `dsh-hourness/<row>`, whose settings-page title is
 # locale/<row>/; the client row by the exact package name. A path name
@@ -15,8 +17,8 @@
     - id: glm-hourness/data
       # Data directory service (docs/DESIGN.md §2.4): the user-level
       # directory resolves to $DSH_HOME/glm-hourness (default ~/.dsh); the
-      # project directory is the workspace `.llm`. Guard, memory, workflow
-      # and hourness read it lazily and keep working without it.
+      # project directory is the workspace `.llm`. Guard, memory and
+      # hourness read it lazily and keep working without it.
       name: dsh-hourness/data
       config: {}
     - id: glm-hourness/guard
@@ -46,9 +48,6 @@
       # (docs/DEVELOPMENT.md §3, AGENTS.md) is still owed.
       name: dsh-hourness/lessons
       inject: [tools]
-      config: {}
-    - id: glm-hourness/workflow
-      name: dsh-hourness/workflow
       config: {}
     - id: glm-hourness/hourness
       name: dsh-hourness/hourness
@@ -191,7 +190,9 @@
       # scratch area for one-off scripts (.llm/scratch/). Before the first
       # notice for a repository it appends .llm/ to the clone's
       # .git/info/exclude and verifies with git check-ignore; once a day per
-      # repository it counts suppression comments (m4-suppressions). For the
+      # repository it counts suppression comments into the project metrics
+      # journal's count event (the m4-suppressions ledger is retired,
+      # metrics step 10). For the
       # loop board it provides glmHournessEnv (the command of an approved
       # check line, for the board's check entries) and hands over the event
       # env.files-edited, emitted after each step that changed files

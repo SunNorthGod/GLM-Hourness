@@ -14,7 +14,6 @@ import { apply as promptApply, dialectHealth } from '../src/glm-prompt/index.ts'
 import { apply as compactApply } from '../src/glm-prompt/compact-row.ts'
 import { apply as guardApply } from '../src/guard/index.ts'
 import { apply as memoryApply } from '../src/memory/index.ts'
-import { apply as workflowApply } from '../src/workflow/index.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { fakeRuntime, serviceStore } from './fake-rc3.ts'
 import type { AgentLike, CommandDefinitionLike, LlmStreamOptions, PreExecuteDecision, ToolExecutionPayload } from '../src/shared/dsh-min.ts'
@@ -162,7 +161,6 @@ test('the table: absent rows, inactive activation wins, activation-only rows, se
   provideRowHealth(store, 'glm-llm', 'inactive', 'home 未配置').report('s1', 'active', 'ignored: the row cannot act')
   provideRowHealth(store, 'guard', 'active', '已加载').report('s1', 'degraded', '圈禁规则跳过')
   provideRowHealth(store, 'memory', 'degraded', 'home 未配置，记忆工具关闭')
-  provideRowHealth(store, 'workflow', 'active', '已加载')
   const entries = collectHealth(store, 's1')
   assert.deepEqual(entries.map(entry => entry.row), [...HEALTH_ROWS])
   const byRow = Object.fromEntries(entries.map(entry => [entry.row, [entry.status, entry.reason]]))
@@ -171,7 +169,6 @@ test('the table: absent rows, inactive activation wins, activation-only rows, se
   assert.deepEqual(byRow['glm-llm'], ['inactive', 'home 未配置'])
   assert.deepEqual(byRow['guard'], ['degraded', '圈禁规则跳过'])
   assert.deepEqual(byRow['memory'], ['degraded', 'home 未配置，记忆工具关闭'])
-  assert.deepEqual(byRow['workflow'], ['idle', '已加载'])
   assert.equal(collectHealth(store, undefined).find(entry => entry.row === 'guard')!.status, 'idle') // no session to read
   assert.equal(collectHealth({ get: () => ({ unrelated: true }) }, 's1')[0].status, 'absent') // a foreign value is not a view
 })
@@ -200,7 +197,7 @@ test('the rendered table names the session, labels each status and escapes cells
 test('the table groups rows by package; a package with no row loaded takes one line', () => {
   assert.deepEqual(HEALTH_PACKAGES.map(entry => [entry.name, [...entry.rows]]), [
     ['dsh-glm-zcode', ['glm-llm', 'glm-login', 'glm-prompt', 'glm-compact']],
-    ['dsh-hourness', ['data', 'guard', 'memory', 'lessons', 'workflow', 'hourness', 'graph', 'graph-panel', 'rules', 'design', 'execute', 'loops', 'metrics', 'env', 'operate', 'transcript', 'bootstrap']],
+    ['dsh-hourness', ['data', 'guard', 'memory', 'lessons', 'hourness', 'graph', 'graph-panel', 'rules', 'design', 'execute', 'loops', 'metrics', 'env', 'operate', 'transcript', 'bootstrap']],
   ])
   assert.deepEqual([...HEALTH_ROWS], HEALTH_PACKAGES.flatMap(entry => [...entry.rows]))
   const lines = (text: string): string[] => text.split('\n').slice(4)
@@ -543,16 +540,6 @@ test('guard: in effect with a session directory and a project directory, degrade
   const bare = preExecuteRow(guardApply, { fs: memoryFs })
   await bare.call({ name: 'Read', arguments: {}, agent: agentIn('s1', 'C:\\ws') })
   assert.ok(inSession(bare.store, 'guard', 's1')!.reason.includes('；无项目目录，违规不落盘；'))
-})
-
-test('workflow: in effect with a project directory, inactive without one', async () => {
-  const { store, call } = preExecuteRow(workflowApply, { fs: memoryFs }, { userHome: 'C:/u/glm-hourness', projectHome: 'C:/ws/.llm' })
-  assert.equal(activation(store, 'workflow').state, 'active')
-  await call({ name: 'Read', arguments: {}, agent: agentIn('s1') })
-  assert.deepEqual(inSession(store, 'workflow', 's1'), { state: 'active', reason: '派遣决策记入 C:/ws/.llm' })
-  const bare = preExecuteRow(workflowApply, { fs: memoryFs })
-  await bare.call({ name: 'subagent', arguments: {}, agent: agentIn('s1') })
-  assert.equal(inSession(bare.store, 'workflow', 's1')!.state, 'inactive')
 })
 
 test('memory: a root agent\'s step reports the directories of its session; the row says what is missing', async () => {

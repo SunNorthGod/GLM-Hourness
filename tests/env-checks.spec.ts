@@ -120,11 +120,6 @@ const bodyOf = (notice: UserNotice | undefined): string => (notice?.content[0]?.
 const journalOf = async (root: string): Promise<readonly TimingLine[]> =>
   existsSync(join(root, '.llm', 'env-checks', 'timing.jsonl')) ? parseTiming(await readFile(join(root, '.llm', 'env-checks', 'timing.jsonl'), 'utf8')).lines : []
 
-/** The env row's repository work runs in the background (the daily suppression count): let it land before the fixture goes. */
-async function settleRepositoryWork(root: string): Promise<void> {
-  for (let tries = 0; tries < 50 && !existsSync(join(root, '.llm', 'audit', 'suppressions.jsonl')); tries++) await new Promise(resolve => setTimeout(resolve, 100))
-}
-
 test('on the fake runtime: a finding on a changed line, the fix, a quiet step, and file names that reach the program as they are', async () => {
   await withProject([LINT], async ({ root, services, board }) => {
     const runtime = fakeRuntime({ natives: [], cwd: root })
@@ -163,7 +158,6 @@ test('on the fake runtime: a finding on a changed line, the fix, a quiet step, a
     assert.deepEqual(board.runs.map(run => [run.entry, run.outcome, run.exits]), [['env.checks-after-edit', 'reported', [0]], ['env.checks-after-edit', 'ran', [0]], ['env.checks-after-edit', 'ran', [0]]])
     const journal = await journalOf(root)
     assert.deepEqual(journal.map(line => line.kind), ['value', 'run', 'value', 'run', 'run'], 'the ceiling first (no estimate), then the floor after the first run, unchanged after that')
-    await settleRepositoryWork(root)
     dispose()
   })
 })

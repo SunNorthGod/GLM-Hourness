@@ -1,8 +1,11 @@
 /**
  * The env row's status entries (status hub design 0.3 §3.1, §4.2, §12 M4
- * row): the daily suppression-comment count of the project's
- * suppressions.jsonl as the one `env/suppressions` entry. The words of the
- * count line live here — the morning report's movement line
+ * row): the daily suppression-comment count as the one `env/suppressions`
+ * entry — since metrics step 10 the counts are the project's metrics
+ * journal's `count` events (`what: 'suppression-comments'`; the
+ * suppressions.jsonl ledger of the M4 design is retired), read with the
+ * synchronous `countEventsSync` because the status view is synchronous.
+ * The words of the count line live here — the morning report's movement line
  * (suppressionLineOf, moved from the report so the entry and the report read
  * one computation) and the entry's plain total share it. The entry states
  * the latest count with its reading moment; the per-period rise and fall
@@ -20,9 +23,14 @@
 import { renderStamp } from '../guard/status.ts'
 import type { ViewCheck, ViewTimeout, ViewTimeoutChange, ViewTimeoutSource } from '../loops/view.ts'
 import { limitSetting, type LimitLine } from './limit-tool.ts'
-import type { SuppressionRecord } from './suppressions.ts'
 import { capMsOf, checkTimeout, CHECK_TIMEOUT_FACTOR, lastValues, secondsText, valueSourceText, type CapSetting, type EstimateLine, type EstimateOrigin, type TimingLine, type ValueLine } from './timeout.ts'
 import { STATUS_TEXT_MAX, type StatusItem } from '../shared/status.ts'
+
+/** One daily count as the readers see it in the metrics journal: the envelope instant and the total. */
+export interface SuppressionCount {
+  readonly at: string
+  readonly total: number
+}
 
 /** The count line without a movement: what the entry states and the report's no-churn line reads. */
 export function suppressionTotalLine(total: number): string {
@@ -35,7 +43,7 @@ export function suppressionTotalLine(total: number): string {
  * the period counted apart, so a net-zero period with churn still shows.
  * Undefined when the period holds no count.
  */
-export function suppressionLineOf(records: readonly SuppressionRecord[]): string | undefined {
+export function suppressionLineOf(records: readonly SuppressionCount[]): string | undefined {
   if (records.length === 0) return undefined
   const total = records[records.length - 1].total
   let up = 0
@@ -61,7 +69,7 @@ const SUPPRESSION_STALE_MS = 48 * 60 * 60 * 1000
  * whole journal's account, the way the usage entry is the usage journal's.
  * No entry when the journal holds no count yet.
  */
-export function envStatusItems(records: readonly SuppressionRecord[], source: string): StatusItem[] {
+export function envStatusItems(records: readonly SuppressionCount[], source: string): StatusItem[] {
   const last = records.at(-1)
   if (last === undefined) return []
   return [{

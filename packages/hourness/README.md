@@ -1,6 +1,6 @@
 # dsh-hourness
 
-The orchestration layer for DeepSeek Harness (DSH), for any model. It organizes work around a project graph (a project is its graph directory; one main agent per project), enforces execution boundaries (guard), keeps audit journals (dispatched-work decisions, memory, violations), aggregates them into the `/hourness` morning report and usage panel, and adds boards for project rules (with peak modes) and loops (what runs when something happens or the time comes). The design row makes one session the project's main agent via `/wish`. It is a third-party DSH bundle: one package, seventeen independent rows, toggled per row in the plugin manager; disabling a row degrades the session gracefully. Works without `dsh-glm-zcode`.
+The orchestration layer for DeepSeek Harness (DSH), for any model. It organizes work around a project graph (a project is its graph directory; one main agent per project), enforces execution boundaries (guard), keeps audit journals (memory, violations) and the metrics journal, aggregates them into the `/hourness` morning report and usage panel, and adds boards for project rules (with peak modes) and loops (what runs when something happens or the time comes). The design row makes one session the project's main agent via `/wish`. It is a third-party DSH bundle: one package, sixteen independent rows, toggled per row in the plugin manager; disabling a row degrades the session gracefully. Works without `dsh-glm-zcode`.
 
 ## Install
 
@@ -36,7 +36,6 @@ Declared in `cordis.patch.yml` (DSH Loader dialect). Row ids keep the `glm-hourn
 | `glm-hourness/guard` | execution boundary for tool calls | enabled |
 | `glm-hourness/memory` | memory tools and the audit journal | enabled |
 | `glm-hourness/lessons` | lessons board: pitfalls and fixes per project, `/lessons` | enabled |
-| `glm-hourness/workflow` | decision journal of dispatched work | enabled |
 | `glm-hourness/hourness` | `/hourness` morning report and usage panel | enabled |
 | `glm-hourness/graph` | project graph tools for agents | enabled |
 | `glm-hourness/graph-panel` | the person's run-control commands for the project graph panel (`/graph-run`); the panel itself only reads | enabled |
@@ -58,4 +57,4 @@ The repository's own code is licensed under the PolyForm Noncommercial License 1
 
 ## 简体中文
 
-`dsh-hourness` 是 DeepSeek Harness 的编排层，对任何模型生效：项目图及其右侧栏面板（一个项目一张图，一个项目一个主 Agent）、执行边界（guard）、审计流水（派遣决策、记忆、违规）、`/hourness` 晨报与用量面板，以及规范板（规则与峰值模式）与循环板（何时做什么）。设计行用 `/wish` 让一个会话成为项目的主 Agent。十七个独立行按 `cordis.patch.yml` 声明，在插件管理器逐行启停，停用任意一行会话优雅降级；不装 `dsh-glm-zcode` 也能用。发布后 `dsh plugin add dsh-hourness` 安装；发布前用检出路径安装（见上）。`data` 行的项目目录默认指向开发检出，装好后按行配置自己的 `projectHome`。许可：本仓自有代码按 PolyForm Noncommercial 1.0.0 授权（`LICENSE`，商用需另行联系 northgod@qq.com）；第三方材料见 `THIRD-PARTY-NOTICES.md`。
+`dsh-hourness` 是 DeepSeek Harness 的编排层，对任何模型生效：项目图及其右侧栏面板（一个项目一张图，一个项目一个主 Agent）、执行边界（guard）、审计流水（记忆、违规）与指标流水、`/hourness` 晨报与用量面板，以及规范板（规则与峰值模式）与循环板（何时做什么）。设计行用 `/wish` 让一个会话成为项目的主 Agent。十六个独立行按 `cordis.patch.yml` 声明，在插件管理器逐行启停，停用任意一行会话优雅降级；不装 `dsh-glm-zcode` 也能用。发布后 `dsh plugin add dsh-hourness` 安装；发布前用检出路径安装（见上）。`data` 行的项目目录默认指向开发检出，装好后按行配置自己的 `projectHome`。许可：本仓自有代码按 PolyForm Noncommercial 1.0.0 授权（`LICENSE`，商用需另行联系 northgod@qq.com）；第三方材料见 `THIRD-PARTY-NOTICES.md`。

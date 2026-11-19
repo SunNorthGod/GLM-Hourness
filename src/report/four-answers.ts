@@ -30,7 +30,7 @@ import type { AdvanceRecord } from '../execute/advance.ts'
 import type { DriveLine } from '../execute/drive-log.ts'
 import type { VerifiedCheck } from '../execute/check.ts'
 import type { StatusItem } from '../shared/status.ts'
-import type { AskSummary } from '../workflow/morning-report.ts'
+import type { AskSummary } from './morning-report.ts'
 import { effectCheckLines, type EffectCheck } from '../memory/effect.ts'
 
 /** Why the project graph could not be read; the report names it in place of the numbers. */
@@ -59,7 +59,7 @@ export interface FourAnswersInput {
   readonly drive?: readonly DriveLine[] | undefined
   /** The rows whose status could not be read (`statusPlaceholders` of the collector's `rows`), named where the exceptions are listed. */
   readonly placeholders?: readonly string[] | undefined
-  /** The checks of the rule proposals whose days are up (src/workflow/morning-report.ts readEffects), the section the /hourness report carries after its exceptions. */
+  /** The checks of the rule proposals whose days are up (src/report/morning-report.ts readEffects), the section the /hourness report carries after its exceptions. */
   readonly effects?: readonly EffectCheck[] | undefined
   /** The display zone the rule-check lines word their days in, minutes east of UTC; default UTC+8, the reports' zone. */
   readonly offsetMinutes?: number | undefined

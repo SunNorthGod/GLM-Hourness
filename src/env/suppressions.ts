@@ -1,11 +1,12 @@
 /**
  * Daily count of the repository's suppression comments (M4 design §6.7;
  * task m4-suppressions): once per repository and UTC+8 day, over the tracked
- * files (`git ls-files`, files over 1 MiB and binary files skipped), the
- * env row appends one record `{at, repo, total, byMarker}` to the project's
- * `.llm/audit/suppressions.jsonl`, and the morning report shows the total
- * and the movement of the period. The count runs in the background and never
- * blocks a step; a failure reaches the row health and nothing else.
+ * files (`git ls-files`, files over 1 MiB and binary files skipped), the env
+ * row hands one tally to the metrics journal as a `count` event
+ * (metrics.ts; metrics design §4.2) — the ledger `suppressions.jsonl` of the
+ * M4 design is retired with metrics step 10, and no file is written. The
+ * count runs in the background and never blocks a step; a failure reaches
+ * the row health and nothing else.
  */
 import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -17,13 +18,9 @@ export interface SuppressionFs {
   readFile(path: string): Promise<Buffer>
 }
 
-/** One JSONL line of suppressions.jsonl. */
-export interface SuppressionRecord {
-  readonly at: string
-  /** The repository root the count ran over. */
-  readonly repo: string
+/** One count: the total and the occurrences per marker (markers with none are left out). */
+export interface SuppressionTally {
   readonly total: number
-  /** Occurrences per marker; markers with none are left out. */
   readonly byMarker: Readonly<Record<string, number>>
 }
 
@@ -63,11 +60,11 @@ function isBinary(buffer: Buffer): boolean {
  * `fs` (subset of node:fs/promises for tests). Never throws: a repo that
  * cannot be read counts as zero with the problem told.
  */
-export async function countRepository(root: string, fs: SuppressionFs, problem?: (message: string) => void): Promise<SuppressionRecord> {
+export async function countRepository(root: string, fs: SuppressionFs, problem?: (message: string) => void): Promise<SuppressionTally> {
   const listed = await runGit(root, ['ls-files', '-z'], 30_000)
   if (listed.code !== 0) {
     problem?.(`git ls-files failed: ${listed.err.trim() !== '' ? listed.err.trim() : `exit ${listed.code}`}`)
-    return { at: new Date().toISOString(), repo: root, total: 0, byMarker: {} }
+    return { total: 0, byMarker: {} }
   }
   const byMarker: Record<string, number> = {}
   let total = 0
@@ -89,22 +86,24 @@ export async function countRepository(root: string, fs: SuppressionFs, problem?:
       continue // a file that vanished between ls-files and the read is simply not counted
     }
   }
-  return { at: new Date().toISOString(), repo: root, total, byMarker }
+  return { total, byMarker }
 }
 
 /**
  * The once-per-repository-and-day gate over `countRepository`: the process
- * counts a repository at most once per day, and the journal's last record
- * for the same day skips the append too (a restart does not write a second
- * line). `now` and the reader make it testable; both default to the clock
- * and the real file.
+ * counts a repository at most once per day, and a `lastDay` that already
+ * names today — the UTC+8 day key of the latest `count` event the project's
+ * metrics journal holds, as the caller reads it — skips the count too, so a
+ * restart does not write a second event. `now` and the reader make it
+ * testable; both default to the clock and to no journal. The returned tally
+ * still needs its event: the caller hands it to emitSuppressionCount.
  */
-export function dailySuppressions(root: string, append: (record: SuppressionRecord) => Promise<void>, options: {
+export function dailySuppressions(root: string, options: {
   readonly now?: () => Date
-  readonly lastRecord?: () => Promise<SuppressionRecord | undefined> | SuppressionRecord | undefined
+  readonly lastDay?: () => Promise<string | undefined> | string | undefined
   readonly fs?: SuppressionFs
   readonly problem?: (message: string) => void
-} = {}): Promise<SuppressionRecord | undefined> {
+} = {}): Promise<SuppressionTally | undefined> {
   const now = options.now ?? ((): Date => new Date())
   const day = suppressionDay(now())
   const counted = daily.find(entry => entry.repo === root)
@@ -116,11 +115,9 @@ export function dailySuppressions(root: string, append: (record: SuppressionReco
     daily.push({ repo: root, day })
   }
   return (async () => {
-    const last = await (options.lastRecord?.() ?? Promise.resolve(undefined))
-    if (last !== undefined && suppressionDay(new Date(last.at)) === day) return undefined
-    const record: SuppressionRecord = { ...(await countRepository(root, options.fs ?? nodeFs, options.problem)), at: now().toISOString() }
-    await append(record)
-    return record
+    const last = await (options.lastDay?.() ?? Promise.resolve(undefined))
+    if (last === day) return undefined
+    return await countRepository(root, options.fs ?? nodeFs, options.problem)
   })()
 }
 
