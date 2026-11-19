@@ -179,6 +179,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "借用项 19 关账：复核落账缺口的真根因是 reviewFlow 把激活凭据当结算结果读（与 schema 形状无关，扁平化假设被探针 606/611 证伪）；改为 await activation.result，schema 回设计合同，截图/终端走法裁决可落账；提交 93873eda，随 0a1c4805 进 main（2026-11-17）。桌面真实图片判读 L4 仍攒批。"
+    },
+    {
+      "at": "2026-11-19T19:10:59.119Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-20 桌面 L4 批次（desktop-l4-ug，rc.3 隔离实例）：U6 面板「用户怎么用」两种宽度 PASS（真访谈画图，窄档单列/宽档两列双视角，需要你访谈期过滤 9 草稿，验收 41–44 对上）；U7 的图片管线端到端桌面坐实（真实截图→附件存储→GLM-5.3-Flash 逐字读出图内文字，flash 目录声明 text+image），walk 作业全链上桌面超 stretch 预算未跑——残余记录在 .agents/tasks/desktop-l4-ug/progress.md，处置建议留真实项目试用阶段自然覆盖。"
     }
   ]
 }

@@ -3,9 +3,37 @@
   "type": "feature",
   "title": "把系统里看得到的数都按同一种格式记下来",
   "why": "能看到的数都用同一种格式记下，周报和面板从同一份流水算",
-  "status": "doing",
+  "status": "done",
   "parent": "orch",
   "body": "现状：数散在几处（用量流水、违规流水、项目图历史、M7 设计里的交付指标与人的负担四项、先想后看的跟随率、M4 的规则命中率），格式各不相同，有的还只在设计里。做法：每个项目一份只追加的事件流水，固定格式，只记数与引用、不记对话正文；每一步的模型、token 与积分、用时、工具调用与被拦次数、派活、审查发现、返工、合入、失败与重试、问人的次数、人读了多少字、拍板等了多久、是否跟了推荐，都由 harness 写，模型写的数不算；晨报、周报、各种指标都从这一份算，同样的输入算出同样的数。量不到的照实写：人在系统外花的精力、做出来的东西好不好用，只能靠真实项目试用与人的反馈（field-trial）。",
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "a0f7427f",
+      "note": "step 10 first half: suppressions ledger retired, count events from the journal only"
+    },
+    {
+      "kind": "commit",
+      "ref": "3355cd2c",
+      "note": "step 10 second half: workflow row retired, morning-report moved to src/report, DISPATCH_TOOLS in shared, rows 17-16"
+    },
+    {
+      "kind": "commit",
+      "ref": "dc77ada0",
+      "note": "two retire L3 prechecks in the probe"
+    },
+    {
+      "kind": "commit",
+      "ref": "52543baf",
+      "note": "docs rewritten whole (DESIGN, ORCHESTRATION, HANDOFF, DEVELOPMENT, READMEs)"
+    },
+    {
+      "kind": "test",
+      "ref": "build, preflight, npm test, npm run probe on merged main",
+      "exit": 0,
+      "note": "probe 626/626 (floor 624+2 prechecks); ratchets eslint 69-57, knip 18, jscpd 1; logs .llm/logs/mb2-*.log; step 9 desktop L4 passed in the desktop-l4-rc3 batch"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T16:34:17.191Z",
@@ -439,6 +467,48 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 6+7 步落地核实（2026-11-09 收尾 lane 查证）：两步已于 2026-11-04 落地并评审 APPROVED（简报快照过时所致的重复派单）；当时记录的 loops-peak 37 败红灯根因是夹具读过期路径，今天 main 树上探针 3×40/0 复核全绿。指标模块 §12 实现账清到第 7 步（metrics-files-only 规则与指标行默认启用都在 main）；剩第 9 步批次 L4 与第 10 步 workflow 行退役，随桌面批次排期。metrics 分支的未推合并与旧工作树并入卫生清理单。"
+    },
+    {
+      "at": "2026-11-19T19:10:58.441Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-20 第 10 步（退役）落地，十步全齐：压制账本 suppressions.jsonl 退役（每日 count 唯一来源改为指标流水，晨报与 status-hub 条目同源改读流水，a0f7427f）；workflow 行整行退役（src/workflow 删净，morning-report 移 src/report/，派遣计数改数 cat==='dispatch' 的 tool 事件，DISPATCH_TOOLS 移 shared/tool-names.ts 且规则板 gate 子集钉住不变，行数 17→16/21→20/23→22，3355cd2c）；两条 retire L3 预检进探针（dc77ada0）；docs 整条重写（52543baf）。合并后主检出探针 626/626（624+2），棘轮 eslint 69→57 只减不增。第 9 步的桌面 L4 随 desktop-l4-rc3 批次已过（指标板九组渲染 + /glm-status metrics 行「额度：已提供」）。遗留：行退役的启动预检（验收 17）留待下一次带真实宿主的桌面批次，ORCHESTRATION §10.6 已记。"
+    },
+    {
+      "at": "2026-11-19T19:11:12.249Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "ten implementation steps all landed and verified; step 10 (retirement of the suppressions ledger and the workflow row) closed 2026-11-20 with the metrics journal as the single source",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "a0f7427f",
+          "note": "step 10 first half: suppressions ledger retired, count events from the journal only"
+        },
+        {
+          "kind": "commit",
+          "ref": "3355cd2c",
+          "note": "step 10 second half: workflow row retired, morning-report moved to src/report, DISPATCH_TOOLS in shared, rows 17-16"
+        },
+        {
+          "kind": "commit",
+          "ref": "dc77ada0",
+          "note": "two retire L3 prechecks in the probe"
+        },
+        {
+          "kind": "commit",
+          "ref": "52543baf",
+          "note": "docs rewritten whole (DESIGN, ORCHESTRATION, HANDOFF, DEVELOPMENT, READMEs)"
+        },
+        {
+          "kind": "test",
+          "ref": "build, preflight, npm test, npm run probe on merged main",
+          "exit": 0,
+          "note": "probe 626/626 (floor 624+2 prechecks); ratchets eslint 69-57, knip 18, jscpd 1; logs .llm/logs/mb2-*.log; step 9 desktop L4 passed in the desktop-l4-rc3 batch"
+        }
+      ]
     }
   ]
 }
