@@ -13,6 +13,7 @@
  */
 import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
+import { canonicalJson } from '../shared/json.ts'
 import { normalizePath } from './rules.ts'
 
 /** The rules whose denial may be asked about (design §5.3); file-tools-only judges a habit and suppression-reason's way out is its right path. */
@@ -53,13 +54,22 @@ export function exceptionOf(caller: RefusalVia, ref: string): string {
 }
 
 
-/** The signature of one denied call (design §5.6): the first 16 hex digits of the SHA-256 over the canonical JSON of [native tool, arguments], the target path swapped for its resolved normal form. One changed character is another call. */
+/**
+ * The signature of one denied call (design §5.6): the first 16 hex digits of
+ * the SHA-256 over the canonical JSON of [native tool, arguments] (the
+ * shared canonical form, keys in code point order recursively), the target
+ * path swapped for its resolved normal form. Key order does not count: a
+ * retry that spells the same arguments in another order is still this call,
+ * and consumes its grant. One changed value is another call. Signatures are
+ * process memory only — the books drop on restart (design §5.6), so stored
+ * signatures need no migration.
+ */
 export function signatureOf(native: string, args: unknown, base: string | undefined): string {
   const source = typeof args === 'object' && args !== null && !Array.isArray(args) ? args as Readonly<Record<string, unknown>> : {}
   const normalized: Record<string, unknown> = { ...source }
   const target = typeof normalized.file_path === 'string' ? normalized.file_path : typeof normalized.path === 'string' ? normalized.path : undefined
   if (target !== undefined) normalized[typeof normalized.file_path === 'string' ? 'file_path' : 'path'] = normalizePath(base === undefined ? resolve(target) : resolve(base, target))
-  return createHash('sha256').update(JSON.stringify([native, normalized])).digest('hex').slice(0, 16)
+  return createHash('sha256').update(canonicalJson([native, normalized])).digest('hex').slice(0, 16)
 }
 
 /** Normalize a human's message or the agent's shown text for comparison (design §5.5 step 3): NFC, CRLF folded, line-end blanks gone, blank runs collapsed, ends trimmed. */

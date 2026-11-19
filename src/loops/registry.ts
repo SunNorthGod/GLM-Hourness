@@ -18,7 +18,7 @@
  */
 import { createHash } from 'node:crypto'
 import { plainWordsIn } from '../graph/plain-question.ts'
-import { canonicalJson } from '../rules/model.ts'
+import { canonicalJson } from '../shared/json.ts'
 import { pluginLabel } from '../shared/plugin-labels.ts'
 import { CHANNEL_SOURCE } from './channel.ts'
 import { LOOP_EVENT_TABLE } from './events.ts'

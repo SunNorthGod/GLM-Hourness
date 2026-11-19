@@ -23,6 +23,7 @@ import { ID_PATTERN, STAGES } from '../graph/schema.ts'
 import { validateScriptAction, validateWhen, type EventFilter, type ScriptAction, type ScriptLang, type ScriptRef, type Trigger, type TriggerIssue } from '../loops/trigger.ts'
 import type { HealthRow, HealthState } from '../shared/health.ts'
 import { PEAK_LEVEL_WORDS, type PeakLevel } from '../shared/peak-mode.ts'
+import { canonicalJson, canonicalSorted, compareCodePoints } from '../shared/json.ts'
 import { detectorProblem, isCount, isRecord, isTime, matchesType, noticeProblem, originProblem, proposalProblem, scriptPinProblem, signalProblem, textField, ticketProblem, unknownKeys, type Problem } from './entries.ts'
 import { GATE_EVENTS, RULES_EVENT_TABLE, type GateEvent } from './events.ts'
 import { GLM_PEAK } from './signals.ts'
@@ -298,28 +299,6 @@ export function repoPart(state: ProjectState): RepoRules | undefined {
   return Object.keys(part).length === 1 ? undefined : part
 }
 
-/** Strings in code point order, the order every serialization and every list of the board uses. */
-export function compareCodePoints(a: string, b: string): number {
-  const x = Array.from(a, char => char.codePointAt(0) ?? 0)
-  const y = Array.from(b, char => char.codePointAt(0) ?? 0)
-  for (let index = 0; index < Math.min(x.length, y.length); index++) {
-    if (x[index] !== y[index]) return x[index] - y[index]
-  }
-  return x.length - y.length
-}
-
-function sorted(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sorted)
-  if (typeof value !== 'object' || value === null) return value
-  const record = value as Record<string, unknown>
-  return Object.fromEntries(Object.keys(record).filter(key => record[key] !== undefined).sort(compareCodePoints).map(key => [key, sorted(record[key])]))
-}
-
-/** One serialization for one content: keys in code point order, no whitespace; the input of every digest. */
-export function canonicalJson(value: unknown): string {
-  return JSON.stringify(sorted(value))
-}
-
 /**
  * The value with every top-level field that is an empty object left out: a
  * collection with nothing in it is absent from what is stored and digested
@@ -334,7 +313,7 @@ export function withoutEmptyCollections<T extends object>(value: T): T {
 
 /** How the repository file is written: keys in code point order, two spaces of indent, a final newline, empty collections absent; a git diff of it reads at a glance. */
 export function repoJson(repo: RepoRules): string {
-  return `${JSON.stringify(sorted(withoutEmptyCollections(repo)), null, 2)}\n`
+  return `${JSON.stringify(canonicalSorted(withoutEmptyCollections(repo)), null, 2)}\n`
 }
 
 function settingProblem(value: unknown, path: string): Problem {

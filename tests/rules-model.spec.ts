@@ -5,7 +5,8 @@
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { adoptRepo, canonicalJson, DEFAULT_PEAK_LEVEL, diffRepo, effectivePeakMode, effectOf, emptyState, parsePeakLevel, parseRepoRules, repoJson, repoPart, stateFromRepo, stateProblem, unapprovedScripts, validateRule, withoutEmptyCollections, type Notice, type PeakModeSetting, type ProjectState, type RepoRules, type RowState, type Ticket } from '../src/rules/model.ts'
+import { canonicalJson } from '../src/shared/json.ts'
+import { adoptRepo, DEFAULT_PEAK_LEVEL, diffRepo, effectivePeakMode, effectOf, emptyState, parsePeakLevel, parseRepoRules, repoJson, repoPart, stateFromRepo, stateProblem, unapprovedScripts, validateRule, withoutEmptyCollections, type Notice, type PeakModeSetting, type ProjectState, type RepoRules, type RowState, type Ticket } from '../src/rules/model.ts'
 import type { HealthState } from '../src/shared/health.ts'
 import { contextOf, draftOf, FULL_RULES_FILE, NOW, ruleOf, scriptRef, SHA, SHA_OTHER } from './rules-fixtures.ts'
 
