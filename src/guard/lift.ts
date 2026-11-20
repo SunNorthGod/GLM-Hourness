@@ -303,7 +303,7 @@ export interface GuardLiftDeps {
 }
 
 const LIFT_MESSAGE = (title: string, blocks: string, rule: string): string =>
-  `Tell the human in your reply that ${title} is now lifted for this project and no longer blocks ${blocks}. To put it back, the human says so and you call guard_lift again with action "restore" and their words; once the rules board offers it for code rules, /rules restore ${rule} there does the same. Steps from now on do not list the rule in the system prompt, so this session's prompt cache is rebuilt once.`
+  `Tell the human in your reply that ${title} is now lifted for this project and no longer blocks ${blocks}. To put it back, the human says so and you call guard_lift again with action "restore" and their words; once the rules board offers it for code rules, /rules restore ${rule} there does the same. This session's prompt cache is rebuilt once.`
 
 /**
  * The code rule one id names, or undefined for an unknown one: a guard
