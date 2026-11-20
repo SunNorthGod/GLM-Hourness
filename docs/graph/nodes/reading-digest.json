@@ -111,6 +111,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-20 第三轮周读完成（digest .agents/tasks/reading-digest/2026-11-20.md，上 main 68b9a6d8）：全文实读 5 篇——Anthropic 11-13 safety evaluations（本轮最重：预注册依据、配置不跨比较、grader 三件纪律）；OpenAI Cookbook 11-10 voice SOP（写前复核与方言定案冲突只记不做、盲评手法记 risk-calib-read）；OpenAI 11-18 Codex sandbox（.git 界外与 repoRelative 同一决定，无新缺口）；11-18 jagged frontier（Build 类零干预 43% 旁证代码任务重审）；11-19 Performance Factory（与编排层同构度最高：任务状态机、订阅唤醒、状态在单 agent 上下文外）。与已有定案冲突：零。提议候选 4 条：① M5「预期效果」补预注册依据（人定中，佐证）；② 标定结果文件记 profile 组合与提交号、跨配置不比较（人定）；③ M7 复审检查单加 grader 三件（判据原子二元、边界写明、藏元数据）——agent 范围，编排放下一批实现；④ 标定集可选题加「出题前审题」与「交回报告可读性」（人定，花积分）。上轮提议 m4-reanchor-violations 与 m7-handback-path-check 均已落地关单。查不到的如实记：Cookbook 站 403 走 GitHub 镜像、指引页无日期、11 项只扫了标题。"
+    },
+    {
+      "at": "2026-11-20T15:14:17.743Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-20 主人拍板（「全按你推荐的来」）：第三轮提议 ①②采纳、④不做——① M5 式评估先预注册判据（预注册依据采纳进方法论，下次评估先写判据再看结果）；② 标定 result.json 记 profile 行组合与提交号、跨配置不比较（排进 pre-bootstrap 实现班）；④「出题前审题」与「交回报告可读性」不做。③ M7 复审检查单加 grader 三件纪律（判据原子二元、边界写明、藏元数据）同班实现。"
     }
   ]
 }

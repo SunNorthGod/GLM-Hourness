@@ -158,6 +158,12 @@
           "note": "completion gates and auto-advance pinned in the floor (626/626); desktop chain walked end to end on an isolated instance (b10rr)"
         }
       ]
+    },
+    {
+      "at": "2026-11-20T15:14:14.656Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-20 主人拍板（原话「全按你推荐的来」）：自动推进的两个行为定案——〔G15〕GLM 配额耗尽时：停下、把重置时间告诉人、到点自动接着跑（不等发话）；〔G18〕目标做完时：对话里一行话带审查结论。实现排进 pre-bootstrap 批（实现班核对现行 drive 的缺口后落地，额度投影机器已在 src/shared/quota.ts）。"
     }
   ]
 }

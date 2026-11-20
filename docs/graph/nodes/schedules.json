@@ -581,6 +581,12 @@
           "note": "board scenarios green in the 626 floor; real clock fire 02:55 2026-11-18 (l4bat), morning/weekly cold-fires verbatim 2026-11-16 (w2)"
         }
       ]
+    },
+    {
+      "at": "2026-11-20T15:14:15.880Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-20 主人拍板（「全按你推荐的来」）：两步同意的板路缺省组合不可达一事，不改缺省、不松 /wish 对图行的硬依赖——loader isolate 配方（patch 条目 isolate: {glmHournessGraph: true}，就地生效不重启）留在 desktop-l4-rc3/progress.md 备查，真实使用里真撞上再议。"
     }
   ]
 }
