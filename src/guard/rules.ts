@@ -6,7 +6,7 @@
  */
 import { resolve } from 'node:path'
 import type { JsonValue } from '../shared/json.ts'
-import { describeWrite, shellWrites, type ShellDialect, type ShellWrite } from './shell.ts'
+import { commandName, describeWrite, shellWrites, singleSimpleCommand, type ShellDialect, type ShellWrite } from './shell.ts'
 
 /** Four-part corrective message parts. */
 export interface Correction {
@@ -139,11 +139,72 @@ export function shellCommandOf(call: ToolCall): { readonly command: string, read
   return typeof command === 'string' ? { command, dialects: tool.dialects } : undefined
 }
 
-/** The first file write the shell text of a call performs, with that text; undefined when the call is not a shell call or writes nothing (`call.name` is the DSH native). */
-export function shellWriteOf(call: ToolCall): { readonly command: string, readonly write: ShellWrite } | undefined {
+const SCRATCH_DELETE_VERBS: ReadonlySet<string> = new Set([
+  'rm', 'remove-item', 'ri', 'del', 'erase', 'unlink', 'rmdir',
+])
+
+function isPureScratchDeleteInDialect(
+  words: readonly { readonly text: string, readonly quoted: boolean }[],
+  cwd: string | undefined,
+  projectRoot: string | undefined,
+): boolean {
+  if (words.length < 2) return false
+  if (!SCRATCH_DELETE_VERBS.has(commandName(words[0].text))) return false
+  const targets: string[] = []
+  let endOfOptions = false
+  for (const word of words.slice(1)) {
+    if (!endOfOptions && !word.quoted && word.text === '--') {
+      endOfOptions = true
+      continue
+    }
+    if (!endOfOptions && !word.quoted && word.text.startsWith('-')) {
+      if (word.text === '-' || word.text.includes(':') || word.text.includes('=')) return false
+      continue
+    }
+    targets.push(word.text)
+  }
+  if (targets.length === 0) return false
+  const effectiveCwd = cwd ?? projectRoot ?? '.'
+  const effectiveRoot = projectRoot ?? cwd ?? '.'
+  const scratchKey = normalizePath(resolve(effectiveRoot, '.llm', 'scratch')).replace(/\/+$/, '')
+  return targets.every((target) => {
+    if (target.trim().length === 0) return false
+    if (target.includes('$') || target.includes(',') || target.includes('{') || target.includes('}') || target.startsWith('~')) return false
+    const targetKey = normalizePath(resolve(effectiveCwd, target)).replace(/\/+$/, '')
+    return targetKey !== scratchKey && targetKey.startsWith(`${scratchKey}/`)
+  })
+}
+
+/**
+ * Whether `command` is a single simple file-delete command whose every target
+ * resolves strictly inside `<projectRoot ?? cwd>/.llm/scratch/` (never the
+ * scratch directory itself, never escaping via `..`, never chained or
+ * redirected).
+ */
+export function isPureScratchDelete(
+  command: string,
+  cwd?: string,
+  projectRoot?: string,
+  dialects?: readonly ShellDialect[],
+): boolean {
+  const posix = singleSimpleCommand(command, 'posix')
+  const pwsh = singleSimpleCommand(command, 'pwsh')
+  if (posix === undefined || pwsh === undefined) return false
+  if (dialects !== undefined) {
+    return dialects.every(dialect => isPureScratchDeleteInDialect(dialect === 'posix' ? posix : pwsh, cwd, projectRoot))
+  }
+  if (!isPureScratchDeleteInDialect(pwsh, cwd, projectRoot)) return false
+  return command.includes('\\') ? true : isPureScratchDeleteInDialect(posix, cwd, projectRoot)
+}
+
+/** The first file write the shell text of a call performs, with that text; undefined when the call is not a shell call, writes nothing, or is a pure `.llm/scratch/` delete (`call.name` is the DSH native). */
+export function shellWriteOf(call: ToolCall, cwd?: string, projectRoot?: string): { readonly command: string, readonly write: ShellWrite } | undefined {
   const shell = shellCommandOf(call)
-  const write = shell?.dialects.flatMap(dialect => shellWrites(shell.command, dialect))[0]
-  return shell === undefined || write === undefined ? undefined : { command: shell.command, write }
+  if (shell === undefined) return undefined
+  const write = shell.dialects.flatMap(dialect => shellWrites(shell.command, dialect))[0]
+  if (write === undefined) return undefined
+  if (isPureScratchDelete(shell.command, cwd, projectRoot, shell.dialects)) return undefined
+  return { command: shell.command, write }
 }
 
 function argsOf(call: ToolCall): Record<string, JsonValue> | undefined {

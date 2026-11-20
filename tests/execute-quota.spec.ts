@@ -92,3 +92,41 @@ test('after a restart the holder\'s first step resumes a block whose reset passe
   await rig.step()
   assert.equal(rig.live.goalOf('main-1')?.phase, 'active', 'the reset instant is the authority; a server that has not reset blocks again on the next 429')
 }))
+
+test('stale limited.until does not shadow an active reading reset, and peak timer firing preserves cancelQuota', () => withRig(startedRig, async (rig) => {
+  const past = rig.now().getTime() - MINUTE_MS
+  const resetAt = rig.now().getTime() + 40 * MINUTE_MS
+  rig.quotaView = {
+    reading: { at: rig.now().getTime() - HOUR, windows: [{ name: 'five-hour', label: '5 小时', usedPercent: 100, resetAt, projection: { kind: 'spent' } }] },
+    login: { state: 'ok' },
+    pending: false,
+    limited: { at: past - MINUTE_MS, code: '1308', until: past },
+  }
+  // First trigger a peak block whose timer will fire sooner than the quota timer.
+  const peakUntil = new Date(rig.now().getTime() + 2 * MINUTE_MS).toISOString()
+  rig.hold = { level: 'stop', until: peakUntil }
+  const savedQuota = rig.quotaView
+  rig.quotaView = undefined
+  await rig.round()
+  await rig.round()
+  await rig.round()
+  assert.equal(rig.live.goalOf('main-1')?.blockedReason?.code, 'hourness-peak-wait')
+  // Externally resume and enter quota wait before the peak timer fires.
+  const peakGoal = rig.live.goalOf('main-1')!
+  rig.live.goals.resume(rig.live.agents.get('main-1')!, { id: peakGoal.id, revision: peakGoal.revision })
+  rig.hold = undefined
+  rig.quotaView = savedQuota
+  await rig.round()
+  assert.equal(rig.live.goalOf('main-1')?.blockedReason?.code, 'hourness-quota-wait')
+  // Peak timer fires at +7m: it must not clear state.cancelQuota.
+  rig.advance(10 * MINUTE_MS)
+  rig.fire()
+  await rig.settle()
+  assert.equal(rig.live.goalOf('main-1')?.phase, 'blocked', 'peak timer firing leaves quota-wait blocked')
+  // Disposing the drive cancels the surviving quota timer, so firing past resetAt does not resume.
+  rig.dispose()
+  rig.advance(60 * MINUTE_MS)
+  rig.fire()
+  await rig.settle()
+  assert.equal(rig.live.goalOf('main-1')?.phase, 'blocked', 'dispose cancelled the preserved quota timer')
+}))

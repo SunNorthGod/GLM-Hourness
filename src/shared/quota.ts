@@ -268,7 +268,8 @@ export function quotaWaitOf(view: QuotaView, now: number): QuotaWait | undefined
   const spent = (view.reading?.windows ?? []).filter(spentOf)
   const resets = spent.map(window => window.resetAt).filter((at): at is number => at !== undefined)
   const fromReading = resets.length === 0 ? undefined : Math.min(...resets)
-  const resetAt = view.limited?.until ?? fromReading
+  const fromLimited = view.limited?.until !== undefined && view.limited.until > now ? view.limited.until : undefined
+  const resetAt = fromLimited ?? fromReading
   if (resetAt === undefined || resetAt <= now) return undefined
   if (view.limited === undefined && spent.length === 0) return undefined
   const named = spent.find(candidate => candidate.resetAt === resetAt)?.name ?? spent[0]?.name

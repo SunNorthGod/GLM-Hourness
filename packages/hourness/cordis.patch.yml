@@ -274,3 +274,7 @@
       # the single-bundle UI row, which was enabled.
       name: dsh-hourness
       config: {}
+- id: agent-team
+  disabled: true
+- id: tool-agent-team
+  disabled: true

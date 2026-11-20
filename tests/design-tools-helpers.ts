@@ -30,9 +30,13 @@ export interface MainAgentFixture {
  * focus: the human's own (approved at once) or, with `goalBy` `llm`, the main
  * agent's proposal, which waits for the human's confirmation.
  */
-export async function mainAgentWithGoal(options: Parameters<typeof designHost>[0] = {}, goalBy: 'human' | 'llm' = 'human'): Promise<MainAgentFixture> {
+export async function mainAgentWithGoal(
+  options: Parameters<typeof designHost>[0] = {},
+  goalBy: 'human' | 'llm' = 'human',
+  config: Parameters<typeof apply>[1] = undefined,
+): Promise<MainAgentFixture> {
   const host = designHost(options)
-  apply(host.ctx)
+  apply(host.ctx, config)
   const agent = host.addAgent('s1')
   await host.execute(agent, '/wish')
   const dir = join(host.workspace('ws'), 'docs', 'graph')

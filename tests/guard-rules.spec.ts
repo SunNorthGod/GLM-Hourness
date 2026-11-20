@@ -13,7 +13,7 @@
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { fileToolsOnly, NATIVE_FACE, normalizePath, workspaceContainment, type GuardRule, type ToolCall } from '../src/guard/rules.ts'
+import { fileToolsOnly, isPureScratchDelete, NATIVE_FACE, normalizePath, shellWriteOf, workspaceContainment, type GuardRule, type ToolCall } from '../src/guard/rules.ts'
 
 const VERDICT_OF = (rule: GuardRule, name: string, args: unknown): string => String(rule.detect({ name, arguments: args } as ToolCall, NATIVE_FACE).kind)
 
@@ -101,4 +101,68 @@ test('normalizePath preserves UNC leading // and folds case only on Windows and 
     assert.equal(VERDICT_OF(uncContainment, 'write', { file_path: '\\\\server\\share\\proj\\sub\\a.ts' }), 'allow')
     assert.equal(VERDICT_OF(uncContainment, 'write', { file_path: '\\server\\share\\proj\\sub\\a.ts' }), 'deny')
   }
+})
+
+test('isPureScratchDelete and fileToolsOnly allow deleting strictly inside .llm/scratch/ and deny escapes, directory self-deletes, and compounds', () => {
+  const root = process.platform === 'win32' ? 'C:\\ws' : '/ws'
+  const sub = process.platform === 'win32' ? 'C:\\ws\\packages\\app' : '/ws/packages/app'
+  // Allowed pure scratch deletes
+  for (const cmd of [
+    'rm .llm/scratch/a.cjs',
+    'rm -f .llm/scratch/a.cjs .llm/scratch/sub/b.mjs',
+    'Remove-Item .llm\\scratch\\a.cjs',
+    'Remove-Item -Path .llm/scratch/a.cjs -Force',
+    'ri .llm/scratch/*.tmp',
+    'del .llm\\scratch\\tmp.txt',
+    'erase .llm/scratch/tmp.txt',
+    'unlink .llm/scratch/a.cjs',
+    'rmdir .llm/scratch/sub',
+  ]) {
+    assert.equal(isPureScratchDelete(cmd, root, root), true, `expected allow: ${cmd}`)
+  }
+  assert.equal(isPureScratchDelete('rm ../.llm/scratch/a.cjs', `${root}/sub`, root), true)
+  assert.equal(isPureScratchDelete('rm ../../.llm/scratch/a.cjs', sub, root), true)
+  assert.equal(isPureScratchDelete('rm .llm/scratch/a.cjs', sub, root), false, 'sub/.llm/scratch is not <root>/.llm/scratch')
+
+  // Denied escapes, self-deletes, compounds, redirections, subshells, missing targets
+  for (const cmd of [
+    'rm .llm/scratch/../README.md',
+    'rm .llm/scratch/sub/../../README.md',
+    'rm -rf .llm/scratch',
+    'rm -rf .llm/scratch/',
+    'rm .llm/scratch/.',
+    'rm .llm/scratch/a/..',
+    'rm .llm/scratch/a.cjs && rm README.md',
+    'rm .llm/scratch/a.cjs || true',
+    'rm .llm/scratch/a.cjs; ls',
+    'rm .llm/scratch/a.cjs | cat',
+    'rm .llm/scratch/a.cjs &',
+    'rm .llm/scratch/a.cjs > out.txt',
+    'rm .llm/scratch/a.cjs < in.txt',
+    'rm .llm/scratch/$(echo a.cjs)',
+    'rm .llm/scratch/`echo a.cjs`',
+    'rm .llm/scratch/a.cjs\nrm README.md',
+    'rm -rf',
+    'rm',
+    'rm .llm/*',
+    'rm .llm/scratch*',
+    'rm *.cjs',
+    'rm .llm/scratch/a.cjs README.md',
+    'Remove-Item -Path:README.md .llm/scratch/a.cjs',
+    'Remove-Item .llm/scratch/a.cjs,README.md',
+    'rm -- -f',
+    'rm .llm/scratch/$TARGET',
+    'rm .llm/scratch/{a,../README.md}',
+  ]) {
+    assert.equal(isPureScratchDelete(cmd, root, root), false, `expected deny: ${cmd}`)
+  }
+
+  // fileToolsOnly integrates pure scratch delete check
+  assert.equal(fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'rm .llm/scratch/a.cjs' } }, NATIVE_FACE).kind, 'allow')
+  assert.equal(fileToolsOnly.detect({ name: 'bash', arguments: { command: 'rm -f .llm/scratch/a.cjs' } }, NATIVE_FACE).kind, 'allow')
+  assert.equal(fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'Remove-Item -Force .llm\\scratch\\a.cjs' } }, NATIVE_FACE).kind, 'allow')
+  assert.equal(fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'rm .llm/scratch/../README.md' } }, NATIVE_FACE).kind, 'deny')
+  assert.equal(fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'rm -rf .llm/scratch' } }, NATIVE_FACE).kind, 'deny')
+  assert.equal(fileToolsOnly.detect({ name: 'pwsh', arguments: { command: 'rm .llm/scratch/a.cjs && rm README.md' } }, NATIVE_FACE).kind, 'deny')
+  assert.equal(shellWriteOf({ name: 'pwsh', arguments: { command: 'rm .llm/scratch/a.cjs' } }), undefined)
 })

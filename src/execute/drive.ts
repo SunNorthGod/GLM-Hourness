@@ -569,10 +569,9 @@ export function createDrive(deps: DriveDeps): Drive {
   }
 
   /** The timer of a stop-wait (§3.9.5, G15): `run` fires when the wait's end plus the grace has come, once, its field cleared first; a throw is said in the row health. */
-  function waitTimer(state: SessionState, untilMs: number, session: string, what: string, run: () => Promise<void>): () => void {
+  function waitTimer(state: SessionState, field: 'cancelPeak' | 'cancelQuota', untilMs: number, session: string, what: string, run: () => Promise<void>): () => void {
     return delay(() => {
-      state.cancelPeak = undefined
-      state.cancelQuota = undefined
+      state[field] = undefined
       void run().catch((error: unknown) => {
         deps.report(session, 'degraded', `${what}：${errorText(error)}`)
       })
@@ -586,7 +585,7 @@ export function createDrive(deps: DriveDeps): Drive {
     await drive(place.exec, { op: 'peak-wait', ...(view === undefined ? {} : { goal: view.id }), until: hold.until, level: hold.level }, session)
     state.state = `${peakWaitLine(hold)} ${CONTINUE_NOW}`
     state.cancelPeak?.()
-    state.cancelPeak = waitTimer(state, Date.parse(hold.until) + PEAK_GRACE_MS, session, '高峰结束后的接续出错', () => peakTimer(place, session, hold))
+    state.cancelPeak = waitTimer(state, 'cancelPeak', Date.parse(hold.until) + PEAK_GRACE_MS, session, '高峰结束后的接续出错', () => peakTimer(place, session, hold))
   }
 
   async function peakTimer(place: Place, session: string, hold: PeakHold): Promise<void> {
@@ -648,7 +647,7 @@ export function createDrive(deps: DriveDeps): Drive {
     await drive(place.exec, { op: 'quota-wait', ...(view === undefined ? {} : { goal: view.id }), until, ...(wait.code === undefined ? {} : { code: wait.code }) }, session)
     state.state = `${quotaWaitLine(wait)} ${CONTINUE_NOW}`
     state.cancelQuota?.()
-    state.cancelQuota = waitTimer(state, wait.resetAt + QUOTA_GRACE_MS, session, '额度重置后的接续出错', () => quotaTimer(place, session, wait, goal.id))
+    state.cancelQuota = waitTimer(state, 'cancelQuota', wait.resetAt + QUOTA_GRACE_MS, session, '额度重置后的接续出错', () => quotaTimer(place, session, wait, goal.id))
   }
 
   /** The timer's resume after the quota reset (G15): the drive is its primary resumer (no board entry carries a quota end), so the holder is told to go on. */

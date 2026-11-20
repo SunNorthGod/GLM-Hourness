@@ -119,6 +119,10 @@ test('insert rows: each item opens with id and takes its first name; an item wit
     '    - id: a/two',
     '      name: \'./two.js\'',
     '    - name: ./three.js',
+    '- id: agent-team',
+    '  disabled: true',
+    '- id: tool-agent-team',
+    '  disabled: true',
   ].join('\n'))
   assert.deepEqual(parsed.rows.map(row => [row.id, row.name]), [['a/one', './dist/one.js'], ['a/two', './two.js']])
   assert.deepEqual(parsed.problems, ['line 9: an insert item does not start with `id:`'])

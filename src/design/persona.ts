@@ -26,7 +26,7 @@ export const PERSONA_NAME_LIMIT = 40
 export const PERSONA_TEXT_LIMIT = 4000
 
 /** The sentence after the person's text: the persona governs what the main agent says to the human, nothing it writes into a tool call or a file. */
-export const PERSONA_SCOPE = 'This style applies to your replies to the human only. Text you put into tool calls (graph nodes, briefs for subagents) and anything written to files stays plain.'
+export const PERSONA_SCOPE = 'This style applies to your replies to the human only. Graph node fields (title, body, acceptance, proposal, reason, notTaken), commit messages, subagent briefs, ask_main calls, and anything written to files are clean-zone technical artifacts: keep them plain, with no persona self-references or user honorifics.'
 
 /** What the row health says when the text is too long. */
 export const PERSONA_TOO_LONG = '人设超过 4000 字符，没有加'
@@ -38,6 +38,8 @@ const NOT_OBJECT = '人设设置不是 {name, text} 的形状，没有加'
 export interface PersonaReading {
   /** The section to add to the main agent's assembly; undefined when there is no persona to add. */
   readonly section: AssembledSection | undefined
+  /** The resolved persona name when `section` is present and differs from DEFAULT_PERSONA_NAME; undefined otherwise. */
+  readonly name: string | undefined
   /** Why a persona the person wrote is not added (row health, degraded); undefined when nothing is wrong. */
   readonly problem: string | undefined
   /** What to log once at activation. */
@@ -63,7 +65,7 @@ function outputStyleText(name: string, text: string): string {
  * anything a test or another host passes.
  */
 export function readPersona(config: unknown): PersonaReading {
-  const none = (problem: string | undefined, warnings: readonly string[]): PersonaReading => ({ section: undefined, problem, warnings })
+  const none = (problem: string | undefined, warnings: readonly string[]): PersonaReading => ({ section: undefined, name: undefined, problem, warnings })
   const persona = isRecord(config) ? config.persona : undefined
   if (persona === undefined || persona === null) return none(undefined, [])
   if (!isRecord(persona)) return none(NOT_OBJECT, ['persona is not an object with name and text; no persona is added'])
@@ -85,5 +87,10 @@ export function readPersona(config: unknown): PersonaReading {
     else if (oneLine.length > 0) name = oneLine
   }
   else if (rawName !== undefined && rawName !== null) warnings.push(`persona.name is not a string; the name ${DEFAULT_PERSONA_NAME} is used`)
-  return { section: { name: OUTPUT_STYLE_SECTION, text: outputStyleText(name, text), interpolate: false }, problem: undefined, warnings }
+  return {
+    section: { name: OUTPUT_STYLE_SECTION, text: outputStyleText(name, text), interpolate: false },
+    name: name === DEFAULT_PERSONA_NAME ? undefined : name,
+    problem: undefined,
+    warnings,
+  }
 }

@@ -8,6 +8,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { PROPOSE_TO_HUMAN, RECORD_HUMAN_ANSWER, DESIGN_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import type { DesignConfig } from '../src/design/index.ts'
+import { DEFAULT_PERSONA_NAME } from '../src/design/persona.ts'
 import { designFaceSource } from '../src/design/role-face.ts'
 import { proposeTool } from '../src/design/propose.ts'
 import { TALK_PROJECTION, TALK_SHAPES, type TalkState } from '../src/design/talk.ts'
@@ -929,4 +931,61 @@ test('contract with the panel: the questions of the worked examples pass the wri
     assert.equal(again.ok && again.warnings, undefined, form)
     await nextReply(host, agent)
   }
+})
+
+test('propose_to_human rejects configured persona name in persisted fields while allowing conversational persona in chat text', async () => {
+  const fixture = await mainAgentWithGoal()
+  const { host, agent } = fixture
+  const tool = proposeTool(toolDeps(fixture, [], { personaName: '桃子' }))
+  const base = exampleArgs('recommend')
+  const baseText = String(base.text)
+  for (const [field, patch] of [
+    ['title', { title: '桃子建议不收押金' }],
+    ['proposal', { proposal: '桃子建议借书先不收押金', text: baseText.replace(String(base.proposal), '桃子建议借书先不收押金') }],
+    ['reason', { reason: '桃子觉得押金要退还', text: baseText.replace(String(base.reason), '桃子觉得押金要退还') }],
+    ['notTaken', { notTaken: '桃子不选每次都收押金' }],
+  ] as const) {
+    const error = errorOf(await host.invoke(agent, tool, { ...base, ...patch }))
+    assert.equal(error?.code, 'invalid', field)
+    assert.equal(error?.field, field)
+    assert.match(error?.hint ?? '', /clean-zone/)
+    assert.match(error?.hint ?? '', /chat text/)
+  }
+  const chatOnly = await host.invoke(agent, tool, {
+    ...base,
+    text: baseText.replace('我建议', '桃子推荐'),
+  })
+  assert.equal(chatOnly.kind, 'ok', JSON.stringify(chatOnly))
+})
+
+test('apply(ctx, { persona }) wires non-default personaName into registered propose_to_human and leaves default name alone', async () => {
+  const startWithPersona = (persona: DesignConfig['persona']) =>
+    mainAgentWithGoal({}, 'human', persona === undefined ? {} : { persona })
+
+  for (const name of ['Alice', 'TestBot', '桃子']) {
+    const { host, agent } = await startWithPersona({ name, text: 'Keep replies concise.' })
+    const base = exampleArgs('recommend')
+    const baseText = String(base.text)
+    for (const [field, patch] of [
+      ['title', { title: `${name} proposal` }],
+      ['proposal', { proposal: `${name} recommends skipping deposit`, text: baseText.replace(String(base.proposal), `${name} recommends skipping deposit`) }],
+      ['reason', { reason: `${name} checked refund steps`, text: baseText.replace(String(base.reason), `${name} checked refund steps`) }],
+      ['notTaken', { notTaken: `${name} skipped deposit` }],
+    ] as const) {
+      const error = errorOf(await host.callTool(agent, PROPOSE_TO_HUMAN, { ...base, ...patch }))
+      assert.equal(error?.code, 'invalid', `${name} ${field}`)
+      assert.equal(error?.field, field)
+      assert.match(error?.hint ?? '', /clean-zone/)
+    }
+    const clean = valueOf(await host.callTool(agent, PROPOSE_TO_HUMAN, base))
+    assert.equal(clean.kind, 'question')
+  }
+
+  const def = await startWithPersona({ name: DEFAULT_PERSONA_NAME, text: 'Keep replies concise.' })
+  const base = exampleArgs('recommend')
+  const allowed = valueOf(await def.host.callTool(def.agent, PROPOSE_TO_HUMAN, {
+    ...base,
+    title: `${DEFAULT_PERSONA_NAME}方案`,
+  }))
+  assert.equal(allowed.kind, 'question')
 })

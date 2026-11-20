@@ -459,7 +459,7 @@ test('an empty advance while the last closed takeover\'s graph is untracked says
     const opened = await openTakeover(rig.repo.root, { path: 'existing', because: 'b', trigger: 'init', projectRoot: rig.repo.root, graphDir: rig.repo.graphDir })
     assert.equal(opened.kind, 'opened')
     if (opened.kind !== 'opened') return
-    assert.ok(await appendTakeover(rig.repo.root, opened.takeover.id, [{ op: 'takeover-closed', data: { reason: 'abandoned', counts: { approved: 0, skipped: 0, rejected: 0, done: 0 } } }]))
+    assert.ok(await appendTakeover(rig.repo.root, opened.takeover.id, [{ op: 'takeover-closed', data: { reason: 'approved', counts: { approved: 1, skipped: 0, rejected: 0, done: 0 } } }]))
     await rig.run('git commit --allow-empty -m empty-graph-commit')
     assert.equal(rig.reports.length, 1)
     assert.match(rig.reports[0] ?? '', /主干前进到没有改任何文件的提交 [0-9a-f]{12}：接管的图还没进 git（docs\/graph），收尾说的「图已提交进 git」不对/)

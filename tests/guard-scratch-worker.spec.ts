@@ -22,6 +22,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply as guardApply } from '../src/guard/index.ts'
+import { installMainAgentRules } from '../src/guard/main-agent.ts'
 import { forgetAttempt, registerAttempt, registeredAttempt, writesPlannedFile, type Attempt } from '../src/execute/attempts.ts'
 import { EXECUTE_SERVICE, type ExecuteService } from '../src/shared/execute-service.ts'
 import type { AgentLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
@@ -173,4 +174,45 @@ test('writesPlannedFile: only a worker with an approved plan, only inside its wo
   assert.equal(writesPlannedFile({ ...approved, role: 'review' }, SCOPE, join(worktree, 'src', 'sum.mjs')), false, 'a reviewer')
   const { worktree: _none, ...noTree } = approved
   assert.equal(writesPlannedFile(noTree, SCOPE, join(worktree, 'src', 'sum.mjs')), false, 'no worktree')
+})
+
+test('pure .llm/scratch/ delete passes file-tools-only through the guard row while escapes and directory deletes stay denied', async () => {
+  await withWorker(worktree => attemptOf(worktree), async ({ worktree }) => {
+    const exec = guardOver(true)
+    const agent = agentOf(CHILD, worktree, true)
+    const allowed = await exec('pwsh', { command: 'rm .llm/scratch/a.cjs' }, { agent })
+    assert.equal(allowed.isError, false, textOf(allowed))
+    for (const cmd of ['rm .llm/scratch/../README.md', 'rm -rf .llm/scratch', 'rm .llm/scratch/a.cjs && rm README.md']) {
+      const denied = await exec('pwsh', { command: cmd }, { agent })
+      assert.equal(denied.isError, true, `expected denial for ${cmd}`)
+    }
+  })
+})
+
+test('main-agent-no-write allows pure .llm/scratch/ deletes with session cwd and projectRoot while denying escapes', async () => {
+  await withWorker(undefined, async ({ root }) => {
+    const rt = fakeRuntime()
+    installMainAgentRules(rt.ctx, {
+      agents: () => undefined,
+      graph: () => undefined,
+      checkRelay: () => undefined,
+      isMainAgent: () => true,
+      hiddenTools: [],
+      journal: () => {},
+      report: () => {},
+      tell: () => true,
+      bypass: () => {},
+      metric: () => {},
+    })
+    const exec = execTool(rt)
+    const main = agentOf('main-1', root, false)
+    const relOk = await exec('pwsh', { command: 'rm .llm/scratch/a.cjs' }, { agent: main })
+    assert.equal(relOk.isError, false, textOf(relOk))
+    const absOk = await exec('pwsh', { command: `Remove-Item "${join(root, '.llm', 'scratch', 'a.cjs')}"` }, { agent: main })
+    assert.equal(absOk.isError, false, textOf(absOk))
+    for (const cmd of ['rm .llm/scratch/../README.md', 'rm -rf .llm/scratch', 'rm .llm/scratch/a.cjs && rm README.md']) {
+      const denied = await exec('pwsh', { command: cmd }, { agent: main })
+      assert.equal(denied.isError, true, `expected denial for ${cmd}`)
+    }
+  })
 })

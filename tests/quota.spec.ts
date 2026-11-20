@@ -234,6 +234,11 @@ test('quotaWaitOf: the two confirmed paths stop the drive, the forecast does not
   assert.equal(wait([fiveHour(99, exhaustsIn(5))]), undefined, 'a forecast is the board quota-low entry\'s business, not the drive\'s')
   assert.equal(wait([windowOf('mcp', 'MCP 工具调用', 100, RESET, { kind: 'spent' })]), undefined)
   assert.equal(wait([windowOf('five-hour', '5 小时', 100, past, { kind: 'spent' })]), undefined, 'the reset has passed: over by its own clock')
+  // A stale limited.until <= now must not shadow a still-active reading reset.
+  assert.deepEqual(
+    wait([fiveHour(100, { kind: 'spent' })], { limited: { at: past - MINUTE_MS, code: '1308', until: past } }),
+    { resetAt: RESET, code: '1308', window: 'five-hour' },
+  )
 })
 
 test('peakHoursOf: two single-line strings of 1 to 80 characters read; anything else reads as none, and only a wrong type is reported', () => {

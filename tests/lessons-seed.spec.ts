@@ -11,9 +11,10 @@
  * lessons there.
  */
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { realLockEnvironment } from '../src/data/lock.ts'
 import { runCli } from '../src/lessons/cli.ts'
@@ -25,7 +26,18 @@ import { lessonsTools } from '../src/lessons/tools.ts'
 import type { SessionLike } from '../src/shared/dsh-min.ts'
 import { agentOf, runTool } from './memory-helpers.ts'
 
-const SEED = join(import.meta.dirname, '..', '.agents', 'tasks', 'm5', 'lessons-seed.json')
+function seedPath(): string {
+  const repoRoot = join(import.meta.dirname, '..')
+  const own = join(repoRoot, '.agents', 'tasks', 'm5', 'lessons-seed.json')
+  if (existsSync(own)) return own
+  const git = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: repoRoot, encoding: 'utf8' })
+  const common = git.status === 0 ? git.stdout.trim() : ''
+  if (common === '') return own
+  const main = join(dirname(common), '.agents', 'tasks', 'm5', 'lessons-seed.json')
+  return existsSync(main) ? main : own
+}
+
+const SEED = seedPath()
 const NOW = new Date('2026-11-01T12:00:00Z')
 const POWERSHELL = 'Windows PowerShell 5.1 reads and writes the ANSI code page'
 const WORKER_GRAPH = 'A worker committed a graph comment on local main'

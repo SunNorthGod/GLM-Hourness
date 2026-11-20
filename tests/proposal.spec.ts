@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { PLAIN_QUESTION_EXAMPLES, plainWordsIn } from '../src/graph/plain-question.ts'
-import { ASK_FORMS, PAGE_LIMITS, PROPOSAL_FIELDS, PROPOSAL_LIMITS, TALK_LIMITS, askOf, askTextRefusal, codePointCount, normalizeText, pageRefusal, proposalRecordRefusal, proposalTitleRefusal, renderAsk, textCoversRecord } from '../src/graph/proposal.ts'
+import { ASK_FORMS, PAGE_LIMITS, PROPOSAL_FIELDS, PROPOSAL_LIMITS, TALK_LIMITS, askOf, askTextRefusal, codePointCount, containsPersonaName, normalizeText, pageRefusal, proposalRecordRefusal, proposalTitleRefusal, renderAsk, textCoversRecord } from '../src/graph/proposal.ts'
 import { PLAIN_LIMITS } from '../src/graph/schema.ts'
 import { exampleRecord } from './proposal-examples.ts'
 
@@ -140,4 +140,20 @@ test('pageRefusal: a page is not empty, within the limit, and has each text it m
   assert.equal(missing?.message, 'page does not have the direction "数据只存在本机"')
   assert.equal(missing?.hint, 'the page must name the direction "数据只存在本机" word for word: 数据只存在本机')
   assert.match(pageRefusal('数据只存在本机', wanted)?.message ?? '', /the module "记账"/, 'the first of them that is missing')
+})
+
+test('proposalRecordRefusal rejects a configured non-empty persona name in title, proposal, reason, or notTaken', () => {
+  const clean = exampleRecord('recommend') as Parameters<typeof proposalRecordRefusal>[0]
+  assert.equal(proposalRecordRefusal(clean, { personaName: 'Peach' }), undefined)
+  assert.equal(proposalRecordRefusal(clean, { personaName: '   ' }), undefined)
+  for (const field of ['title', 'proposal', 'reason', 'notTaken'] as const) {
+    const dirty = { ...clean, [field]: `Peach ${String(clean[field] ?? '备选')}` }
+    const refusal = proposalRecordRefusal(dirty, { personaName: 'Peach' })
+    assert.equal(refusal?.field, field)
+    assert.match(refusal?.message ?? '', /Peach/)
+    assert.match(refusal?.hint ?? '', /clean-zone/)
+  }
+  // ASCII word boundaries avoid false positives inside longer ASCII words like "npm"
+  assert.equal(containsPersonaName('npm test', 'PM'), false)
+  assert.equal(containsPersonaName('PM recommends', 'PM'), true)
 })

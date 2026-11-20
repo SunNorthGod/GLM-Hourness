@@ -318,7 +318,8 @@ function lex(src: string, dialect: ShellDialect): Token[][] {
         if (src.startsWith('<<<', i)) {
           i += 3
           skipBlanks()
-          readWord() // a here-string is input data
+          const target = readWord() // a here-string is input data
+          out.push({ kind: 'redirect', operator: `${prefix}<<<`, target: target?.text ?? '', writes: false })
           return
         }
         if (src.startsWith('<<', i)) {
@@ -328,6 +329,7 @@ function lex(src: string, dialect: ShellDialect): Token[][] {
           skipBlanks()
           const delimiter = readWord()
           if (delimiter !== undefined) heredocs.push({ delimiter: delimiter.text, stripTabs })
+          out.push({ kind: 'redirect', operator: `${prefix}<<`, target: delimiter?.text ?? '', writes: false })
           return
         }
         if (src[i + 1] === '(') {
@@ -346,7 +348,8 @@ function lex(src: string, dialect: ShellDialect): Token[][] {
       }
       if (src[i] === '&') i += 1
       skipBlanks()
-      readWord() // input redirection: not a write
+      const target = readWord() // input redirection: not a write
+      out.push({ kind: 'redirect', operator: `${prefix}<`, target: target?.text ?? '', writes: false })
       return
     }
     if (!pwsh && src[i + 1] === '(') {
@@ -597,4 +600,30 @@ export function simpleCommands(command: string, dialect: ShellDialect): readonly
 /** A short description of one write for the corrective message and the journal. */
 export function describeWrite(write: ShellWrite): string {
   return write.kind === 'redirect' ? `redirection ${write.operator} ${write.target}` : `${write.name} command`
+}
+
+/**
+ * If `command` parses in `dialect` as a single simple command with no
+ * separators, pipelines, redirections, subshells, line breaks, variable
+ * assignments, keywords or wrapper prefixes, return its word tokens;
+ * otherwise undefined.
+ */
+export function singleSimpleCommand(command: string, dialect: ShellDialect): readonly { readonly text: string, readonly quoted: boolean }[] | undefined {
+  if (/[\r\n]/.test(command)) return undefined
+  const lists = lex(command, dialect)
+  if (lists.length !== 1) return undefined
+  const tokens = lists[0]
+  if (tokens.length === 0) return undefined
+  const words: { readonly text: string, readonly quoted: boolean }[] = []
+  for (const token of tokens) {
+    if (token.kind !== 'word') return undefined
+    if (!token.quoted && (dialect === 'posix' ? token.text === '{' || token.text === '}' : PWSH_ASSIGN.has(token.text))) return undefined
+    words.push({ text: token.text, quoted: token.quoted })
+  }
+  const first = words[0]
+  if (!first.quoted && dialect === 'posix' && /^[A-Za-z_]\w*=/.test(first.text)) return undefined
+  if (dialect === 'pwsh' && !first.quoted && first.text.startsWith('$') && first.text.indexOf('=') > 0) return undefined
+  if (!first.quoted && KEYWORDS.has(first.text.toLowerCase())) return undefined
+  if (WRAPPERS.has(commandName(first.text))) return undefined
+  return words
 }

@@ -53,6 +53,22 @@ interface Refusal {
   readonly hint: string
 }
 
+export interface ProposalRefusalOptions {
+  readonly personaName?: string | undefined
+}
+
+const ASCII_WORD = /[A-Za-z0-9_]/
+
+/** Whether `text` carries a non-empty persona `name` (using ASCII word boundaries when the name starts or ends with an ASCII word character). */
+export function containsPersonaName(text: string, personaName: string): boolean {
+  const name = personaName.trim()
+  if (name.length === 0) return false
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const prefix = ASCII_WORD.test(name[0]) ? '(?<![A-Za-z0-9_])' : ''
+  const suffix = ASCII_WORD.test(name.at(-1)!) ? '(?![A-Za-z0-9_])' : ''
+  return new RegExp(`${prefix}${escaped}${suffix}`, 'u').test(text)
+}
+
 /** Length in code points, so a character outside the BMP counts once. */
 export function codePointCount(text: string): number {
   return [...text].length
@@ -196,7 +212,10 @@ function waysRefusal(ways: readonly unknown[]): Refusal | undefined {
  * of asking which fields are required and which are not taken; the optional
  * lines are real (no filler). `field` is the field to correct.
  */
-export function proposalRecordRefusal(record: Readonly<Partial<Omit<ProposalRecord, 'ways'> & { ways: readonly unknown[] }>>): (Refusal & { readonly field: string }) | undefined {
+export function proposalRecordRefusal(
+  record: Readonly<Partial<Omit<ProposalRecord, 'ways'> & { ways: readonly unknown[] }>>,
+  options?: ProposalRefusalOptions,
+): (Refusal & { readonly field: string }) | undefined {
   const refuse = (field: string, refusal: Refusal): Refusal & { field: string } => ({ ...refusal, field })
   const title = proposalTitleRefusal(record.title)
   if (title !== undefined) return refuse('title', title)
@@ -233,6 +252,18 @@ export function proposalRecordRefusal(record: Readonly<Partial<Omit<ProposalReco
     const refusal = lineRefusal(field, value, PROPOSAL_LIMITS.line)
     if (refusal !== undefined) return refuse(field, refusal)
     if (isFiller(value)) return refuse(field, { message: `${field} is a filler`, hint: `leave ${field} out when there is nothing to say; a word like 无 is refused` })
+  }
+  const personaName = options?.personaName?.trim()
+  if (personaName !== undefined && personaName.length > 0) {
+    for (const field of ['title', 'proposal', 'reason', 'notTaken'] as const) {
+      const value = record[field]
+      if (typeof value === 'string' && containsPersonaName(value, personaName)) {
+        return refuse(field, {
+          message: `${field} must not contain persona name "${personaName}"`,
+          hint: 'keep persisted graph fields clean-zone and plain; keep conversational persona only in chat text',
+        })
+      }
+    }
   }
   return undefined
 }

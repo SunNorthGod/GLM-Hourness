@@ -19,7 +19,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import type { ToolDefinitionLike } from '../shared/dsh-min.ts'
 import { createHash } from 'node:crypto'
-import { join, relative, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { projectOf } from '../data/project-root.ts'
 import type { Attachable, AttachService } from '../design/attach.ts'
 import { openEngine } from '../graph/engine.ts'
@@ -118,6 +118,15 @@ interface Live {
 const message = (error: unknown): string => error instanceof Error ? error.message : String(error)
 
 const sameDir = (a: string, b: string): boolean => process.platform === 'win32' ? resolve(a).toLowerCase() === resolve(b).toLowerCase() : resolve(a) === resolve(b)
+
+/** Whether `graphDir` resolves inside `<root>/.llm/` (case-insensitive on win32). */
+function isInsideLlm(root: string, graphDir: string): boolean {
+  const llm = resolve(root, '.llm')
+  const target = resolve(graphDir)
+  const rel = process.platform === 'win32' ? relative(llm.toLowerCase(), target.toLowerCase()) : relative(llm, target)
+  const normalized = rel.replaceAll('\\', '/')
+  return normalized === '' || (!isAbsolute(rel) && normalized !== '..' && !normalized.startsWith('../'))
+}
 
 /** How many commits `history.tsv` lists; 0 when it is not there. */
 async function historyLines(root: string, id: string): Promise<number> {
@@ -614,7 +623,7 @@ export function bootstrapRuntime(deps: BootstrapDeps): BootstrapRuntime {
   /** The one-line reminder that the graph is not under git yet (§7.6, at most two turns). */
   const graphCheck = async (root: string, agent: AgentLike): Promise<UserNotice | undefined> => {
     const closed = await closedTakeoverOf(root).catch(() => undefined)
-    if (closed === undefined || closed.graphTracked) return undefined
+    if (closed === undefined || closed.graphTracked || isInsideLlm(root, closed.graphDir)) return undefined
     const tracked = await trackedGraphFiles(root, closed.graphDir)
     if (tracked === undefined) return undefined
     if (tracked.length > 0) {

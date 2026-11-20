@@ -18,6 +18,7 @@ import { BOOTSTRAP_SOURCE, INTERVIEW_YIELD, reminderText, type ReminderFacts } f
 import { STAGE_NOTE } from '../src/bootstrap/runtime.ts'
 import { BOOTSTRAP_SERVICE } from '../src/bootstrap/service.ts'
 import { settleWorkspace } from '../src/bootstrap/setup.ts'
+import { appendTakeover, closedTakeoverOf, openTakeover, openTakeoverOf } from '../src/bootstrap/takeover.ts'
 import { NORM_TEMPLATES, PLACEHOLDERS } from '../src/bootstrap/templates.ts'
 import { ensureLlmIgnored } from '../src/data/llm-ignore.ts'
 import { projectOf } from '../src/data/project-root.ts'
@@ -527,7 +528,10 @@ test('the graph-in-git check after a close: the first reminder names the closing
   const agent = await rootAgent(made, 's-w-graphcheck', 'wgraphcheck', false)
   assert.equal((await made.execute(agent, '/wish'))?.result.kind, 'success')
   assert.ok((await openEngine(join(ws, 'docs', 'graph')).apply('llm', { op: 'propose', reason: '接管：读项目', node: { type: 'goal', title: '这个项目要做成什么' } })).ok)
-  assert.equal((await init(made, agent, 'off')).kind, 'success')
+  const open = await openTakeoverOf(ws)
+  assert.ok(open !== undefined)
+  assert.equal(await appendTakeover(ws, open.id, [{ op: 'takeover-closed', data: { reason: 'approved', counts: { approved: 1, skipped: 0, rejected: 0, done: 0 } } }]), true)
+  assert.equal((await closedTakeoverOf(ws))?.id, open.id)
   const graphNotices = async (): Promise<string[]> => {
     const decision = await agent.step()
     return (decision.kind === 'enter' ? decision.messages : [])
@@ -558,6 +562,38 @@ test('the graph-in-git check after a close: the first reminder names the closing
   assert.deepEqual(await graphNotices(), [])
   assert.equal(journal(ws).filter(record => record.op === 'graph-tracked').length, 1)
   assert.deepEqual(await graphNotices(), [], 'tracked: no more reminders')
+})
+
+test('abandoned close does not populate state.closed or emit graph-reminder; closed.graphDir inside .llm/ is skipped safely', async () => {
+  const made = host()
+  const ws = made.workspace('wabandoned')
+  existingProject(ws)
+  const agent = await rootAgent(made, 's-w-abandoned', 'wabandoned', false)
+  assert.equal((await made.execute(agent, '/wish'))?.result.kind, 'success')
+  assert.ok((await openEngine(join(ws, 'docs', 'graph')).apply('llm', { op: 'propose', reason: '接管：读项目', node: { type: 'goal', title: '这个项目要做成什么' } })).ok)
+  assert.equal((await init(made, agent, 'off')).kind, 'success')
+  assert.equal(await closedTakeoverOf(ws), undefined, 'abandoned close leaves closed takeover empty')
+  const afterAbandoned = await agent.step()
+  const abandonedNotices = (afterAbandoned.kind === 'enter' ? afterAbandoned.messages : [])
+    .filter(message => (message as UserNotice).source?.kind === BOOTSTRAP_SOURCE)
+  assert.deepEqual(abandonedNotices, [])
+  assert.equal(journal(ws).filter(record => record.op === 'graph-reminder').length, 0)
+
+  // Defense-in-depth: an approved closed takeover whose graphDir resolves inside <root>/.llm/ emits no graph-reminder.
+  const wsLlm = made.workspace('wclosedllm')
+  existingProject(wsLlm)
+  const llmGraphDir = process.platform === 'win32' ? join(wsLlm, '.LLM', 'bootstrap', 'graph') : join(wsLlm, '.llm', 'bootstrap', 'graph')
+  const opened = await openTakeover(wsLlm, { path: 'existing', because: 'test', trigger: 'init', projectRoot: wsLlm, graphDir: llmGraphDir })
+  assert.equal(opened.kind, 'opened')
+  if (opened.kind !== 'opened') return
+  assert.equal(await appendTakeover(wsLlm, opened.takeover.id, [{ op: 'takeover-closed', data: { reason: 'approved', counts: { approved: 0, skipped: 0, rejected: 0, done: 0 } } }]), true)
+  assert.notEqual(await closedTakeoverOf(wsLlm), undefined)
+  const agentLlm = await rootAgent(made, 's-w-llmgraph', 'wclosedllm', false)
+  const stepLlm = await agentLlm.step()
+  const llmNotices = (stepLlm.kind === 'enter' ? stepLlm.messages : [])
+    .filter(message => (message as UserNotice).source?.kind === BOOTSTRAP_SOURCE)
+  assert.deepEqual(llmNotices, [])
+  assert.equal(journal(wsLlm).filter(record => record.op === 'graph-reminder').length, 0)
 })
 
 test('bootstrap degrades health when tools.register throws inside inject', async () => {

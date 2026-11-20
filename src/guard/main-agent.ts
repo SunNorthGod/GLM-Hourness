@@ -64,6 +64,7 @@ import { ASK_RULE, DESIGN_RELEASE_RULE, GIT_SNAPSHOT_RULE, GRAPH_CLI_RULE, GRAPH
 import { liftedRules } from './lift.ts'
 import { originOf } from './origin.ts'
 import { projectRootOf } from '../data/project-home.ts'
+import { checkoutRootOf } from '../data/project-root.ts'
 import { fileToolTargetOf, isFileWrite, judge, NATIVE_FACE, renderCorrection, shellCommandOf, shellWriteOf, type Correction, type GuardRule, type RuleVerdict, type ToolCall } from './rules.ts'
 import { describeWrite } from './shell.ts'
 
@@ -82,21 +83,21 @@ const NO_WRITE_RIGHT_PATH_EXECUTE = 'Record designs and decisions on the project
 const NO_WRITE_EXCEPTION = 'If the human wants this session to edit files directly, they leave main-agent mode with /wish off.'
 
 /** What a call does that writes files, as the first line of a correction; undefined when it writes nothing. `call.name` is the DSH native. */
-function writeFactOf(call: ToolCall): string | undefined {
+function writeFactOf(call: ToolCall, cwd?: string, projectRoot?: string): string | undefined {
   const target = fileToolTargetOf(call)
   if (target !== undefined) return `You tried to write "${target}".`
   // A file tool with no path in its arguments still writes (the runtime refuses it later); the rules do not wait for that.
   if (isFileWrite(call)) return `You called ${call.name}, which writes files.`
-  const shell = shellWriteOf(call)
+  const shell = shellWriteOf(call, cwd, projectRoot)
   return shell === undefined ? undefined : `You tried to change files through the shell: "${shell.command}" (${describeWrite(shell.write)}).`
 }
 
 /** main-agent-no-write: a file tool that writes, or a shell command that does. The right path points at dispatch_task once the execute row is on (F18). */
-function mainAgentNoWrite(executeOn: () => boolean): GuardRule {
+function mainAgentNoWrite(executeOn: () => boolean, location: { readonly cwd?: string | undefined, readonly projectRoot?: string | undefined } = {}): GuardRule {
   return {
     id: NO_WRITE_RULE,
     detect(call) {
-      const fact = writeFactOf(call)
+      const fact = writeFactOf(call, location.cwd, location.projectRoot)
       if (fact === undefined) return ALLOW
       return { kind: 'deny', rule: NO_WRITE_RULE, correction: { fact, violation: NO_WRITE_VIOLATION, rightPath: executeOn() ? NO_WRITE_RIGHT_PATH_EXECUTE : NO_WRITE_RIGHT_PATH, exception: NO_WRITE_EXCEPTION } }
     },
@@ -257,7 +258,7 @@ function message(error: unknown): string {
 export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps: MainAgentRulesDeps): () => void {
   const warn = dialectWarner('design')
   const ask = mainAgentAsk(deps.hiddenTools)
-  const noWrite = mainAgentNoWrite(() => deps.executeOn?.() ?? false)
+  const executeOn = (): boolean => deps.executeOn?.() ?? false
   const noWait = mainAgentNoWait()
   return ctx.on('tools/pre-execute', async (payload, next) => {
     const agent = payload.agent
@@ -328,6 +329,10 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
     // Every kind of session: the node of what the human handed over for good is written by record_human_answer alone.
     // A registered worker/reviewer's graph tool calls belong to execute-rules (`worker-graph-readonly`).
     if (toDelegations && !worker) return denial(GRAPH_DELEGATIONS_RULE, DELEGATIONS_CORRECTION, { node: DELEGATIONS_ID })
+    const sessionCwd = typeof session.header.cwd === 'string' && session.header.cwd.length > 0 ? session.header.cwd : undefined
+    const base = baseFor(ctx, agent)
+    const root = projectRootOf(sessionCwd)
+    const scratchRoot = (base === undefined ? undefined : checkoutRootOf(base)) ?? root
     if (delegated) {
       if (graphCall) {
         if (worker) return next()
@@ -335,7 +340,7 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
         if (relayOf(call) !== undefined) return refusedAttempt(GRAPH_RELAY_RULE, SUBAGENT_RELAY_CORRECTION, await attemptOf(deps, { session }, call))
         return await stageRefusal() ?? next()
       }
-      return cliRefusal() ?? judgeDelegated(deps, { id: agent.id, session }, writeFactOf(call), denial, next)
+      return cliRefusal() ?? judgeDelegated(deps, { id: agent.id, session }, writeFactOf(call, base, scratchRoot), denial, next)
     }
     try {
       who = deps.isMainAgent(agent) ? 'main-agent' : 'ordinary'
@@ -357,15 +362,14 @@ export function installMainAgentRules(ctx: PreExecuteHost & ServiceLookup, deps:
     const route = sessionRoute(session)
     const face = dialectNames(dialect, agent, route, warn) ?? NATIVE_FACE
     // The rules the human lifted (the no-wait rule is the one a lift path names; a hand-written line lifts any of the three) do not judge, the way the guard row's gate reads its record (src/guard/lift.ts).
-    const root = projectRootOf(typeof session.header.cwd === 'string' && session.header.cwd.length > 0 ? session.header.cwd : undefined)
     const lifted = root === undefined ? NOTHING_LIFTED : liftedRules(root)
+    const noWrite = mainAgentNoWrite(executeOn, { cwd: base, projectRoot: scratchRoot })
     const denied = judge([ask, noWrite, noWait].filter(rule => !lifted.has(rule.id)), call, face).denies[0]
     if (denied !== undefined) return denial(denied.rule, denied.correction)
     if (shell === undefined) return next()
     const cli = cliRefusal()
     if (cli !== undefined) return cli
     // The base the shell's relative paths resolve from: the session's working directory, as the guard row reads it.
-    const base = baseFor(ctx, agent)
     const git = await guardGit({ command: shell.command, dialects: shell.dialects, base, sessionId: session.id, agentId: agent.id }, deps.snapshots)
     if (git.kind === 'refuse') {
       deps.metric({ k: 'git.snapshot-refused', body: { code: git.refusal.code } }, metricsWhereOf(session))

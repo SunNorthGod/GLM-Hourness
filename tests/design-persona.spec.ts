@@ -8,22 +8,25 @@
  */
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import test from 'node:test'
 import { apply, Config, MAIN_AGENT_ACTIVE, type DesignConfig } from '../src/design/index.ts'
 import { MAIN_AGENT_SECTION } from '../src/design/identity.ts'
 import { DEFAULT_PERSONA_NAME, PERSONA_NAME_LIMIT, PERSONA_SCOPE, PERSONA_TEXT_LIMIT, PERSONA_TOO_LONG, readPersona } from '../src/design/persona.ts'
+import { openEngine } from '../src/graph/engine.ts'
 import { buildIdentitySection } from '../src/glm-prompt/identity.ts'
 import { installDialect, type GlmPromptConfig } from '../src/glm-prompt/index.ts'
 import { IDENTITY_OPENING_PLAIN, IDENTITY_OPENING_WITH_STYLE } from '../src/glm-prompt/verbatim.ts'
 import type { AssemblePayload, AssembledTool } from '../src/shared/dsh-min.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { OUTPUT_STYLE_SECTION } from '../src/shared/output-style.ts'
-import { MEMORY_TOOL_NAMES } from '../src/shared/tool-names.ts'
+import { MEMORY_TOOL_NAMES, PROPOSE_TO_HUMAN } from '../src/shared/tool-names.ts'
 import { designHost, type DesignHost, type FakeAgent } from './design-host.ts'
 import { captureWarnings } from './graph-helpers.ts'
+import { exampleArgs } from './proposal-examples.ts'
 
 // The pinned words of the section; the constants of persona.ts are compared against them, not the other way round.
-const SCOPE = 'This style applies to your replies to the human only. Text you put into tool calls (graph nodes, briefs for subagents) and anything written to files stays plain.'
+const SCOPE = 'This style applies to your replies to the human only. Graph node fields (title, body, acceptance, proposal, reason, notTaken), commit messages, subagent briefs, ask_main calls, and anything written to files are clean-zone technical artifacts: keep them plain, with no persona self-references or user honorifics.'
 const PERSONA = { name: 'PM', text: 'End every reply to the human with 「（PM-MARK）」.' }
 const GLM = { provider: 'glm-zcode', model: 'glm-5.3' }
 const OTHER = { provider: 'deepseek-official', model: 'deepseek-flash' }
@@ -344,6 +347,69 @@ test('docs/reference/zcode-verbatim.md has the section 「不跟 3.17.1 的地�
   assert.match(entry(1), /理由/)
   assert.match(entry(2), /r8o/)
   assert.match(entry(2), /理由/)
-  assert.ok(entry(3).includes(SCOPE))
+  assert.ok(entry(3).includes('This style applies to your replies to the human only.'))
   assert.match(entry(3), /理由/)
+  for (const required of ['title', 'body', 'acceptance', 'proposal', 'reason', 'notTaken', 'commit messages', 'ask_main', 'clean-zone']) {
+    assert.ok(PERSONA_SCOPE.includes(required), `PERSONA_SCOPE mentions ${required}`)
+  }
+})
+
+test('readPersona sets name only when section is present and resolved name differs from DEFAULT_PERSONA_NAME', () => {
+  assert.equal(readPersona({ persona: { name: 'Alice', text: 'Warm replies.' } }).name, 'Alice')
+  assert.equal(readPersona({ persona: { name: '  Alice \n  Bot  ', text: 'Warm replies.' } }).name, 'Alice Bot')
+  assert.equal(readPersona({ persona: { name: '桃子', text: '轻快语气' } }).name, '桃子')
+  assert.equal(readPersona({ persona: { name: 'Alice', text: '' } }).name, undefined)
+  assert.equal(readPersona({ persona: { name: 'Alice', text: 'x'.repeat(PERSONA_TEXT_LIMIT + 1) } }).name, undefined)
+  assert.equal(readPersona({ persona: { name: DEFAULT_PERSONA_NAME, text: 'x' } }).name, undefined)
+  assert.equal(readPersona({ persona: { name: `  ${DEFAULT_PERSONA_NAME}  `, text: 'x' } }).name, undefined)
+  assert.equal(readPersona({ persona: { text: 'x' } }).name, undefined)
+  assert.equal(readPersona({ persona: { name: 7, text: 'x' } }).name, undefined)
+  assert.equal(readPersona({}).name, undefined)
+})
+
+test('apply(ctx, config) wires persona.name into propose_to_human at runtime while leaving default name unguarded', async () => {
+  const setup = async (persona: DesignConfig['persona']) => {
+    const host = open(persona === undefined ? {} : { persona })
+    const agent = host.addAgent('s1')
+    await wish(host, agent)
+    const dir = join(host.workspace('ws'), 'docs', 'graph')
+    const engine = openEngine(dir)
+    const goal = await engine.apply('human', { op: 'propose', reason: '立项', node: { type: 'goal', title: '记账小工具', stage: 'interview', body: '需求：记账' } })
+    assert.equal(goal.ok, true)
+    host.focuses.set(agent.id, 'goal-1')
+    return { host, agent }
+  }
+
+  for (const name of ['Alice', '桃子']) {
+    const { host, agent } = await setup({ name, text: 'Speak warmly.' })
+    const base = exampleArgs('recommend')
+    const baseText = String(base.text)
+    for (const [field, patch] of [
+      ['title', { title: `${name} 建议` }],
+      ['proposal', { proposal: `${name}建议先不收押金`, text: baseText.replace(String(base.proposal), `${name}建议先不收押金`) }],
+      ['reason', { reason: `${name}觉得押金要退还`, text: baseText.replace(String(base.reason), `${name}觉得押金要退还`) }],
+      ['notTaken', { notTaken: `${name}不选每次收押金` }],
+    ] as const) {
+      const outcome = await host.callTool(agent, PROPOSE_TO_HUMAN, { ...base, ...patch })
+      assert.equal(outcome.kind, 'error', `${name} ${field}`)
+      if (outcome.kind === 'error') {
+        assert.equal(outcome.error.code, 'invalid')
+        assert.equal(outcome.error.field, field)
+        assert.match(outcome.error.hint, /clean-zone/)
+      }
+    }
+    const clean = await host.callTool(agent, PROPOSE_TO_HUMAN, {
+      ...base,
+      text: baseText.replace('我建议', `${name}建议`),
+    })
+    assert.equal(clean.kind, 'ok', JSON.stringify(clean))
+  }
+
+  const def = await setup({ name: DEFAULT_PERSONA_NAME, text: 'Plain default.' })
+  const base = exampleArgs('recommend')
+  const allowDefault = await def.host.callTool(def.agent, PROPOSE_TO_HUMAN, {
+    ...base,
+    title: `${DEFAULT_PERSONA_NAME}记录`,
+  })
+  assert.equal(allowDefault.kind, 'ok', JSON.stringify(allowDefault))
 })

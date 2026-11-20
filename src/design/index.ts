@@ -528,6 +528,7 @@ export function apply(ctx: DesignContext, config: DesignConfig = {}): () => void
     },
     talk: talkOf,
     report: (agent, state, reason) => { health.report(sessionIdOf(agent), state, reason) },
+    ...(persona.name === undefined ? {} : { personaName: persona.name }),
   }
   if (typeof ctx.inject === 'function') {
     try {

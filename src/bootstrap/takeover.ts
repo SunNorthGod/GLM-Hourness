@@ -129,7 +129,11 @@ const TAKEOVER_FOLD: Fold<TakeoverState> = {
     // Every other record is about the takeover it names; one about another takeover changes nothing.
     if (record.id !== open.id) return { state }
     const data = isRecord(record.data) ? record.data : {}
-    if (record.op === 'takeover-closed') return { state: { closed: { id: open.id, graphDir: open.graphDir, graphReminders: 0, graphTracked: false } } }
+    if (record.op === 'takeover-closed') {
+      return data.reason === 'approved'
+        ? { state: { closed: { id: open.id, graphDir: open.graphDir, graphReminders: 0, graphTracked: false } } }
+        : { state: {} }
+    }
     if (record.op === 'takeover-wish') return typeof data.text === 'string' ? { state: { open: { ...open, wish: data.text } } } : { bad: 'takeover-wish without a text' }
     if (record.op === 'takeover-path') {
       if (typeof data.to !== 'string' || !PATHS.includes(data.to)) return { bad: 'takeover-path without a path' }

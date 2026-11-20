@@ -45,6 +45,8 @@ export interface DesignToolDeps {
   /** The talk state of the agent's session; undefined when it cannot be read at all. */
   readonly talk: (agent: AgentLike) => TalkState | undefined
   readonly report: (agent: AgentLike, state: HealthState, reason: string) => void
+  /** Configured persona name kept out of persisted graph fields (clean-zone guard). */
+  readonly personaName?: string | undefined
 }
 
 type Kind = ShownProposal['kind']
@@ -299,10 +301,10 @@ function checkPlain(field: string, value: unknown): void {
 }
 
 /** The hard limits of the words (askTextRefusal, the plain-words list) and, with the record, the record's rules and its place in the words. Throws `Refused` with the reason code of the metrics. */
-function checkWords(form: AskForm, args: Args, record: Parameters<typeof proposalRecordRefusal>[0]): void {
+function checkWords(form: AskForm, args: Args, record: Parameters<typeof proposalRecordRefusal>[0], personaName?: string): void {
   checkLimits(form, args.text)
   for (const [field, value] of [['text', args.text], ['title', record.title], ['proposal', record.proposal], ['reason', record.reason], ['cost', record.cost], ['notTaken', record.notTaken], ...(record.ways ?? []).map(way => ['ways', way] as const)] as const) checkPlain(field, value)
-  const bad = proposalRecordRefusal(record)
+  const bad = proposalRecordRefusal(record, { personaName })
   if (bad !== undefined) throw new Refused(JSON.stringify({ code: 'invalid', message: bad.message, field: bad.field, hint: bad.hint }), 'record', bad.field)
   const missing = textCoversRecord(args.text, record, form)
   if (missing !== undefined) {
@@ -476,7 +478,7 @@ export function proposeTool(deps: DesignToolDeps): ToolDefinitionLike {
         }
         // The words and the record are checked first, then the count of questions, and only then is anything written.
         const record = node !== undefined && again ? recordOfNode(node, args, form) : recordOf(args, form)
-        checkWords(form, args, record)
+        checkWords(form, args, record, deps.personaName)
         const number = numberOf(state)
         const shown = node !== undefined && again
           ? await showAgain(deps, node, where.cwd, args, form)
