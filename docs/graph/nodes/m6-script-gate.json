@@ -3,7 +3,7 @@
   "type": "task",
   "title": "仓库脚本启动前按项目规则与高峰模式自查",
   "why": "重活脚本在高峰前自己停下，拦下时留下带规则名的记录，事后查得到",
-  "status": "doing",
+  "status": "done",
   "parent": "m6",
   "kind": "implement",
   "tier": "standard",
@@ -21,6 +21,19 @@
     {
       "type": "depends",
       "to": "rules"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "582efa5b",
+      "note": "rules page maintained-timeout cells (dtm)"
+    },
+    {
+      "kind": "test",
+      "ref": "probe scenario rules-script",
+      "exit": 0,
+      "note": "8/8 checks in the floor (626/626); /rules accept x4 via real handlers, denial records, timeout release, late-arrival journal; l4rc3 check 4 desktop PASS"
     }
   ],
   "history": [
@@ -85,6 +98,27 @@
       "actor": "llm",
       "op": "comment",
       "text": "§16.16 门内跑脚本落地（3d67dc0f）；余项：late 后台跑满 10 分钟与晚到拦下、notices 投递、探针场景 rules-script、agent 估计超时（d-timeout-measured）。"
+    },
+    {
+      "at": "2026-11-20T05:04:18.380Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "design acceptances 15/16/17/22/24 closed: real checkCall case landed (2026-11-17, rules-r4d), script execution inside the tool gate with 60s ticket refeed (ORCHESTRATION 16.16), m6-late (late script runs on, late verdicts caught, notices delivered) and the rules-script probe scenario (8 checks, two-step /rules accept through real handlers) plus dtm timeout estimation/measurement all merged; refusal records carry rule ids read by the rules page and the morning report; desktop rules-page timeout cells verified (desktop-l4-rc3 check 4)",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "582efa5b",
+          "note": "rules page maintained-timeout cells (dtm)"
+        },
+        {
+          "kind": "test",
+          "ref": "probe scenario rules-script",
+          "exit": 0,
+          "note": "8/8 checks in the floor (626/626); /rules accept x4 via real handlers, denial records, timeout release, late-arrival journal; l4rc3 check 4 desktop PASS"
+        }
+      ]
     }
   ]
 }

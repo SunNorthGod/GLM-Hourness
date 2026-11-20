@@ -3,7 +3,7 @@
   "type": "task",
   "title": "晨报",
   "why": "人每天早上在对话里看到一份进度、花费与例外的汇报",
-  "status": "doing",
+  "status": "done",
   "parent": "m7",
   "kind": "implement",
   "body": "M7 设计 0.4（.agents/tasks/m7/design.md）§1.2 的 m7-6。验证层：L2；到点投递随 L4。实现顺序与接口见设计 §8 与 §3.10、§3.11。",
@@ -11,6 +11,19 @@
     "每天早上到点，主 Agent 在对话里给人一份晨报：目标、规划、理由、架构四段，加在等你回话的事、花了多少、检查与审查、出了什么例外、各用了哪些模型",
     "晨报里的每个数都由 harness 从指标流水、项目图与 git 算出，模型不写数；同样的输入得到一字不差的晨报",
     "晨报是循环板上的一条默认条目，人能看见，暂时不能改、不能停"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "3c736431",
+      "note": "status-hub batch 6 merge: hourness_report + fourAnswers + operate.morning weekly patrol entries"
+    },
+    {
+      "kind": "test",
+      "ref": "real desktop morning cold-fire 2026-11-16 08:30",
+      "exit": 0,
+      "note": "delivered verbatim (desktop-l4-w2 watch); l4rc3 checks 6+7 PASS: fourAnswers render, board entries, /hourness two sections"
+    }
   ],
   "history": [
     {
@@ -86,6 +99,27 @@
       "actor": "llm",
       "op": "comment",
       "text": "证据 refs 回填：晨报批随 3c736431 落地、桌面冷火 2026-11-16 实测投递；reval 前提由 52f6a1c2 补齐（2026-11-17 回填，外部波次 0c5ebd21 的状态转移）。"
+    },
+    {
+      "at": "2026-11-20T05:04:17.181Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "fourAnswers morning report landed with M7 (merge 2026-11-07), content superseded per d-metrics-ratios-person-only as the person decided; real-desktop evidence: 08:30 morning cold-fire delivered verbatim 2026-11-16 (w2 watch), fourAnswers + /hourness sections verified on rc.3 desktop (desktop-l4-rc3 check 7), operate.morning entry on the board (check 6)",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "3c736431",
+          "note": "status-hub batch 6 merge: hourness_report + fourAnswers + operate.morning weekly patrol entries"
+        },
+        {
+          "kind": "test",
+          "ref": "real desktop morning cold-fire 2026-11-16 08:30",
+          "exit": 0,
+          "note": "delivered verbatim (desktop-l4-w2 watch); l4rc3 checks 6+7 PASS: fourAnswers render, board entries, /hourness two sections"
+        }
+      ]
     }
   ]
 }

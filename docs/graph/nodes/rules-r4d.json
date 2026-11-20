@@ -3,7 +3,7 @@
   "type": "task",
   "title": "人同意过的拦路脚本真的跑起来",
   "why": "人在板上同意的检查脚本到点就跑、该拦就拦，不再只是一行写着的规矩",
-  "status": "doing",
+  "status": "done",
   "parent": "rules",
   "kind": "implement",
   "body": "一路四段：规则板设计 §9.3 按 M3 附录 0.6 的请求改稿；R3 人批准规则提议的路（rules_propose、acceptProposal 等）；R4d 由 checkCall 执行人同意过的拦路脚本，超时与出错按条目写明的后果放行或拦下，拦下带规则编号记下；m6-script-gate 设计第 24 条的用例。依据：规则板设计 0.10（.agents/tasks/rules/design.md）、docs/ORCHESTRATION.md §16 的余项、m6-script-gate 节点。R4d 还要 M7 E7 的 trunkAdvanceFor（只在 m7 分支），那一段等 M7 合入 main 后接上。",
@@ -11,6 +11,19 @@
     "规则板设计 §9.3 改稿经设计评审通过；改到人定过的做完条件时先交人",
     "人加的规则经主 Agent 提议、人在对话里同意后生效，同意的原话记下",
     "人同意过的拦路脚本由 checkCall 真的执行，超时与出错按条目写明的后果放行或拦下，拦下带规则编号进违规流水；m6-script-gate 设计第 24 条的用例通过，改动在 main 上"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "c6e9bed",
+      "note": "rules-loops merge with the released board design"
+    },
+    {
+      "kind": "test",
+      "ref": "probe scenario rules-script + desktop l4rc3 check 4",
+      "exit": 0,
+      "note": "four /rules accepts via real handlers on the probe; /rules accept two-step + script rule executed on rc.3 desktop"
+    }
   ],
   "history": [
     {
@@ -34,6 +47,27 @@
       "actor": "llm",
       "op": "comment",
       "text": "第 24 条之外的门内跑脚本已落地：人批准的脚本规则在门判完自带动作后经共用执行器起进程（退 0 放行／2 拦下／3 排队），等待单每 60 秒重喂；提交 3d67dc0f，随 299ae6f0 进 main（2026-11-17）。"
+    },
+    {
+      "at": "2026-11-20T05:04:18.990Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "rules/loops board design released and merged (rules-loops 2026-11-02); person-added rules flow propose → chat consent → verbatim record (/rules accept two-step, consent path loops-s5); consented scripts really execute via checkCall with per-entry timeout and late-arrival handling, denials carry rule ids into the violations journal; desktop two-step /rules accept verified (desktop-l4-rc3 check 4)",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "c6e9bed",
+          "note": "rules-loops merge with the released board design"
+        },
+        {
+          "kind": "test",
+          "ref": "probe scenario rules-script + desktop l4rc3 check 4",
+          "exit": 0,
+          "note": "four /rules accepts via real handlers on the probe; /rules accept two-step + script rule executed on rc.3 desktop"
+        }
+      ]
     }
   ]
 }

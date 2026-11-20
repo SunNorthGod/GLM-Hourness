@@ -3,7 +3,7 @@
   "type": "task",
   "title": "自动推进与「目标做完了」的检查",
   "why": "人放行之后主 Agent 自己推进到目标做完，最后有一道整体检查",
-  "status": "doing",
+  "status": "done",
   "parent": "m7",
   "kind": "implement",
   "body": "M7 设计 0.6（.agents/tasks/m7/design.md）§1.2 的 m7-3。验证层：L2、L3；L4。实现顺序与接口见设计 §8 与 §2.5、§3.9。",
@@ -16,6 +16,19 @@
     "重启之后，没交回的活在主 Agent 下一步的提醒里列出来，不会重复派",
     "开发中冒出来的问题按影响分三档：只影响这一个模块、而且能撤回的，主 Agent 自己定，记在图上，下一批问你的时候一并告诉你；改到这个模块的设计方向的，这个模块退回去重新做设计，你看一页新的放行稿、同意之后才继续开发，这个模块里在做的活作废重派，别的模块不受影响；改到整个框架的，整个目标退回去重新定框架，受影响的活先停下，等你同意新的框架",
     "要问你的事攒成一批，一次至多三件，没排进这一批的下一批再问"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "e88da27",
+      "note": "M7 E-step merges culminating in execute row default-enable 2026-11-07"
+    },
+    {
+      "kind": "test",
+      "ref": "probe scenarios drive/goal/design-modules + desktop b10 flow-1",
+      "exit": 0,
+      "note": "completion gates and auto-advance pinned in the floor (626/626); desktop chain walked end to end on an isolated instance (b10rr)"
+    }
   ],
   "history": [
     {
@@ -124,6 +137,27 @@
           "to": "人放行之后主 Agent 自己推进到目标做完，最后有一道整体检查"
         }
       }
+    },
+    {
+      "at": "2026-11-20T05:04:19.596Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "auto-advance and goal-completion gates landed with the M7 merge (2026-11-07, E0-E9): drive without further commands after release, module-gated dispatch, completion gate requiring trunk evidence + no open questions + released modules + whole-goal review, three-question cap, three-stall stop, peak reduce-mode hold, restart reminder; L3 scenarios glm-exec-drive/glm-goal/glm-design-modules pin the gates; the real-desktop bootstrap flow walked the full chain interview to release to dispatch to completion (b10rr 2026-11-12)",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "e88da27",
+          "note": "M7 E-step merges culminating in execute row default-enable 2026-11-07"
+        },
+        {
+          "kind": "test",
+          "ref": "probe scenarios drive/goal/design-modules + desktop b10 flow-1",
+          "exit": 0,
+          "note": "completion gates and auto-advance pinned in the floor (626/626); desktop chain walked end to end on an isolated instance (b10rr)"
+        }
+      ]
     }
   ]
 }

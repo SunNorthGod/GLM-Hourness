@@ -3,7 +3,7 @@
   "type": "task",
   "title": "规矩的升降与周报",
   "why": "每周按数据提议升、降或删掉规矩，人在周报里看到负担有没有减轻",
-  "status": "doing",
+  "status": "done",
   "parent": "m7",
   "kind": "implement",
   "body": "M7 设计 0.4（.agents/tasks/m7/design.md）§1.2 的 m7-8。验证层：L2。实现顺序与接口见设计 §8 与 §3.12。",
@@ -12,6 +12,19 @@
     "周报数出降档审查或不审的活后来返工了几次、集中在哪类改动；哪类返工多，就提议把它加进「必须全审的改动」，人同意才改",
     "规矩该升该降按固定的数提议，连同上一条每周至多 3 件，由主 Agent 在对话里问人",
     "周报是循环板上的一条默认条目，只能看"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "5404c996",
+      "note": "ladder and floor proposals pure functions (m7-8)"
+    },
+    {
+      "kind": "test",
+      "ref": "real desktop weekly cold-fire 2026-11-16 09:00",
+      "exit": 0,
+      "note": "verbatim weekly report delivered; l4rc3 check 6 PASS operate entries"
+    }
   ],
   "history": [
     {
@@ -88,6 +101,27 @@
       "actor": "llm",
       "op": "comment",
       "text": "证据 refs 回填：规矩阶梯与底线提议随 efe930f0 落地；底线加类数据源由 hback-paths cd49ac34 补齐（2026-11-18 回填）。"
+    },
+    {
+      "at": "2026-11-20T05:04:17.779Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "ladder/floor-proposals/DORA merged (5404c996, 0c2c526f); weekly report content narrowed to the four relief numbers by d-metrics-ratios-person-only (person decided); real weekly cold-fire 2026-11-16 09:00 delivered verbatim on the person's desktop (w2 watch); operate.weekly entry verified on board (l4rc3 check 6); floor proposals ride the handback paths (hback-paths landed)",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "5404c996",
+          "note": "ladder and floor proposals pure functions (m7-8)"
+        },
+        {
+          "kind": "test",
+          "ref": "real desktop weekly cold-fire 2026-11-16 09:00",
+          "exit": 0,
+          "note": "verbatim weekly report delivered; l4rc3 check 6 PASS operate entries"
+        }
+      ]
     }
   ]
 }
