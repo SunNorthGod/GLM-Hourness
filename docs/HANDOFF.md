@@ -209,16 +209,18 @@ Cursor 的 shell 会注入 `GIT_CONFIG_COUNT`、`GIT_CONFIG_KEY_0`、`GIT_CONFIG
 
 ## 11. 自举移交（2026-11-21）
 
-本节写给接手的编排层主 Agent（桌面 DSH 会话）。世界状态：main `c0d07e52`（2026-11-21，origin 与 github 同点）；build / preflight / npm test 全绿（`.llm/logs/pb2-build.log`、`pb2-preflight.log`、`pb2-test.log`），探针 635/635（`pb2-probe.log`），棘轮 eslint 57 / knip 18 / jscpd 1。人 2026-11-20 的全部定案已落图与树：六条行为批注、m8 条款 6 的四种事、Q3 三十七题标题改写（图提交 `8188dca9`）；preboot 批随 `7cb089bd` 合入——G15 配额停等、G18 目标完成的一行话、标定结果记配置与跨配置拒绝、复审简报的 grader 三件（图批注在 `m7-3` 与 `reading-digest`）。
+本节写给接手的编排层主 Agent（桌面 DSH 会话）。世界状态：基于远端同点 `a8fb8d5c`（2026-11-21）完成全面修复与增强——清理 `.llm/b10-l4` 与试验残留；修复 P0 阻塞项（`abandoned` 废弃接管不再写出 `state.closed`、`.llm/scratch/` 内自清理删除放行、worktree 公共目录判定、`personaName` 干净区隔离接线、G15 配额计时修复、默认禁用宿主 `agent-team`/`tool-agent-team` 隐藏个人/团队开关）；双路由平齐化（免费 `glm-start-plan` 与个人 `glm-zcode` 共享 `/glm-login` 凭证、仅暴露 `glm-5.3` 与 `glm-5.3-flash`、对齐 ZCode `3.19.1` 免费额度读取 `/api/v1/zcode-plan/billing/balance`、余额空/过期/并发满自动切 Coding Plan 并经 `glmHournessStartPlan` 广播）；执行行 StartPlan 优先调度、`/dispatch-mode` 三档偏好（`eco`/`adaptive`/`burn`）与面板 UI/对比度修复；新增右侧栏「子智能体」实时监测页签（`graphLive` v5、`hournessExecuteBoard`、`.llm/execute/live-board.json`、FlowBar 入口胶囊与偏好切换器）。
 
-接手流程按接管行的设计走：`/wish` 开接管（若只当上主 Agent、没开始读项目，补发 `/hourness-init`），接管流自己读图与默认表、有缺口才提议、愿望经访谈转成目标。门槛决策 `d-finish-then-bootstrap` 已满足（同日批注）。第一读按 §9 的起步读法；此后进度只看图（`npm run -s graph -- open`）。
+门禁与验证（2026-11-21）：`npm run build`（含双包 `ui/client.js`）、`npm run preflight`（22 行全部合拢）与全量 `npm test`（`test:1 && test:2 && test:3`）全绿；`check-verbatim` 502/0 零偏差，棘轮持平（eslint 57 / knip 18 / jscpd 1），`check-secrets` 零泄露。DSH `0.2.2-rc.5` headless 探针全量在非交互终端的 Windows RestrictedToken 沙盒下跑得 563/635（72 项失败均发生在 `pwsh.exe` 触发 `0xC0000142` 的场景）；以 `DSH_PERMISSION_MODE=danger-full-access` 分组复测 `bootstrap-existing,glm-exec-modules,glm-exec-review` 得 34/34，其余 25 个受 `pwsh` 影响的场景得 218/220（2 项失败为 `--only` 未带对照组 `non-glm` 的跨场景检查，该两项在全量 RUN 中已通过）；仅 `bootstrap-trial` 的 3 项沙盒受限校验仍受宿主 `0xC0000142` 遮蔽。
 
-桌面装载：profile 以 `link:` 指向本检出的 `packages/*`，加载 `dist/` 与 `packages/*/ui/client.js`；现行构建 2026-11-21 完成于合并树，开机即现行。此后拉到改包布局的提交照 §1 的既定次序：先关桌面版，`npm run build`，再启动。
+接手流程按接管行的设计走：`/wish` 开接管（若只当上主 Agent、没开始读项目，补发 `/hourness-init`），接管流自己读图与默认表、有缺口才提议、愿望经访谈转成目标。门槛决策 `d-finish-then-bootstrap` 已满足。第一读按 §9 的起步读法；此后进度只看图（`npm run -s graph -- open`）。
 
-纪律不变：`~/.dsh` 不改（AGENTS.md 第 6 条）；桌面验证只走隔离实例加 CDP（§6），`#32770` 停手叫人；探针与标定不并行（§6）。`DEVELOPMENT.md` §7 的 2026-11-19（rc-* 日志消失复现，判外置快照进程，看门狗 `.llm/logs-watch/watch.mjs` 可复核）与 2026-11-20（junction 先拆再 robocopy，主检出 node_modules 曾被穿删后修复）两行是现行纪律。
+桌面装载：profile 以 `link:` 指向本检出的 `packages/*`，加载 `dist/` 与 `packages/*/ui/client.js`；先关桌面版，`npm run build`，再启动。
 
-等真火与真机的事（图上 waiting，此处只列触发条件特殊的）：docs-at-hand 两节点等 18:05 未同步日更真火，桌面须开机跨过 18:05；m7-7 巡检等 02:30 真夜间冷火，同一批开机跨夜；lessons 真实 profile 经验页 L4、onboarding 逐条件桌面核对、rc.3 行退役启动预检（ORCHESTRATION §10.6）与 glm-subdir-instructions 缺省值去留攒下一批桌面批次；m8-ui-audit 与面板第二阶段随面板线；comms-split 实现搁置（设计驻留 `.worktrees/comms-split`）。别动 `.worktrees/ablation-trial`（§10 第 7 条仍有效）。
+纪律不变：`~/.dsh` 不改（`AGENTS.md` 第 6 条）；桌面验证只走隔离实例加 CDP（§6），`#32770` 停手叫人；探针与标定不并行（§6）。`DEVELOPMENT.md` §7 的 2026-11-19（rc-* 日志外置快照进程看门狗）与 2026-11-20（junction 先拆再复制）两行是现行纪律。
 
-人的手头事：npm 0.3.1 发版的 OTP（不挡自举——bundle 是 link 安装）；第一跑建议避开高峰 14:00–18:00。桌面侧要不要人设、人设文本是什么，由人在设计行的 `persona` 配置里定（插件管理器可改，缺省空）；仓库文件不带人设（AGENTS.md 干净区）。
+等真火与真机的事（图上 waiting，此处只列触发条件特殊的）：docs-at-hand 两节点等 18:05 未同步日更真火，桌面须开机跨过 18:05；m7-7 巡检等 02:30 真夜间冷火，同一批开机跨夜；lessons 真实 profile 经验页 L4、onboarding 逐条件桌面核对、rc.3 行退役启动预检（`ORCHESTRATION.md` §10.6）与 `glm-subdir-instructions` 缺省值去留攒下一批桌面批次；m8-ui-audit 与面板第二阶段随面板线；`comms-split` 实现搁置（设计驻留 `.worktrees/comms-split`）。别动 `.worktrees/ablation-trial`（§10 第 7 条仍有效）。
+
+人的手头事：npm 0.3.1 发版的 OTP（不挡自举——bundle 是 link 安装）；第一跑建议避开高峰 14:00–18:00。桌面侧要不要人设、人设文本是什么，由人在设计行的 `persona` 配置里定（插件管理器可改，缺省空）；仓库文件不带人设（`AGENTS.md` 干净区）。
 
 ZCode 侧编排方在自举后退出；它的会话内记忆不随移交——项目事实都在仓库（图、docs、`.agents/tasks/` 的设计稿与实施记录）。
