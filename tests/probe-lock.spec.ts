@@ -51,7 +51,10 @@ const take = async (setup: ProbeLockSetup): Promise<ProbeLock | 'busy'> => {
 const TIGHT = { waitMs: 400, pollMs: 20, attemptMs: 300, retryMs: 5, graceMs: 50 }
 
 function withRoot(body: (root: string) => void | Promise<void>): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), 'probe-lock-'))
+  // The prefix must not carry the slots' names: a random suffix that begins
+  // with "2" would put "probe-lock-2" into every logged path and defeat the
+  // guards that tell the two slots' lines apart.
+  const root = mkdtempSync(join(tmpdir(), 'lock-spec-'))
   return Promise.resolve()
     .then(() => body(root))
     .finally(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 }))
