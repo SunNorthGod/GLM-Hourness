@@ -576,6 +576,32 @@ test('renderReviewBrief: a reopened task\u2019s cause rides in the context with 
   assert.ok(!renderReviewBrief(reviewBriefInput(graph)).text.includes('reopened after being done'), 'no cause, no line')
 })
 
+test('renderReviewBrief: the grader-calibration lines stand in the constraints — one yes/no per item, the boundary said, nothing to lean on but the change (reading-digest 2026-11-20 ③)', () => {
+  const brief = renderReviewBrief(reviewBriefInput(plain()))
+  const trio = [
+    '- Judge each acceptance:<i> as one yes/no question: a finding shows one item unmet, or it does not; do not merge items into one finding.',
+    '- When an item could pass or fail on an unstated edge case, say the boundary you judged by in the finding\'s "what": what counts as met, what does not.',
+    '- Judge only what the change and your evidence show. The brief carries no reference solution and no expected verdict for the reviewed task; treat none as existing.',
+  ]
+  for (const line of trio) assert.ok(brief.text.includes(line), line)
+  assert.ok(brief.text.indexOf(trio[0]) > brief.text.indexOf('## Constraints') && brief.text.indexOf(trio[2]) < brief.text.indexOf('## Done when'), 'the lines stand in the constraints section')
+})
+
+test('renderAcceptanceBrief carries the same grader lines, worded for the goal (reading-digest 2026-11-20 ③)', () => {
+  const graph = withNode(plain(), { ...get(plain(), 'goal-1'), acceptance: ['the blog builds'] })
+  const acceptance = renderAcceptanceBrief({ graph, goal: get(graph, 'goal-1'), childId: 'hz-goal-1-acc-a1-abcdef', trunk: { branch: 'main', sha: 'abcdef0123456789abcdef0123456789abcdef01' }, gateCommands: [] })
+  assert.ok(acceptance.text.includes('- Judge each acceptance:<i> as one yes/no question: a finding shows one item unmet, or it does not; do not merge items into one finding.'))
+  assert.ok(acceptance.text.includes('no reference solution and no expected verdict for the goal; treat none as existing.'))
+  assert.ok(acceptance.text.includes('say the boundary you judged by in the finding\'s "what"'))
+})
+
+test('renderReviewBrief: a light review carries the grader lines too — the depth line narrows what this round covers, not the three disciplines', () => {
+  const graph = plain()
+  const brief = renderReviewBrief({ graph, task: get(graph, 'task-1'), reviewed: get(graph, 'task-1'), childId: 'hz-review-1-a1-k3x9ab', depth: 'light', handback: { head: 'abc123def456', base: 'aaa111bbb222', status: 'done' }, gateCommands: [] })
+  assert.ok(brief.text.includes('- Judge each acceptance:<i> as one yes/no question'))
+  assert.ok(brief.text.includes('Read the change; report only findings that meet one of the three blocking criteria'))
+})
+
 test('renderBrief: a reopened task carries the cause sentence with the last reopen\u2019s reason, every task carries the standing leave-nothing sentence, and the length stays within the limit (m7-habits)', () => {
   const reopen = { at: at(5), actor: 'llm' as const, op: 'status' as const, from: 'done' as const, to: 'doing' as const, reason: 'the feed dropped items again' }
   const graph = plain()

@@ -544,6 +544,19 @@ export function renderBrief(input: BriefInput): Brief {
 
 const DECISION_TEXT_LIMIT = 400
 
+/**
+ * The grader-calibration lines every reviewer's brief carries (M7 design
+ * §3.7's checklist, reading-digest 2026-11-20 ③): criteria judged one
+ * yes/no at a time, the boundary a borderline item was judged by said in the
+ * finding, and nothing to lean on but the change and the evidence — the
+ * brief holds no reference solution and no expected verdict.
+ */
+const graderLines = (items: string, owner: string): readonly string[] => [
+  `- Judge each ${items} as one yes/no question: a finding shows one item unmet, or it does not; do not merge items into one finding.`,
+  `- When an item could pass or fail on an unstated edge case, say the boundary you judged by in the finding's "what": what counts as met, what does not.`,
+  `- Judge only what the change and your evidence show. The brief carries no reference solution and no expected verdict for ${owner}; treat none as existing.`,
+]
+
 export interface DesignReviewInput {
   readonly graph: LoadedGraph
   readonly childId: string
@@ -595,6 +608,7 @@ export function renderDesignReviewBrief(input: DesignReviewInput): Brief {
     '- You write nothing except your report under .hourness/ in your working directory.',
     '- Questions that need the main agent: ask_main (state the assumption you will use if no answer comes). Do not end your turn to wait.',
     '- A finding blocks only when it hangs on acceptance:<i> of the module, on irreversible-loss, on failure-plan, or on direction:<i> when the design violates direction item <i>. Everything else is not blocking.',
+    ...graderLines('direction:<i> and acceptance:<i> of the module', 'the module'),
     '- checked must cover every direction:<i> above and every acceptance:<i> of the module, each with the evidence you looked at.',
     '',
     '## Done when',
@@ -660,6 +674,7 @@ export function renderReviewBrief(input: ReviewBriefInput): Brief {
     `- You write nothing: the worktree is read-only for you. Long notes go to ".hourness/${input.childId}.md"; only the verdict comes back.`,
     '- Questions that need the main agent: ask_main (state the assumption you will use if no answer comes).',
     '- Blocking criteria (docs/DEVELOPMENT.md §1.1): acceptance:<i> names the unmet acceptance item of the reviewed task; irreversible-loss; failure-plan. A finding that names none of the three does not block.',
+    ...graderLines('acceptance:<i>', 'the reviewed task'),
     '- Component docs: if the handback names a component whose AGENTS.md was not updated, check that "still true" holds; a doc that carries a to-do list, progress or decision conclusions is misplaced. A stale doc is a non-blocking finding unless an acceptance item covers docs.',
     `- How far this round goes: ${depthLine}`,
     '',
@@ -732,6 +747,7 @@ export function renderAcceptanceBrief(input: AcceptanceBriefInput): Brief {
     flows.length > 0
       ? '- A finding blocks only when its criterion is acceptance:<i>, the item of the goal it shows unmet, or flow:<i>, a flow whose walk does not hold up. Everything else is not blocking.'
       : '- A finding blocks only when its criterion is acceptance:<i>, the item of the goal it shows unmet. Everything else is not blocking.',
+    ...graderLines('acceptance:<i>', 'the goal'),
     flows.length > 0
       ? '- checked must hold one entry per item below, written "acceptance:<i> <evidence>" or "flow:<i> <evidence>": the commit, the check log or the file you looked at.'
       : '- checked must hold one entry per item below, written "acceptance:<i> <evidence>": the commit, the check log or the file you looked at.',
