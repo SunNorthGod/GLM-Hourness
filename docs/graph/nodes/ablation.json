@@ -3,7 +3,7 @@
   "type": "task",
   "title": "注入文字的消融对比",
   "why": "逐段去掉注入给模型的文字再比结果，知道哪段真有用、哪段可以删",
-  "status": "doing",
+  "status": "done",
   "parent": "orch",
   "kind": "test",
   "body": "按 .agents/tasks/prompt-audit/report.md §8：先修 risk-calib-read（运行目录移到仓库外的临时目录，验收脚本放在被测模型够不着的地方），在 scripts/calibrate/ 加只在标定时加载的消融开关，每一臂先用 L3 探针核对请求里恰好少了或多了那一段；A0 现状重新测基线（旧基线 4cb8799 早于图工具）。臂 A1–A5 见报告 §8.2，两档模型，每格一开始 5 次（question-30 B），变化不明确的臂再加次数。积分不受限（norm-decision-tiers 的常设授权）；尽量补一道完成率会失败的较难任务，取自真实踩过的坑。结论回到 question-31 的整理与 Dynamic Behavior 的去留。改 scripts/calibrate 与 scripts/probe，split 第 5 步也改过它们，所以排在 split 合入之后。",
@@ -24,6 +24,23 @@
     {
       "type": "source",
       "to": "risk-calib-read"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "5cd05adf",
+      "note": "results.md recount - 176 valid runs, per-arm-per-model tables, 4513.65 credits"
+    },
+    {
+      "kind": "commit",
+      "ref": "696b4e09",
+      "note": "per-arm results series (A1-A5 both models, origin/ablation then main)"
+    },
+    {
+      "kind": "commit",
+      "ref": "0472bbb6",
+      "note": "DESIGN.md 5.2a per-section keep/drop conclusions; 2026-11-13 person approved closing per the table; L3 ablation-A0..A5 pin per-arm text placement"
     }
   ],
   "history": [
@@ -121,6 +138,31 @@
       "actor": "llm",
       "op": "comment",
       "text": "A2/A3 桌面 L4（批次二，2026-11-10，main 1044890d）：A2 单句 Workspace rules 真会话逐字上桌（模型自证该节仅一句）、guard 四段拒绝不变；A3 翻转后真桌面检索链成立——首步请求带 44 个延迟工具名单，三次 LocalToolSearch select 落地，graph_comment 写图 rev 更新、memory_store 自纠后存成、query 命中；派发链端到端照常（worktree 提交→交回→task done→完成门禁拒绝过早 complete）。A2/A3 采纳闭环。"
+    },
+    {
+      "at": "2026-11-20T05:02:02.869Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "six-arm ablation complete: 182 runs (176 valid), per-cell tables, layered permutation stats, event-stream sweep clean, per-clause verdicts in DESIGN 5.2a with the person's 2026-11-13 approval (A2+A3 adopted, A1/A4/A5 kept, production text verified clean of experiment injections)",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "5cd05adf",
+          "note": "results.md recount - 176 valid runs, per-arm-per-model tables, 4513.65 credits"
+        },
+        {
+          "kind": "commit",
+          "ref": "696b4e09",
+          "note": "per-arm results series (A1-A5 both models, origin/ablation then main)"
+        },
+        {
+          "kind": "commit",
+          "ref": "0472bbb6",
+          "note": "DESIGN.md 5.2a per-section keep/drop conclusions; 2026-11-13 person approved closing per the table; L3 ablation-A0..A5 pin per-arm text placement"
+        }
+      ]
     }
   ]
 }
