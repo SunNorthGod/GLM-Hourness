@@ -1190,6 +1190,7 @@ export function createDrive(deps: DriveDeps): Drive {
             if (done.ok) {
               evidence += 1
               emitMetric({ event: 'execute.goal', goal: toMetricsId(goal.id), op: 'complete' }, executeMetricWhere(place.project, session))
+              await completionTell(place, session, goal.id)
             }
             else deps.report(session, 'degraded', `对账时目标的完成写不进图（${goal.id}）：${done.why ?? ''}`)
           }
@@ -1255,7 +1256,10 @@ export function createDrive(deps: DriveDeps): Drive {
           const current = await engine.load()
           return engine.apply('harness', { op: 'status', id: graphGoal, rev: current.revisions.get(graphGoal) ?? '', to: 'done', evidence: [{ kind: 'check', ref: 'hourness completion gate', exit: 0, note: credential.note }], reason: `the completion gate passed (call ${credential.callId})` })
         })
-        if (done.ok) emitMetric({ event: 'execute.goal', goal: toMetricsId(graphGoal), op: 'complete' }, executeMetricWhere(place.project, agent.session?.id ?? agent.id))
+        if (done.ok) {
+          emitMetric({ event: 'execute.goal', goal: toMetricsId(graphGoal), op: 'complete' }, executeMetricWhere(place.project, agent.session?.id ?? agent.id))
+          await completionTell(place, agent.session?.id ?? agent.id, graphGoal)
+        }
         else deps.report(agent.id, 'degraded', `目标的完成写不进图（${graphGoal}）：${done.why ?? ''}`)
         return
       }
@@ -1268,6 +1272,26 @@ export function createDrive(deps: DriveDeps): Drive {
     const text = reason.code === 'round-limit' ? `goal 到了轮次上限（round-limit）：${reason.message}` : `goal 被阻塞（${reason.code}）：${reason.message}`
     const written = await comment(place.graphDir, graphGoal, text)
     if (!written.ok) deps.report(agent.id, 'degraded', `goal 阻塞的批注写不进图（${graphGoal}）：${written.why ?? ''}`)
+  }
+
+  /**
+   * The completion tell (G18, graph m7-3 comment 2026-11-20): one line for
+   * the person in the conversation, carrying the goal's title and the
+   * whole-goal acceptance review's conclusion. Sent to the holder when the
+   * completion is written on the graph; a tell that cannot be delivered is
+   * said in the row health.
+   */
+  async function completionTell(place: Place, session: string | undefined, graphGoal: string): Promise<void> {
+    const graph = await deps.cache.load(place.graphDir)
+    const goal = graph.nodes.get(graphGoal)
+    if (goal === undefined) return
+    const latest = acceptanceRounds(goal).at(-1)
+    const review = latest === undefined
+      ? '整体验收审查通过'
+      : `整体验收审查第 ${latest.k} 轮通过，审查的主干提交 ${latest.commit.slice(0, 12)}`
+    const line = `目标「${goal.title}」（${graphGoal}）完成：${review}。`
+    const why = toHolder(deps.lookup, place.graphDir, createUserNotice('glm-hourness-execute', '目标完成', line, { hournessExecute: { event: 'goal-complete', goal: graphGoal } }))
+    if (why !== undefined && session !== undefined) deps.report(session, 'degraded', `目标完成的一行话没送到主 Agent：${why}`)
   }
 
   // ---- await_human and the batch mark (§3.9.5, §3.9.7, D8) ----

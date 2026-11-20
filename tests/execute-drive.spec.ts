@@ -95,6 +95,11 @@ test('update_goal complete with gaps is denied with the gaps and the goal stays 
   const entry = done.history.at(-1)
   assert.equal(entry?.actor, 'harness')
   assert.deepEqual(entry?.evidence, [{ kind: 'check', ref: 'hourness completion gate', exit: 0, note: '0 tasks, 0 advances, acceptance review hz-goal-1-acc-a1-abcdef, call call-done' }])
+  // The completion tell (G18): one line in the conversation with the goal's title and the review's conclusion.
+  const tell = rig.live.woken.find(entry => entry.kind === 'glm-hourness-execute' && entry.text.startsWith('目标「'))
+  assert.ok(tell !== undefined, 'the completion tell reached the holder')
+  assert.equal(tell.text, `目标「Static blog」（goal-1）完成：整体验收审查第 1 轮通过，审查的主干提交 ${head.slice(0, 12)}。`)
+  assert.ok(!tell.text.includes('\n'), 'the tell is one line')
 }))
 
 /** main-1 completes its drive goal without a credential: only the outside-the-gate comment, the graph goal stays open. */
