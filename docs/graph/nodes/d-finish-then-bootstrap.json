@@ -42,6 +42,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "人 2026-11-13 定：自举暂缓——先在 ZCode 侧继续完善（L1-L3；审计线细扫后按其清单排批次），不进 DSH 自举，桌面批次（L4 三、metrics 真桌面核对、A3 真实会话核对）一并等安排。本决定的凭据前提不变（B8 开工凭据 23acb4d1）。"
+    },
+    {
+      "at": "2026-11-20T19:15:19.753Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-21 满足：preboot 批（G15 配额停等、G18 完成一行话、标定配置戳、复审 grader 三件）随 7cb089bd 合入 main，人 2026-11-20 全部定案已落图与树；主检出门禁 build/preflight/test 三绿、探针 635/635（.llm/logs/pb2-*.log），双推 origin 与 github（c0d07e52）。HANDOFF 0.9 第 11 节写好自举移交状态。门槛已过，自举只等人开机发 /wish。"
     }
   ]
 }
