@@ -23,6 +23,7 @@ import { PEAK_END_LABEL, PEAK_HOURS, peakWindowAt } from '../glm-llm/credits.ts'
 import { metricsWhere, type GlmMetricSink } from '../glm-llm/metrics.ts'
 import type { GlmBodies } from '../shared/metrics.ts'
 import { PEAK_MODE_SERVICE, type PeakLevel, type PeakModeService } from '../shared/peak-mode.ts'
+import { isStartPlanProvider, sessionRoute } from '../shared/route.ts'
 import { installStepNotice } from '../shared/step-notice.ts'
 import { wrapSystemReminder } from '../shared/zcode-notice.ts'
 
@@ -149,7 +150,8 @@ export function installPeakReminder(agent: AgentLike, eligible: () => boolean, n
       // The sink never throws; the notice goes out whatever the journal does.
     }
   }
-  return installStepNotice(agent, 'peak reminder', eligible, (history) => {
+  const stepEligible = (): boolean => eligible() && !isStartPlanProvider(sessionRoute(agent.session)?.provider)
+  return installStepNotice(agent, 'peak reminder', stepEligible, (history) => {
     const window = peakWindowToAnnounce(history, now())
     if (window === undefined) return undefined
     const read: PeakModeRead = peakMode === undefined ? { note: 'no-service' } : peakMode()

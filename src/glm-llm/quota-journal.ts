@@ -145,7 +145,7 @@ function recordOf(value: unknown): QuotaRecord | undefined {
       if (login !== undefined && (typeof login !== 'string' || !HEX16.test(login))) return undefined
       const who = login === undefined ? {} : { login }
       if ((status === 401 || status === 403) && code === undefined) return { at, kind: 'login-rejected', path, status, ...who }
-      if (status === undefined && code === PROJECT_TOKEN_CODES.loginRequired) return { at, kind: 'login-rejected', path, code, ...who }
+      if (status === undefined && (code === PROJECT_TOKEN_CODES.loginRequired || code === '3012')) return { at, kind: 'login-rejected', path, code, ...who }
       return undefined
     }
     default:

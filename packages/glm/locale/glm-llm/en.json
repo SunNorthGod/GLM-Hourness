@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "GLM native channel",
-    "description": "The model channel that calls GLM the way ZCode 3.17.1 does: request signing, the credential stored by /glm-login, and streamed decoding."
+    "description": "The model channel that calls GLM the way ZCode does: peer routes for Coding Plan and Start Plan (StartPlan-first for GLM-5.3 and GLM-5.3-Flash with automatic failover to Coding Plan), request signing, encrypted credentials from /glm-login, and streamed decoding."
   }
 }

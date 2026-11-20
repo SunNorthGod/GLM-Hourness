@@ -15,5 +15,5 @@ import { installChannel } from './channel.js'
 export const inject = ['slots', 'remote', 'remote.commands']
 
 export function apply(ctx) {
-  installChannel(ctx)
+  return installChannel(ctx)
 }

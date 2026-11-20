@@ -53,13 +53,16 @@ test('adapter model catalog satisfies the DSH contract at runtime', async () => 
   assert.deepEqual(target, { width: 640, height: 480, maxBytes: 3_932_160 })
 })
 
-test('input modalities are truthful per model: GLM-5.3 text-only, GLM-5.3-Flash text and image', async () => {
+test('input modalities and model catalogs expose GLM-5.3 and GLM-5.3-Flash on both routes', async () => {
   const { fs } = memoryStore()
   const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', journal: memoryJournal(), fetchImpl: makeUpstream(), storeFs: fs })
   const listed = Object.fromEntries((await adapter.listModels('glm-zcode')).map(model => [model.id, model.inputModalities]))
   assert.deepEqual(listed, { 'glm-5.3': ['text'], 'glm-5.3-flash': ['text', 'image'] })
+  const startListed = Object.fromEntries((await adapter.listModels('glm-start-plan')).map(model => [model.id, model.inputModalities]))
+  assert.deepEqual(startListed, { 'glm-5.3': ['text'], 'glm-5.3-flash': ['text', 'image'] })
   assert.deepEqual((await adapter.resolveModel('glm-zcode', 'glm-5.3')).inputModalities, ['text'])
   assert.deepEqual((await adapter.resolveModel('glm-zcode', 'glm-5.3-flash')).inputModalities, ['text', 'image'])
+  assert.equal((await adapter.resolveModel('glm-start-plan', 'glm-5.3')).context?.contextWindow, 512_000)
   // An id outside the catalog is not claimed to accept images.
   assert.deepEqual((await adapter.resolveModel('glm-zcode', 'glm-next')).inputModalities, ['text'])
 })
@@ -512,11 +515,20 @@ test('a failing handshake is tried once across consecutive requests, which go ou
   assert.ok(model.every(entry => headerOf(entry, 'X-Client-Sig') === undefined))
 })
 
-test('start-plan is not signed: no handshake', async () => {
+const START_PLAN_UPSTREAM = 'https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages'
+
+test('start-plan targets the zcode-plan endpoint with Bearer JWT, no x-api-key, no signing handshake, and 3.17.1 headers', async () => {
   // 3.16.3 `requiresClientRequestSigning` is false for the start-plan access mode.
-  const wire = await runOnGateway({ privateCipher: await sealedSigningKey(FIRST_PAT, PAT_KEY_ID) }, { stored: { ...credential, jwt: 'a.b.c' }, plan: 'start-plan' })
+  const wire = await runOnGateway({ privateCipher: await sealedSigningKey(FIRST_PAT, PAT_KEY_ID) }, { stored: { ...credential, jwt: '  a.b.c  ' }, plan: 'start-plan' })
   assert.equal(wire.filter(isHandshake).length, 0)
-  assert.equal(wire.filter(isModelRequest).length, 1)
+  const sent = wire.filter(entry => entry.url === START_PLAN_UPSTREAM)
+  assert.equal(sent.length, 1)
+  const first = sent[0]
+  assert.ok(first !== undefined)
+  assert.equal(headerOf(first, 'authorization'), 'Bearer a.b.c')
+  assert.equal(headerOf(first, 'x-api-key'), undefined)
+  assert.match(headerOf(first, 'user-agent') ?? '', /^ZCode\/3\.17\.1 ai-sdk\/provider-utils\/4\.0\.27 /)
+  assert.equal(headerOf(first, 'x-zcode-query-source'), 'main_turn')
 })
 
 test('routing headers follow the signature block, and a mapped handshake URL is routed like the model request', async () => {
@@ -685,11 +697,25 @@ test('the session title goes out as 3.16.3 generateText sends it: no stream key,
   assert.deepEqual(finish?.type === 'finish' ? finish.replayState?.blocks : undefined, [{ type: 'reasoning', signature: 'c2ln' }, { type: 'text' }])
 })
 
-test('start-plan keeps its earlier body: the DSH model id, no thinking, no output_config, the DSH max_tokens', async () => {
-  const body = await bodyOf({ reasoningEffort: 'max', maxTokens: 4096 }, 'start-plan')
-  assert.equal(body.model, 'glm-5.3')
-  assert.equal('thinking' in body || 'output_config' in body, false)
-  assert.equal(body.max_tokens, 4096)
+test('start-plan uses unified ZCode wire rules: official model casing, thinking/output_config, tool_choice, and non-streaming session-title', async () => {
+  const tools = [{ name: 'Read', description: 'Read a file', parameters: { type: 'object' } }]
+  const body = await bodyOf({ model: 'glm-5.3-flash', tools, reasoningEffort: 'max', maxTokens: 4096 }, 'start-plan')
+  assert.equal(body.model, 'GLM-5.3-Flash')
+  assert.deepEqual(body.thinking, { type: 'enabled' })
+  assert.deepEqual(body.output_config, { effort: 'max' })
+  assert.deepEqual(body.tool_choice, { type: 'auto' })
+  assert.equal(body.max_tokens, 128_000)
+
+  const glm53Low = await bodyOf({ model: 'glm-5.3', reasoningEffort: 'low' }, 'start-plan')
+  assert.equal(glm53Low.model, 'GLM-5.3')
+  assert.deepEqual(glm53Low.thinking, { type: 'enabled' })
+  assert.deepEqual(glm53Low.output_config, { effort: 'low' })
+
+  const titleBody = await bodyOf({ model: 'glm-5.3-flash', purpose: 'session-title', reasoningEffort: 'max' }, 'start-plan')
+  assert.equal('stream' in titleBody, false)
+  assert.deepEqual(titleBody.thinking, { type: 'enabled' })
+  assert.deepEqual(titleBody.output_config, { effort: 'low' })
+  assert.equal(titleBody.max_tokens, 5_000)
 })
 
 /** A history whose last answer recorded `used` tokens of context, then one user message of one estimated token. */
@@ -716,8 +742,8 @@ test('the step window is min(configured window, catalog window); compaction and 
   assert.equal((await bodyOf({ messages: historyUsing(990_000) }, undefined, 2_000_000)).max_tokens, 1_000_000 - 990_001 - 1_000)
   assert.equal((await bodyOf({ purpose: 'compaction', messages: historyUsing(590_000) }, undefined, 600_000)).max_tokens, 20_000)
   assert.equal((await bodyOf({ purpose: 'session-title' }, undefined, 600_000)).max_tokens, 5_000)
-  // start-plan keeps the DSH max_tokens whatever the window.
-  assert.equal((await bodyOf({ maxTokens: 4096, messages: historyUsing(590_000) }, 'start-plan', 600_000)).max_tokens, 4096)
+  // start-plan follows the same window budget cap.
+  assert.equal((await bodyOf({ messages: historyUsing(590_000) }, 'start-plan', 600_000)).max_tokens, 600_000 - 590_001 - 1_000)
 })
 
 test('the context window declared to DSH: 512000 by default, else the configured value, for every model id', async () => {
@@ -979,10 +1005,306 @@ test('loginIdentity: the fingerprint of the login token, absent without a login 
   assert.match(loginFingerprintOf('oauth-tok'), /^[0-9a-f]{16}$/)
   assert.notEqual(loginFingerprintOf('oauth-tok'), loginFingerprintOf('oauth-tok2'))
   assert.deepEqual(await identityOf(undefined), { kind: 'absent' })
-  assert.deepEqual(await identityOf({ version: 2, provider: 'bigmodel', jwt: 'plan.jwt.fake' }), { kind: 'absent' })
+  assert.deepEqual(await identityOf({ version: 2, provider: 'bigmodel', jwt: 'plan.jwt.fake' }), { kind: 'present', fingerprint: loginFingerprintOf('plan.jwt.fake') })
+  assert.deepEqual(await identityOf({ version: 2, provider: 'bigmodel', jwt: '  ' }), { kind: 'absent' })
   assert.deepEqual(await identityOf({ version: 2, provider: 'bigmodel', oauthAccessToken: '  ', userId: 'user-1' }), { kind: 'absent' })
   assert.deepEqual(await identityOf('this is not a credential'), { kind: 'absent', unreadable: true })
   assert.deepEqual(await identityOf(credential, { stat: () => Promise.reject(new Error('EPERM: operation not permitted')) }), { kind: 'unknown', reason: 'EPERM: operation not permitted' })
   assert.deepEqual(await identityOf(credential, { stat: () => Promise.resolve({ size: 0, mtimeMs: 1 }) }), { kind: 'absent' }, 'an emptied file is absent without being decrypted')
   assert.deepEqual(await identityOf(credential, { stat: () => Promise.resolve(undefined) }), { kind: 'absent' })
+})
+
+test('dual-peer adapter routes glm-zcode to coding-plan and glm-start-plan to start-plan with session cwd and auxiliary prefix skip', async () => {
+  const store = memoryStore()
+  await saveCredential(store.fs, STORE_PATH, { ...credential, jwt: '  peer.jwt.tok  ' })
+  const wire: WireRequest[] = []
+  const baseFetch = gatewayFetch(wire, {})
+  const fetchImpl: typeof fetch = (input, init) => {
+    if (urlOf(input) === START_PLAN_UPSTREAM && typeof init?.body === 'string' && (JSON.parse(init.body) as { stream?: boolean }).stream !== true) {
+      wire.push({ url: urlOf(input), headers: sentHeaders(init), body: init.body })
+      return Promise.resolve(Response.json(TITLE_MESSAGE))
+    }
+    return baseFetch(input, init)
+  }
+  const adapter = new ZcodeAdapter({
+    home: 'C:/ws/.llm',
+    journal: memoryJournal(),
+    fetchImpl,
+    storeFs: store.fs,
+    env: isolatedEnv(),
+    sessionHeader: () => ({ cwd: 'C:/session/project' }),
+  })
+  assert.equal((await adapter.status('glm-start-plan')).logged, true)
+  for await (const chunk of adapter.stream({ ...request(), provider: 'glm-zcode', model: 'glm-5.3', sessionId: 'session-dual' } as never)) void chunk
+  for await (const chunk of adapter.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3-flash', sessionId: 'session-dual' } as never)) void chunk
+  for await (const chunk of adapter.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3-flash', sessionId: 'session-dual', purpose: 'session-title' } as never)) void chunk
+
+  assert.equal(wire.filter(isModelRequest).length, 1)
+  const startCalls = wire.filter(entry => entry.url === START_PLAN_UPSTREAM)
+  assert.equal(startCalls.length, 2)
+  const [firstCall, secondCall] = startCalls
+  assert.ok(firstCall !== undefined && secondCall !== undefined)
+  const stepBody = JSON.parse(firstCall.body ?? '{}') as { system: Array<{ text: string }>, messages: Array<{ content: Array<{ text?: string }> }> }
+  assert.ok(stepBody.system[2]?.text.includes('- Primary working directory: C:/session/project'))
+  assert.ok(stepBody.messages[0]?.content[0]?.text?.includes('# currentDate'))
+
+  const titleBody = JSON.parse(secondCall.body ?? '{}') as { stream?: boolean, messages: Array<{ content: Array<{ text?: string }> }> }
+  assert.equal(titleBody.stream, undefined)
+  assert.equal(titleBody.messages[0]?.content[0]?.text?.includes('# currentDate') ?? false, false)
+})
+
+test('start-plan 401/3012 records login-rejected, and legacy single-route start-plan 429 does NOT write Coding Plan upstream-limit to quota.jsonl', async () => {
+  const runStartError = async (status: number, body: string) => {
+    const store = memoryStore()
+    const journal = memoryJournal()
+    await saveCredential(store.fs, STORE_PATH, { ...credential, jwt: 'start.jwt.fake' })
+    const adapter = new ZcodeAdapter({
+      home: 'C:/ws/.llm',
+      plan: 'start-plan',
+      journal,
+      now: () => LIMIT_NOW,
+      fetchImpl: (() => Promise.resolve(new Response(body, { status }))),
+      storeFs: store.fs,
+      env: isolatedEnv(),
+    })
+    await assert.rejects(async () => {
+      for await (const chunk of adapter.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3-flash', sessionId: 'session-s1' } as never)) void chunk
+    })
+    return (await journal.read()).records.map(entry => entry.record)
+  }
+
+  const r401 = await runStartError(401, JSON.stringify({ error: { message: 'unauthorized' } }))
+  assert.deepEqual(r401, [{ at: new Date(LIMIT_NOW).toISOString(), kind: 'login-rejected', path: 'model', status: 401, login: loginFingerprintOf('start.jwt.fake') }])
+
+  const r3012 = await runStartError(405, JSON.stringify({ code: 3012, msg: 'unusual activity' }))
+  assert.deepEqual(r3012, [{ at: new Date(LIMIT_NOW).toISOString(), kind: 'login-rejected', path: 'model', code: '3012', login: loginFingerprintOf('start.jwt.fake') }])
+
+  const r429 = await runStartError(429, JSON.stringify({ error: { code: '1308', message: 'rate limited' } }))
+  assert.deepEqual(r429, [])
+})
+
+test('ZcodeLogin.start clears previous error and monotonic generation prevents stale poll loop from overwriting newer login', async () => {
+  const { fs } = memoryStore()
+  let firstPollResolve: ((res: Response) => void) | undefined
+  let initCount = 0
+  const fetchImpl = ((url: string | URL | Request): Promise<Response> => {
+    const u = urlOf(url)
+    if (u.endsWith('/oauth/cli/init')) {
+      initCount += 1
+      const idx = initCount
+      return Promise.resolve(Response.json({ code: 0, data: { flow_id: `f${idx}`, poll_token: `pt${idx}`, authorize_url: `https://bigmodel.cn/oauth?n=${idx}`, expires_at: Math.floor(Date.now() / 1000) + 600, poll_interval_sec: 1 } }))
+    }
+    if (u.includes('/oauth/cli/poll/f1')) {
+      return new Promise<Response>(resolve => { firstPollResolve = resolve })
+    }
+    if (u.includes('/oauth/cli/poll/f2')) {
+      return Promise.resolve(Response.json({ code: 0, data: { status: 'ready', token: 'jwt-new', user: { user_id: 'u-new' }, bigmodel: { access_token: 'bm-new' } } }))
+    }
+    return Promise.reject(new Error(`unexpected ${u}`))
+  }) as typeof fetch
+
+  const login = new ZcodeLogin({ home: 'C:/ws/.llm', fetchImpl, storeFs: fs })
+  login.state.error = 'stale error'
+  const url1 = await login.start()
+  assert.ok(url1.includes('n=1'))
+  assert.equal(login.state.error, undefined)
+
+  const url2 = await login.start()
+  assert.ok(url2.includes('n=2'))
+  await new Promise(resolve => setTimeout(resolve, 30))
+
+  // Now resolve the older poll with an error or stale tokens; newer login must remain intact.
+  firstPollResolve?.(Response.json({ code: 0, data: { status: 'ready', token: 'jwt-old', user: { user_id: 'u-old' }, bigmodel: { access_token: 'bm-old' } } }))
+  await new Promise(resolve => setTimeout(resolve, 30))
+
+  const { loadCredential } = await import('../src/glm-llm/auth/store.ts')
+  assert.deepEqual(await loadCredential(fs, 'C:/ws/.llm/credentials.json'), {
+    version: 2,
+    provider: 'bigmodel',
+    oauthAccessToken: 'bm-new',
+    userId: 'u-new',
+    jwt: 'jwt-new',
+  })
+  assert.equal(login.state.error, undefined)
+})
+
+function sseOkResponse(text = 'ok'): Response {
+  const body = sseBody([
+    'event: message_start',
+    'data: {"type":"message_start","message":{"id":"m1","usage":{"input_tokens":5,"output_tokens":0}}}',
+    'event: content_block_start',
+    'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+    'event: content_block_delta',
+    `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":${JSON.stringify(text)}}}`,
+    'event: content_block_stop',
+    'data: {"type":"content_block_stop","index":0}',
+    'event: message_delta',
+    'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}',
+    'event: message_stop',
+    'data: {"type":"message_stop"}',
+  ])
+  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+test('StartPlan-first fails over seamlessly to Coding Plan on empty/expired/concurrency, bypasses during cooldown, and recovers after cooldown', async () => {
+  const store = memoryStore()
+  await saveCredential(store.fs, STORE_PATH, { ...credential, jwt: 'start.jwt.1' })
+  let clock = LIMIT_NOW
+  let startResponse: () => Response = () => new Response(JSON.stringify({ error: { code: '1308', message: 'insufficient quota' } }), { status: 402 })
+  const wire: WireRequest[] = []
+  const baseFetch = gatewayFetch(wire, { model: () => sseOkResponse('from-coding') })
+  const fetchImpl: typeof fetch = (input, init) => {
+    const url = urlOf(input)
+    if (url.includes('/billing/balance')) throw new Error('stream() must never call billing/balance')
+    if (url === START_PLAN_UPSTREAM) {
+      wire.push({ url, headers: sentHeaders(init), ...(typeof init?.body === 'string' ? { body: init.body } : {}) })
+      return Promise.resolve(startResponse())
+    }
+    return baseFetch(input, init)
+  }
+  const events: string[] = []
+  const adapter = new ZcodeAdapter({
+    home: 'C:/ws/.llm',
+    journal: memoryJournal(),
+    now: () => clock,
+    fetchImpl,
+    storeFs: store.fs,
+    env: isolatedEnv(),
+    onEvent: msg => { events.push(msg) },
+  })
+
+  // 1. Live failover on empty (402 / 1308) yields Coding Plan response seamlessly and enters 300s cooldown.
+  const firstChunks: StreamChunk[] = []
+  for await (const chunk of adapter.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3-flash', sessionId: 's-fo' } as never)) {
+    firstChunks.push(chunk)
+  }
+  assert.ok(firstChunks.some(chunk => chunk.type === 'block-end' && chunk.block.type === 'text' && chunk.block.text === 'from-coding'))
+  assert.equal(wire.filter(entry => entry.url === START_PLAN_UPSTREAM).length, 1)
+  assert.equal(wire.filter(isModelRequest).length, 1)
+  const snapAfterFirst = adapter.startPlanStatus('glm-5.3-flash')
+  assert.deepEqual(snapAfterFirst, {
+    available: false,
+    reason: 'empty',
+    activeStreams: 0,
+    cooldownUntil: LIMIT_NOW + 300_000,
+    failoverCount: 1,
+    lastFailoverReason: 'empty',
+  })
+
+  // 2. Second request within cooldown bypasses Start Plan upstream completely.
+  clock += 100_000
+  for await (const chunk of adapter.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3-flash', sessionId: 's-fo' } as never)) void chunk
+  assert.equal(wire.filter(entry => entry.url === START_PLAN_UPSTREAM).length, 1)
+  assert.equal(wire.filter(isModelRequest).length, 2)
+  assert.equal(adapter.startPlanStatus('glm-5.3-flash').failoverCount, 2)
+
+  // 3. After cooldown expires and Start Plan returns 200, request stays on Start Plan and snapshot recovers.
+  clock += 201_000
+  startResponse = () => sseOkResponse('from-start')
+  const recoveredChunks: StreamChunk[] = []
+  for await (const chunk of adapter.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3-flash', sessionId: 's-fo' } as never)) {
+    recoveredChunks.push(chunk)
+  }
+  assert.ok(recoveredChunks.some(chunk => chunk.type === 'block-end' && chunk.block.type === 'text' && chunk.block.text === 'from-start'))
+  assert.equal(wire.filter(entry => entry.url === START_PLAN_UPSTREAM).length, 2)
+  assert.equal(wire.filter(isModelRequest).length, 2)
+  assert.equal(adapter.startPlanStatus('glm-5.3-flash').available, true)
+  assert.equal(adapter.startPlanStatus('glm-5.3-flash').reason, 'ok')
+  assert.ok(events.some(line => line.includes('failover (empty) -> coding-plan')))
+  assert.ok(events.some(line => line.includes('cooldown bypass (empty) -> coding-plan')))
+})
+
+test('StartPlan unentitled failover is model-scoped (glm-5.3 fails over while glm-5.3-flash keeps using StartPlan) and resets on credential change', async () => {
+  const store = memoryStore()
+  await saveCredential(store.fs, STORE_PATH, { ...credential, jwt: 'start.jwt.a' })
+  const clock = LIMIT_NOW
+  const wire: WireRequest[] = []
+  const baseFetch = gatewayFetch(wire, { model: () => sseOkResponse('coding-53') })
+  const fetchImpl: typeof fetch = (input, init) => {
+    const url = urlOf(input)
+    if (url === START_PLAN_UPSTREAM) {
+      const body = typeof init?.body === 'string' ? init.body : ''
+      wire.push({ url, headers: sentHeaders(init), body })
+      const model = (JSON.parse(body || '{}') as { model?: string }).model
+      if (model === 'GLM-5.3') {
+        return Promise.resolve(new Response(JSON.stringify({ error: { message: 'Model not supported on start plan' } }), { status: 403 }))
+      }
+      return Promise.resolve(sseOkResponse('start-flash'))
+    }
+    return baseFetch(input, init)
+  }
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', journal: memoryJournal(), now: () => clock, fetchImpl, storeFs: store.fs, env: isolatedEnv() })
+
+  // glm-5.3 hits 403 unentitled -> fails over to Coding Plan and sets 600s cooldown for glm-5.3 only.
+  for await (const chunk of adapter.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3', sessionId: 's-m' } as never)) void chunk
+  assert.equal(adapter.startPlanStatus('glm-5.3').reason, 'unentitled')
+  assert.equal(adapter.startPlanStatus('glm-5.3').cooldownUntil, LIMIT_NOW + 600_000)
+  assert.equal(adapter.startPlanStatus('glm-5.3-flash').available, true)
+
+  // Subsequent glm-5.3 bypasses Start Plan; glm-5.3-flash still hits Start Plan directly.
+  for await (const chunk of adapter.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3', sessionId: 's-m' } as never)) void chunk
+  const flashChunks: StreamChunk[] = []
+  for await (const chunk of adapter.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3-flash', sessionId: 's-m' } as never)) flashChunks.push(chunk)
+  assert.ok(flashChunks.some(c => c.type === 'block-end' && c.block.type === 'text' && c.block.text === 'start-flash'))
+  assert.equal(wire.filter(e => e.url === START_PLAN_UPSTREAM).length, 2)
+  assert.equal(wire.filter(isModelRequest).length, 2)
+
+  // Saving a fresh credential clears Start Plan cooldowns on next status/stream check.
+  await saveCredential(store.fs, STORE_PATH, { ...credential, jwt: 'start.jwt.b' })
+  await adapter.status('glm-start-plan')
+  assert.equal(adapter.startPlanStatus('glm-5.3').available, true)
+  assert.equal(adapter.startPlanStatus('glm-5.3').failoverCount, 0)
+})
+
+test('StartPlan tracks activeStreams during open streams and never fails over on 401/3012/500 or explicit startPlanFailover: false', async () => {
+  const store = memoryStore()
+  await saveCredential(store.fs, STORE_PATH, { ...credential, jwt: 'start.jwt.s' })
+  const wire: WireRequest[] = []
+  let activeObservedDuringStream = -1
+  let responseFactory: () => Response = () => sseOkResponse('streaming')
+  const baseFetch = gatewayFetch(wire, {})
+  const fetchImpl: typeof fetch = (input, init) => {
+    const url = urlOf(input)
+    if (url === START_PLAN_UPSTREAM) {
+      wire.push({ url, headers: sentHeaders(init) })
+      return Promise.resolve(responseFactory())
+    }
+    return baseFetch(input, init)
+  }
+  const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', journal: memoryJournal(), now: () => LIMIT_NOW, fetchImpl, storeFs: store.fs, env: isolatedEnv() })
+
+  for await (const chunk of adapter.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3-flash', sessionId: 's-act' } as never)) {
+    void chunk
+    activeObservedDuringStream = adapter.startPlanStatus('glm-5.3-flash').activeStreams
+  }
+  assert.equal(activeObservedDuringStream, 1)
+  assert.equal(adapter.startPlanStatus('glm-5.3-flash').activeStreams, 0)
+
+  // 401, 3012, and 500 must throw directly without calling Coding Plan.
+  for (const [status, body] of [
+    [401, JSON.stringify({ error: { message: 'unauthorized' } })],
+    [403, JSON.stringify({ code: 3012, msg: 'login required' })],
+    [500, JSON.stringify({ error: { message: 'upstream crash' } })],
+  ] as const) {
+    responseFactory = () => new Response(body, { status })
+    await assert.rejects(async () => {
+      for await (const chunk of adapter.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3-flash', sessionId: 's-act' } as never)) void chunk
+    })
+  }
+  assert.equal(wire.filter(isModelRequest).length, 0)
+  assert.equal(adapter.startPlanStatus('glm-5.3-flash').failoverCount, 0)
+
+  // Explicit startPlanFailover: false disables failover on 402 too.
+  const noFailover = new ZcodeAdapter({
+    home: 'C:/ws/.llm',
+    journal: memoryJournal(),
+    startPlanFailover: false,
+    fetchImpl: () => Promise.resolve(new Response('{}', { status: 402 })),
+    storeFs: store.fs,
+    env: isolatedEnv(),
+  })
+  await assert.rejects(async () => {
+    for await (const chunk of noFailover.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3-flash', sessionId: 's-act' } as never)) void chunk
+  }, /glm-start-plan 402/)
+  assert.equal(noFailover.startPlanStatus('glm-5.3-flash').failoverCount, 0)
 })

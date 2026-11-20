@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "GLM 原生通道",
-    "description": "按 ZCode 3.17.1 的请求格式直连 GLM 的模型通道：请求签名、读取 /glm-login 存下的凭证、流式解码。"
+    "description": "按 ZCode 请求格式直连 GLM 的模型通道：提供 Coding Plan 与 Start Plan 路由（GLM-5.3 与 GLM-5.3-Flash 优先走 Start Plan 并在不可用时自动回退至 Coding Plan）、请求签名、读取 /glm-login 凭证与流式解码。"
   }
 }

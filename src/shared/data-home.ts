@@ -78,11 +78,13 @@ export function userDataHome(configured?: string, env: Readonly<Record<string, s
 
 /**
  * The credential directory of the channel rows (glm-llm, glm-login): a
- * non-empty row `home`, else the user-level directory. Resolved without the
- * data service, which may not be active when the channel row activates.
+ * non-blank row `home` (trimmed and tilde-expanded), else the user-level
+ * directory. Resolved without the data service, which may not be active when
+ * the channel row activates.
  */
-export function credentialHome(home: string | undefined, env: Readonly<Record<string, string | undefined>> = process.env): string {
-  return home !== undefined && home.length > 0 ? home : userDataHome(undefined, env)
+export function credentialHome(home: string | undefined, env: Readonly<Record<string, string | undefined>> = process.env, osHome: string = homedir()): string {
+  const trimmed = home?.trim() ?? ''
+  return trimmed.length > 0 ? expandHomePath(trimmed, osHome) : userDataHome(undefined, env, osHome)
 }
 
 function isDataService(value: unknown): value is DataService {

@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "GLM login and credits",
-    "description": "The /glm-login, /glm-status and /glm-logout commands, and the pricing service of the GLM credit plan that the usage panel counts credits with."
+    "description": "The /glm-login, /glm-status and /glm-logout commands, Coding Plan quota and Start Plan balance checks, and the credit pricing service."
   }
 }

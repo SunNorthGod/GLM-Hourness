@@ -32,10 +32,15 @@ test('the user-level directory is <DSH home>/glm-hourness', () => {
   assert.equal(userDataHome('/scratch/dsh-home', {}, HOME), join(resolve('/scratch/dsh-home'), 'glm-hourness'))
 })
 
-test('the credential directory is a non-empty row home, else the user-level directory (no data service needed)', () => {
+test('the credential directory is a non-blank row home (trimmed and tilde-expanded), else the user-level directory (no data service needed)', () => {
   assert.equal(credentialHome('C:/ws/.llm', { DSH_HOME: '/env/home' }), 'C:/ws/.llm')
+  assert.equal(credentialHome('  C:/ws/.llm  ', { DSH_HOME: '/env/home' }), 'C:/ws/.llm')
   assert.equal(credentialHome(undefined, { DSH_HOME: '/env/home' }), join(resolve('/env/home'), 'glm-hourness'))
   assert.equal(credentialHome('', { DSH_HOME: '/env/home' }), join(resolve('/env/home'), 'glm-hourness'))
+  assert.equal(credentialHome('   ', { DSH_HOME: '/env/home' }), join(resolve('/env/home'), 'glm-hourness'))
+  assert.equal(credentialHome('~/creds', {}, HOME), join(HOME, 'creds'))
+  assert.equal(credentialHome(' ~\\creds ', {}, HOME), join(HOME, 'creds'))
+  assert.equal(credentialHome('~', {}, HOME), HOME)
 })
 
 test('the data row provides both directories as the glmHournessData service and withdraws it on dispose', () => {

@@ -8,4 +8,4 @@ import Schema from '../shared/schemastery.ts'
 
 export const homeField = Schema.string().description('Credential directory: the encrypted credential store lives here. Default: <DSH home>/glm-hourness.')
 
-export const planField = Schema.union([Schema.const('coding-plan'), Schema.const('start-plan')]).default('coding-plan').description('Plan tier: coding-plan (default, usage bonus) or start-plan (gateway 3-block prompt, JWT auth).')
+export const planField = Schema.union([Schema.const('coding-plan'), Schema.const('start-plan')]).default('coding-plan').description('Plan tier: coding-plan (default, dual peer routes for Coding Plan + Start Plan) or start-plan (single-route Start Plan override).')

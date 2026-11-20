@@ -71,6 +71,28 @@ export function buildDesktopContextSection(visualizationDirectory: string | unde
   return [ZCODE_SYSTEM.desktopContext.heading, views.heading, viewsBlock, ZCODE_SYSTEM.desktopContext.filesAndUrlsOnwards].join('\n')
 }
 
+const IDENTITY_OPENINGS = [
+  'You are an agent working with the user toward their goals, using your own judgment along the way.',
+  'You are an interactive agent that helps users according to your "Output Style", which describes how you should respond to user queries.',
+]
+
+/**
+ * Strip a leading ZCode CLI prefix and Agent Identity/Security/Harness block
+ * already assembled by `glm-prompt`, so `buildStartPlanSystem` does not emit
+ * `cliPrefix`, Agent Identity, Security Notice, or `# Harness` twice.
+ */
+export function stripZcodeIdentityPrefix(text: string): string {
+  if (!text.startsWith(ZCODE_SYSTEM.cliPrefix)) return text
+  const afterPrefix = text.slice(ZCODE_SYSTEM.cliPrefix.length).replace(/^\s+/u, '')
+  if (!IDENTITY_OPENINGS.some(opening => afterPrefix.startsWith(opening))) return afterPrefix
+  const harnessAt = afterPrefix.indexOf('\n# Harness\n')
+  if (harnessAt < 0) return afterPrefix
+  const lines = afterPrefix.slice(harnessAt + 1).split('\n')
+  let idx = 1
+  while (idx < lines.length && lines[idx]?.startsWith(' - ')) idx += 1
+  return lines.slice(idx).join('\n').replace(/^\s+/u, '')
+}
+
 /** Custom caller system text: trimmed string or the joined text blocks, cache_control dropped. */
 export function customSystemText(system: unknown): string | undefined {
   if (system === null || system === undefined) return undefined
@@ -95,12 +117,14 @@ export function customSystemText(system: unknown): string | undefined {
 /**
  * Assemble the 3-block start-plan system array. The caller's own system text
  * appends to the stable block (never a fourth block; the gateway rejects
- * unexpected shapes).
+ * unexpected shapes). Duplicate ZCode CLI prefix / Identity / Security /
+ * Harness blocks from `glm-prompt` are stripped before appending.
  */
 export function buildStartPlanSystem(system: unknown, env: StartPlanEnvInfo, provider: string, model: string, visualizationDirectory?: string): ReadonlyArray<SystemBlock> {
   const stableParts = [...ZCODE_SYSTEM.stableSections, buildDesktopContextSection(visualizationDirectory)]
-  const custom = customSystemText(system)
-  if (custom !== undefined) stableParts.push(custom)
+  const rawCustom = customSystemText(system)
+  const custom = rawCustom === undefined ? undefined : stripZcodeIdentityPrefix(rawCustom)
+  if (custom !== undefined && custom.length > 0) stableParts.push(custom)
   const dynamic = [
     ZCODE_SYSTEM.dynamicSections.beforeEnvironment,
     buildEnvironmentSection(env, provider, model),

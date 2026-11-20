@@ -25,6 +25,7 @@ import { creditPricing } from '../src/glm-llm/credits.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { PRICING_SERVICE, pricingService, quotaOf } from '../src/shared/pricing.ts'
+import { START_PLAN_SERVICE, type StartPlanStatusService } from '../src/shared/start-plan-status.ts'
 import { quotaLines } from '../src/shared/quota.ts'
 import type { CommandDefinitionLike } from '../src/shared/dsh-min.ts'
 import { fakeProjectToken, modelRequest, PAT_KEY_ID, patPlane, zcodeDataDir } from './glm-fixtures.ts'
@@ -715,16 +716,78 @@ test('/glm-status with no login says so on the quota line and sends nothing', as
   assert.equal(row.health().reason, '/glm-login、/glm-status、/glm-logout 已注册；额度：读不到（not-logged-in）')
 })
 
-test('/glm-status of a row set to start-plan names the plan on the credential line and sends no request at all', async () => {
+test('/glm-status of a row set to start-plan names the plan on the credential line and queries Start Plan balance', async () => {
   const home = newHome()
   await signIn(home, { ...LOGIN, jwt: 'plan.jwt.fake' })
   const { fetchImpl, calls } = rowFetch(() => json(quotaBody(START)))
   const row = loginRow({ home, plan: 'start-plan', fetchImpl })
   const text = await row.run('glm-status')
   assert.ok(text.startsWith('glm-zcode：已登录（套餐 start-plan，'), text.split('\n')[0])
-  assert.ok(text.includes('\n额度：体验套餐没有 5 小时与周额度\n\n'))
-  assert.deepEqual(calls, [])
+  assert.ok(text.includes('\n额度：体验套餐没有 5 小时与周额度\n免费套餐余额：'), text)
+  assert.equal(calls.filter(c => c.includes('/api/monitor/')).length, 0)
+  assert.equal(calls.filter(c => c.includes('/api/v1/zcode-plan/billing/balance')).length, 1)
   assert.equal(row.health().reason, '/glm-login、/glm-status、/glm-logout 已注册；额度：体验套餐没有 5 小时与周额度')
+})
+
+function dualPlanStatusFetch(remaining: number, pat?: ReturnType<typeof patPlane>): typeof fetch {
+  return (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (url === QUOTA_URL) return Promise.resolve(json(quotaBody(START)))
+    if (url.includes('/api/v1/zcode-plan/billing/balance')) {
+      return Promise.resolve(json(JSON.stringify({
+        code: 0,
+        success: true,
+        data: { server_time: 100, plans: [{ plan_id: 'p1', name: 'Free Start', ends_at: 200 }], balances: [{ plan_id: 'p1', show_name: 'Starter', remaining, total: 50 }] },
+      })))
+    }
+    return Promise.resolve(pat?.answer(url, init) ?? json('{}', 404))
+  }
+}
+
+test('/glm-status in default peer mode reports both Coding Plan and Start Plan when JWT is present', async () => {
+  const home = newHome()
+  await signIn(home, { ...LOGIN, jwt: 'plan.jwt.fake' })
+  const fetchImpl = dualPlanStatusFetch(42, patPlane())
+  const row = loginRow({ home, fetchImpl })
+  const text = await row.run('glm-status')
+  assert.ok(text.includes('glm-zcode：已登录（套餐 coding-plan，Key unresolved，账号 user-1）'), text)
+  assert.ok(text.includes('glm-start-plan：已登录（套餐 start-plan'), text)
+  assert.ok(text.includes('免费套餐余额：Starter 剩余 42/50'), text)
+  assert.equal(text.includes('glm-start-plan 回退状态'), false)
+})
+
+test('/glm-status renders Start Plan failover status line when START_PLAN_SERVICE reports cooldown or failovers', async () => {
+  const home = newHome()
+  await signIn(home, { ...LOGIN, jwt: 'plan.jwt.fake' })
+  const fetchImpl = dualPlanStatusFetch(0)
+  const row = loginRow({ home, fetchImpl, now: () => START })
+  let snapshot: ReturnType<StartPlanStatusService['status']> = {
+    available: false,
+    reason: 'empty',
+    activeStreams: 0,
+    cooldownUntil: START + 120_000,
+    failoverCount: 2,
+    lastFailoverReason: 'empty',
+  }
+  const withdraw = row.store.provide(START_PLAN_SERVICE, { status: () => snapshot } satisfies StartPlanStatusService)
+  try {
+    const cooldownText = await row.run('glm-status')
+    assert.ok(cooldownText.includes('glm-start-plan 回退状态：已自动回退至 Coding Plan（余额已用尽，冷却约 120 秒，已回退 2 次）'), cooldownText)
+
+    snapshot = {
+      available: true,
+      reason: 'ok',
+      activeStreams: 0,
+      failoverCount: 1,
+      lastFailoverReason: 'concurrency',
+    }
+    const recoveredText = await row.run('glm-status')
+    assert.ok(recoveredText.includes('glm-start-plan 回退状态：当前可用（已回退 1 次，最近原因：并发限流中）'), recoveredText)
+  }
+  finally {
+    withdraw()
+    row.dispose()
+  }
 })
 
 test('/glm-status returns within 3.5 seconds when the quota request does not answer, and says the read is still running', async () => {

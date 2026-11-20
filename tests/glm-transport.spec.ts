@@ -245,9 +245,11 @@ test('encodeMessage folds seam roles into anthropic blocks', () => {
   assert.deepEqual(encodeMessage({ role: 'user', content: [] }), { role: 'user', content: [{ type: 'text', text: '(no content)' }] })
 })
 
-test('the wire model id takes the official casing (3.16.3 GZt); the GLM-5.3 catalog rule matches anchored and case-insensitive', () => {
+test('the wire model id takes the official casing (3.16.3 GZt); catalog rules cover GLM-5.3 and GLM-5.3-Flash only', () => {
   assert.equal(zcodeWireModelId('glm-5.3'), 'GLM-5.3')
   assert.equal(zcodeWireModelId('glm-5.3-flash'), 'GLM-5.3-Flash')
+  assert.equal(zcodeWireModelId('glm-5.2'), 'GLM-5.2')
+  assert.equal(zcodeWireModelId('glm-5-turbo'), 'GLM-5-Turbo')
   assert.equal(zcodeWireModelId('GLM-4.1V-THINKING-FLASH'), 'GLM-4.1V-Thinking-Flash')
   assert.equal(zcodeWireModelId('glm-next'), 'glm-next')
   for (const model of ['glm-5.3', 'GLM-5.3-Flash', 'x-glm-5.3-y']) {
@@ -256,7 +258,16 @@ test('the wire model id takes the official casing (3.16.3 GZt); the GLM-5.3 cata
     assert.deepEqual(rule?.optionPatch('max'), { thinking: { type: 'enabled' }, output_config: { effort: 'max' } })
   }
   assert.equal(zcodeModelRule('glm-5.2'), undefined)
+  assert.equal(zcodeModelRule('glm-5-turbo'), undefined)
   assert.equal(zcodeModelRule('glm-5'), undefined)
+})
+
+test('start-plan model request headers via buildModelRequestHeaders omit x-api-key while keeping 3.17.1 UA and attribution', () => {
+  const headers = buildModelRequestHeaders({ token: 'jwt-1', includeApiKey: false, identity: DEFAULT_IDENTITY, trace: TRACE, generateText: false, env, runtime: 'runtime/node.js/22' })
+  assert.equal(headers.authorization, 'Bearer jwt-1')
+  assert.equal('x-api-key' in headers, false)
+  assert.equal(headers['user-agent'], 'ZCode/3.17.1 ai-sdk/provider-utils/4.0.27 runtime/node.js/22')
+  assert.equal(headers['x-zcode-query-source'], 'main_turn')
 })
 
 test('with a wire shape the body follows 3.16.3 getArgs and the option map: key order, tool_choice auto, thinking and output_config last', () => {

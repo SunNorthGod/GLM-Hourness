@@ -159,7 +159,7 @@ function until<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 /** The response text, or undefined when it is longer than the cap. */
-async function cappedText(response: Response, signal: AbortSignal): Promise<string | undefined> {
+export async function cappedText(response: Response, signal: AbortSignal): Promise<string | undefined> {
   const declared = Number(response.headers.get('content-length'))
   if (Number.isFinite(declared) && declared > RESPONSE_MAX_BYTES) {
     await response.body?.cancel().catch(() => { /* already closed */ })

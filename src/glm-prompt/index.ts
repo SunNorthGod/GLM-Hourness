@@ -47,7 +47,7 @@ import { DIALECT_SERVICE, type DialectService } from '../shared/dialect.ts'
 import { MEMORY_SERVICE } from '../shared/memory-service.ts'
 import { peakModeService } from '../shared/peak-mode.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
-import { assemblyRoute, isGlmModel, type Route } from '../shared/route.ts'
+import { assemblyRoute, isGlmModel, isStartPlanProvider, type Route } from '../shared/route.ts'
 import { facePolicyOf, type FacePolicyRegistry } from '../shared/face-policy.ts'
 import { LESSONS_QUERY_TOOL, MEMORY_TOOL_NAMES } from '../shared/tool-names.ts'
 import type { AgentLike, AssemblePayload, PluginContext, ProvideHost, ServiceLookup, ToolDefinitionLike } from '../shared/dsh-min.ts'
@@ -236,16 +236,20 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
   const env = sessionEnv(config.env, agent)
   let standing = standingDepth?.() ?? {}
   let depth = standing.level ?? readReportingDepth(config).depth
-  const sectionSets = (outputStyleActive: boolean, activeDepth: ReportingDepth): { readonly all: ReturnType<typeof dialectSections>, readonly withoutMemory: ReturnType<typeof dialectSections>, readonly withLessons: ReturnType<typeof dialectSections> } => {
-    const all = dialectSections(outputStyleActive, activeDepth, env === undefined ? config : { ...config, env })
+  const baseConfig: GlmPromptConfig = env === undefined ? config : { ...config, env }
+  const sectionSets = (tier: 'coding-plan' | 'start-plan', outputStyleActive: boolean, activeDepth: ReportingDepth): { readonly all: ReturnType<typeof dialectSections>, readonly withoutMemory: ReturnType<typeof dialectSections>, readonly withLessons: ReturnType<typeof dialectSections> } => {
+    const all = dialectSections(outputStyleActive, activeDepth, { ...baseConfig, tier })
     return {
       all,
       withoutMemory: all.filter(section => section.name !== MEMORY_SECTION),
       withLessons: all.map(section => section.name === MEMORY_SECTION ? { ...section, text: buildMemorySectionDsh(true) } : section),
     }
   }
-  let plain = sectionSets(false, depth)
-  let styled = sectionSets(true, depth)
+  const makeTierSets = (activeDepth: ReportingDepth) => ({
+    coding: { plain: sectionSets('coding-plan', false, activeDepth), styled: sectionSets('coding-plan', true, activeDepth) },
+    start: { plain: sectionSets('start-plan', false, activeDepth), styled: sectionSets('start-plan', true, activeDepth) },
+  })
+  let sets = makeTierSets(depth)
   const aliases = buildAgentAliases(agent)
   const disposers = aliases.map(alias => agent.ctx.tools.register(alias.tool))
   const searchMode = config.toolSearchMode ?? 'local'
@@ -253,6 +257,7 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
   if (toolSearch !== undefined) disposers.push(() => toolSearch.dispose())
   let todoReminderEligible = false
   let glmStep = false
+  let peakEligible = false
   disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly: AssemblePayload, _context: unknown, next: () => Promise<AssemblePayload>) => {
     const assembled = await next()
     if (standing.level === undefined && standing.problem === undefined && standingDepth !== undefined) {
@@ -261,14 +266,16 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
         standing = resolved
         if (standing.level !== undefined && standing.level !== depth) {
           depth = standing.level
-          plain = sectionSets(false, depth)
-          styled = sectionSets(true, depth)
+          sets = makeTierSets(depth)
         }
       }
     }
+    const route = assemblyRoute(assembled)
     const glm = isGlmAssembly(assembled)
+    const startPlan = config.tier === 'start-plan' || isStartPlanProvider(route.provider)
     glmStep = glm
-    health?.report(sessionIdOf(agent), ...withDepthProblem(dialectHealth(assemblyRoute(assembled), glm, searchMode === 'off' ? 'off' : toolSearch === undefined ? 'missing' : 'local'), standing.problem))
+    peakEligible = glm && !startPlan
+    health?.report(sessionIdOf(agent), ...withDepthProblem(dialectHealth(route, glm, searchMode === 'off' ? 'off' : toolSearch === undefined ? 'missing' : 'local'), standing.problem))
     // The step's pre-exposure wire face, from the agent's registry view (the
     // assemble payload carries no tool face on the installed runtime,
     // docs/DESIGN.md §2.4a): the section judgments and the todo eligibility
@@ -276,7 +283,8 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
     // memory tools off it, so the section does not apply, as the old rewrite
     // made it.
     const face = wireFaceProjection(agent.ctx.tools.schemas(agent), { glm, sessionId: sessionIdOf(agent) ?? '', policy: policy?.() })
-    const set = hasOutputStyle(assembled) ? styled : plain
+    const tierSets = startPlan ? sets.start : sets.coding
+    const set = hasOutputStyle(assembled) ? tierSets.styled : tierSets.plain
     const wanted = !memorySectionApplies(face) ? set.withoutMemory : face.some(tool => tool.name === LESSONS_QUERY_TOOL) ? set.withLessons : set.all
     todoReminderEligible = glm && face.some(tool => tool.name === TODO_WRITE_NAME)
     return glm ? rewriteDialectSections(assembled, wanted) : assembled
@@ -288,7 +296,7 @@ export function installDialect(agent: AgentLike, config: GlmPromptConfig = {}, h
   if (todoReminder !== undefined) disposers.push(todoReminder)
   // Registered last, so it runs innermost: its notice precedes the ZCode
   // notices, which keep their collection order after it.
-  const peakReminder = installPeakReminder(agent, () => glmStep, now, peakMode, metric)
+  const peakReminder = installPeakReminder(agent, () => peakEligible, now, peakMode, metric)
   if (peakReminder !== undefined) disposers.push(peakReminder)
   // Registered after the peak reminder, so it runs innermost and its notice comes first after the admitted messages, where the host puts its own instruction messages.
   const subdir = config.subdirInstructions !== true || workingDirectory === undefined ? undefined : installSubdirInstructions(agent, () => glmStep, workingDirectory)

@@ -4,7 +4,7 @@ ZCode-compatible GLM channel for DeepSeek Harness (DSH). The bundle runs GLM on 
 
 ## Install
 
-Requires DeepSeek Harness 0.2.1-rc.3 (declared as `engines.dsh`; the plugin manager checks it and refuses incompatible versions).
+Requires DeepSeek Harness `^0.2.2-rc.1` (declared as `engines.dsh`; the plugin manager checks it and refuses incompatible versions).
 
 Once published:
 
@@ -24,7 +24,7 @@ Until published, install from a checkout:
 dsh plugin add <checkout>/packages/glm <checkout>/packages/hourness -w
 ```
 
-The settings section and the GLM pill under the composer are the package's own client face (`ui/`); installing the package is enough. First use: `/glm-login` authorizes in the browser and stores the credential encrypted in the DSH user directory; `/glm-status` reports credential state and per-row health; the model selector then lists the `glm-zcode` route. Desktop DSH loads new code only after a full restart.
+The settings section and the GLM pill under the composer are the package's own client face (`ui/`). Installing the package is enough. First use: `/glm-login` authorizes in the browser and stores the credential encrypted in the DSH user directory; `/glm-status` reports credential state (both Personal Coding Plan quota/peak and Free Start Plan balance/failover status when present) and per-row health; the model selector then lists both `glm-zcode` (Coding Plan: GLM-5.3, GLM-5.3-Flash) and `glm-start-plan` (Start Plan: GLM-5.3, GLM-5.3-Flash, StartPlan-first with automatic failover to Coding Plan when unavailable). Desktop DSH loads new code only after a full restart.
 
 ## Rows
 
@@ -46,4 +46,4 @@ The repository's own code is licensed under the PolyForm Noncommercial License 1
 
 ## 简体中文
 
-`dsh-glm-zcode` 让 GLM 按 ZCode 3.17.1 的训练分布住进 DeepSeek Harness：原生通道与账号登录（加密凭证）、身份头、Signing V4 请求签名、端点路由、Anthropic Messages 传输、coding-plan / start-plan 双档，以及逐字镜像 ZCode 3.17.1 的提示词与工具面（工具懒加载、todo 提醒、压缩）。五个独立行按 `cordis.patch.yml` 声明，在插件管理器逐行启停，停用任意一行会话优雅降级，非 GLM 会话不受影响。发布后 `dsh plugin add dsh-glm-zcode` 安装（可与 `dsh-hourness` 一起装）；发布前用检出路径安装（见上）。首次使用 `/glm-login` 浏览器授权，`/glm-status` 看凭证与各行健康，模型选择器选 `glm-zcode` 路由。许可：本仓自有代码按 PolyForm Noncommercial 1.0.0 授权（`LICENSE`，商用需另行联系 northgod@qq.com）；逐字复现的 ZCode 文本与移植部分的出处见 `THIRD-PARTY-NOTICES.md`。
+`dsh-glm-zcode` 让 GLM 按 ZCode 3.17.1 的训练分布住进 DeepSeek Harness：原生通道与账号登录（加密凭证）、身份头、Signing V4 请求签名、端点路由、Anthropic Messages 传输、Coding Plan（`glm-zcode`）与 Start Plan（`glm-start-plan`，支持 GLM-5.3 与 GLM-5.3-Flash 优先直连并在不可用时自动回退至 Coding Plan）双路由，以及逐字镜像 ZCode 3.17.1 的提示词与工具面（工具懒加载、todo 提醒、压缩）。五个独立行按 `cordis.patch.yml` 声明，在插件管理器逐行启停，停用任意一行会话优雅降级，非 GLM 会话不受影响。发布后 `dsh plugin add dsh-glm-zcode` 安装（可与 `dsh-hourness` 一起装）；发布前用检出路径安装（见上）。首次使用 `/glm-login` 浏览器授权，`/glm-status` 看双套餐凭证、额度/余额、回退状态与各行健康，模型选择器选 `glm-start-plan`（Start Plan 优先并自动回退）或 `glm-zcode` 路由。许可：本仓自有代码按 PolyForm Noncommercial 1.0.0 授权（`LICENSE`，商用需另行联系 northgod@qq.com）；逐字复现的 ZCode 文本与移植部分的出处见 `THIRD-PARTY-NOTICES.md`。

@@ -27,6 +27,17 @@ export interface Route {
   readonly model?: string
 }
 
+/** Default Coding Plan provider route id on the DSH LLM seam. */
+export const CODING_PLAN_PROVIDER = 'glm-zcode'
+
+/** Default Free Start Plan peer provider route id on the DSH LLM seam. */
+export const START_PLAN_PROVIDER = 'glm-start-plan'
+
+/** Whether a provider route id targets the free Start Plan route. */
+export function isStartPlanProvider(provider: unknown): boolean {
+  return provider === START_PLAN_PROVIDER
+}
+
 /** Whether a model id belongs to the GLM family. */
 export function isGlmModel(model: unknown): boolean {
   return typeof model === 'string' && model.toLowerCase().startsWith('glm')

@@ -22,12 +22,15 @@ import { homeField, planField } from './config-fields.ts'
 import { creditPricing } from './credits.ts'
 import { GLM_LOOP_DEFAULTS } from './loop-defaults.ts'
 import { createQuotaReader, quotaHealthText } from './quota.ts'
+import { createStartPlanBalanceReader, formatStartPlanBalanceLine } from './start-plan-balance.ts'
 import { QuotaJournal } from './quota-journal.ts'
 import { glmMetricSink } from './metrics.ts'
 import { credentialHome } from '../shared/data-home.ts'
 import { collectHealth, provideRowHealth, renderHealthTable, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { PRICING_SERVICE, type UsagePricing } from '../shared/pricing.ts'
 import { peakLine, quotaLines, type MomentZone, type QuotaRequest, type QuotaView } from '../shared/quota.ts'
+import { CODING_PLAN_PROVIDER, START_PLAN_PROVIDER } from '../shared/route.ts'
+import { startPlanStatusService, type StartPlanAvailabilityReason, type StartPlanSnapshot } from '../shared/start-plan-status.ts'
 import Schema from '../shared/schemastery.ts'
 import type { CommandDefinitionLike, CommandInvocationLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
@@ -82,8 +85,20 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
   const journal = new QuotaJournal({ home })
   const login = new ZcodeLogin({ home, ...transport })
   const metric = glmMetricSink(ctx)
-  const adapter = new ZcodeAdapter({ home, journal, metric, ...(config.plan === undefined ? {} : { plan: config.plan }), ...(config.now === undefined ? {} : { now: config.now }), ...transport })
+  const singleStartPlan = config.plan === 'start-plan'
+  const adapter = new ZcodeAdapter({
+    home,
+    journal,
+    metric,
+    ...(singleStartPlan ? { plan: 'start-plan' } : {}),
+    ...(config.now === undefined ? {} : { now: config.now }),
+    ...transport,
+  })
   const reader = createQuotaReader({ adapter, journal, now, zone, metric, ...transport })
+  const balanceReader = createStartPlanBalanceReader({
+    ...(config.now === undefined ? {} : { now: config.now }),
+    ...transport,
+  })
   const commands = '/glm-login、/glm-status、/glm-logout 已注册'
   const quota = async (request?: QuotaRequest): Promise<QuotaView> => {
     const view = await reader.view(request)
@@ -116,19 +131,39 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
     health.reactivate(base.state, note === '' ? base.reason : `${base.reason}；${note}`)
   }
   const credentialText = async (): Promise<string> => {
-    const status = await adapter.status()
-    if (!status.logged) {
-      return `glm-zcode：未登录（套餐 ${status.plan}${status.incomplete === undefined ? '' : `，登录不完整：${status.incomplete}`}）。运行 /glm-login 开始登录${login.state.error === undefined ? '' : `\n上次登录错误：${login.state.error}`}`
+    if (singleStartPlan) {
+      const status = await adapter.status(START_PLAN_PROVIDER)
+      if (!status.logged) {
+        return `glm-zcode：未登录（套餐 ${status.plan}${status.incomplete === undefined ? '' : `，登录不完整：${status.incomplete}`}）。运行 /glm-login 开始登录${login.state.error === undefined ? '' : `\n上次登录错误：${login.state.error}`}`
+      }
+      return `glm-zcode：已登录（套餐 ${status.plan}，Key ${status.keyPreview}${status.userId === undefined ? '' : `，账号 ${status.userId}`}${status.jwtAgeHours === undefined ? '' : `，JWT 已用 ${status.jwtAgeHours} 小时`}）`
     }
-    return `glm-zcode：已登录（套餐 ${status.plan}，Key ${status.keyPreview}${status.userId === undefined ? '' : `，账号 ${status.userId}`}${status.jwtAgeHours === undefined ? '' : `，JWT 已用 ${status.jwtAgeHours} 小时`}）`
+    const coding = await adapter.status(CODING_PLAN_PROVIDER)
+    const start = await adapter.status(START_PLAN_PROVIDER)
+    const codingLine = !coding.logged
+      ? `glm-zcode：未登录（套餐 ${coding.plan}${coding.incomplete === undefined ? '' : `，登录不完整：${coding.incomplete}`}）。运行 /glm-login 开始登录${login.state.error === undefined ? '' : `\n上次登录错误：${login.state.error}`}`
+      : `glm-zcode：已登录（套餐 ${coding.plan}，Key ${coding.keyPreview}${coding.userId === undefined ? '' : `，账号 ${coding.userId}`}）`
+    if (!start.logged) return codingLine
+    const startLine = `glm-start-plan：已登录（套餐 start-plan${start.jwtAgeHours === undefined ? '' : `，JWT 已用 ${start.jwtAgeHours} 小时`}）`
+    return `${codingLine}\n${startLine}`
   }
-  /** The peak line and the quota lines, the section between the credential line and the health table; a read it starts is the command's, in the session it ran in. */
+  /** The peak line, the quota lines, and any Start Plan balance summary between the credential line and the health table. */
   const quotaSection = async (invocation: CommandInvocationLike): Promise<string> => {
     const sessionId = sessionIdOf(invocation.agent)
     const cwd = invocation.agent.session?.header?.cwd
     const view = await quota({ waitMs: STATUS_WAIT_MS, asker: { kind: 'command', ...(sessionId === undefined ? {} : { sessionId }), ...(cwd === undefined || cwd === '' ? {} : { dir: cwd }) } })
     const at = now()
-    return [peakLine(creditPricing.plan, atMs => creditPricing.peak(atMs), at, zone), ...quotaLines(view, at, zone)].join('\n')
+    const lines = [peakLine(creditPricing.plan, atMs => creditPricing.peak(atMs), at, zone), ...quotaLines(view, at, zone)]
+    const jwt = await adapter.startPlanJwt()
+    if (jwt !== undefined) {
+      const balance = await balanceReader.read(jwt, { waitMs: STATUS_WAIT_MS })
+      lines.push(formatStartPlanBalanceLine(balance))
+      const snap = startPlanStatusService(ctx)?.status()
+      if (snap !== undefined && (!snap.available || snap.failoverCount > 0)) {
+        lines.push(formatStartPlanFailoverLine(snap, at))
+      }
+    }
+    return lines.join('\n')
   }
   const reportIoError = (invocation: CommandInvocationLike, prefix: string, error: unknown): string => {
     const message = error instanceof Error ? error.message : String(error)
@@ -204,4 +239,26 @@ function statusCommand(render: (invocation: CommandInvocationLike) => Promise<st
       }
     },
   }
+}
+
+const FAILOVER_REASON_TEXT: Readonly<Record<StartPlanAvailabilityReason, string>> = {
+  ok: '当前可用',
+  empty: '余额已用尽',
+  concurrency: '并发限流中',
+  unentitled: '当前模型无权限',
+  unlogged: '未拿到套餐 JWT',
+  expired: '套餐已过期',
+  unavailable: '服务暂不可用',
+}
+
+function formatStartPlanFailoverLine(snap: StartPlanSnapshot, atMs: number): string {
+  if (!snap.available) {
+    const cooldownText = snap.cooldownUntil !== undefined && snap.cooldownUntil > atMs
+      ? `，冷却约 ${Math.max(1, Math.ceil((snap.cooldownUntil - atMs) / 1000))} 秒`
+      : ''
+    const countText = snap.failoverCount > 0 ? `，已回退 ${snap.failoverCount} 次` : ''
+    return `glm-start-plan 回退状态：已自动回退至 Coding Plan（${FAILOVER_REASON_TEXT[snap.reason]}${cooldownText}${countText}）`
+  }
+  const lastText = snap.lastFailoverReason === undefined ? '' : `，最近原因：${FAILOVER_REASON_TEXT[snap.lastFailoverReason]}`
+  return `glm-start-plan 回退状态：当前可用（已回退 ${snap.failoverCount} 次${lastText}）`
 }

@@ -10,7 +10,7 @@
 
 /** The credential as `/glm-status` states it. */
 type ChannelStatus =
-  | { readonly logged: true, readonly plan: string, readonly key: string, readonly userId?: string, readonly jwt?: string }
+  | { readonly logged: true, readonly plan: string, readonly key?: string, readonly userId?: string, readonly jwt?: string }
   | { readonly logged: false, readonly plan: string, readonly incomplete?: string, readonly loginError?: string }
 
 /** A command reply as the pill's runner returns it; `missing` when no row registers the command. */
@@ -27,29 +27,54 @@ interface HealthLine {
   readonly reason: string
 }
 
-const LOGGED = /已登录（套餐 ([^，）]+)，Key ([^，）]+)(?:，账号 ([^，）]+))?(?:，JWT 已用 ([\d.]+) 小时)?）/
+const LOGGED = /已登录（套餐 ([^，）]+)(?:，Key ([^，）]+))?(?:，账号 ([^，）]+))?(?:，JWT 已用 ([\d.]+) 小时)?）/
 const NOT_LOGGED = /未登录（套餐 ([^，）]+)(?:，登录不完整：([^）]+))?）/
 const LOGIN_ERROR_PREFIX = '上次登录错误：'
 
 /** The credential line, and on a not-logged-in reply the last login error line, as fields; null when the text does not read. */
-function parseStatus(text: string): ChannelStatus | null {
-  const logged = LOGGED.exec(text)
-  if (logged !== null) {
-    const [, plan, key, userId, jwt] = logged
-    return { logged: true, plan, key, ...(userId === undefined ? {} : { userId }), ...(jwt === undefined ? {} : { jwt }) }
+function parseAllStatuses(text: string): ChannelStatus[] {
+  const lines = text.split('\n')
+  const statuses: ChannelStatus[] = []
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    const logged = LOGGED.exec(line)
+    if (logged !== null) {
+      const [, plan, key, userId, jwt] = logged
+      statuses.push({ logged: true, plan, ...(key === undefined ? {} : { key }), ...(userId === undefined ? {} : { userId }), ...(jwt === undefined ? {} : { jwt }) })
+      continue
+    }
+    const out = NOT_LOGGED.exec(line)
+    if (out === null) continue
+    const [, plan, incomplete] = out
+    let loginError: string | undefined
+    for (let next = index + 1; next < lines.length; next += 1) {
+      const candidate = lines[next]
+      if (candidate.startsWith(LOGIN_ERROR_PREFIX)) {
+        loginError = candidate.slice(LOGIN_ERROR_PREFIX.length)
+        break
+      }
+      if (LOGGED.test(candidate) || NOT_LOGGED.test(candidate) || candidate.trim() === '') break
+    }
+    if (loginError === undefined) {
+      loginError = lines.find(entry => entry.startsWith(LOGIN_ERROR_PREFIX))?.slice(LOGIN_ERROR_PREFIX.length)
+    }
+    statuses.push({ logged: false, plan, ...(incomplete === undefined ? {} : { incomplete }), ...(loginError === undefined ? {} : { loginError }) })
   }
-  const out = NOT_LOGGED.exec(text)
-  if (out === null) return null
-  const [, plan, incomplete] = out
-  const loginError = text.split('\n').find(line => line.startsWith(LOGIN_ERROR_PREFIX))?.slice(LOGIN_ERROR_PREFIX.length)
-  return { logged: false, plan, ...(incomplete === undefined ? {} : { incomplete }), ...(loginError === undefined ? {} : { loginError }) }
+  return statuses
+}
+
+/** What a `/glm-status` reply says about all reported routes; `unknown` names why it cannot be told. */
+export function statusesOf(reply: CommandReply): readonly ChannelStatus[] | { readonly unknown: string } {
+  if (reply.missing) return { unknown: 'glm-login 行没有加载' }
+  if (!reply.ok) return { unknown: '查询失败，见下方输出' }
+  const statuses = parseAllStatuses(reply.text)
+  return statuses.length === 0 ? { unknown: '返回内容读不懂' } : statuses
 }
 
 /** What a `/glm-status` reply says about the credential; `unknown` names why it cannot be told. */
 export function statusOf(reply: CommandReply): ChannelStatus | { readonly unknown: string } {
-  if (reply.missing) return { unknown: 'glm-login 行没有加载' }
-  if (!reply.ok) return { unknown: '查询失败，见下方输出' }
-  return parseStatus(reply.text) ?? { unknown: '返回内容读不懂' }
+  const result = statusesOf(reply)
+  return 'unknown' in result ? result : result[0]
 }
 
 /** A line of the health table or its heading. */
@@ -80,10 +105,13 @@ export function parseHealth(text: string): HealthLine[] | null {
  * its heading, and the credential and login error lines once they parse.
  */
 export function restOf(text: string): string[] {
-  const status = parseStatus(text)
-  const isField = (line: string): boolean => status !== null && (status.logged
-    ? LOGGED.test(line)
-    : NOT_LOGGED.test(line) || (status.loginError !== undefined && line.startsWith(LOGIN_ERROR_PREFIX)))
+  const statuses = parseAllStatuses(text)
+  const hasLoginError = statuses.some(entry => !entry.logged && entry.loginError !== undefined)
+  const isField = (line: string): boolean => statuses.length > 0 && (
+    LOGGED.test(line)
+    || NOT_LOGGED.test(line)
+    || (hasLoginError && line.startsWith(LOGIN_ERROR_PREFIX))
+  )
   return text.split('\n').filter(line => line.trim().length > 0 && !isTableLine(line) && !isField(line))
 }
 

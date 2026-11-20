@@ -1,24 +1,74 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { apply, Config, imageServices, sessionHeaders } from '../src/glm-llm/index.ts'
+import { apply, CODING_PLAN_PROVIDER, Config, imageServices, sessionHeaders, START_PLAN_PROVIDER } from '../src/glm-llm/index.ts'
 import { forgetGlmOnboarding, glmOnboardingDone, noteSessionSeen, recordGlmOnboardingDone, seenSessions, writeSeenSessions } from '../ui/src/channel-model.ts'
 import { ZcodeAdapter } from '../src/glm-llm/zcode.ts'
+import { START_PLAN_SERVICE, type StartPlanStatusService } from '../src/shared/start-plan-status.ts'
 
-test('apply registers the native adapter under the configured provider route', () => {
+test('apply registers both Coding Plan and Start Plan peer routes by default', async () => {
   const registered: Array<{ providers: readonly string[], adapter: ZcodeAdapter }> = []
   const dispose = apply({
     registerAdapter: (providers, adapter) => { registered.push({ providers, adapter }); return () => {} },
   }, { home: 'C:/ws/.llm' })
-  assert.deepEqual(registered[0].providers, ['glm-zcode'])
+  assert.deepEqual(registered[0].providers, [CODING_PLAN_PROVIDER, START_PLAN_PROVIDER])
   assert.ok(registered[0].adapter instanceof ZcodeAdapter)
+  assert.deepEqual(registered[0].adapter.providerInfo(CODING_PLAN_PROVIDER), { id: CODING_PLAN_PROVIDER, name: 'GLM · 个人套餐（Coding Plan）' })
+  assert.deepEqual(registered[0].adapter.providerInfo(START_PLAN_PROVIDER), { id: START_PLAN_PROVIDER, name: 'GLM · 免费套餐（Start Plan）' })
+  const codingModels = (await registered[0].adapter.listModels(CODING_PLAN_PROVIDER)).map(m => m.id)
+  const startModels = (await registered[0].adapter.listModels(START_PLAN_PROVIDER)).map(m => m.id)
+  assert.deepEqual(codingModels, ['glm-5.3', 'glm-5.3-flash'])
+  assert.deepEqual(startModels, ['glm-5.3', 'glm-5.3-flash'])
+  assert.equal((await registered[0].adapter.resolveModel(START_PLAN_PROVIDER, 'glm-5.3')).context?.contextWindow, 512_000)
   assert.equal(typeof dispose, 'function')
   dispose?.()
 })
 
-test('apply honors a custom provider id and plan', () => {
-  const registered: Array<{ providers: readonly string[] }> = []
-  apply({ registerAdapter: (providers, adapter) => { registered.push({ providers }); void adapter; return () => {} } }, { home: 'C:/ws/.llm', provider: 'glm', plan: 'start-plan' })
+test('apply provides START_PLAN_SERVICE, withdraws on dispose, and fails open if provide rejects', () => {
+  const services = new Map<string, unknown>()
+  const dispose = apply({
+    registerAdapter: () => () => {},
+    provide: (name: string, value: unknown) => {
+      services.set(name, value)
+      return () => { services.delete(name) }
+    },
+  }, { home: 'C:/ws/.llm' })
+  const statusSvc = services.get(START_PLAN_SERVICE) as StartPlanStatusService | undefined
+  assert.ok(statusSvc !== undefined)
+  assert.equal(statusSvc.status().available, true)
+  dispose?.()
+  assert.equal(services.get(START_PLAN_SERVICE), undefined)
+
+  const warnings: string[] = []
+  const origWarn = console.warn
+  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')) }
+  try {
+    const disposeBad = apply({
+      registerAdapter: () => () => {},
+      provide: (name: string) => {
+        if (name === START_PLAN_SERVICE) throw new Error('duplicate service')
+        return () => {}
+      },
+    }, { home: 'C:/ws/.llm' })
+    assert.ok(warnings.some(line => line.includes(START_PLAN_SERVICE)))
+    disposeBad?.()
+  }
+  finally {
+    console.warn = origWarn
+  }
+})
+
+test('apply honors empty or equal startPlanProvider and legacy plan: start-plan override', () => {
+  const registered: Array<{ providers: readonly string[], adapter: ZcodeAdapter }> = []
+  apply({ registerAdapter: (providers, adapter) => { registered.push({ providers, adapter }); return () => {} } }, { home: 'C:/ws/.llm', provider: 'glm', plan: 'start-plan' })
   assert.deepEqual(registered[0].providers, ['glm'])
+  assert.equal(registered[0].adapter.resolvePlan('glm'), 'start-plan')
+
+  apply({ registerAdapter: (providers, adapter) => { registered.push({ providers, adapter }); return () => {} } }, { home: 'C:/ws/.llm', startPlanProvider: '' })
+  assert.deepEqual(registered[1].providers, ['glm-zcode'])
+
+  apply({ registerAdapter: (providers, adapter) => { registered.push({ providers, adapter }); return () => {} } }, { home: 'C:/ws/.llm', provider: 'glm', startPlanProvider: 'glm' })
+  assert.deepEqual(registered[2].providers, ['glm'])
+  assert.equal(registered[2].adapter.resolvePlan('glm'), 'coding-plan')
 })
 
 test('image services come from ctx.get lazily and are absent without the services', () => {
@@ -45,18 +95,19 @@ test('session headers come from the agents service lazily; without it every sess
   assert.equal(sessionHeaders({ get: () => ({ unrelated: true }) })('session-child'), undefined)
 })
 
-test('without a home the route still registers (the credential directory defaults to the user-level directory)', () => {
+test('without a home both peer routes still register (the credential directory defaults to the user-level directory)', () => {
   const registered: string[][] = []
   const dispose = apply({ registerAdapter: providers => { registered.push([...providers]); return () => {} } }, {})
-  assert.deepEqual(registered, [['glm-zcode']])
+  assert.deepEqual(registered, [['glm-zcode', 'glm-start-plan']])
   assert.equal(typeof dispose, 'function')
   dispose?.()
 })
 
-test('Config schema exposes home/plan/provider with coding-plan default', () => {
+test('Config schema exposes home/plan/provider/startPlanProvider with coding-plan default', () => {
   assert.equal(typeof Config, 'function') // a Schemastery schema object is callable
   const json = JSON.stringify(Config)
   assert.ok(json.includes('glm-zcode'))
+  assert.ok(json.includes('glm-start-plan'))
   assert.ok(json.includes('coding-plan'))
   assert.ok(json.includes('start-plan'))
   assert.ok(json.includes('<DSH home>/glm-hourness'))
@@ -64,11 +115,11 @@ test('Config schema exposes home/plan/provider with coding-plan default', () => 
 
 test('Config contextWindow: default 512000; the Loader\'s validation passes any value through, so the row decides', () => {
   const validate = (config: unknown): unknown => Config['~standard'].validate(config)
-  assert.deepEqual(validate({}), { value: { plan: 'coding-plan', provider: 'glm-zcode', contextWindow: 512_000 } })
-  assert.deepEqual(validate({ contextWindow: 600_000 }), { value: { plan: 'coding-plan', provider: 'glm-zcode', contextWindow: 600_000 } })
+  assert.deepEqual(validate({}), { value: { plan: 'coding-plan', provider: 'glm-zcode', startPlanProvider: 'glm-start-plan', contextWindow: 512_000 } })
+  assert.deepEqual(validate({ contextWindow: 600_000 }), { value: { plan: 'coding-plan', provider: 'glm-zcode', startPlanProvider: 'glm-start-plan', contextWindow: 600_000 } })
   // An out-of-range or non-integer value reaches apply (it falls back there, with the row health saying so) instead of the Loader refusing the row.
   for (const contextWindow of [5, 2_000_000, 600_000.5, '512k']) {
-    assert.deepEqual(validate({ contextWindow }), { value: { plan: 'coding-plan', provider: 'glm-zcode', contextWindow } }, String(contextWindow))
+    assert.deepEqual(validate({ contextWindow }), { value: { plan: 'coding-plan', provider: 'glm-zcode', startPlanProvider: 'glm-start-plan', contextWindow } }, String(contextWindow))
   }
   const json = JSON.stringify(Config)
   assert.ok(json.includes('default 512000'))

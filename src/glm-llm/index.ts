@@ -20,9 +20,13 @@ import { GLM_CONTEXT_WINDOW } from './models.ts'
 import Schema from '../shared/schemastery.ts'
 import { provideRowHealth } from '../shared/health.ts'
 import { FACES_SERVICE, facePolicyOf } from '../shared/face-policy.ts'
+import { CODING_PLAN_PROVIDER, START_PLAN_PROVIDER } from '../shared/route.ts'
+import { START_PLAN_SERVICE, type StartPlanStatusService } from '../shared/start-plan-status.ts'
 import type { AdapterRegistry, AgentsService, FsPathService, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 import type { SessionHeaderLike } from './headers.ts'
 import type { AttachmentsLike } from '../shared/lm-min.ts'
+
+export { CODING_PLAN_PROVIDER, START_PLAN_PROVIDER }
 
 /** The `llm` service as this row uses it. */
 export type LlmContextLike = AdapterRegistry<ZcodeAdapter>
@@ -40,10 +44,12 @@ export function registrarOf(ctx: LlmContextLike | { llm?: LlmContextLike }): Ada
 export interface GlmConfig {
   /** The credential directory (credentials.json); default the user-level directory `<DSH home>/glm-hourness` (docs/DESIGN.md §2.4). */
   readonly home?: string
-  /** Plan tier: coding-plan (default, 150% bonus) or start-plan (gateway prompt). */
+  /** Plan tier: coding-plan (default, dual peer routes) or start-plan (single-route override). */
   readonly plan?: 'coding-plan' | 'start-plan'
-  /** Registered provider route id; defaults to `glm-zcode` to avoid the pi-ai `glm` route. */
+  /** Registered Coding Plan provider route id; defaults to `glm-zcode` to avoid the pi-ai `glm` route. */
   readonly provider?: string
+  /** Registered Start Plan peer provider route id; defaults to `glm-start-plan`. Empty or equal to `provider` registers only the primary route. */
+  readonly startPlanProvider?: string
   /** The context window declared to DSH, as written: anything but an integer in GLM_CONTEXT_WINDOW's range falls back to the default (docs/DESIGN.md §4.6). */
   readonly contextWindow?: unknown
 }
@@ -54,7 +60,8 @@ const { default: WINDOW_DEFAULT, min: WINDOW_MIN, max: WINDOW_MAX } = GLM_CONTEX
 export const Config = Schema.object({
   home: homeField,
   plan: planField,
-  provider: Schema.string().default('glm-zcode').description('Provider route id registered on the LLM seam.'),
+  provider: Schema.string().default(CODING_PLAN_PROVIDER).description('Primary provider route id (Coding Plan) registered on the LLM seam.'),
+  startPlanProvider: Schema.string().default(START_PLAN_PROVIDER).description('Peer provider route id (Start Plan) registered on the LLM seam; empty or equal to provider registers only the primary route.'),
   // The `any` member lets a value outside the range through the Loader's
   // validation, so the row falls back to the default and says so in its
   // health; the integer field alone would make the Loader refuse the whole
@@ -68,8 +75,14 @@ export const name = 'dsh-glm-hourness/glm-llm'
 /** cordis plugin entry: register the adapter; activation never throws. */
 export function apply(ctx: (LlmContextLike | { llm?: LlmContextLike }) & ServiceLookup & Partial<ProvideHost>, config: GlmConfig = {}): (() => void) | void {
   const home = credentialHome(config.home)
-  const provider = config.provider ?? 'glm-zcode'
+  const provider = config.provider ?? CODING_PLAN_PROVIDER
+  const startPlanProvider = (config.startPlanProvider ?? START_PLAN_PROVIDER).trim()
+  const singleStartPlan = config.plan === 'start-plan'
   const plan = config.plan ?? 'coding-plan'
+  const peerStartProvider = startPlanProvider.length > 0 && startPlanProvider !== provider ? startPlanProvider : ''
+  const providers = singleStartPlan || peerStartProvider.length === 0
+    ? [provider]
+    : [provider, peerStartProvider]
   const window = contextWindowOf(config.contextWindow)
   if (window.refused !== undefined) console.warn(`dsh-glm-hourness/glm-llm: ${window.refused}`)
   // The face-policy registry (face-migration design 0.1 §4.1): the service the
@@ -81,21 +94,23 @@ export function apply(ctx: (LlmContextLike | { llm?: LlmContextLike }) & Service
   const activation = `已注册路由 ${provider}（套餐 ${plan}，凭证目录 ${home}，上下文窗口 ${window.value}）`
   const refused = window.refused === undefined ? provided.failure : provided.failure === undefined ? window.refused : `${window.refused}；${provided.failure}`
   const health = provideRowHealth(ctx, 'glm-llm', refused === undefined ? 'active' : 'degraded', `${activation}${refused === undefined ? '' : `；${refused}`}`)
+  const adapter = new ZcodeAdapter({
+    home,
+    ...(singleStartPlan ? { plan: 'start-plan' } : { startPlanProvider: peerStartProvider }),
+    contextWindow: window.value,
+    ...imageServices(ctx),
+    sessionHeader: sessionHeaders(ctx),
+    facePolicy: () => facePolicyOf(ctx),
+    // A session's report replaces the activation text, so a refused window rides on each report and keeps an answered request partly in effect.
+    report: (sessionId, state, reason) => refused === undefined
+      ? health.report(sessionId, state, reason)
+      : health.report(sessionId, state === 'active' ? 'degraded' : state, `${reason}；${refused}`),
+    metric: glmMetricSink(ctx),
+  })
+  const startPlanProvided = provideStartPlanStatus(ctx, { status: model => adapter.startPlanStatus(model) })
   let unregister = (): void => {}
   try {
-    unregister = registrarOf(ctx)([provider], new ZcodeAdapter({
-      home,
-      ...(config.plan === undefined ? {} : { plan: config.plan }),
-      contextWindow: window.value,
-      ...imageServices(ctx),
-      sessionHeader: sessionHeaders(ctx),
-      facePolicy: () => facePolicyOf(ctx),
-      // A session's report replaces the activation text, so a refused window rides on each report and keeps an answered request partly in effect.
-      report: (sessionId, state, reason) => refused === undefined
-        ? health.report(sessionId, state, reason)
-        : health.report(sessionId, state === 'active' ? 'degraded' : state, `${reason}；${refused}`),
-      metric: glmMetricSink(ctx),
-    }))
+    unregister = registrarOf(ctx)(providers, adapter)
   }
   catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
@@ -104,6 +119,7 @@ export function apply(ctx: (LlmContextLike | { llm?: LlmContextLike }) & Service
   }
   return () => {
     unregister()
+    startPlanProvided?.()
     provided.withdraw?.()
     health.dispose()
   }
@@ -162,5 +178,18 @@ function provideFaces(ctx: Partial<ProvideHost>, registry: ReturnType<typeof fac
     const failure = error instanceof Error ? error.message : String(error)
     console.warn(`dsh-glm-hourness/glm-llm: ${FACES_SERVICE} not provided; ${FACES_FAILURE}: ${failure}`)
     return { failure: `${FACES_FAILURE}（${failure}）` }
+  }
+}
+
+/** Fail-open provider for live Start Plan availability & failover status; returns its disposer when accepted. */
+function provideStartPlanStatus(ctx: Partial<ProvideHost>, service: StartPlanStatusService): (() => void) | undefined {
+  try {
+    if (typeof ctx.provide !== 'function') return undefined
+    return ctx.provide(START_PLAN_SERVICE, service)
+  }
+  catch (error) {
+    const failure = error instanceof Error ? error.message : String(error)
+    console.warn(`dsh-glm-hourness/glm-llm: ${START_PLAN_SERVICE} not provided: ${failure}`)
+    return undefined
   }
 }

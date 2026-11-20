@@ -55,10 +55,11 @@ export function upstreamSessionId(sessionId: string | undefined): string {
   return SESSION_ID_PATTERN.test(bare) ? bare : randomUUID()
 }
 
-/** The session-header fields that mark a delegated child (rc.3 dsh-session header, dsh-subagent `childSessionMeta`). */
+/** The session-header fields read from DSH (`dsh-session` / `dsh-subagent`). */
 export interface SessionHeaderLike {
   readonly parentSession?: string
   readonly origin?: 'subagent'
+  readonly cwd?: string
 }
 
 /** Sessions whose trace state the tracker keeps; the least recently used leaves first. */
@@ -327,8 +328,12 @@ function combineHeaders(...bags: ReadonlyArray<Readonly<Record<string, string>>>
  * `ZCode/3.17.1 ai-sdk/provider-utils/4.0.27 runtime/node.js/22`. The result
  * is a plain object in Headers order: lower-case names, sorted.
  */
-export function buildModelRequestHeaders(input: { readonly token: string, readonly identity: ZcodeIdentity, readonly trace: TraceContext, readonly generateText: boolean, readonly env?: NodeJS.ProcessEnv, readonly runtime?: string }): Record<string, string> {
-  const provider = withUserAgentSuffix({ 'anthropic-version': ANTHROPIC_VERSION, 'x-api-key': input.token, Authorization: `Bearer ${input.token}` }, ANTHROPIC_SDK_UA)
+export function buildModelRequestHeaders(input: { readonly token: string, readonly includeApiKey?: boolean, readonly identity: ZcodeIdentity, readonly trace: TraceContext, readonly generateText: boolean, readonly env?: NodeJS.ProcessEnv, readonly runtime?: string }): Record<string, string> {
+  const provider = withUserAgentSuffix({
+    'anthropic-version': ANTHROPIC_VERSION,
+    ...(input.includeApiKey === false ? {} : { 'x-api-key': input.token }),
+    Authorization: `Bearer ${input.token}`,
+  }, ANTHROPIC_SDK_UA)
   const callHeaders = { ...buildLlmIdentityHeaders(input.identity, input.env ?? process.env), ...buildTraceHeaders(input.trace) }
   const call = input.generateText ? withUserAgentSuffix(callHeaders, `${AI_UA_PREFIX}${AI_VERSION}`) : callHeaders
   return withUserAgentSuffix({ 'Content-Type': 'application/json', ...combineHeaders(provider, call) }, `${PROVIDER_UTILS_UA_PREFIX}${PROVIDER_UTILS_VERSION}`, input.runtime ?? runtimeUserAgent())

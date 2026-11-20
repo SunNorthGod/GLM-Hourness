@@ -11,7 +11,9 @@
 # of the package's client face.
 - insert:
     - id: glm-hourness/glm-llm
-      # Native ZCode channel: /glm-login fills the encrypted credential store;
+      # Native ZCode channel: registers peer routes for Personal Coding Plan
+      # (`glm-zcode`) and Free Start Plan (`glm-start-plan`) together by
+      # default. `/glm-login` fills the shared encrypted credential store;
       # a missing credential fails the stream with the re-login instruction.
       # Ships disabled by design, not by a pending gate: the row passed the
       # sandbox (docs/DEVELOPMENT.md §3) and the desktop L4 real sessions on
@@ -22,11 +24,10 @@
       inject: [llm]
       config: {}
     - id: glm-hourness/glm-login
-      # `plan` (default coding-plan) must equal the glm-llm row's `plan`:
-      # glm-login uses it for the plan on the /glm-status credential line
-      # and to decide whether the quota is read (start-plan reads none).
-      # The rows cannot read each other's config; /glm-status names the
-      # plan this row uses.
+      # Shares the encrypted credential store with glm-llm. By default
+      # /glm-status reports both Personal Coding Plan (PAT / quota / peak)
+      # and Free Start Plan (JWT age / balance) when logged in; `plan: start-plan`
+      # remains supported for single-route legacy configurations.
       name: dsh-glm-zcode/glm-login
       inject: [commands]
       config: {}

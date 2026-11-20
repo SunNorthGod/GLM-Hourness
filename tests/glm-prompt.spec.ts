@@ -311,3 +311,21 @@ test('identity assembly mirrors the bundle join with the chosen notice', () => {
 test('switches the opening sentence when an OutputStyle is active', () => {
   assert.ok(buildIdentitySection(true).startsWith('You are an interactive agent that helps users according to your "Output Style", which describes how you should respond to user queries.\n\n'))
 })
+
+test('glm-start-plan provider switches dialect to start-plan sections and skips peak reminder even with default tier', async () => {
+  const rt = fakeRuntime({ natives: [...NATIVE_NAMES, ...MEMORY_TOOL_NAMES] })
+  // Default tier is coding-plan, inside peak hours (2026-10-28 15:00 UTC+8).
+  const peakClock = () => Date.parse('2026-10-28T15:00:00+08:00')
+  installDialect(rt.agent, {}, undefined, peakClock)
+  const assembled = await rt.assemble({ provider: 'glm-start-plan', model: 'glm-5.3-flash' })
+  const names = assembled.sections.map(s => s.name)
+  assert.ok(names.includes('glm:cli-prefix'))
+  assert.ok(names.includes('harness:identity'))
+  assert.equal(names.includes('glm:dynamic-behavior'), false)
+  assert.equal(names.includes('glm:memory'), false)
+  assert.equal(names.includes('glm:context-management'), false)
+  assert.ok(assembled.sections.find(s => s.name === 'harness:identity')?.text.includes('IMPORTANT: Assist with authorized security testing'))
+  const decision = await rt.preStep({ step: 1, messages: [{ id: 'u1', role: 'user', content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } }] })
+  assert.equal(decision.kind, 'enter')
+  assert.equal((decision.messages as Array<{ source?: { kind?: string } }>).some(m => m.source?.kind === 'glm-peak-reminder'), false)
+})

@@ -17,11 +17,11 @@ import { PollOAuthClient, LOGIN_TIMEOUT_MS, buildPasteAuthorizeUrl } from './aut
 import { inspectJwt } from './auth/jwt.ts'
 import { DEFAULT_IDENTITY, resolveEnvPromptInfo, type ZcodeIdentity } from './identity.ts'
 import { ensureCliDeviceMid, readRoutingDeviceMid } from './device-mid.ts'
-import { buildAuthHeaders, buildModelRequestHeaders, RequestAttributionTracker, upstreamSessionId, type PlanId, type SessionHeaderLike, type TraceContext } from './headers.ts'
+import { buildModelRequestHeaders, RequestAttributionTracker, type PlanId, type SessionHeaderLike, type TraceContext } from './headers.ts'
 import { EndpointRoutingService, type RoutingCredential } from './endpoint-routing.ts'
 import { ClientSigningManager, sendWithClientSigning } from './signing.ts'
 import { ProjectAccessTokenClient, projectTokenFingerprint, projectTokenRequest, type ProjectKeyLocationStore, type ResolvedProjectToken } from './auth/project-token.ts'
-import { mintRejectionOf, upstreamLimitOf } from './account-signals.ts'
+import { classifyStartPlanFailover, mintRejectionOf, upstreamLimitOf } from './account-signals.ts'
 import { loginFingerprintOf, nodeQuotaFs, QuotaJournal } from './quota-journal.ts'
 import { metricsWhere, type GlmMetricEvent, type GlmMetricSink } from './metrics.ts'
 import { BIGMODEL_API_ORIGIN } from './zcode-wire.ts'
@@ -29,10 +29,11 @@ import { encodeRequest, decodeMessage, decodeSse, metadataUserId, splitSystemPro
 import { wireFace } from './face-wire.ts'
 import { glmImageRequestTarget, prepareRequestImages } from './images.ts'
 import { buildStartPlanSystem, buildContextPrefixMessage } from './start-plan.ts'
-import { GLM_CONTEXT_WINDOW, GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities, zcodeModelRule, zcodeWireModelId } from './models.ts'
+import { GLM_CONTEXT_WINDOW, GLM_DEFAULT_MAX_TOKENS, GLM_MODELS, GLM_REASONING_EFFORTS, glmInputModalities, zcodeModelRule, zcodeWireModelId, type ZcodeModelRule } from './models.ts'
 import { maxOutputTokensFor } from './token-budget.ts'
 import { messageText, type AttachmentsLike, type GenerateOptionsLike } from '../shared/lm-min.ts'
-import { isGlmModel } from '../shared/route.ts'
+import { CODING_PLAN_PROVIDER, isGlmModel, START_PLAN_PROVIDER } from '../shared/route.ts'
+import type { StartPlanAvailabilityReason, StartPlanFailoverReason, StartPlanSnapshot } from '../shared/start-plan-status.ts'
 import type { FacePolicyRegistry } from '../shared/face-policy.ts'
 import type { HealthState } from '../shared/health.ts'
 import type { MetricsWhere } from '../shared/metrics.ts'
@@ -49,6 +50,8 @@ import type { ImageAttachmentRef, ImageRequestTarget } from '@deepseek-ai/dsh-at
 
 /** Bigmodel coding-plan Anthropic endpoint (the provider baseURL, before server-side remapping; its origin hosts the signing handshake). */
 const BIGMODEL_ANTHROPIC_BASE = 'https://open.bigmodel.cn/api/anthropic'
+/** Free Start Plan Anthropic endpoint (ZCode 3.19.1 `account:bigmodel-start-plan`). */
+const START_PLAN_ANTHROPIC_BASE = 'https://zcode.z.ai/api/v1/zcode-plan/anthropic'
 
 /** A refused login is recorded once per path and login in this long. */
 const REJECTION_RECORD_INTERVAL_MS = 10 * 60_000
@@ -74,16 +77,32 @@ const SECURITY_FAILURE_VALUES: ReadonlySet<unknown> = new Set(['VERIFY_APIKEY_EX
  */
 const DEVICE_MID_TEMPORARY_NOTE = '；设备 ID 未能写入 ZCode 状态文件，本进程用临时 ID'
 
-/** The provider group name in DSH's model picker; Chinese like the picker's own groups (DeepSeek 账号). */
-const PROVIDER_DISPLAY_NAME = 'GLM（ZCode 原生通道）'
+/** Provider group names in DSH's model picker. */
+const CODING_PLAN_DISPLAY_NAME = 'GLM · 个人套餐（Coding Plan）'
+const START_PLAN_DISPLAY_NAME = 'GLM · 免费套餐（Start Plan）'
+
+/** Cooldown durations after a Start Plan failover reason (ms). */
+const START_PLAN_COOLDOWN_MS: Readonly<Record<StartPlanFailoverReason, number>> = {
+  concurrency: 60_000,
+  empty: 300_000,
+  expired: 300_000,
+  unentitled: 600_000,
+}
+
+const isCooldownReason = (reason: StartPlanAvailabilityReason): reason is StartPlanFailoverReason =>
+  reason === 'empty' || reason === 'concurrency' || reason === 'unentitled' || reason === 'expired'
 
 export interface ZcodeAdapterOptions {
   /** Agent home directory: `<home>/credentials.json`. */
   readonly home: string
-  /** Plan tier: coding-plan (default) or start-plan (gateway 3-block prompt). */
+  /** Explicit single-plan override (legacy single-provider mode); omitted in dual-peer mode. */
   readonly plan?: PlanId
   /** Registered provider route id. */
   readonly providerId?: string
+  /** Peer Start Plan provider route id; defaults to `glm-start-plan`. */
+  readonly startPlanProvider?: string
+  /** Whether Start Plan requests fail over to Coding Plan on empty/expired/concurrency/unentitled errors (defaults to `true` in dual-peer mode, `false` when `plan === 'start-plan'`). */
+  readonly startPlanFailover?: boolean
   readonly identity?: ZcodeIdentity
   readonly fetchImpl?: typeof fetch
   readonly env?: NodeJS.ProcessEnv
@@ -152,6 +171,7 @@ export class ZcodeLogin {
   private readonly fetchImpl: typeof fetch
   private readonly home: string
   private readonly storeFs: StoreFs
+  private generation = 0
   readonly state: LoginHandle = {}
 
   constructor(opts: { home: string, fetchImpl?: typeof fetch, storeFs?: StoreFs }) {
@@ -162,11 +182,15 @@ export class ZcodeLogin {
 
   /** Start the server-mediated CLI flow; returns the URL to open in a browser. */
   async start(): Promise<string> {
+    this.generation += 1
+    const generation = this.generation
+    delete this.state.error
     const client = new PollOAuthClient(this.fetchImpl)
     const started = await client.start()
+    if (generation !== this.generation) return started.authorizeUrl
     this.state.authorizeUrl = started.authorizeUrl
     this.state.startedAt = Date.now()
-    void this.settle(client)
+    void this.settle(client, generation)
     return started.authorizeUrl
   }
 
@@ -175,9 +199,10 @@ export class ZcodeLogin {
    * desktop stores its OAuth token set: no API key is resolved here; the
    * project key is located on the first request that needs a project token.
    */
-  private async settle(client: PollOAuthClient): Promise<void> {
+  private async settle(client: PollOAuthClient, generation: number): Promise<void> {
     try {
       const tokens = await client.complete(LOGIN_TIMEOUT_MS)
+      if (generation !== this.generation) return
       const stored: Credential = {
         version: 2,
         provider: 'bigmodel',
@@ -186,10 +211,12 @@ export class ZcodeLogin {
         ...(tokens.jwt === undefined ? {} : { jwt: tokens.jwt }),
       }
       await saveCredential(this.storeFs, this.credentialPath(), stored)
-      delete this.state.error
+      if (generation === this.generation) delete this.state.error
     }
     catch (error) {
-      this.state.error = error instanceof Error ? error.message : String(error)
+      if (generation === this.generation) {
+        this.state.error = error instanceof Error ? error.message : String(error)
+      }
     }
   }
 
@@ -229,6 +256,15 @@ export class ZcodeAdapter {
   private readonly rejectionRecords = new Map<string, number>()
   /** The login identity of the credential file as of its size and modification time. */
   private identity: { readonly size: number, readonly mtimeMs: number, readonly value: LoginIdentity } | undefined
+  private activeStartPlanStreams = 0
+  private startPlanEmptyUntil: number | undefined
+  private startPlanExpiredUntil: number | undefined
+  private startPlanConcurrencyUntil: number | undefined
+  private readonly startPlanUnentitledUntil = new Map<string, number>()
+  private startPlanFailoverCount = 0
+  private startPlanLastFailoverReason: StartPlanFailoverReason | undefined
+  private startPlanLastCredFingerprint: string | undefined
+  private startPlanLoggedIn: boolean | undefined
 
   constructor(options: ZcodeAdapterOptions) {
     this.options = options
@@ -363,7 +399,7 @@ export class ZcodeAdapter {
    * the read's asker, for a refused login the mint meets.
    */
   async usageAuthorization(where: MetricsWhere = {}): Promise<string> {
-    if ((this.options.plan ?? 'coding-plan') === 'start-plan') throw new Error('start-plan')
+    if (this.options.plan === 'start-plan') throw new Error('start-plan')
     const credential = await this.loadCredential().catch(() => undefined)
     if (credential === undefined) throw new Error('not-logged-in')
     return (await this.projectToken(credential, where)).token
@@ -389,7 +425,7 @@ export class ZcodeAdapter {
       if (this.identity?.size === meta.size && this.identity.mtimeMs === meta.mtimeMs) return this.identity.value
     }
     const value = await this.loadCredential().then((credential): LoginIdentity => {
-      const token = credential?.oauthAccessToken?.trim() ?? ''
+      const token = credential?.oauthAccessToken?.trim() || credential?.jwt?.trim() || ''
       return token.length === 0 ? { kind: 'absent' } : { kind: 'present', fingerprint: loginFingerprintOf(token) }
     }, (): LoginIdentity => ({ kind: 'absent', unreadable: true }))
     if (meta !== undefined) this.identity = { size: meta.size, mtimeMs: meta.mtimeMs, value }
@@ -409,13 +445,22 @@ export class ZcodeAdapter {
     return fetchImpl(routed.url, routed.routed ? routedInit(init, routed.headers) : init)
   }
 
+  /** Resolve which ZCode plan a provider route targets. */
+  resolvePlan(provider: string | undefined): PlanId {
+    if (this.options.plan !== undefined) return this.options.plan
+    const startProvider = this.options.startPlanProvider ?? START_PLAN_PROVIDER
+    return startProvider.length > 0 && provider === startProvider ? 'start-plan' : 'coding-plan'
+  }
+
   /**
    * Provider route display metadata (LlmAdapter base contract): the group
-   * name the composer's model picker shows. The settings page
-   * (ui/src/channel.js) quotes the same name.
+   * name the composer's model picker shows.
    */
   providerInfo(provider: string): { id: string, name: string } {
-    return { id: provider, name: PROVIDER_DISPLAY_NAME }
+    return {
+      id: provider,
+      name: this.resolvePlan(provider) === 'start-plan' ? START_PLAN_DISPLAY_NAME : CODING_PLAN_DISPLAY_NAME,
+    }
   }
 
   /** No route-owned retry policy (LlmAdapter base contract: undefined = defaults). */
@@ -445,19 +490,20 @@ export class ZcodeAdapter {
     }
   }
 
-  /** Advertise the catalog models for GUI selection (LlmAdapter base contract). */
+  /** Advertise the plan-accurate catalog models for GUI selection (LlmAdapter base contract). */
   listModels(provider: string): Promise<readonly LlmModelInfo[]> {
     return Promise.resolve(GLM_MODELS.map(model => ({ provider, id: model.id, name: model.name, inputModalities: [...model.inputModalities] })))
   }
 
   resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<LlmResolvedModelInfo> {
+    const rule = zcodeModelRule(model)
     return Promise.resolve({
       provider,
       id: model,
       name: model,
       // A text-only declaration makes DSH project images to text before stream().
       inputModalities: [...glmInputModalities(model)],
-      context: { contextWindow: this.contextWindow() },
+      context: { contextWindow: rule === undefined ? this.contextWindow() : Math.min(this.contextWindow(), rule.contextWindow) },
       defaultMaxTokens: GLM_DEFAULT_MAX_TOKENS,
       // No `systemPromptUpdate`: Anthropic has no mid-conversation system
       // role, so a changed prompt must rewrite the leading system message
@@ -484,21 +530,111 @@ export class ZcodeAdapter {
     return this.options.env ?? process.env
   }
 
+  /** The trimmed Start Plan JWT from the stored credential, if present. */
+  async startPlanJwt(): Promise<string | undefined> {
+    const credential = await this.loadCredential().catch(() => undefined)
+    const jwt = credential?.jwt?.trim() ?? ''
+    return jwt.length > 0 ? jwt : undefined
+  }
+
+  private startPlanFailoverEnabled(): boolean {
+    return this.options.startPlanFailover ?? (this.options.plan !== 'start-plan')
+  }
+
+  private syncCredentialState(credential: Credential | undefined): void {
+    const jwt = credential?.jwt?.trim() ?? ''
+    this.startPlanLoggedIn = jwt.length > 0
+    const fp = credential === undefined
+      ? ''
+      : loginFingerprintOf(`${jwt}\0${credential.oauthAccessToken?.trim() ?? ''}\0${credential.userId ?? ''}`)
+    if (this.startPlanLastCredFingerprint !== undefined && fp !== this.startPlanLastCredFingerprint) {
+      this.startPlanEmptyUntil = undefined
+      this.startPlanExpiredUntil = undefined
+      this.startPlanConcurrencyUntil = undefined
+      this.startPlanUnentitledUntil.clear()
+      this.startPlanFailoverCount = 0
+      this.startPlanLastFailoverReason = undefined
+    }
+    this.startPlanLastCredFingerprint = fp
+  }
+
+  private pruneStartPlanCooldowns(now: number): void {
+    if (this.startPlanExpiredUntil !== undefined && this.startPlanExpiredUntil <= now) this.startPlanExpiredUntil = undefined
+    if (this.startPlanEmptyUntil !== undefined && this.startPlanEmptyUntil <= now) this.startPlanEmptyUntil = undefined
+    if (this.startPlanConcurrencyUntil !== undefined && this.startPlanConcurrencyUntil <= now) this.startPlanConcurrencyUntil = undefined
+    for (const [modelKey, until] of this.startPlanUnentitledUntil) {
+      if (until <= now) this.startPlanUnentitledUntil.delete(modelKey)
+    }
+  }
+
+  private recordStartPlanFailover(reason: StartPlanFailoverReason, model: string): void {
+    const until = this.clock() + START_PLAN_COOLDOWN_MS[reason]
+    if (reason === 'expired') this.startPlanExpiredUntil = until
+    else if (reason === 'empty') this.startPlanEmptyUntil = until
+    else if (reason === 'concurrency') this.startPlanConcurrencyUntil = until
+    else this.startPlanUnentitledUntil.set(model.toLowerCase(), until)
+    this.startPlanFailoverCount += 1
+    this.startPlanLastFailoverReason = reason
+    this.options.onEvent?.(`start-plan failover (${reason}) -> coding-plan for ${model}`)
+  }
+
+  /** Live Start Plan availability and failover snapshot (never performs network I/O). */
+  startPlanStatus(model?: string): StartPlanSnapshot {
+    this.pruneStartPlanCooldowns(this.clock())
+    const failoverMeta = {
+      activeStreams: this.activeStartPlanStreams,
+      failoverCount: this.startPlanFailoverCount,
+      ...(this.startPlanLastFailoverReason === undefined ? {} : { lastFailoverReason: this.startPlanLastFailoverReason }),
+    }
+    if (this.startPlanLoggedIn === false) {
+      return { available: false, reason: 'unlogged', ...failoverMeta }
+    }
+    let reason: StartPlanAvailabilityReason = 'ok'
+    let cooldownUntil: number | undefined
+    if (this.startPlanExpiredUntil !== undefined) {
+      reason = 'expired'
+      cooldownUntil = this.startPlanExpiredUntil
+    }
+    else if (this.startPlanEmptyUntil !== undefined) {
+      reason = 'empty'
+      cooldownUntil = this.startPlanEmptyUntil
+    }
+    else if (this.startPlanConcurrencyUntil !== undefined) {
+      reason = 'concurrency'
+      cooldownUntil = this.startPlanConcurrencyUntil
+    }
+    else if (model !== undefined) {
+      const modelUntil = this.startPlanUnentitledUntil.get(model.toLowerCase())
+      if (modelUntil !== undefined) {
+        reason = 'unentitled'
+        cooldownUntil = modelUntil
+      }
+    }
+    return {
+      available: reason === 'ok',
+      reason,
+      ...(cooldownUntil === undefined ? {} : { cooldownUntil }),
+      ...failoverMeta,
+    }
+  }
+
   /**
    * Signed-in status for the /glm-status command. A stored login the plan
    * cannot use (coding-plan without an OAuth token or account id, start-plan
    * without its plan JWT) is not logged in: `incomplete` names the 3.16.3
    * reason the request fails closed with.
    */
-  async status(): Promise<{ logged: boolean, plan: PlanId, incomplete?: string, keyPreview?: string, userId?: string, jwtAgeHours?: number }> {
+  async status(provider?: string): Promise<{ logged: boolean, plan: PlanId, incomplete?: string, keyPreview?: string, userId?: string, jwtAgeHours?: number }> {
     const credential = await this.loadCredential().catch(() => undefined)
-    const plan = this.options.plan ?? 'coding-plan'
+    this.syncCredentialState(credential)
+    const plan = this.resolvePlan(provider)
     if (credential === undefined) return { logged: false, plan }
+    const jwt = credential.jwt?.trim() ?? ''
     const incomplete = plan === 'start-plan'
-      ? (credential.jwt ?? '').length === 0 ? START_PLAN_CREDENTIAL_UNAVAILABLE : undefined
+      ? jwt.length === 0 ? START_PLAN_CREDENTIAL_UNAVAILABLE : undefined
       : missingAccountCredential(credential)
     if (incomplete !== undefined) return { logged: false, plan, incomplete }
-    const jwtInfo = plan === 'start-plan' && credential.jwt !== undefined ? inspectJwt(credential.jwt) : undefined
+    const jwtInfo = plan === 'start-plan' && jwt.length > 0 ? inspectJwt(jwt) : undefined
     return {
       logged: true,
       plan,
@@ -527,73 +663,102 @@ export class ZcodeAdapter {
       sessionId: request.sessionId ?? '',
       policy: this.options.facePolicy?.(),
     })
-    const plan = this.options.plan ?? 'coding-plan'
+    const requestedPlan = this.resolvePlan(request.provider)
+    const canFailover = requestedPlan === 'start-plan' && this.startPlanFailoverEnabled()
     const report = (state: HealthState, reason: string): void => this.options.report?.(request.sessionId, state, reason)
     const credential = await this.loadCredential().catch((error: unknown) => {
       report('inactive', `凭证不可读：${(error as Error).message}`)
       throw error
     })
+    this.syncCredentialState(credential)
     if (credential === undefined) {
       report('inactive', '未登录：凭证为空，运行 /glm-login')
       // The Chinese line first (plain-ui 1.3 §6.3): a person who has not logged in reads where to click; the English text stays for the log.
       throw new Error('还没登录 GLM：点输入框下方的 GLM 按钮登录；glm-zcode: not logged in — run /glm-login (the credential store is empty)')
     }
     const fetchImpl = this.options.fetchImpl ?? fetch
-    // coding-plan: the project access token is the request credential; 3.16.3
-    // account mode sends nothing without it (ModelRequestAuthMissing), so the
-    // stream fails before any request leaves.
     // A refused login or a spent quota this request meets is filed under its session (metrics design §3.5).
     const where = metricsWhere(request.sessionId)
-    let projectToken = plan === 'coding-plan' ? await this.projectToken(credential, where).catch((error: unknown) => failClosed(report, error)) : undefined
-    // start-plan: the plan JWT is the request credential (3.16.3 `resolveCurrent`, `requireApiKey(zcodeJwtToken)`).
-    const startPlanJwt = credential.jwt ?? ''
-    if (plan === 'start-plan' && startPlanJwt.length === 0) {
-      report('inactive', `未拿到套餐 JWT（${START_PLAN_CREDENTIAL_UNAVAILABLE}），运行 /glm-login`)
-      throw new Error(`glm-zcode: plan JWT unavailable (${START_PLAN_CREDENTIAL_UNAVAILABLE}) — run /glm-login to sign in again`)
-    }
+    const startPlanJwt = credential.jwt?.trim() ?? ''
     // metadata.user_id names ZCode's deviceMid; when the state file has
     // none, one is generated and written back (3.16.3 `ensureCliDeviceMid`,
     // device-mid.ts). It never fails: a failed write yields a temporary id.
     const device = await ensureCliDeviceMid({ env: this.env() })
     const identity = { ...DEFAULT_IDENTITY, ...this.options.identity }
-
-    // System blocks: DSH delivers the system prompt as leading system
-    // messages; coding-plan sends it as one block, start-plan wraps it in the
-    // gateway-fingerprinted 3-block assembly.
+    const rawCwd = request.sessionId === undefined ? undefined : this.options.sessionHeader?.(request.sessionId)?.cwd
+    const sessionCwd = rawCwd !== undefined && rawCwd.trim().length > 0 ? rawCwd : undefined
     const { system, messages: history } = splitSystemPrompt(options)
-    const systemBlocks = plan === 'start-plan'
-      ? buildStartPlanSystem(system, resolveEnvPromptInfo(this.options.env), 'bigmodel', options.model)
-      : system.length === 0 ? [] : [{ type: 'text' as const, text: system }]
-    const messages = plan === 'start-plan' && !hasCurrentDatePrefix(history)
-      ? [buildContextPrefixMessage(), ...history]
-      : history
-    const images = await prepareRequestImages(messages, this.options.resolveAttachments?.(), this.options.mapHostPath, options.signal)
-    // One x-session-id per DSH session, the gateway's cache affinity key
-    // (DESIGN.md §4.5b); metadata.user_id carries the same id as the
-    // header, as ZCode's does. coding-plan follows the 3.16.3 attribution
-    // (session trace, turn query id, query source, subagent type);
-    // start-plan keeps its earlier shape.
-    const attribution: Omit<TraceContext, 'requestId'> = plan === 'coding-plan'
-      ? this.attribution.attribute({ sessionId: request.sessionId, purpose: request.purpose, reasoningEffort: options.reasoningEffort, tools, messages: options.messages })
-      : { sessionId: upstreamSessionId(request.sessionId), sessionType: request.purpose === undefined ? 'main' : 'other', traceId: randomUUID() }
-    const wire = plan === 'coding-plan' ? codingPlanWire(options, request.purpose, this.attribution.stepEffortOf(request.sessionId), this.contextWindow()) : undefined
-    const body = JSON.stringify(encodeRequest({ ...options, tools, messages }, systemBlocks, images, metadataUserId(device.value, attribution.sessionId), wire))
-    const upstreamBase = `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
+    const wire = zcodeRequestWire(options, request.purpose, this.attribution.stepEffortOf(request.sessionId), this.contextWindow())
+    const auxiliary = request.purpose === 'session-title' || request.purpose === 'compaction'
+    // One x-session-id per DSH session and 3.17.1 attribution for both plans.
+    const attribution: Omit<TraceContext, 'requestId'> = this.attribution.attribute({
+      sessionId: request.sessionId,
+      purpose: request.purpose,
+      reasoningEffort: options.reasoningEffort,
+      tools,
+      messages: options.messages,
+    })
+
+    const preparePlanRequest = async (plan: PlanId): Promise<{
+      readonly routeLabel: string
+      readonly projectToken: ResolvedProjectToken | undefined
+      readonly upstreamBase: string
+      readonly body: string
+    }> => {
+      const routeLabel = plan === requestedPlan && request.provider
+        ? request.provider
+        : plan === 'start-plan' ? START_PLAN_PROVIDER : CODING_PLAN_PROVIDER
+      // coding-plan: the project access token is the request credential; 3.16.3
+      // account mode sends nothing without it (ModelRequestAuthMissing), so the
+      // stream fails before any request leaves.
+      const projectToken = plan === 'coding-plan'
+        ? await this.projectToken(credential, where).catch((error: unknown) => failClosed(report, error))
+        : undefined
+      // start-plan: the plan JWT is the request credential (3.16.3 `resolveCurrent`, `requireApiKey(zcodeJwtToken)`).
+      if (plan === 'start-plan' && startPlanJwt.length === 0) {
+        report('inactive', `未拿到套餐 JWT（${START_PLAN_CREDENTIAL_UNAVAILABLE}），运行 /glm-login`)
+        throw new Error(`${routeLabel}: plan JWT unavailable (${START_PLAN_CREDENTIAL_UNAVAILABLE}) — run /glm-login to sign in again`)
+      }
+      // System blocks: DSH delivers the system prompt as leading system
+      // messages; coding-plan sends it as one block, start-plan wraps it in the
+      // gateway-fingerprinted 3-block assembly (stripping any duplicate ZCode
+      // header from glm-prompt).
+      const systemBlocks = plan === 'start-plan'
+        ? buildStartPlanSystem(system, resolveEnvPromptInfo(this.env(), sessionCwd), 'bigmodel', wire.model)
+        : system.length === 0 ? [] : [{ type: 'text' as const, text: system }]
+      const messages = plan === 'start-plan' && !auxiliary && !hasCurrentDatePrefix(history)
+        ? [buildContextPrefixMessage(), ...history]
+        : history
+      const images = await prepareRequestImages(messages, this.options.resolveAttachments?.(), this.options.mapHostPath, options.signal)
+      const body = JSON.stringify(encodeRequest({ ...options, tools, messages }, systemBlocks, images, metadataUserId(device.value, attribution.sessionId), wire))
+      const upstreamBase = plan === 'start-plan'
+        ? `${START_PLAN_ANTHROPIC_BASE}/v1/messages`
+        : `${BIGMODEL_ANTHROPIC_BASE}/v1/messages`
+      return { routeLabel, projectToken, upstreamBase, body }
+    }
 
     // One attempt: route, assemble, sign, send. 3.16.3 wraps the routing
     // fetch in the signing fetch: the signer sees the provider URL before
     // routing (its origin hosts the handshake), and the routing headers land
     // after the signature block. start-plan is not signed (3.16.3
     // `requiresClientRequestSigning`).
-    const attempt = async (token: ResolvedProjectToken | undefined): Promise<Response> => {
-      const routingCredential: RoutingCredential = { apiKeyId: token?.apiKeyId, zcodeJwt: credential.jwt }
+    const sendAttempt = async (upstreamBase: string, body: string, token: ResolvedProjectToken | undefined): Promise<Response> => {
+      const routingCredential: RoutingCredential = {
+        apiKeyId: token?.apiKeyId,
+        ...(startPlanJwt.length > 0 ? { zcodeJwt: startPlanJwt } : {}),
+      }
       if (token !== undefined) this.routingCredential = routingCredential
       const routed = await this.routing.resolve(upstreamBase, routingCredential).catch((): { routed: boolean, url: string, headers?: Record<string, string> } => ({ routed: false, url: upstreamBase }))
       // x-request-id is fresh per attempt (3.16.3 `Gdt` @4067222: `requestId ?? crypto.randomUUID()` per attempt).
       const trace = { ...attribution, requestId: randomUUID() }
-      const headers = token !== undefined
-        ? buildModelRequestHeaders({ token: token.token, identity, trace, generateText: request.purpose === 'session-title', ...(this.options.env === undefined ? {} : { env: this.options.env }) })
-        : { ...buildAuthHeaders(startPlanJwt, identity, trace, this.options.env), 'content-type': 'application/json' }
+      const headers = buildModelRequestHeaders({
+        token: token !== undefined ? token.token : startPlanJwt,
+        includeApiKey: token !== undefined,
+        identity,
+        trace,
+        generateText: request.purpose === 'session-title',
+        ...(this.options.env === undefined ? {} : { env: this.options.env }),
+      })
       return sendWithClientSigning(token === undefined ? null : this.signer, {
         url: upstreamBase,
         headers,
@@ -607,56 +772,114 @@ export class ZcodeAdapter {
         }),
       })
     }
-    let response = await attempt(projectToken)
-    // 3.16.3 `AccountRequestRetry`: a 401 that is not a request-security
-    // failure rejects the project token; refresh it once, forcing a new
-    // mint, and retry once as a new attempt.
-    if (projectToken !== undefined && await isProjectTokenRejection(response)) {
-      // The rejected answer is done with (its clone was read for the check):
-      // cancel its body before the retry so nothing stays buffered or
-      // open, as 3.16.3 drains discarded bodies (`DQr` @3843990).
-      await response.body?.cancel().catch(() => { /* already closed */ })
-      projectToken = await this.projectToken(credential, where, await projectTokenFingerprint(projectToken.token)).catch((error: unknown) => failClosed(report, error))
-      response = await attempt(projectToken)
-      // A token that was just minted and is refused again: the login itself is no longer accepted.
-      if (await isProjectTokenRejection(response)) await this.noteLoginRejected('model', credential.oauthAccessToken ?? '', { status: 401 }, where)
+
+    const executeOnPlan = async function* (
+      this: ZcodeAdapter,
+      plan: PlanId,
+      failoverFrom?: StartPlanFailoverReason,
+    ): AsyncGenerator<LlmStreamChunk, StartPlanFailoverReason | undefined> {
+      const prep = await preparePlanRequest(plan)
+      let activeToken = prep.projectToken
+      if (plan === 'start-plan') this.activeStartPlanStreams += 1
+      try {
+        let response = await sendAttempt(prep.upstreamBase, prep.body, activeToken)
+        // 3.16.3 `AccountRequestRetry`: a 401 that is not a request-security
+        // failure rejects the project token; refresh it once, forcing a new
+        // mint, and retry once as a new attempt.
+        if (activeToken !== undefined && await isProjectTokenRejection(response)) {
+          // The rejected answer is done with (its clone was read for the check):
+          // cancel its body before the retry so nothing stays buffered or
+          // open, as 3.16.3 drains discarded bodies (`DQr` @3843990).
+          await response.body?.cancel().catch(() => { /* already closed */ })
+          activeToken = await this.projectToken(credential, where, await projectTokenFingerprint(activeToken.token)).catch((error: unknown) => failClosed(report, error))
+          response = await sendAttempt(prep.upstreamBase, prep.body, activeToken)
+          // A token that was just minted and is refused again: the login itself is no longer accepted.
+          if (await isProjectTokenRejection(response)) await this.noteLoginRejected('model', credential.oauthAccessToken ?? '', { status: 401 }, where)
+        }
+        if (!response.ok) {
+          const detail = await response.text()
+          if (plan === 'start-plan') {
+            const reason = canFailover ? classifyStartPlanFailover(response.status, detail) : undefined
+            if (reason !== undefined) {
+              this.recordStartPlanFailover(reason, options.model)
+              return reason
+            }
+            report('inactive', `上游返回 ${response.status}`)
+            if (response.status === 401 || hasStartPlanRejectionCode(detail)) {
+              const detailField: { readonly status: 401 | 403 } | { readonly code: string } =
+                response.status === 401 || response.status === 403 ? { status: response.status } : { code: '3012' }
+              await this.noteLoginRejected('model', startPlanJwt, detailField, where)
+            }
+          }
+          else {
+            report('inactive', `上游返回 ${response.status}`)
+            if (response.status === 429) await this.noteUpstreamLimit(detail, where)
+          }
+          throw new Error(`${prep.routeLabel} ${response.status}: ${detail.slice(0, 400)}`)
+        }
+        if (plan === 'start-plan') {
+          this.startPlanConcurrencyUntil = undefined
+          this.startPlanUnentitledUntil.delete(options.model.toLowerCase())
+        }
+        const failoverNote = failoverFrom === undefined ? '' : `（自 start-plan 回退：${failoverFrom}）`
+        const activeMessage = `上游已应答（套餐 ${plan}）${failoverNote}${device.temporary ? DEVICE_MID_TEMPORARY_NOTE : ''}`
+        if (!wire.stream) {
+          // The session title goes out as 3.16.3 `generateText` sends it: one JSON answer.
+          const message: unknown = await response.json()
+          report('active', activeMessage)
+          yield* decodeMessage(message, options.model) as LlmStreamChunk[]
+          return undefined
+        }
+        if (response.body === null) throw new Error(`${prep.routeLabel}: response has no stream body`)
+        report('active', activeMessage)
+        // decodeSse emits the internal structural chunk vocabulary; it is
+        // field-compatible with the DSH StreamChunk protocol (only the branded id
+        // types differ, and brands exist only at the type level).
+        yield* decodeSse(response.body, options.model) as AsyncIterable<LlmStreamChunk>
+        return undefined
+      }
+      finally {
+        if (plan === 'start-plan') this.activeStartPlanStreams = Math.max(0, this.activeStartPlanStreams - 1)
+      }
+    }.bind(this)
+
+    if (canFailover) {
+      const preStatus = this.startPlanStatus(options.model)
+      if (!preStatus.available && isCooldownReason(preStatus.reason)) {
+        this.startPlanFailoverCount += 1
+        this.startPlanLastFailoverReason = preStatus.reason
+        this.options.onEvent?.(`start-plan cooldown bypass (${preStatus.reason}) -> coding-plan for ${options.model}`)
+        yield* executeOnPlan('coding-plan', preStatus.reason)
+        return
+      }
     }
-    if (!response.ok) {
-      report('inactive', `上游返回 ${response.status}`)
-      const detail = await response.text()
-      if (response.status === 429) await this.noteUpstreamLimit(detail, where)
-      throw new Error(`glm-zcode ${response.status}: ${detail.slice(0, 400)}`)
+    const failedOver = yield* executeOnPlan(requestedPlan)
+    if (failedOver !== undefined) {
+      yield* executeOnPlan('coding-plan', failedOver)
     }
-    if (wire?.stream === false) {
-      // The session title goes out as 3.16.3 `generateText` sends it: one JSON answer.
-      const message: unknown = await response.json()
-      report('active', `上游已应答（套餐 ${plan}）${device.temporary ? DEVICE_MID_TEMPORARY_NOTE : ''}`)
-      yield* decodeMessage(message, options.model) as LlmStreamChunk[]
-      return
-    }
-    if (response.body === null) throw new Error('glm-zcode: response has no stream body')
-    report('active', `上游已应答（套餐 ${plan}）${device.temporary ? DEVICE_MID_TEMPORARY_NOTE : ''}`)
-    // decodeSse emits the internal structural chunk vocabulary; it is
-    // field-compatible with the DSH StreamChunk protocol (only the branded id
-    // types differ, and brands exist only at the type level).
-    yield* decodeSse(response.body, options.model) as AsyncIterable<LlmStreamChunk>
   }
 }
 
+/** Map DSH reasoning effort (`low`/`high`/`max`) to one catalog rule's level vocabulary. */
+function mapEffortToRuleLevel(rule: ZcodeModelRule, requested: string | undefined): string {
+  if (requested !== undefined && rule.reasoningLevels.includes(requested)) return requested
+  if (requested === 'low' && rule.reasoningLevels.includes('disabled')) return 'disabled'
+  if ((requested === 'high' || requested === 'max' || requested === undefined) && rule.reasoningLevels.includes('enabled')) return 'enabled'
+  if (rule.reasoningLevels.includes('high')) return 'high'
+  if (rule.reasoningLevels.includes('enabled')) return 'enabled'
+  return rule.reasoningLevels[0] ?? 'high'
+}
+
 /**
- * The 3.16.3 body shape of a coding-plan request (docs/DESIGN.md §4.5):
- * the official model casing, and for a catalog model the option map of its
- * reasoning level: the DSH effort when the catalog lists it, else `high`
- * (the DSH default, §4.6); the session title uses the catalog's first level
- * (3.16.3 `auxiliaryModelOptions` `PP` @7759001); compaction uses the
- * effort of the session's latest main step (`sessionEffort`), as 3.16.3
- * compacts with the session's selection (`c3a` @13387356), and the
- * request's own effort before the session's first step.
+ * The 3.17.1/3.19.1 wire shape of a ZCode model request (both plans):
+ * the official model casing, `max_tokens` per catalog rule, `stream` (`false`
+ * for `session-title`), and the catalog option map for the mapped reasoning
+ * level.
  */
-function codingPlanWire(options: GenerateOptionsLike, purpose: GenerateOptions['purpose'], sessionEffort: string | undefined, declaredWindow: number): WireShape {
+function zcodeRequestWire(options: GenerateOptionsLike, purpose: GenerateOptions['purpose'], sessionEffort: string | undefined, declaredWindow: number): WireShape {
   const rule = zcodeModelRule(options.model)
   const requested = purpose === 'compaction' ? sessionEffort ?? options.reasoningEffort : options.reasoningEffort
-  const level = rule === undefined ? undefined : purpose === 'session-title' ? rule.reasoningLevels[0] : requested !== undefined && rule.reasoningLevels.includes(requested) ? requested : 'high'
+  const level = rule === undefined ? undefined : purpose === 'session-title' ? rule.reasoningLevels[0] : mapEffortToRuleLevel(rule, requested)
   // max_tokens as 3.16.3 picks it (token-budget.ts); DSH's maxTokens is not
   // used for catalog models. Outside the catalog the DSH value stays. The
   // step's window is the smaller of the window declared to DSH and the
@@ -671,6 +894,31 @@ function codingPlanWire(options: GenerateOptionsLike, purpose: GenerateOptions['
     stream: purpose !== 'session-title',
     optionPatch: rule === undefined || level === undefined ? undefined : rule.optionPatch(level),
   }
+}
+
+/** Envelope, data, and nested error records of a parsed JSON error body. */
+function errorResponseRecords(body: unknown): {
+  readonly envelope: Record<string, unknown>
+  readonly data: Record<string, unknown>
+  readonly failure: Record<string, unknown>
+} {
+  const asRecord = (value: unknown): Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
+  const envelope = asRecord(body)
+  return { envelope, data: asRecord(envelope.data), failure: asRecord(envelope.error) }
+}
+
+/** Whether a Start Plan error body carries code 3012 (rejected/invalid plan token). */
+function hasStartPlanRejectionCode(detail: string): boolean {
+  let body: unknown
+  try {
+    body = JSON.parse(detail)
+  }
+  catch {
+    return false
+  }
+  const { envelope, data, failure } = errorResponseRecords(body)
+  return [envelope.code, data.code, failure.code].some(value => value === 3012 || value === '3012')
 }
 
 /**
@@ -721,10 +969,7 @@ async function isProjectTokenRejection(response: Response): Promise<boolean> {
   if (response.status !== 401) return false
   let body: unknown
   try { body = await response.clone().json() } catch { return true }
-  const record = (value: unknown): Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
-  const envelope = record(body)
-  const data = record(envelope.data)
-  const failure = record(envelope.error)
+  const { envelope, data, failure } = errorResponseRecords(body)
   const values = [envelope.msg, envelope.reason, envelope.code, data.reason, failure.reason, failure.message, failure.code]
   return !values.some(value => SECURITY_FAILURE_VALUES.has(typeof value === 'number' ? String(value) : value))
 }

@@ -15,21 +15,25 @@ export const GLM_REASONING_EFFORTS = [
 /** The output cap the channel declares to DSH (DSH's own budget input; the coding-plan wire value follows ZCodeModelRule). */
 export const GLM_DEFAULT_MAX_TOKENS = 32000
 
+export interface GlmModelEntry {
+  readonly id: string
+  readonly name: string
+  readonly inputModalities: readonly ('text' | 'image')[]
+}
+
 /**
- * The channel's model catalog with truthful input modalities: GLM-5.3 has no
- * vision tower and is text-only; GLM-5.3-Flash is multimodal (user,
- * 2026-10-28). A text-only route makes DSH project request images to text
- * before the adapter (dsh-llm `projectImagesForTextModel`) and makes
- * `read_image` refuse (dsh-tool-fs `assertImageCapableRoute`).
+ * Shared GLM model catalog: both Coding Plan and Start Plan expose GLM-5.3
+ * (text-only) and GLM-5.3-Flash (multimodal).
  */
-export const GLM_MODELS = [
+export const GLM_MODELS: readonly GlmModelEntry[] = [
   { id: 'glm-5.3', name: 'GLM-5.3', inputModalities: ['text'] },
   { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', inputModalities: ['text', 'image'] },
-] as const
+]
 
 /** Declared input modalities of one model id; ids outside the catalog are text-only. */
 export function glmInputModalities(model: string): ReadonlyArray<'text' | 'image'> {
-  return GLM_MODELS.find(entry => entry.id === model)?.inputModalities ?? ['text']
+  const lower = model.toLowerCase()
+  return GLM_MODELS.find(entry => entry.id === lower)?.inputModalities ?? ['text']
 }
 
 /** What the ZCode built-in catalog says about one model, as far as the request needs it. */
@@ -46,11 +50,7 @@ export interface ZcodeModelRule {
 
 /**
  * The GLM-5.3 family as the ZCode built-in catalog configures it
- * (reference/ZCode config/provider/zcode-builtin.json revision 33: model rule
- * `.*glm-5\.3.*`, anthropic-messages rule of the same match). 3.16.3 matches
- * these patterns anchored and case-insensitive (`wYt` @557708, called with
- * `true` @563982); the later `.*glm-5\.3.*` rule overrides the earlier
- * `.*glm-5.*` one, and `.*glm-5\.3-flash.*` only adds input formats.
+ * (ZCode `zcode-builtin.json`: model rule `.*glm-5\.3.*`).
  */
 const GLM_53_RULE: ZcodeModelRule = {
   contextWindow: 1_000_000,
@@ -69,7 +69,7 @@ const GLM_53_MATCH = /^.*glm-5\.3.*$/iu
  */
 export const GLM_CONTEXT_WINDOW = { default: 512_000, min: GLM_53_RULE.maxOutputTokens, max: GLM_53_RULE.contextWindow } as const
 
-/** The catalog rule of one model id; undefined outside the GLM-5.3 family (the request then keeps the DSH values). */
+/** The catalog rule of one model id; undefined outside the matched GLM-5.3 family (the request then keeps the DSH values). */
 export function zcodeModelRule(model: string): ZcodeModelRule | undefined {
   return GLM_53_MATCH.test(model) ? GLM_53_RULE : undefined
 }
