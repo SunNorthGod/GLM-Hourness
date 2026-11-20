@@ -15,8 +15,8 @@ import { projectWindow, samePeriod, type WindowPoint, type WindowState } from '.
 import { loopDefaultsOf, type ChannelLoopDefault, type ChannelTrigger } from '../src/shared/channel-loop.ts'
 import { peakHoursOf, quotaOf, type UsagePricing } from '../src/shared/pricing.ts'
 import {
-  formatMoment, loginLine, peakLine, quotaLines, quotaLowLine, quotaLowOf,
-  type LoginView, type MomentZone, type QuotaBasis, type QuotaLowRule, type QuotaProjection, type QuotaReading, type QuotaRequest, type QuotaView, type QuotaWindowName, type QuotaWindowView,
+  formatMoment, loginLine, peakLine, quotaLines, quotaLowLine, quotaLowOf, quotaWaitOf,
+  type LoginView, type MomentZone, type QuotaBasis, type QuotaLowRule, type QuotaProjection, type QuotaReading, type QuotaRequest, type QuotaView, type QuotaWait, type QuotaWindowName, type QuotaWindowView,
 } from '../src/shared/quota.ts'
 
 const at = (iso: string): number => Date.parse(iso)
@@ -214,6 +214,26 @@ test('quotaLowLine: the line the loop board hands to the main agent', () => {
   assert.equal(line(weekly(90, { kind: 'at-reset', percent: 99, basis: SINCE_MONDAY })), '每周额度已用 90%，周一 10:00 重置')
   assert.equal(line(windowOf('five-hour', '5 小时', 79, undefined, exhaustsIn(50))), '5 小时额度已用 79%，预计 17:52 用完')
   assert.equal(line(windowOf('five-hour', '5 小时', undefined, RESET, exhaustsIn(50))), '5 小时额度，21:30 重置，预计 17:52 用完')
+})
+
+test('quotaWaitOf: the two confirmed paths stop the drive, the forecast does not (G15)', () => {
+  const wait = (windows: readonly QuotaWindowView[], rest: Partial<QuotaView> = {}): QuotaWait | undefined => quotaWaitOf(viewOf(windows, rest), NOW)
+  const past = NOW - MINUTE_MS
+  // The upstream limit: the server's own recovery time wins, the code travels with it.
+  assert.deepEqual(wait([fiveHour(60, NO_ESTIMATE)], { limited: { at: NOW, code: '1308', until: RESET } }), { resetAt: RESET, code: '1308' })
+  assert.deepEqual(wait([fiveHour(100, { kind: 'spent' })], { limited: { at: NOW, code: '1308' } }), { resetAt: RESET, code: '1308', window: 'five-hour' }, 'the refusal without a recovery time falls to the spent window')
+  // The reading: a spent five-hour or weekly window, the earlier reset wins.
+  assert.deepEqual(wait([fiveHour(100, { kind: 'spent' })]), { resetAt: RESET, window: 'five-hour' })
+  assert.deepEqual(wait([fiveHour(100, { kind: 'spent' }), weekly(100, { kind: 'spent' })]), { resetAt: RESET, window: 'five-hour' }, 'the five-hour window resets earlier')
+  assert.deepEqual(wait([weekly(100, { kind: 'spent' })]), { resetAt: at('2026-11-02T10:00:00+08:00'), window: 'weekly' })
+  assert.deepEqual(wait([fiveHour(100, { kind: 'spent' }), weekly(100, { kind: 'spent' })], { limited: { at: NOW, code: '1310', until: at('2026-11-02T10:00:00+08:00') } }), { resetAt: at('2026-11-02T10:00:00+08:00'), code: '1310', window: 'weekly' }, 'the refusal names the instant, the spent window whose reset it is travels with it')
+  // No reset instant anywhere: no wait for the drive to stand on.
+  assert.deepEqual(wait([windowOf('five-hour', '5 小时', undefined, undefined, { kind: 'spent' })], { limited: { at: NOW, code: '1308' } }), undefined, 'a spent window without a reset time and a refusal without one')
+  // Not stopped: share below the whole, a forecast only, an MCP window spent, the reset already past.
+  assert.equal(wait([fiveHour(99, NO_ESTIMATE)]), undefined)
+  assert.equal(wait([fiveHour(99, exhaustsIn(5))]), undefined, 'a forecast is the board quota-low entry\'s business, not the drive\'s')
+  assert.equal(wait([windowOf('mcp', 'MCP 工具调用', 100, RESET, { kind: 'spent' })]), undefined)
+  assert.equal(wait([windowOf('five-hour', '5 小时', 100, past, { kind: 'spent' })]), undefined, 'the reset has passed: over by its own clock')
 })
 
 test('peakHoursOf: two single-line strings of 1 to 80 characters read; anything else reads as none, and only a wrong type is reported', () => {

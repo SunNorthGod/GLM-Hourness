@@ -5,7 +5,7 @@
  * to the drive, a board-less loop link so the drive's events run in the
  * fallback executor the way they do without the loop board, an injected
  * clock and timers, and the services the drive reads (focus, peak hold,
- * open requests, session documents) as values a case sets.
+ * quota view, open requests, session documents) as values a case sets.
  */
 import { join } from 'node:path'
 import { openEngine } from '../src/graph/engine.ts'
@@ -23,6 +23,8 @@ import { createLoopLink, type LoopEmit, type LoopLink } from '../src/execute/loo
 import { setMetricSink, type MetricEvent } from '../src/execute/metrics.ts'
 import type { AgentLike, ServiceLookup, SessionEventDocumentLike, ToolFinalResult } from '../src/shared/dsh-min.ts'
 import { PEAK_MODE_SERVICE, type PeakHold, type PeakModeService } from '../src/shared/peak-mode.ts'
+import { PRICING_SERVICE } from '../src/shared/pricing.ts'
+import type { QuotaView } from '../src/shared/quota.ts'
 import { fakeLive, type FakeLive } from './fake-rc3.ts'
 import { GOAL, TASK, stageNodes, testRepo, type TestRepo } from './execute-repo.ts'
 import { until } from './panel-helpers.ts'
@@ -47,6 +49,8 @@ export interface DriveRig {
   focus: string | undefined
   /** What the peak service holds back now. */
   hold: PeakHold | undefined
+  /** The quota view the pricing service's `quota` member answers (G15); a clean view by default. */
+  quotaView: QuotaView | undefined
   /** The guard row's open requests of the holder. */
   requests: { readonly ref: string, readonly askedAt: string, readonly target: string }[]
   /** The documents of the holder session (user messages for the restart pause). */
@@ -75,8 +79,10 @@ export interface DriveRig {
   round(id?: string): Promise<void>
   graph(): Promise<LoadedGraph>
   node(id: string): Promise<GraphNode>
-  comments(id: string): Promise<string[]>
-  lines(): Promise<DriveLine[]>
+    comments(id: string): Promise<string[]>
+    lines(): Promise<DriveLine[]>
+    /** The `read` flags the drive's quota reads carried (G15: the step path reads the cached view, so all are false). */
+    readonly quotaCalls: readonly (boolean | undefined)[]
   /** A fresh drive over the same project, as after a host restart (the old one is disposed). */
   restart(): void
   /** The fallback's work and the goal/changed writes settle. */
@@ -125,10 +131,22 @@ export async function driveRig(options: {
     peekGrant: () => false,
     openRequests: () => rig.requests,
   }
+  /** The `read` flags of the quota reads the drive started (G15's step path starts none). */
+  const quotaCalls: (boolean | undefined)[] = []
   const peak: PeakModeService = {
     stateFor: () => rig.hold === undefined ? undefined : { level: rig.hold.level, origin: 'human', peak: true, until: rig.hold.until, glmWorkerCap: 1 },
     stateForProject: () => undefined,
     peakHoldFor: () => rig.hold,
+  }
+  const pricing = {
+    basis: 'test',
+    plan: 'test',
+    charged: () => 1,
+    peak: () => false,
+    quota: (request?: { readonly read?: boolean }): Promise<QuotaView> => {
+      quotaCalls.push(request?.read ?? true)
+      return Promise.resolve(rig.quotaView ?? { login: { state: 'ok' }, pending: false })
+    },
   }
   const services: Record<string, unknown> = {
     agents: live.agents,
@@ -144,6 +162,7 @@ export async function driveRig(options: {
     },
     [REQUESTS_SERVICE]: requestsDesk,
     [PEAK_MODE_SERVICE]: peak,
+    [PRICING_SERVICE]: pricing,
   }
   const lookup: ServiceLookup = { get: (name: string) => services[name] }
   const cache = createGraphCache(() => {})
@@ -212,6 +231,7 @@ export async function driveRig(options: {
     reports,
     focus: 'goal-1',
     hold: undefined,
+    quotaView: undefined,
     requests: [],
     documents: [],
     boardAttached: false,
@@ -251,6 +271,7 @@ export async function driveRig(options: {
       return (await rig.node(id)).history.flatMap(entry => entry.op === 'comment' && typeof entry.text === 'string' ? [entry.text] : [])
     },
     lines: () => readDrive(execDir(repo.root)),
+    quotaCalls,
     restart() {
       rig.drive.dispose()
       rig.drive = makeDrive()

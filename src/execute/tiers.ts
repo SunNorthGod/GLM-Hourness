@@ -193,6 +193,8 @@ export interface DriveInput {
   readonly peakHold: { readonly level: 'reduce' | 'stop', readonly until: string } | undefined
   /** Whether the peak end a `hourness-peak-wait` block recorded has passed (the caller read the clock). */
   readonly peakOver: boolean
+  /** Whether the reset a `hourness-quota-wait` block recorded has passed (G15; the caller read the clock on the drive.jsonl line). */
+  readonly quotaOver: boolean
   /** Whether every question the `hourness-waiting-human` reason names is decided or gone. */
   readonly waitingDecided: boolean
 }
@@ -202,9 +204,9 @@ export type DriveDecision =
   | { readonly action: 'none' }
   | { readonly action: 'release', readonly module: string, readonly release: string }
   | { readonly action: 'move', readonly release: string }
-  | { readonly action: 'resume', readonly reason: 'disarmed' | 'restart-pause' | 'waiting-decided' | 'peak-over' | 'design-released' }
+  | { readonly action: 'resume', readonly reason: 'disarmed' | 'restart-pause' | 'waiting-decided' | 'peak-over' | 'quota-over' | 'design-released' }
   | { readonly action: 'design-wait' }
-  | { readonly action: 'hold', readonly why: 'human-paused' | 'cleared' | 'peak-waiting' | 'waiting-human' | 'blocked' | 'in-design' }
+  | { readonly action: 'hold', readonly why: 'human-paused' | 'cleared' | 'peak-waiting' | 'quota-waiting' | 'waiting-human' | 'blocked' | 'in-design' }
 
 /** The comment the drive starts with; it names the release and the session it serves (§3.9.1). */
 export const DRIVE_START_MARK = '自动推进已开始'
@@ -228,8 +230,8 @@ function namesSession(goal: GraphNode, session: string): boolean {
  * framework sent back to design, then the unarmed resume; the pause rows —
  * a pause that hugged a host exit resumes, the person's does not; the
  * cleared goal; the blocked rows — the waited questions decided, the peak
- * over, the framework released again, anything else holds. `none` when
- * nothing applies.
+ * over, the quota reset over (G15), the framework released again, anything
+ * else holds. `none` when nothing applies.
  */
 export function driveDecision(input: DriveInput, readers: ModuleReaders = MODULE_READERS): DriveDecision {
   const { graph, goal, view, session } = input
@@ -260,6 +262,7 @@ export function driveDecision(input: DriveInput, readers: ModuleReaders = MODULE
   if (view.phase === 'blocked') {
     if (view.blockedCode === 'hourness-waiting-human') return input.waitingDecided ? { action: 'resume', reason: 'waiting-decided' } : { action: 'hold', why: 'waiting-human' }
     if (view.blockedCode === 'hourness-peak-wait') return input.peakOver ? { action: 'resume', reason: 'peak-over' } : { action: 'hold', why: 'peak-waiting' }
+    if (view.blockedCode === 'hourness-quota-wait') return input.quotaOver ? { action: 'resume', reason: 'quota-over' } : { action: 'hold', why: 'quota-waiting' }
     if (view.blockedCode === 'hourness-design-wait') return goalLayer(goal).ok ? { action: 'resume', reason: 'design-released' } : { action: 'hold', why: 'in-design' }
     return { action: 'hold', why: 'blocked' }
   }

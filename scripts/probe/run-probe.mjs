@@ -3636,6 +3636,40 @@ const execDrive = designScenario(EXEC_DRIVE, 'glm-5.3-flash', ws => [
   { text: 'done' },
 ], { git: true, extra: [...DRIVE_ON, ...dispatchRow(join(runDir, EXEC_DRIVE, 'dispatch.jsonl'), { watch: 'probe-other-' })], others: [driveMain, driveWorker] })
 
+// G15 (preboot-decisions/g15-design.md; scenario glm-exec-quota): the drive's
+// quota stop on the real runtime. The scenario's glm-login home holds a
+// seeded quota journal before the boot — one reading whose five-hour window
+// is spent and resets about three minutes after the seed — so the pricing
+// service's quota view composes it and the drive blocks
+// `hourness-quota-wait` at the first goal round with the reset instant in
+// the message; the main agent's own steps keep running, and the timer's
+// resume after the grace is pinned in L2 (tests/execute-quota.spec.ts): a
+// headless run does not wait minutes, the same split as the peak's.
+const EXEC_QUOTA = 'glm-exec-quota'
+const quotaResetAt = Date.now() + 3 * 60_000
+await stageGraph(EXEC_QUOTA, [
+  ['human', { type: 'goal', title: '静态博客', stage: 'design', acceptance: ['the feed builds'] }],
+])
+await stageRelease(EXEC_QUOTA, ['goal-1'])
+mkdirSync(join(runDir, EXEC_QUOTA, 'home', 'audit'), { recursive: true })
+writeFileSync(join(runDir, EXEC_QUOTA, 'home', 'audit', 'quota.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), kind: 'reading', limits: [{ type: 'TOKENS_LIMIT', percentage: 100, nextResetTime: quotaResetAt }], dropped: 0 })}\n`)
+// The main agent's script, flat steps like driveMain's: a step served as a
+// [name, step] pair has no tool and no text, so every reply would fall back
+// to text and the goal would never even be focused. `quotaStill` is held
+// apart so the check below can find the request that follows it.
+const quotaStill = { tool: { name: 'Read', arguments: { file_path: join(stageWs(EXEC_QUOTA), 'README.md') } } }
+const quotaMain = [
+  { tool: { name: 'graph_focus', arguments: { id: 'goal-1' } } },
+  mergeSleep(3, 'let the drive block on the quota'),
+  quotaStill,
+  { text: 'The drive waits for the quota; the person can still talk to me.' },
+]
+const execQuota = designScenario(EXEC_QUOTA, 'glm-5.3-flash', ws => [
+  { tool: { name: 'Read', arguments: { file_path: join(ws, 'README.md') } }, other: { line: '/wish', say: DRIVE_PERSON.start } },
+  { tool: { name: 'DeferredToolCall', arguments: { name: 'probe_wait_goal', input: { steps: [{ phase: 'blocked', code: 'hourness-quota-wait' }], timeoutMs: 90_000 } } } },
+  { text: 'done' },
+], { git: true, extra: [...DRIVE_ON, ...dispatchRow(join(runDir, EXEC_QUOTA, 'dispatch.jsonl'), { watch: 'probe-other-' })], others: [quotaMain] })
+
 // E8 (M7 design §3.9.7, §3.7.5, §9.1 glm-exec-modules, R5-F1, U30): the two
 // loops on the real runtime. The goal is split into module-a and module-b;
 // the person's releases and returns are their own stage writes (D13): the
@@ -5069,6 +5103,32 @@ function driveChecks() {
 }
 
 /**
+ * G15 (preboot-decisions/g15-design.md; scenario glm-exec-quota): what the
+ * drive's quota stop did on the real runtime. The seeded reading stands for
+ * the server's spent five-hour window; `quotaResetAt` is the reset instant
+ * the seed wrote. The timer's resume after the grace is L2's
+ * (tests/execute-quota.spec.ts), the same split as the peak's.
+ */
+function quotaChecks() {
+  const ws = join(runDir, EXEC_QUOTA, 'ws')
+  const resetClock = (ms) => { const at = new Date(ms); return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` }
+  const main = execQuota.steps.filter(step => String(step.sessionId ?? '').startsWith('probe-other-'))
+  const notes = dispatchRecord(EXEC_QUOTA)
+  const blocked = notes.find(entry => entry.kind === 'watch-goal' && entry.operation === 'block' && entry.goal?.blockedReason?.code === 'hourness-quota-wait')
+  const waited = notes.find(entry => entry.kind === 'wait-goal' && entry.goal?.blockedReason?.code === 'hourness-quota-wait')
+  const goalNode = wsNode(ws, 'goal-1')
+  const line = jsonl(join(ws, '.llm', 'execute', 'drive.jsonl')).find(record => record.op === 'quota-wait')
+  const still = main[quotaMain.indexOf(quotaStill) + 1]
+  const idleBlocked = notes.some(entry => entry.kind === 'watch-goal' && entry.operation === 'block' && entry.goal?.blockedReason?.code === 'hourness-idle-rounds')
+  return [
+    [`exec quota: the seeded spent window blocks the drive hourness-quota-wait at the first goal round, with the seeded reset instant in the message, and no idle block fired`, blocked !== undefined && String(blocked.goal?.blockedReason?.message ?? '').startsWith(`Waiting for the GLM quota to reset at ${resetClock(quotaResetAt)}: the five-hour window is spent.`) && waited?.ok === true && !idleBlocked, `${blocked?.goal?.blockedReason?.message?.slice(0, 140) ?? 'no block'}; waited ${waited?.ok ?? 'none'}`],
+    [`exec quota: drive.jsonl holds the quota-wait line with the seeded reset instant`, line !== undefined && Math.abs(Date.parse(line.until) - quotaResetAt) < 60_000 && line.goal !== undefined, JSON.stringify(line ?? null)],
+    [`exec quota: the main agent's own step after the block runs — the drive stops, the person can still talk to it`, still !== undefined && lastToolResult(still)?.isError !== true, `${main.length} request(s); ${(lastToolResult(still)?.text ?? 'no result').slice(0, 100)}`],
+    [`exec quota: the goal is not marked done and the run ends clean with nothing from the execute row on stderr (the timer's resume after the grace is pinned in L2 by tests/execute-quota.spec.ts)`, goalNode !== undefined && goalNode.status !== 'done' && execQuota.status === 0 && pluginStderrClean(EXEC_QUOTA), `goal-1 ${goalNode?.status ?? 'none'}; exit ${execQuota.status}; ${stderrOf(EXEC_QUOTA).split('\n').find(line => line.includes('execute')) ?? 'no execute line'}`],
+  ]
+}
+
+/**
  * E8 (M7 design §3.9.7, §3.7.5, §9.1; scenarios glm-exec-modules,
  * glm-exec-modules-2): what the two loops did on the real runtime.
  * `execModulesAt` names the main agent's scripted steps; a step's result is
@@ -6019,6 +6079,7 @@ const checks = [
   ...mergeChecks(),
   ...mergeUpstreamChecks(),
   ...driveChecks(),
+  ...quotaChecks(),
   ...execModulesChecks(),
   ...skeletonChecks(),
   ...walkChecks(),
@@ -6095,6 +6156,7 @@ const CHECK_SCENARIO_PREFIXES = {
   'exec docs': ['glm-exec-docs'],
   'exec docs (reval negative)': ['glm-exec-docs'],
   'exec drive': ['glm-exec-drive'],
+  'exec quota': ['glm-exec-quota'],
   'exec merge': ['glm-exec-merge'],
   'exec merge upstream': ['glm-exec-merge-upstream'],
   'exec modules': ['glm-exec-modules', 'glm-exec-modules-2'],

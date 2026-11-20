@@ -239,6 +239,46 @@ export function quotaLowLine(window: QuotaWindowView, now: number, zone?: Moment
   return clauses.join('，')
 }
 
+/** What the drive's quota stop (G15, .agents/tasks/preboot-decisions/g15-design.md) waits on. */
+export interface QuotaWait {
+  /** Epoch milliseconds: the reset instant the drive resumes at. */
+  readonly resetAt: number
+  /** The limit code the server's 429 named, when the upstream-limit record stands in the view. */
+  readonly code?: string
+  /** The spent window, when the latest reading shows one; a `limited`-only wait names none. */
+  readonly window?: 'five-hour' | 'weekly'
+}
+
+/**
+ * The quota stop the drive waits on, from the two confirmed paths (G15): the
+ * adapter recorded an upstream limit (a 429 with a BigModel limit code,
+ * `view.limited`), or the latest reading says a five-hour or weekly window
+ * is spent. The reset instant is the server's recovery time when the refusal
+ * named one, else the spent window's reset (the earlier one when several
+ * windows are spent). Undefined when nothing is confirmed spent, when no
+ * reset instant is known anywhere, or when the instant has already passed:
+ * the drive does not stop on a projection (`exhausts` is a forecast, the
+ * board's quota-low entry is the early warning), and a wait whose reset has
+ * passed is over by its own clock.
+ */
+export function quotaWaitOf(view: QuotaView, now: number): QuotaWait | undefined {
+  const spentOf = (window: QuotaWindowView): window is QuotaWindowView & { readonly name: 'five-hour' | 'weekly' } =>
+    (window.name === 'five-hour' || window.name === 'weekly')
+    && (window.projection.kind === 'spent' || (window.usedPercent ?? 0) >= SPENT_PERCENT)
+  const spent = (view.reading?.windows ?? []).filter(spentOf)
+  const resets = spent.map(window => window.resetAt).filter((at): at is number => at !== undefined)
+  const fromReading = resets.length === 0 ? undefined : Math.min(...resets)
+  const resetAt = view.limited?.until ?? fromReading
+  if (resetAt === undefined || resetAt <= now) return undefined
+  if (view.limited === undefined && spent.length === 0) return undefined
+  const named = spent.find(candidate => candidate.resetAt === resetAt)?.name ?? spent[0]?.name
+  return {
+    resetAt,
+    ...(view.limited === undefined ? {} : { code: view.limited.code }),
+    ...(named === undefined ? {} : { window: named }),
+  }
+}
+
 /** 「GLM 登录在 17:40 被服务端拒绝，GLM 的请求会失败；运行 /glm-login 重新登录」 */
 export function loginLine(login: LoginView, now: number, zone?: MomentZone): string {
   switch (login.state) {

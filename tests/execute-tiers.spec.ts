@@ -33,6 +33,7 @@ const drive = (graph: LoadedGraph, over: Partial<DriveInput> = {}): DriveInput =
   restartPause: false,
   peakHold: undefined,
   peakOver: false,
+  quotaOver: false,
   waitingDecided: false,
   ...over,
 })

@@ -65,6 +65,8 @@ import type { HarnessResult, LoopEventRecord } from '../loops/service.ts'
 import { createUserNotice, type AgentLike, type GoalChangedPayload, type GoalsService, type GoalView as DshGoalView, type LiveAgentLike, type PostExecuteListener, type PreExecuteListener, type ServiceLookup, type SessionEventDocumentLike, type SessionLike, type SessionObservationLike, type SessionQueryService, type ToolDefinitionLike } from '../shared/dsh-min.ts'
 import { toMetricsId } from '../shared/metrics.ts'
 import { peakModeService, type PeakHold } from '../shared/peak-mode.ts'
+import { quotaOf, pricingService } from '../shared/pricing.ts'
+import { quotaWaitOf, type QuotaView, type QuotaWait } from '../shared/quota.ts'
 import { shownProposalOf } from '../shared/tool-names.ts'
 import { latestDispatch, lostChildOf, registeredAttempt, registeredDispatches, renderLostComment, type Attempt, type DispatchRecord } from './attempts.ts'
 import { toHolder, trunkBranchOf } from './check.ts'
@@ -102,6 +104,14 @@ const clockOf = (iso: string): string => {
   return `${pad(at.getHours())}:${pad(at.getMinutes())}`
 }
 const peakWaitLine = (hold: PeakHold): string => `Waiting for GLM peak hours to end at ${clockOf(hold.until)}: the work left is held back by the peak mode (${hold.level}). The harness resumes the drive after peak.`
+/** Authored (G15): the block while the GLM plan's quota is spent, with the reset instant the wait stands on. */
+const quotaWaitLine = (wait: QuotaWait): string => {
+  const parts = [
+    wait.window === undefined ? undefined : `the ${wait.window === 'weekly' ? 'weekly' : 'five-hour'} window is spent`,
+    wait.code === undefined ? undefined : `the server named limit ${wait.code}`,
+  ].filter(part => part !== undefined)
+  return `Waiting for the GLM quota to reset at ${clockOf(new Date(wait.resetAt).toISOString())}: ${parts.length === 0 ? 'the plan is out of quota' : parts.join('; ')}. The harness resumes the drive after the reset.`
+}
 const clearedLine = (objective: string): string => `The person cleared the drive. If they ask you to continue, call create_goal with this objective: ${objective}`
 
 const DRIVE_BODY = (trunk: string): string => `Drive it through the project graph without waiting for the person: dispatch ready tasks with dispatch_task (choose a model and say why), dispatch their reviews the same way, answer worker requests with answer_worker, integrate with git, run check_commit on the commit you want on ${trunk}, then fast-forward ${trunk} to it. Put matters only the person can decide to them in the chat (at most three at a time); when everything left waits for them, call await_human. Grade what development raises before you ask: what a released module's added tasks can build without changing that module's settled design, decide yourself (a question with decider agent) and tell it at the next batch; what changes a released module's design sends that module back to design; what needs a new module goes back to the big loop, where alone the module list is set; when unsure, take the higher tier. Mark this goal complete only when the completion gate passes; it lists what is missing. Run long commands in the background (run_in_background): the job's end, with its output, arrives by itself as a notice. Never hold the turn open with sleep, polling or a long job wait; when nothing is left to do in the turn, end it.`
@@ -115,8 +125,10 @@ const GONE: ReadonlySet<string> = new Set(['dropped', 'superseded'])
 const ACTIVITY: ReadonlySet<string> = new Set(['execute.dispatch', 'execute.handback', 'execute.plan', 'execute.ask', 'execute.check', 'execute.advance', 'execute.walk'])
 const CREDENTIAL_MS = 10 * 60_000
 const PEAK_GRACE_MS = 5 * 60_000
+/** The timer resumes the quota wait this long after the reset instant (G15): the same grace the peak uses, for the server's and the host's clocks to agree. */
+const QUOTA_GRACE_MS = 5 * 60_000
 const START_TRIES = 3
-const ROW_CODES = new Set(['hourness-waiting-human', 'hourness-idle-rounds', 'hourness-peak-wait', 'hourness-design-wait'])
+const ROW_CODES = new Set(['hourness-waiting-human', 'hourness-idle-rounds', 'hourness-peak-wait', 'hourness-quota-wait', 'hourness-design-wait'])
 
 /**
  * The objective of the drive's goal (§3.9.1): the goal, its acceptance, what
@@ -237,6 +249,7 @@ interface SessionState {
   batchTell: string | undefined
   hostStarted: boolean
   cancelPeak: (() => void) | undefined
+  cancelQuota: (() => void) | undefined
 }
 
 interface Credential {
@@ -321,7 +334,7 @@ export function createDrive(deps: DriveDeps): Drive {
   const stateOf = (session: string): SessionState => {
     let state = sessions.get(session)
     if (state === undefined) {
-      state = { counters: { idle: 0, peak: 0 }, last: undefined, state: undefined, returns: [], lost: [], batchTell: undefined, hostStarted: false, cancelPeak: undefined }
+      state = { counters: { idle: 0, peak: 0 }, last: undefined, state: undefined, returns: [], lost: [], batchTell: undefined, hostStarted: false, cancelPeak: undefined, cancelQuota: undefined }
       sessions.set(session, state)
     }
     return state
@@ -382,6 +395,29 @@ export function createDrive(deps: DriveDeps): Drive {
       return undefined
     }
     return hold
+  }
+  let quotaWarned = false
+  /**
+   * The quota wait the drive stops on (G15), from the pricing service's quota
+   * view as of the latest reading: `read: false` starts no read on the model
+   * step path (the board's quota-low entry and the panel commands read at
+   * their own pace). A view that cannot be read leaves the drive to its
+   * normal paths, said once in the row health.
+   */
+  const quotaWaitOfSession = async (): Promise<QuotaWait | undefined> => {
+    const pricing = pricingService(deps.lookup)
+    const read = pricing === undefined ? undefined : quotaOf(pricing)
+    if (read === undefined) return undefined
+    let view: QuotaView | undefined
+    try {
+      view = await read({ waitMs: 0, read: false })
+    }
+    catch (error) {
+      if (!quotaWarned) deps.report(undefined, 'degraded', `自动推进读不到额度投影：${errorText(error)}`)
+      quotaWarned = true
+      return undefined
+    }
+    return view === undefined ? undefined : quotaWaitOf(view, now().getTime())
   }
   const focusGoal = (session: SessionLike, graph: LoadedGraph): GraphNode | undefined => {
     let focus: string | undefined
@@ -532,6 +568,17 @@ export function createDrive(deps: DriveDeps): Drive {
     return true
   }
 
+  /** The timer of a stop-wait (§3.9.5, G15): `run` fires when the wait's end plus the grace has come, once, its field cleared first; a throw is said in the row health. */
+  function waitTimer(state: SessionState, untilMs: number, session: string, what: string, run: () => Promise<void>): () => void {
+    return delay(() => {
+      state.cancelPeak = undefined
+      state.cancelQuota = undefined
+      void run().catch((error: unknown) => {
+        deps.report(session, 'degraded', `${what}：${errorText(error)}`)
+      })
+    }, Math.max(0, untilMs - now().getTime()))
+  }
+
   /** The peak block (§3.9.5): the block, the line, and the timer that resumes five minutes after the end when nobody else did. */
   async function peakBlock(place: Place, session: string, goal: GraphNode, live: LiveAgentLike, goals: GoalsService, hold: PeakHold, state: SessionState): Promise<void> {
     const view = viewOf(goals, live)
@@ -539,13 +586,7 @@ export function createDrive(deps: DriveDeps): Drive {
     await drive(place.exec, { op: 'peak-wait', ...(view === undefined ? {} : { goal: view.id }), until: hold.until, level: hold.level }, session)
     state.state = `${peakWaitLine(hold)} ${CONTINUE_NOW}`
     state.cancelPeak?.()
-    const wait = Math.max(0, Date.parse(hold.until) + PEAK_GRACE_MS - now().getTime())
-    state.cancelPeak = delay(() => {
-      state.cancelPeak = undefined
-      void peakTimer(place, session, hold).catch((error: unknown) => {
-        deps.report(session, 'degraded', `高峰结束后的接续出错：${errorText(error)}`)
-      })
-    }, wait)
+    state.cancelPeak = waitTimer(state, Date.parse(hold.until) + PEAK_GRACE_MS, session, '高峰结束后的接续出错', () => peakTimer(place, session, hold))
   }
 
   async function peakTimer(place: Place, session: string, hold: PeakHold): Promise<void> {
@@ -558,17 +599,22 @@ export function createDrive(deps: DriveDeps): Drive {
     if (deps.boardAttached()) setNote(PEAK_TAKEOVER, true)
   }
 
-  /** `execute.resume-drive` (§3.9.5 "接上"): only the holder's goal blocked for the peak, and only once the peak is over. */
-  async function resumeAfterPeak(place: Place, session: string | undefined): Promise<HarnessResult> {
+  /**
+   * The resume both stop-waits share (§3.9.5, G15): the holder's goal blocked
+   * with `code` (a further guard may still refuse), resumed with its view;
+   * the counters cleared, both timers cancelled, the drive line and the
+   * metric with `resumeWhy`.
+   */
+  async function resumeBlockedWait(place: Place, session: string | undefined, code: string, resumeWhy: 'peak-end' | 'quota-end', stillHeld: (view: DshGoalView, session: string) => string | undefined = () => undefined): Promise<HarnessResult> {
     const live = session === undefined ? undefined : liveAgent(session)
     if (session === undefined || live === undefined) return { outcome: 'skipped', reason: 'main agent is not open in this DSH process' }
     const goals = goalsOf()
     if (goals === undefined) return { outcome: 'skipped', reason: 'no goals service' }
     const view = viewOf(goals, live)
-    const code = view?.blockedReason?.code
-    if (view?.phase !== 'blocked' || code !== 'hourness-peak-wait') return { outcome: 'skipped', reason: `the goal is not blocked hourness-peak-wait (${code ?? view?.phase ?? 'no goal'})` }
-    const hold = holdOf(session)
-    if (hold !== undefined) return { outcome: 'skipped', reason: `peak hours still on until ${hold.until}` }
+    const blocked = view?.blockedReason?.code
+    if (view === undefined || view.phase !== 'blocked' || blocked !== code) return { outcome: 'skipped', reason: `the goal is not blocked ${code} (${blocked ?? view?.phase ?? 'no goal'})` }
+    const held = stillHeld(view, session)
+    if (held !== undefined) return { outcome: 'skipped', reason: held }
     try {
       goals.resume(live, refOf(view))
     }
@@ -578,10 +624,44 @@ export function createDrive(deps: DriveDeps): Drive {
     const state = stateOf(session)
     resetCounters(state)
     state.cancelPeak?.()
+    state.cancelQuota?.()
     state.cancelPeak = undefined
-    await drive(place.exec, { op: 'resume', goal: view.id, reason: 'peak-end' }, session)
-    emitMetric({ event: 'execute.goal', goal: toMetricsId(graphGoalOf(view.objective) ?? view.id), op: 'resume', resumeWhy: 'peak-end' }, executeMetricWhere(place.project, session))
+    state.cancelQuota = undefined
+    await drive(place.exec, { op: 'resume', goal: view.id, reason: resumeWhy }, session)
+    emitMetric({ event: 'execute.goal', goal: toMetricsId(graphGoalOf(view.objective) ?? view.id), op: 'resume', resumeWhy }, executeMetricWhere(place.project, session))
     return { outcome: 'done' }
+  }
+
+  /** `execute.resume-drive` (§3.9.5 "接上"): only the holder's goal blocked for the peak, and only once the peak is over. */
+  async function resumeAfterPeak(place: Place, session: string | undefined): Promise<HarnessResult> {
+    return resumeBlockedWait(place, session, 'hourness-peak-wait', 'peak-end', (_view, holder) => {
+      const hold = holdOf(holder)
+      return hold === undefined ? undefined : `peak hours still on until ${hold.until}`
+    })
+  }
+
+  /** The quota block (G15): the block with the reset instant, the drive.jsonl line, and the timer that resumes after the grace. */
+  async function quotaBlock(place: Place, session: string, goal: GraphNode, live: LiveAgentLike, goals: GoalsService, wait: QuotaWait, state: SessionState): Promise<void> {
+    const view = viewOf(goals, live)
+    if (!await block(place, session, goal, live, goals, 'hourness-quota-wait', quotaWaitLine(wait))) return
+    const until = new Date(wait.resetAt).toISOString()
+    await drive(place.exec, { op: 'quota-wait', ...(view === undefined ? {} : { goal: view.id }), until, ...(wait.code === undefined ? {} : { code: wait.code }) }, session)
+    state.state = `${quotaWaitLine(wait)} ${CONTINUE_NOW}`
+    state.cancelQuota?.()
+    state.cancelQuota = waitTimer(state, wait.resetAt + QUOTA_GRACE_MS, session, '额度重置后的接续出错', () => quotaTimer(place, session, wait, goal.id))
+  }
+
+  /** The timer's resume after the quota reset (G15): the drive is its primary resumer (no board entry carries a quota end), so the holder is told to go on. */
+  async function quotaTimer(place: Place, session: string, wait: QuotaWait, goalId: string): Promise<void> {
+    const result = await resumeAfterQuota(place, session)
+    if (result.outcome !== 'done') return
+    const why = toHolder(deps.lookup, place.graphDir, createUserNotice('glm-hourness-execute', '额度重置之后：接上推进', `The GLM quota reset at ${clockOf(new Date(wait.resetAt).toISOString())}. Work the quota held back can start now.`, { hournessExecute: { event: 'quota-end', goal: goalId } }))
+    if (why !== undefined) deps.report(session, 'degraded', `额度重置的提醒没送到主 Agent：${why}`)
+  }
+
+  /** The holder's goal blocked for the quota (G15), resumed once the reset instant has passed. */
+  function resumeAfterQuota(place: Place, session: string | undefined): Promise<HarnessResult> {
+    return resumeBlockedWait(place, session, 'hourness-quota-wait', 'quota-end')
   }
 
   /** The approved or doing tasks of a module whose latest dispatch went stale (§3.9.7 "人重新放行之后"). */
@@ -700,6 +780,11 @@ export function createDrive(deps: DriveDeps): Drive {
           if (result.outcome !== 'done' && result.reason !== undefined) state.state = `The harness could not resume the drive after peak: ${result.reason}.`
           return
         }
+        if (decision.reason === 'quota-over') {
+          const result = await resumeAfterQuota(place, session)
+          if (result.outcome !== 'done' && result.reason !== undefined) state.state = `The harness could not resume the drive after the quota reset: ${result.reason}.`
+          return
+        }
         await resume(place, session, goal, live, goals, decision.reason, state)
         return
       case 'design-wait':
@@ -725,6 +810,7 @@ export function createDrive(deps: DriveDeps): Drive {
     switch (why) {
       case 'human-paused': return PERSON_PAUSED
       case 'peak-waiting': return hold === undefined ? `${reason?.message ?? 'Waiting for GLM peak hours to end.'} ${CONTINUE_NOW}` : `${peakWaitLine(hold)} ${CONTINUE_NOW}`
+      case 'quota-waiting': return `${reason?.message ?? 'Waiting for the GLM quota to reset.'} ${CONTINUE_NOW}`
       case 'waiting-human': return reason?.message ?? 'Waiting for the person.'
       case 'in-design': return `${designWaitLine(goal.id)} ${CONTINUE_NOW}`
       case 'blocked': return `The drive is blocked (${reason?.code ?? 'unknown'}: ${reason?.message ?? ''}); when the person says to go on, call update_goal resume.${reason?.code === 'round-limit' ? ` ${ROUND_LIMIT_ADVICE}` : ''}`
@@ -750,8 +836,14 @@ export function createDrive(deps: DriveDeps): Drive {
     deps.emit(place.project, session, { event: 'hourness.tasks-closed', key: `tasks-closed:${goal.id}:${closedAt}`, payload: { goal: goal.id } })
   }
 
-  /** The counters at a goal round's first step (§3.9.5, D7). */
+  /** The counters at a goal round's first step (§3.9.5, D7): a confirmed quota exhaustion (G15) blocks at once, ahead of the counters. */
   async function countRound(place: Place, session: string, graph: LoadedGraph, goal: GraphNode, live: LiveAgentLike, goals: GoalsService, hold: PeakHold | undefined, state: SessionState): Promise<void> {
+    const wait = await quotaWaitOfSession()
+    if (wait !== undefined) {
+      await quotaBlock(place, session, goal, live, goals, wait, state)
+      resetCounters(state)
+      return
+    }
     const snapshot = { revision: graph.revision, activity }
     const progressed = state.last === undefined || state.last.revision !== snapshot.revision || state.last.activity !== snapshot.activity
     state.last = snapshot
@@ -799,6 +891,7 @@ export function createDrive(deps: DriveDeps): Drive {
     const hold = holdOf(session.id)
     let pause = false
     let peakOver = false
+    let quotaOver = false
     let waitingDecided = false
     if (table.phase === 'paused' && view !== undefined) {
       const lines = (await readDrive(place.exec)).filter(line => line.op === 'exit' || (line.op === 'pause' && line.goal === view.id))
@@ -809,8 +902,13 @@ export function createDrive(deps: DriveDeps): Drive {
       const ended = line?.until === undefined || Number.isNaN(Date.parse(line.until)) || now().getTime() > Date.parse(line.until)
       peakOver = ended && hold === undefined
     }
+    if (table.blockedCode === 'hourness-quota-wait' && view !== undefined) {
+      // The reset instant the block recorded is the authority (G15): past it the drive resumes, and if the server has not reset yet the next 429 blocks it again.
+      const line = (await readDrive(place.exec)).filter(entry => entry.op === 'quota-wait' && entry.goal === view.id).at(-1)
+      quotaOver = line?.until === undefined || Number.isNaN(Date.parse(line.until)) || now().getTime() > Date.parse(line.until)
+    }
     if (table.blockedCode === 'hourness-waiting-human') waitingDecided = waitedDecided(graph, session.id, view?.blockedReason?.message ?? '')
-    const decision = driveDecision({ graph, goal, view: table, session: session.id, restartPause: pause, peakHold: hold, peakOver, waitingDecided })
+    const decision = driveDecision({ graph, goal, view: table, session: session.id, restartPause: pause, peakHold: hold, peakOver, quotaOver, waitingDecided })
     state.state = undefined
     await act(place, session.id, goal, live, goals, view, decision, hold, state)
     if (decision.action === 'none' && table.phase === 'active') {
@@ -1342,7 +1440,10 @@ export function createDrive(deps: DriveDeps): Drive {
     notes: () => [...noteSet.values()],
     dispose() {
       stopWatching()
-      for (const state of sessions.values()) state.cancelPeak?.()
+      for (const state of sessions.values()) {
+        state.cancelPeak?.()
+        state.cancelQuota?.()
+      }
       for (const exec of startedExec) {
         try {
           appendDriveSync(exec, { op: 'exit', proc: PROC, at: now().toISOString() })

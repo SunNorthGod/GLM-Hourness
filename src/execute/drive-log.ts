@@ -7,8 +7,8 @@
  *   process, `exit` from the row's dispose (synchronously, so the line lands
  *   before the host goes away);
  * - `pause` when the holder's goal is paused (`goal/changed`);
- * - `peak-wait` and `design-wait` when the drive blocks the goal, `resume`
- *   when the drive resumes it (with its reason).
+ * - `peak-wait`, `quota-wait` (G15) and `design-wait` when the drive blocks
+ *   the goal, `resume` when the drive resumes it (with its reason).
  *
  * `goal` is the DSH goal id. Above 1 MiB the file is renamed aside to
  * `drive-<stamp>.jsonl` and a new one starts. The reconcile's journal
@@ -25,16 +25,18 @@ import { ensureExecDir } from './gate-lock.ts'
 
 /** One line of drive.jsonl. */
 export interface DriveLine {
-  readonly op: 'start' | 'pause' | 'exit' | 'peak-wait' | 'design-wait' | 'resume'
+  readonly op: 'start' | 'pause' | 'exit' | 'peak-wait' | 'quota-wait' | 'design-wait' | 'resume'
   /** The process that wrote it: `Math.round(performance.timeOrigin)`. */
   readonly proc: number
   readonly at: string
   /** The DSH goal id the line is about. */
   readonly goal?: string
-  /** `peak-wait`: the end of the peak (ISO 8601). */
+  /** `peak-wait` and `quota-wait`: the end of the peak, the quota's reset instant (ISO 8601). */
   readonly until?: string
   /** `peak-wait`: the peak mode's level. */
   readonly level?: string
+  /** `quota-wait`: the limit code the server named (G15). */
+  readonly code?: string
   /** `resume`: why the drive resumed. */
   readonly reason?: string
 }
@@ -132,7 +134,7 @@ export async function readDrive(execDir: string): Promise<DriveLine[]> {
     if (raw.trim() === '') return []
     try {
       const value = JSON.parse(raw) as Partial<DriveLine>
-      const ops: readonly unknown[] = ['start', 'pause', 'exit', 'peak-wait', 'design-wait', 'resume']
+      const ops: readonly unknown[] = ['start', 'pause', 'exit', 'peak-wait', 'quota-wait', 'design-wait', 'resume']
       return ops.includes(value.op) && typeof value.proc === 'number' && typeof value.at === 'string' ? [value as DriveLine] : []
     }
     catch {
