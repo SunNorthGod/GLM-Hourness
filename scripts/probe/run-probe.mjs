@@ -252,6 +252,7 @@ import { keyOf } from '../../packages/hourness/dist/guard/records.js'
 import { PACKAGES } from '../packages.mjs'
 import { ablationRow, attachmentsIn, dataRows, designRows, fenceRow, generateProfile, initRepo, limitsRow, openRunDir, PROBE_PROFILES, removeRunDir, repo, requireDesktop, sandboxCommand, scenarioWorkspace, slash, unlinkProfile, workspaceChangesRow } from '../sandbox.mjs'
 import { DEFERRED_BY_A3, WORKSPACE_RULES_SHORT } from '../calibrate/ablation.mjs'
+import { profileStampOf } from '../calibrate/stamp.mjs'
 import { GOAL_GATE_DENIAL, PROJECTION_SOURCE, SCOPE_DENIAL } from './probe-dispatch.mjs'
 import { CANARY } from './probe-net.mjs'
 import { acquireProbeLock, bindProbeLockExit } from './probe-lock.mjs'
@@ -5103,6 +5104,35 @@ function driveChecks() {
 }
 
 /**
+ * The calibration compare entry's refusal (reading-digest 2026-11-20 ②;
+ * scripts/calibrate/run-calibrate.mjs `compare`, scripts/calibrate/stamp.mjs):
+ * two batches whose configuration stamps differ refuse with the differences
+ * named and never print a side-by-side; two on the same configuration print
+ * both summaries. No boot behind it: the compare branch exits before the
+ * rules board, the desktop and the probe slot are touched.
+ */
+function calibCompareChecks() {
+  const rows = profileStampOf('- id: glm-hourness/glm-llm\n  disabled: false\n')
+  const byModel = [{ key: 'm1', completed: 1 }]
+  const batch = (commit) => ({ commit, dirty: false, options: { arm: 'A0', tasks: ['t1'], models: ['m1'], repeat: 1, permission: 'danger-full-access' }, profile: { rows, arm: 'A0', permission: 'danger-full-access' }, summary: { byModel } })
+  const runners = [[join(runDir, 'calib-compare-a'), batch('aaaaaaaaaaaa')], [join(runDir, 'calib-compare-b'), batch('bbbbbbbbbbbb')], [join(runDir, 'calib-compare-c'), batch('aaaaaaaaaaaa')]]
+  for (const [dir, value] of runners) {
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'results.json'), JSON.stringify(value, null, 2))
+  }
+  const runner = join(repo, 'scripts', 'calibrate', 'run-calibrate.mjs')
+  const run = (a, b) => spawnSync(process.execPath, [runner, 'compare', a, b], { encoding: 'utf8' })
+  const refused = run(runners[0][0], runners[1][0])
+  const matched = run(runners[0][0], runners[2][0])
+  // The side-by-side prints `A: <summary JSON>` per batch, so both lines name the fixture's byModel array.
+  const side = `A: ${JSON.stringify(byModel)}`
+  return [
+    [`calibration compare: two batches whose configuration stamps differ refuse with the differences named, and never print a side-by-side`, refused.status === 1 && String(refused.stderr).includes('不跨配置比较') && String(refused.stderr).includes('commit: "aaaaaaaaaaaa" != "bbbbbbbbbbbb"') && !String(refused.stdout).includes('配置一致'), `${refused.status}; ${String(refused.stderr).split('\n').slice(0, 2).join(' | ')}`],
+    [`calibration compare: two batches on the same configuration print both summaries and exit 0`, matched.status === 0 && String(matched.stdout).includes('配置一致') && String(matched.stdout).includes(side) && String(matched.stdout).includes(side.replace('A: ', 'B: ')), `${matched.status}; ${String(matched.stdout).split('\n').slice(0, 3).join(' | ')}`],
+  ]
+}
+
+/**
  * G15 (preboot-decisions/g15-design.md; scenario glm-exec-quota): what the
  * drive's quota stop did on the real runtime. The seeded reading stands for
  * the server's spent five-hour window; `quotaResetAt` is the reset instant
@@ -6080,6 +6110,7 @@ const checks = [
   ...mergeUpstreamChecks(),
   ...driveChecks(),
   ...quotaChecks(),
+  ...calibCompareChecks(),
   ...execModulesChecks(),
   ...skeletonChecks(),
   ...walkChecks(),
@@ -6157,6 +6188,7 @@ const CHECK_SCENARIO_PREFIXES = {
   'exec docs (reval negative)': ['glm-exec-docs'],
   'exec drive': ['glm-exec-drive'],
   'exec quota': ['glm-exec-quota'],
+  'calibration compare': [],
   'exec merge': ['glm-exec-merge'],
   'exec merge upstream': ['glm-exec-merge-upstream'],
   'exec modules': ['glm-exec-modules', 'glm-exec-modules-2'],

@@ -456,11 +456,13 @@ gateTest('glmSpend is the call site\'s (item 17): --glm-spend on the command lin
   assert.ok(!calibrate.includes('strict: false'), 'an unknown argument stays an error')
 })
 
-gateTest('the two call sites ask before anything else, the calibration as optional and the smoke as necessary', async () => {
+gateTest('the two call sites ask before anything that spends: the calibration\'s compare (reads two results.json, spends nothing) exits before the board and the board stands before the desktop, the calibration as optional and the smoke as necessary', async () => {
   const calibrate = await readFile(join(REPO, 'scripts', 'calibrate', 'run-calibrate.mjs'), 'utf8')
   const smoke = await readFile(join(REPO, 'scripts', 'smoke-zcode-authorized.mjs'), 'utf8')
   const gate = (text: string): number => text.indexOf('await gateOnRules(')
-  assert.ok(gate(calibrate) > 0 && gate(calibrate) < calibrate.indexOf('parseArgs('), 'before the arguments')
+  const compare = calibrate.indexOf("positionals[0] === 'compare'")
+  assert.ok(compare > 0 && compare < gate(calibrate), 'the compare branch exits before the board, spending nothing')
+  assert.ok(gate(calibrate) > 0 && gate(calibrate) < calibrate.indexOf("requireDesktop('calibrate')"), 'before the desktop and the sandbox')
   assert.ok(calibrate.includes("await gateOnRules({ glmSpend: 'optional', peakAt: at => creditPricing.peak(at) })"))
   assert.ok(gate(smoke) > 0 && gate(smoke) < smoke.indexOf('credentialHome(undefined)') && gate(smoke) < smoke.indexOf('new ZcodeAdapter('), 'before the credentials and the adapter')
   assert.ok(smoke.includes("await gateOnRules({ glmSpend: 'necessary', peakAt: at => creditPricing.peak(at) })"))

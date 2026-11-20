@@ -11,6 +11,11 @@
  * Usage: npm run calibrate -- [--tasks <id,...>] [--models glm-5.3,glm-5.3-flash]
  *        [--repeat 1] [--max-steps <n>] [--minutes <n>] [--permission danger-full-access]
  *        npm run calibrate -- --collect <timestamp>
+ *        npm run calibrate -- compare <批次A> <批次B>   (two batches under
+ *        .llm/calibration-runs, or two directories with a results.json each:
+ *        the two configurations are compared first, a difference refuses with
+ *        the list of what differs — numbers are never laid side by side
+ *        across configurations; a match prints both summaries)
  *        add --wait to any of them to wait for the rules board instead of stopping
  * Run `npm run build` first: the sandbox loads the build output under
  * packages/<package>/dist/ of the checkout its profile links.
@@ -48,7 +53,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 // The GLM credit plan (docs/FACTS.md §2.4) the glm-login row serves to the usage panel.
 import { chargedCredits, CREDIT_RATES, creditPricing, fullCredits, peakWindowAt } from '../../packages/glm/dist/glm-llm/credits.js'
@@ -58,6 +63,7 @@ import { ARMS } from './ablation.mjs'
 import { fencedPathOf } from './fence.mjs'
 import { compareMetrics, metricsSection } from './metrics.mjs'
 import { closeBatch, collectBatch, openBatch, openRun } from './run-dir.mjs'
+import { configDiff, configOf, profileStampOf } from './stamp.mjs'
 import { acquireProbeLock, bindProbeLockExit } from '../probe/probe-lock.mjs'
 
 const TASKS_DIR = join(repo, 'tests', 'calibration')
@@ -73,10 +79,9 @@ const HARD_KILL_GRACE_MS = 120_000
 const DEFAULT_MAX_STEPS = 40
 const DEFAULT_MINUTES = 15
 
-// The rules board first: a deferred or blocked run ends here, before the arguments, the desktop and the sandbox.
-await gateOnRules({ glmSpend: 'optional', peakAt: at => creditPricing.peak(at) })
-
-const { values: options } = parseArgs({
+// The comparison (`compare`) runs before the board: it reads two results.json and exits, spending nothing.
+// The rules board next: a deferred or blocked run ends here, before the lock, the desktop and the sandbox.
+const { values: options, positionals } = parseArgs({
   options: {
     'tasks': { type: 'string' },
     'models': { type: 'string', default: [...CREDIT_RATES.keys()].join(',') },
@@ -87,7 +92,46 @@ const { values: options } = parseArgs({
     'arm': { type: 'string', default: 'A0' },
     'collect': { type: 'string' },
   },
+  allowPositionals: true,
 })
+if (positionals[0] === 'compare') {
+  const read = (arg) => {
+    const direct = resolve(arg)
+    const underRuns = join(repo, '.llm', 'calibration-runs', arg)
+    const path = existsSync(direct) ? direct : existsSync(underRuns) ? underRuns : undefined
+    const file = path === undefined ? undefined : join(path, 'results.json')
+    if (file === undefined || !existsSync(file)) {
+      console.error(`calibrate: compare: ${arg} 不是批次目录（既不是现成的路径，.llm/calibration-runs 下也没有），里面要有一份 results.json`)
+      process.exit(2)
+    }
+    try {
+      return JSON.parse(readFileSync(file, 'utf8'))
+    }
+    catch (error) {
+      console.error(`calibrate: compare: ${file} is not readable as JSON: ${error instanceof Error ? error.message : String(error)}`)
+      process.exit(2)
+    }
+  }
+  if (positionals.length !== 3) {
+    console.error('calibrate: usage: npm run calibrate -- compare <批次A> <批次B>（.llm/calibration-runs 下的时间戳，或直接给目录）')
+    process.exit(2)
+  }
+  const first = read(positionals[1])
+  const second = read(positionals[2])
+  const differences = configDiff(configOf(first), configOf(second))
+  if (differences.length > 0) {
+    console.error(`calibrate: 不跨配置比较（两批的配置不一致，数字放在一起没有意义；差异如下）`)
+    for (const difference of differences) console.error(`  - ${difference}`)
+    process.exit(1)
+  }
+  console.log(`calibrate: 配置一致（commit ${String(configOf(first).commit)}${configOf(first).dirty ? ', dirty' : ''}，arm ${String(configOf(first).arm)}），两批的摘要并排如下`)
+  const line = (label, batch) => `${label}: ${JSON.stringify(batch?.summary?.byModel ?? [])}`
+  console.log(line('A', first))
+  console.log(line('B', second))
+  console.log(`A: ${positionals[1]}\nB: ${positionals[2]}`)
+  process.exit(0)
+}
+await gateOnRules({ glmSpend: 'optional', peakAt: at => creditPricing.peak(at) })
 class CalibrateExitError extends Error {
   constructor(message, exitCode) {
     super(message)
@@ -358,6 +402,9 @@ async function calibrate(task, model, index) {
     model,
     provider: PROVIDER,
     run: index + 1,
+    // The configuration stamp (reading-digest 2026-11-20 ②): the commit this checkout ran, and the profile's row composition as the overlay patch left it.
+    commit,
+    profile: { rows: profileStampOf(readFileSync(join(dir, 'calibrate.patch.yml'), 'utf8')), arm, permission },
     sessionId: events('session')[0]?.sessionId,
     startedAt,
     durationMs: run.durationMs,
@@ -432,6 +479,8 @@ const writeResults = () => {
     commit,
     dirty,
     options: { arm, tasks: taskIds, models, repeat, bounds: Object.fromEntries(tasks.map(task => [task.id, { maxSteps: task.bounds.maxSteps, minutes: task.bounds.minutes }])), permission },
+    // The configuration stamp (reading-digest 2026-11-20 ②): the first run's row composition; each run in `runs` carries its own.
+    profile: { rows: runs[0]?.profile?.rows ?? null, arm, permission },
     summary: { byTaskAndModel: groups(run => `${run.task} ${run.model}`), byModel: groups(run => run.model) },
     runs,
   }, null, 2)}\n`)
