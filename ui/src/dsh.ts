@@ -105,6 +105,22 @@ export interface TokenUsage {
   readonly cacheWriteTokens: number
 }
 
+/** DSH's subagentTiming projection (dsh-subagent). */
+export interface SubagentTimingView {
+  readonly settledMs: number
+  readonly active?: {
+    readonly since: number
+    readonly through: number
+  }
+  readonly lastTurnCompleted?: boolean
+}
+
+/** Execute row's live-board path projection (src/execute/live-board.ts). */
+interface ExecuteBoardView {
+  readonly path: string | null
+  readonly projectRoot: string | null
+}
+
 /**
  * The projection values of one session this bundle reads; graphLive and
  * hournessMainAgent are this bundle's own units (the second is read through
@@ -119,8 +135,10 @@ export interface TokenUsage {
 export interface ProjectionValues {
   readonly graphLive?: LiveView
   readonly subagentCatalog?: readonly CatalogEntry[]
+  readonly subagentTiming?: SubagentTimingView
   readonly tokenUsage?: TokenUsage
   readonly hournessProject?: { readonly holderFile: string | null, readonly reason?: string }
+  readonly hournessExecuteBoard?: ExecuteBoardView
   readonly hournessLessons?: { readonly journal: string | null }
   readonly hournessMemory?: { readonly projectJournal: string | null, readonly userJournal: string | null }
   readonly hournessLoops?: { readonly projectKey: string | null, readonly viewFile: string | null }
@@ -161,6 +179,41 @@ export interface SessionSlotProps {
   readonly inputActions?: InputActions
 }
 
+interface SubagentAddressTarget {
+  readonly kind?: 'subagent'
+  readonly parentSessionId: string
+  readonly childSessionId: string
+  readonly mode?: 'one-shot' | 'continuable' | 'unknown' | (string & {})
+}
+
+export interface RetainedSessionEventEntry {
+  readonly type: 'event' | 'transient'
+  readonly event: {
+    readonly type: string
+    readonly seq: number
+    readonly time: number
+    readonly data?: unknown
+  }
+}
+
+interface RetainedSessionBinding {
+  readonly sessionId: string
+  readonly eventSource?: {
+    getSnapshot(): {
+      readonly entries: readonly RetainedSessionEventEntry[]
+      readonly revision: number
+    }
+    subscribe(listener: () => void): () => void
+  }
+}
+
+export interface SessionReference {
+  readonly sessionId: string
+  readonly binding?: RetainedSessionBinding
+  readonly ready?: Promise<RetainedSessionBinding>
+  release(): void
+}
+
 /**
  * The client `sessions` service (dsh-api-session-controller ClientSessions):
  * `list` is a snapshot store whose projectionsBySession follows the host's
@@ -180,12 +233,15 @@ export interface SessionsClient {
       readonly byId: Readonly<Record<string, {
         readonly blank?: boolean
         readonly cwd?: string
+        readonly title?: string
+        readonly updatedAt?: number
         readonly projectionValues?: ProjectionValues
       } | undefined>>
     }
     subscribe(listener: () => void): () => void
   }
   refreshProjections(sessionId: string): Promise<void>
+  retain?(target: string | SubagentAddressTarget, options: { readonly source: string, readonly signal?: AbortSignal }): SessionReference
 }
 
 export interface ClientContext {
@@ -195,8 +251,11 @@ export interface ClientContext {
     register<P>(registration: SlotRegistration<P>, component: ComponentType<never>): () => void
   }
   readonly sidebarRightTabs: { register(definition: TabDefinition): () => void }
-  /** dsh-client-ui-sidebar-right's navigation face (README, openTab): opens a page tab by kind; throws when no session surface is mounted. */
-  readonly sidebarRight: { openTab(kind: string, options?: { readonly params?: Record<string, unknown> }): void }
+  /** dsh-client-ui-sidebar-right's navigation face (README, openTab, openResource): opens a page tab by kind or a resource in a pane. */
+  readonly sidebarRight: {
+    openTab(kind: string, options?: { readonly params?: Record<string, unknown> }): void
+    openResource?(address: string, options?: { readonly kind?: string, readonly preferNewPane?: boolean }): Promise<void> | void
+  }
   readonly remote: RemoteRoot
   /** dsh-client-ui-workspace: opens a session in the main view (README, uiWorkspace.openSession). */
   readonly uiWorkspace: UiWorkspace

@@ -5,12 +5,22 @@
  * a compaction, not again while the stable text holds).
  */
 import assert from 'node:assert/strict'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { pinsOf, renderPins } from '../src/graph/pins.ts'
 import type { LoadedGraph } from '../src/graph/parse.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import { renderDispatchComment, type Attempt } from '../src/execute/attempts.ts'
 import { sha256Hex } from '../src/execute/digest.ts'
+import {
+  dispatchModeNoticeLine,
+  parseDispatchMode,
+  planRoutingNoticeLine,
+  readProjectDispatchMode,
+  writeProjectDispatchMode,
+} from '../src/execute/dispatch-mode.ts'
 import { dispatchNotice, installDispatchNotice, statusText, type StatusInput } from '../src/execute/notice.ts'
 import type { PendingRequest } from '../src/execute/requests.ts'
 import type { DerivedMessage, UserNotice } from '../src/shared/dsh-min.ts'
@@ -207,4 +217,51 @@ test('installed on an agent: only the holder\'s steps carry it, after the step\'
   assert.equal(messages.length, 2)
   assert.equal(messages[1].source.kind, 'glm-hourness-execute')
   assert.deepEqual(reports, [])
+})
+
+test('dispatch-mode parsing, project persistence, and cache-stable mode/routing notice lines', async () => {
+  assert.equal(parseDispatchMode('eco'), 'eco')
+  assert.equal(parseDispatchMode(' ECO '), 'eco')
+  assert.equal(parseDispatchMode('省额度'), 'eco')
+  assert.equal(parseDispatchMode('Adaptive'), 'adaptive')
+  assert.equal(parseDispatchMode('自适应'), 'adaptive')
+  assert.equal(parseDispatchMode('BURN'), 'burn')
+  assert.equal(parseDispatchMode('燃烧'), 'burn')
+  assert.equal(parseDispatchMode('turbo'), undefined)
+
+  const dir = mkdtempSync(join(tmpdir(), 'exec-mode-'))
+  try {
+    assert.equal(readProjectDispatchMode(dir), undefined)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'dispatch-mode.json'), '{not-json', 'utf8')
+    assert.equal(readProjectDispatchMode(dir), undefined)
+    writeFileSync(join(dir, 'dispatch-mode.json'), JSON.stringify({ mode: 'invalid' }), 'utf8')
+    assert.equal(readProjectDispatchMode(dir), undefined)
+
+    await writeProjectDispatchMode(dir, 'eco')
+    assert.equal(existsSync(join(dir, '.gitignore')), true)
+    assert.equal(readProjectDispatchMode(dir), 'eco')
+  }
+  finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+
+  for (const mode of ['eco', 'adaptive', 'burn'] as const) {
+    const line = dispatchModeNoticeLine(mode)
+    assert.ok(!line.includes('\n'))
+    assert.ok(!/glm-\d/i.test(line), `dispatchModeNoticeLine(${mode}) must be model-agnostic`)
+  }
+  assert.equal(planRoutingNoticeLine(undefined, false), undefined)
+  const okLine = planRoutingNoticeLine({ available: true, reason: 'ok', activeStreams: 2, failoverCount: 0 }, true)!
+  assert.ok(okLine.includes('glm-start-plan') && okLine.includes('glm-zcode'))
+  const failA = planRoutingNoticeLine({ available: false, reason: 'empty', activeStreams: 0, cooldownUntil: 1_700_000_000_000, failoverCount: 3 }, true)!
+  const failB = planRoutingNoticeLine({ available: false, reason: 'empty', activeStreams: 9, cooldownUntil: 1_999_999_999_999, failoverCount: 8 }, true)!
+  assert.equal(failA, failB, 'planRoutingNoticeLine must be cache-stable without timestamps or stream counts')
+  assert.ok(failA.includes('empty') && failA.includes('glm-zcode'))
+  assert.ok(!/\d{4,}/.test(failA), 'must not embed epoch timestamps or countdown numbers')
+
+  const withPref = statusText(input(released(), { dispatchMode: 'burn', planRouting: okLine }))!
+  assert.ok(withPref.text.includes(dispatchModeNoticeLine('burn')))
+  assert.ok(withPref.text.includes(okLine))
+  assert.equal(withPref.text, withPref.stable)
 })

@@ -4,6 +4,7 @@ import type { LiveView } from '../src/graph/live.ts'
 import type { GraphNode } from '../src/graph/schema.ts'
 import { FLOW_ORDER, FLOW_TEXT, flowBarText, isCheapModel, type FlowBarInput } from '../ui/src/flow/model.ts'
 import type { GraphSnapshot } from '../ui/src/graph/source.ts'
+import { subagentPillSummary } from '../ui/src/subagents/model.ts'
 import { node, readySnapshot } from './ui-fixtures.ts'
 
 const INTERVIEW_BODY = '需求：每天记一下花了多少钱\n问题：月底不知道钱花在哪\n给谁：我自己\n约束：无'
@@ -178,4 +179,11 @@ test('the stronger-model note follows the bar into every graph state that has a 
 
 test('the dismissal of the note reads 这次就用它', () => {
   assert.equal(FLOW_TEXT.dismiss, '这次就用它')
+})
+
+test('subagentPillSummary renders live workers and open requests only when non-zero', () => {
+  assert.equal(subagentPillSummary({ activeWorkers: 0, openRequests: 0 }), null)
+  assert.deepEqual(subagentPillSummary({ activeWorkers: 2, openRequests: 0 }), { text: '2 工人运行', attention: false })
+  assert.deepEqual(subagentPillSummary({ activeWorkers: 0, openRequests: 1 }), { text: '1 待协调', attention: true })
+  assert.deepEqual(subagentPillSummary({ activeWorkers: 3, openRequests: 2 }), { text: '3 工人运行 · 2 待协调', attention: true })
 })

@@ -95,6 +95,11 @@ export interface WalkDispatch {
   readonly head: string
 }
 
+/** Walk job lifecycle notification for live-board projection. */
+type WalkBoardEvent =
+  | { readonly kind: 'start', readonly project: string, readonly job: string, readonly goalId: string, readonly flows: readonly string[] }
+  | { readonly kind: 'end', readonly project: string, readonly job: string, readonly goalId: string, readonly status: 'completed' | 'error' | 'aborted', readonly summary: string }
+
 /** What the walk needs from the row; the seams the checks and dispatches use. */
 export interface WalkDeps {
   readonly execDir: (projectRoot: string) => string
@@ -103,6 +108,8 @@ export interface WalkDeps {
   readonly report: (sessionId: string | undefined, state: 'active' | 'degraded', reason: string) => void
   /** Hand an event to the loop board: `hourness.stopped` after the third failed walk of one step, `hourness.walk-done` at the job's end (§2.7). */
   readonly emit: (project: string, sessionId: string | undefined, event: LoopEmit) => void
+  /** Notify the live-board store when a walk job starts or settles. */
+  readonly onWalkEvent?: (event: WalkBoardEvent) => void
   readonly runCommand?: CommandRunner
   readonly lockSetup?: GateLockSetup
   /** M3's snapshot machine; tests keep the real one. */
@@ -826,6 +833,7 @@ export interface WalkJobSpec {
 
 /** Start one walk job on the check backend; the verdict arrives as the `hourness.walk-done` notice. */
 export async function startWalkJob(deps: WalkDeps, spec: WalkJobSpec, signal: AbortSignal): Promise<void> {
+  deps.onWalkEvent?.({ kind: 'start', project: spec.project, job: spec.job, goalId: spec.goal.id, flows: spec.flows.map(flow => flow.flow.id) })
   await deps.launcher.start({
     id: spec.job,
     label: `hourness walk ${spec.goal.id}`,
@@ -1020,6 +1028,16 @@ export async function runWalkJob(deps: WalkDeps, spec: WalkJobSpec, signal: Abor
     event: 'hourness.walk-done',
     key: `walk-done:${spec.job}`,
     payload: { job: spec.job, goal: spec.goal.id, commit, trunkMoved, flows: results.map(result => `${result.flow} ${result.outcome}`) },
+  })
+  const passed = results.filter(result => result.outcome === 'passed').length
+  const failed = results.filter(result => result.outcome === 'failed' || result.outcome === 'timeout' || result.outcome === 'no_report' || result.outcome === 'review_failed').length
+  deps.onWalkEvent?.({
+    kind: 'end',
+    project: spec.project,
+    job: spec.job,
+    goalId: spec.goal.id,
+    status: signal.aborted ? 'aborted' : failed > 0 && passed === 0 ? 'error' : 'completed',
+    summary: `walk ${spec.goal.id}: ${passed} passed, ${failed} failed (${results.length} flows)`,
   })
 }
 

@@ -41,6 +41,7 @@ import { wrapSystemReminder } from '../shared/zcode-notice.ts'
 import { parseDispatchComment, latestDispatch, registeredDispatches, type Attempt } from './attempts.ts'
 import { sha256Hex } from './digest.ts'
 import { routeOf, type GraphCache } from './dispatch.ts'
+import { dispatchModeNoticeLine, type DispatchMode } from './dispatch-mode.ts'
 import type { Drive } from './drive.ts'
 import { pendingRequests, type PendingRequest } from './requests.ts'
 import { batchOf, batchSince, pendingReport, type BatchItem } from './tiers.ts'
@@ -84,6 +85,8 @@ export interface StatusInput {
   /** The open requests of this project. */
   readonly requests: readonly PendingRequest[]
   readonly now: Date
+  readonly dispatchMode?: DispatchMode
+  readonly planRouting?: string
 }
 
 /** The notice's body: `text` is shown, `stable` (no minutes) is what the digest is taken of. */
@@ -257,6 +260,8 @@ export function statusText(input: StatusInput): StatusText | undefined {
     const batch = batchOf(batchItems(graph, goal, subtree))
     if (batch.now.length > 0) lines.push(`Put these to the person now (at most three): ${batch.now.map(batchWords).join('; ')}; later: ${batch.later.length === 0 ? 'none' : batch.later.map(batchWords).join('; ')}.`)
     if (lines.length === 1) lines.push('Nothing runs or waits for you here.')
+    if (input.dispatchMode !== undefined) lines.push(dispatchModeNoticeLine(input.dispatchMode))
+    if (input.planRouting !== undefined && input.planRouting !== '') lines.push(input.planRouting)
     return lines.join('\n')
   }
   return { subject: subject.id, text: render(true), stable: render(false) }
@@ -335,6 +340,8 @@ export interface DispatchNoticeDeps {
   readonly drive: (session: string) => DriveStatus
   readonly report: (sessionId: string | undefined, state: 'active' | 'degraded', reason: string) => void
   readonly now?: () => Date
+  readonly dispatchMode?: (sessionId: string) => DispatchMode | undefined
+  readonly planRouting?: (agent: AgentLike) => string | undefined
 }
 
 /**
@@ -357,6 +364,8 @@ export function installDispatchNotice(agent: AgentLike, deps: DispatchNoticeDeps
       const dir = deps.graphDirOf(session.header.cwd)
       if (dir === undefined) return undefined
       const graph = await deps.cache.load(dir)
+      const mode = deps.dispatchMode?.(session.id)
+      const routing = deps.planRouting?.(agent)
       const status = statusText({
         graph,
         focus: graphFocus(deps.lookup)?.focusOf(session),
@@ -365,6 +374,8 @@ export function installDispatchNotice(agent: AgentLike, deps: DispatchNoticeDeps
         running: registeredDispatches().filter(attempt => attempt.graphDir === dir),
         requests: pendingRequests(dir),
         now: now(),
+        ...(mode === undefined ? {} : { dispatchMode: mode }),
+        ...(routing === undefined ? {} : { planRouting: routing }),
       })
       return status === undefined ? undefined : dispatchNotice(history, admitted, status, await readCatalog(deps.lookup, agent))
     }

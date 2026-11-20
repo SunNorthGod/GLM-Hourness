@@ -9,13 +9,19 @@ import type { GraphNode } from '../src/graph/schema.ts'
 import { EXECUTE_TOOL_NAMES, OPERATE_TOOL_NAMES, WORKER_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { PEAK_MODE_SERVICE, peakModeService, type PeakModeService } from '../src/shared/peak-mode.ts'
 import { EXECUTE_SERVICE, type ExecuteService } from '../src/shared/execute-service.ts'
+import { CODING_PLAN_PROVIDER, START_PLAN_PROVIDER } from '../src/shared/route.ts'
+import { START_PLAN_SERVICE, type StartPlanSnapshot } from '../src/shared/start-plan-status.ts'
 import { EXECUTE_RULES, installExecuteRules, type CommandRecordLine } from '../src/guard/execute-rules.ts'
 import { REQUESTS_SERVICE, type RequestsService } from '../src/guard/request-service.ts'
-import type { AgentLike, InjectableServices, LlmCatalog, ServiceLookup, SessionLike, ToolDefinitionLike } from '../src/shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, InjectableServices, LlmCatalog, ServiceLookup, SessionLike, ToolDefinitionLike } from '../src/shared/dsh-min.ts'
+import { healthServiceName, type RowHealthView } from '../src/shared/health.ts'
 import { GLM_REASONING_EFFORTS } from '../src/glm-llm/models.ts'
 import { removalsOfRole } from '../src/execute/faces.ts'
 import { dispatchTool, createGraphCache, type DispatchDeps } from '../src/execute/dispatch.ts'
+import { dispatchModeNoticeLine, readProjectDispatchMode } from '../src/execute/dispatch-mode.ts'
 import { dispatchDescription } from '../src/execute/examples.ts'
+import { executeBoardPathOf, type ExecuteLiveBoard } from '../src/execute/live-board.ts'
+import { statusText } from '../src/execute/notice.ts'
 import { forgetAttempt, registerAttempt, registeredAttempt, renderHandbackComment, REVIEW_TASK_ACCEPTANCE, type Attempt } from '../src/execute/attempts.ts'
 import type { PolicyClass } from '../src/execute/policy-digest.ts'
 import { REVIEW_SCHEMA } from '../src/execute/schemas.ts'
@@ -184,7 +190,7 @@ test('the execute row registers dispatch_task, check_commit and await_human, dis
   const sessionProjections = { register: (definition: { readonly key: string }) => { projections.push(definition.key); return () => {} }, snapshot: () => ({ values: {} }), stateOf: () => undefined }
   ;(runtime.ctx as { inject?: unknown }).inject = fakeInjector({ tools: runtime.ctx.tools, sessionProjections }, runtime.ctx).inject
   executeApply(runtime.ctx, {})
-  assert.deepEqual(projections, ['hournessHandback'], 'the row registers the handback projection the reconcile reads (§3.9.6 step 3)')
+  assert.deepEqual(projections, ['hournessHandback', 'hournessExecuteBoard'], 'the row registers the handback projection the reconcile reads (§3.9.6 step 3) and the live-board projection')
   const registered = runtime.scoped.find(tool => tool.name === 'dispatch_task')
   assert.ok(registered !== undefined, 'the row did not register dispatch_task')
   assert.equal(registered.description, dispatchDescription())
@@ -734,6 +740,159 @@ test('the review dispatch carries the reviewed task\'s 政策差 classes into th
     const second = await dispatch(deps, project.root, { id: 'review-1', model: 'probe-model', why: 'review again', depth: 'full', depthWhy: 'probe: full' }) as { childId: string }
     assert.ok(!briefOf().includes('Policy changed since the dispatch'), 'the latest handback without a drift brings no delta')
     cleanup(second.childId)
+  }
+  finally {
+    dispose(project)
+  }
+})
+
+test('dispatch_task StartPlan-first auto-routing, unavailable failover, explicit provider preservation, and single-provider fallback', async () => {
+  const project = await presetProject([
+    { ...WORK_TASK, id: 'task-a', writeScope: ['site/a/'] },
+    { ...WORK_TASK, id: 'task-b', writeScope: ['site/b/'] },
+    { ...WORK_TASK, id: 'task-c', writeScope: ['site/c/'] },
+    { ...WORK_TASK, id: 'task-d', writeScope: ['site/d/'] },
+  ])
+  try {
+    const subagents = fakeSubagents()
+    let startAvailable = true
+    let startReason: StartPlanSnapshot['reason'] = 'ok'
+    let includeStartPlanCatalog = true
+    const catalogCalls: string[] = []
+    const llm: LlmCatalog = {
+      listModels: (provider) => {
+        catalogCalls.push(provider)
+        if (provider === CODING_PLAN_PROVIDER) return Promise.resolve([{ id: 'glm-5.3' }])
+        if (provider === START_PLAN_PROVIDER && includeStartPlanCatalog) return Promise.resolve([{ id: 'glm-5.3' }])
+        return Promise.resolve([])
+      },
+      resolveModelInfo: () => Promise.resolve({ reasoning: { efforts: GLM_REASONING_EFFORTS } }),
+    }
+    const { deps, cleanup } = depsFor(project, subagents.service, {
+      lookup: lookupWith(subagents.service, {
+        llm,
+        [START_PLAN_SERVICE]: { status: () => ({ available: startAvailable, reason: startReason, activeStreams: 0, failoverCount: 0 }) },
+      }),
+    })
+    const glmAgent: AgentLike = {
+      id: 'main-glm',
+      ctx: {} as never,
+      session: { id: 'main-glm', header: { id: 'main-glm', cwd: project.root }, deriveMessages: () => [], requestHeader: () => ({ config: { provider: CODING_PLAN_PROVIDER, model: 'glm-5.3' } }) },
+    }
+    const runDispatch = (args: Record<string, unknown>) =>
+      dispatchTool(deps).execute(args, { callId: 'call-route', signal: new AbortController().signal, agent: glmAgent, deferContext: () => {}, concludeTurn: () => {} }) as Promise<Record<string, unknown>>
+
+    // 1. Dual-GLM & StartPlan available -> auto-routes to glm-start-plan
+    const first = await runDispatch({ id: 'task-a', model: 'glm-5.3', why: 'try start plan first' })
+    assert.equal(first.provider, START_PLAN_PROVIDER)
+    assert.equal((subagents.started.at(-1) as { agentOptions: { provider: string } }).agentOptions.provider, START_PLAN_PROVIDER)
+    cleanup(String(first.childId))
+
+    // 2. StartPlan unavailable -> fails over to glm-zcode and appends autoRouteNote to dispatch comment
+    startAvailable = false
+    startReason = 'empty'
+    const second = await runDispatch({ id: 'task-b', model: 'glm-5.3', why: 'failover when empty' })
+    assert.equal(second.provider, CODING_PLAN_PROVIDER)
+    const nodeB = (await openEngine(project.graphDir).load()).nodes.get('task-b')
+    const commentB = nodeB?.history.filter(entry => entry.op === 'comment' && entry.actor === 'harness').at(-1)?.text ?? ''
+    assert.ok(commentB.includes('免费套餐暂不可用（empty），已自动切换个人套餐'), commentB)
+    cleanup(String(second.childId))
+
+    // 3. Explicit provider: 'glm-zcode' stays glm-zcode even when StartPlan is available
+    startAvailable = true
+    startReason = 'ok'
+    const third = await runDispatch({ id: 'task-c', model: 'glm-5.3', why: 'explicit personal plan', provider: CODING_PLAN_PROVIDER })
+    assert.equal(third.provider, CODING_PLAN_PROVIDER)
+    cleanup(String(third.childId))
+
+    // 4. Single-provider fallback (no glm-start-plan catalog models) keeps sessionProvider untouched
+    includeStartPlanCatalog = false
+    const fourth = await runDispatch({ id: 'task-d', model: 'glm-5.3', why: 'single provider fallback' })
+    assert.equal(fourth.provider, CODING_PLAN_PROVIDER)
+    cleanup(String(fourth.childId))
+    assert.ok(catalogCalls.includes(CODING_PLAN_PROVIDER) && catalogCalls.includes(START_PLAN_PROVIDER))
+  }
+  finally {
+    dispose(project)
+  }
+})
+
+test('/dispatch-mode command persists project mode, updates live-board.json, reflects in statusText, and fails open without commands', async () => {
+  const project = await presetProject([WORK_TASK])
+  try {
+    const runtime = fakeRuntime({ natives: [] })
+    runtime.services.set(START_PLAN_SERVICE, {
+      status: () => ({ available: true, reason: 'ok', activeStreams: 1, failoverCount: 0, balanceSummary: '100 remaining' }),
+    })
+    const registeredCommands: Array<CommandDefinitionLike<AgentCommandInvocationLike>> = []
+    const injector = fakeInjector({
+      commands: {
+        register: (definition) => {
+          registeredCommands.push(definition)
+          return () => {
+            const idx = registeredCommands.indexOf(definition)
+            if (idx >= 0) registeredCommands.splice(idx, 1)
+          }
+        },
+      },
+    }, runtime.ctx)
+    ;(runtime.ctx as { inject?: unknown }).inject = injector.inject
+    const stop = executeApply(runtime.ctx, { dispatchMode: 'adaptive' })
+
+    const cmd = registeredCommands.find(entry => entry.name === 'dispatch-mode')
+    assert.ok(cmd !== undefined, '/dispatch-mode must be registered')
+    assert.equal(cmd.definitionId, 'dsh-glm-hourness/dispatch-mode')
+
+    const invocationAgent = { id: 'main-1', session: { id: 'main-1', header: { id: 'main-1', cwd: project.root } } } as never
+    const query = await cmd.handler({ commandId: 'c-1', agent: invocationAgent, rawInput: '' })
+    assert.equal(query.kind, 'success')
+    assert.ok(query.text.includes('adaptive') && query.text.includes('可用'))
+
+    const bad = await cmd.handler({ commandId: 'c-2', agent: invocationAgent, rawInput: 'invalid-mode' })
+    assert.equal(bad.kind, 'error')
+
+    const setRes = await cmd.handler({ commandId: 'c-3', agent: invocationAgent, rawInput: 'eco' })
+    assert.equal(setRes.kind, 'success')
+    assert.equal(readProjectDispatchMode(join(project.root, '.llm', 'execute')), 'eco')
+
+    const boardFile = executeBoardPathOf(root => join(root, '.llm', 'execute'), project.root)
+    for (let waited = 0; waited < 1_000 && !existsSync(boardFile); waited += 25) {
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    const board = JSON.parse(readFileSync(boardFile, 'utf8')) as ExecuteLiveBoard
+    assert.equal(board.dispatchMode, 'eco')
+
+    const notice = statusText({
+      graph: await openEngine(project.graphDir).load(),
+      focus: 'task-1',
+      session: 'main-1',
+      drive: { returns: [], lost: [], counters: { idle: 0, peak: 0 } },
+      running: [],
+      requests: [],
+      now: new Date(),
+      dispatchMode: readProjectDispatchMode(join(project.root, '.llm', 'execute'))!,
+    })!
+    assert.ok(notice.text.includes(dispatchModeNoticeLine('eco')))
+
+    stop()
+    assert.equal(registeredCommands.length, 0, 'dispose removes /dispatch-mode command cleanly')
+
+    // Fail-open when commands.register throws: row health must NOT degrade for commands
+    const rtFail = fakeRuntime({ natives: [] })
+    const providedHealth = new Map<string, RowHealthView>()
+    const originalProvide = rtFail.ctx.provide.bind(rtFail.ctx)
+    rtFail.ctx.provide = (name, value) => {
+      if (name === healthServiceName('execute')) providedHealth.set(name, value as RowHealthView)
+      return originalProvide(name, value)
+    }
+    ;(rtFail.ctx as { inject?: unknown }).inject = fakeInjector({
+      tools: rtFail.ctx.tools,
+      commands: { register: () => { throw new Error('commands unavailable') } },
+    }, rtFail.ctx).inject
+    const stopFail = executeApply(rtFail.ctx, {})
+    const healthView = providedHealth.get(healthServiceName('execute'))
+    assert.equal(healthView?.activation().state, 'active')
+    stopFail()
   }
   finally {
     dispose(project)

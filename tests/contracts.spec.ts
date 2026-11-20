@@ -38,6 +38,7 @@ import { MEMORY_SERVICE, memoryService } from '../src/shared/memory-service.ts'
 import { OUTPUT_STYLE_SECTION } from '../src/shared/output-style.ts'
 import { PRICING_SERVICE, peakHoursOf, pricingService, quotaOf, type UsagePricing } from '../src/shared/pricing.ts'
 import type { QuotaView } from '../src/shared/quota.ts'
+import { START_PLAN_SERVICE, startPlanStatusService } from '../src/shared/start-plan-status.ts'
 import { BOOTSTRAP_TOOL_NAMES, DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, DISPATCH_TOOLS, ENV_TOOL_NAMES, EXECUTE_TOOL_NAMES, GRAPH_TOOL_NAMES, GUARD_TOOL_NAMES, LEARNING_TOOL_NAMES, LESSONS_MERGE_TOOL, LESSONS_QUERY_TOOL, LESSONS_TOOL_NAMES, MEMORY_HABIT, MEMORY_TOOL_NAMES, OPERATE_TOOL_NAMES, ORCHESTRATION_RESIDENT_TOOLS, RULES_TOOL_NAMES, STRUCTURED_OUTPUT_TOOL, WORKER_TOOL_NAMES } from '../src/shared/tool-names.ts'
 import { emitMetric, setMetricSink, type MetricEvent } from '../src/execute/metrics.ts'
 import { HANDBACK_SCHEMA, REVIEW_SCHEMA, handbackProblems, mergeHandbackSchema, reviewProblems } from '../src/execute/schemas.ts'
@@ -925,4 +926,29 @@ test('glm-compact and the transcript row: a GLM compaction summary ends with the
   finally {
     rmSync(home, { recursive: true, force: true })
   }
+})
+
+test('startPlanStatusService: absent and malformed services read as none; a wider valid service still reads', () => {
+  assert.equal(START_PLAN_SERVICE, 'glmHournessStartPlan')
+  const problems: string[] = []
+  const problem = (message: string) => { problems.push(message) }
+  const empty = serviceStore()
+  assert.equal(startPlanStatusService(empty, problem), undefined)
+  assert.equal(startPlanStatusService({}, problem), undefined)
+  assert.equal(problems.length, 0)
+
+  const malformed = serviceStore()
+  malformed.provide(START_PLAN_SERVICE, { status: 'not-a-fn' })
+  assert.equal(startPlanStatusService(malformed, problem), undefined)
+  assert.equal(problems.length, 1)
+  assert.ok(problems[0]?.includes(START_PLAN_SERVICE))
+
+  const wider = {
+    status: () => ({ available: true, reason: 'ok' as const, activeStreams: 1, failoverCount: 0 }),
+    extra: 42,
+  }
+  const valid = serviceStore()
+  valid.provide(START_PLAN_SERVICE, wider)
+  assert.equal(startPlanStatusService(valid, problem), wider)
+  assert.equal(problems.length, 1)
 })

@@ -41,13 +41,13 @@ test('graph_focus moves the focus when its result succeeds, not when it fails', 
   assert.equal(fold([call('f4', 'graph_focus', 'not json'), result('f4')], refused).focus, 'm2-8')
 })
 
-test('parallel calls: the latest pending call shows; recent keeps the last six', () => {
+test('parallel calls: the latest pending call shows; recent keeps the last twelve', () => {
   seq = 0
   const both = fold([call('a', 'Read'), call('b', 'Grep')])
   assert.equal(both.tool?.name, 'Grep')
   assert.equal(foldLive(both, result('b')).tool?.name, 'Read')
-  const many = fold(Array.from({ length: 8 }, (_, index) => [call(`x${index}`, `T${index}`), result(`x${index}`)]).flat())
-  assert.deepEqual(many.recent.map(entry => entry.name), ['T2', 'T3', 'T4', 'T5', 'T6', 'T7'])
+  const many = fold(Array.from({ length: 15 }, (_, index) => [call(`x${index}`, `T${index}`), result(`x${index}`)]).flat())
+  assert.deepEqual(many.recent.map(entry => entry.name), ['T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T13', 'T14'])
 })
 
 test('a DeferredToolCall shows the deferred tool it runs; a malformed wrapper keeps its own name', () => {
@@ -204,7 +204,7 @@ test('awaiting arguments are cut to 200 code points, and inherited events are sk
 test('the unit: awaiting is part of the checked shapes, and an old checkpoint is refused', () => {
   seq = 0
   const state = fold(askCall('p1', confirmArgs, 'confirm', confirmOutput))
-  assert.equal(liveProjection.stateVersion, 4)
+  assert.equal(liveProjection.stateVersion, 5)
   assert.equal(liveProjection.stateSchema.parse(JSON.parse(JSON.stringify(state))).awaiting.length, 1)
   liveProjection.wire.viewSchema.parse(liveView(state))
   assert.throws(() => liveProjection.stateSchema.parse({ ...JSON.parse(JSON.stringify(state)), awaiting: 'x' }), /awaiting/)
@@ -304,4 +304,91 @@ test('the unit: requests are part of the checked shapes', () => {
   assert.throws(() => liveProjection.stateSchema.parse({ ...JSON.parse(JSON.stringify(state)), requests: 'x' }), /requests/)
   assert.throws(() => liveProjection.stateSchema.parse({ ...JSON.parse(JSON.stringify(state)), requests: [{ ref: 'r-7k2m9q4x', at: 1 }] }), /carry a title/)
   assert.throws(() => liveProjection.wire.viewSchema.parse({ ...liveView(state), requests: Array.from({ length: 9 }, (_, index) => ({ ref: `r-${index}`, title: 't', background: 'b', proposal: 'p', doubt: 'd', notTaken: 'n', at: 1 })) }), /requests/)
+})
+
+// --- v5 fields: turn, stepSince, phase, turnEndReason, provider, argHint, ms, approval, errors ---
+
+test('v5 lifecycle: turn, stepSince, phase, turnEndReason, provider, and tool timing/argHint', () => {
+  seq = 0
+  const s0 = initialLive(0)
+  assert.deepEqual([s0.turn, s0.stepSince, s0.phase, s0.turnEndReason, s0.provider, s0.pendingApproval, s0.lastError], [0, null, 'idle', null, null, null, null])
+
+  const s1 = fold([
+    event('request/header', { header: { config: { provider: 'glm-zcode', model: 'glm-5.3' } }, reason: 'initial' }, 100),
+    event('turn/start', { turn: 2 }, 200),
+    event('step/start', { turn: 2, step: 1 }, 250),
+  ])
+  assert.equal(s1.provider, 'glm-zcode')
+  assert.equal(s1.model, 'glm-5.3')
+  assert.equal(s1.turn, 2)
+  assert.equal(s1.stepSince, 250)
+  assert.equal(s1.phase, 'thinking')
+
+  const s2 = foldLive(s1, event('tool/call', {
+    turn: 2, step: 1, callId: 't1', name: 'Bash',
+    arguments: JSON.stringify({ command: 'npm test\necho second line' }),
+  }, 300))
+  assert.equal(s2.phase, 'tool')
+  assert.equal(s2.tool?.argHint, 'npm test')
+
+  const s3 = foldLive(s2, event('tool/result', {
+    turn: 2, step: 1, message: { role: 'tool', isError: false, source: { callId: 't1' } },
+  }, 850))
+  assert.equal(s3.phase, 'thinking')
+  assert.deepEqual(s3.recent[0], { name: 'Bash', at: 850, ok: true, ms: 550, argHint: 'npm test' })
+
+  const s4 = foldLive(s3, event('step/end', { turn: 2, step: 1 }, 900))
+  assert.equal(s4.stepSince, null)
+
+  const s5 = foldLive(s4, event('turn/end', { turn: 2, reason: { kind: 'completed' } }, 1000))
+  assert.equal(s5.phase, 'ended')
+  assert.equal(s5.turnEndReason, 'completed')
+  assert.equal(s5.turnSince, null)
+  assert.equal(s5.stepSince, null)
+})
+
+test('v5 argHint: extracts file paths, deferred inner args, graph/execute ids, and clips to 100 chars', () => {
+  seq = 0
+  const read = fold([event('tool/call', { callId: 'a1', name: 'str_replace_editor', arguments: JSON.stringify({ path: 'src/execute/live-board.ts' }) })])
+  assert.equal(read.tool?.argHint, 'src/execute/live-board.ts')
+
+  const wrapped = fold([event('tool/call', { callId: 'a2', name: 'DeferredToolCall', arguments: JSON.stringify({ name: 'dispatch_task', input: { id: 'task-42', model: 'glm-5.3' } }) })])
+  assert.equal(wrapped.tool?.argHint, 'task-42')
+
+  const longCmd = 'x'.repeat(140)
+  const clipped = fold([event('tool/call', { callId: 'a3', name: 'pwsh', arguments: JSON.stringify({ command: longCmd }) })])
+  assert.equal([...(clipped.tool?.argHint ?? '')].length, 100)
+  assert.ok(clipped.tool?.argHint?.endsWith('…'))
+})
+
+test('v5 approvals and errors: approval/asked & approval/decided, agent/request-error, llm/retry, turn/end error', () => {
+  seq = 0
+  const running = fold([
+    event('turn/start', { turn: 1 }, 100),
+    event('tool/call', { callId: 'c1', name: 'Bash', arguments: '{"command":"rm -rf tmp"}' }, 200),
+    event('approval/asked', { id: 'apr-1', toolName: 'Bash', callId: 'c1' }, 300),
+  ])
+  assert.equal(running.phase, 'waiting-approval')
+  assert.deepEqual(running.pendingApproval, { id: 'apr-1', toolName: 'Bash', since: 300 })
+
+  const decided = foldLive(running, event('approval/decided', { id: 'apr-1', outcome: 'allowed-once' }, 500))
+  assert.equal(decided.pendingApproval, null)
+  assert.equal(decided.phase, 'tool')
+
+  const retried = foldLive(decided, event('agent/request-error', { failure: { message: 'rate limit\ndetails' } }, 600))
+  assert.deepEqual(retried.lastError, { at: 600, message: 'rate limit' })
+
+  const llmRetry = foldLive(retried, event('llm/retry', { failure: { message: 'upstream 503' } }, 650))
+  assert.deepEqual(llmRetry.lastError, { at: 650, message: 'upstream 503' })
+
+  const errored = foldLive(llmRetry, event('turn/end', { turn: 1, reason: { kind: 'error', error: { message: 'fatal request failure' } } }, 700))
+  assert.equal(errored.phase, 'ended')
+  assert.equal(errored.turnEndReason, 'error')
+  assert.deepEqual(errored.lastError, { at: 700, message: 'fatal request failure' })
+
+  liveProjection.stateSchema.parse(JSON.parse(JSON.stringify(errored)))
+  liveProjection.wire.viewSchema.parse(liveView(errored))
+  assert.throws(() => liveProjection.wire.viewSchema.parse({ ...liveView(errored), phase: 'bogus' }), /phase/)
+  assert.throws(() => liveProjection.wire.viewSchema.parse({ ...liveView(errored), pendingApproval: { id: 'x' } }), /pendingApproval/)
+  assert.throws(() => liveProjection.wire.viewSchema.parse({ ...liveView(errored), lastError: { at: 'bad' } }), /lastError/)
 })

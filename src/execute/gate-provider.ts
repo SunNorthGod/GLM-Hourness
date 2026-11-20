@@ -46,6 +46,11 @@ interface GateJob {
   readonly tasks?: readonly string[]
 }
 
+export interface GateLauncherHooks {
+  readonly onJobStart?: (job: { readonly id: string, readonly label: string, readonly cwd: string, readonly tasks: readonly string[], readonly mode: 'activation' | 'sync' }) => void
+  readonly onJobEnd?: (job: { readonly id: string, readonly cwd: string, readonly status: 'completed' | 'error' | 'aborted', readonly summary?: string }) => void
+}
+
 export interface GateLauncher {
   /** The provider the row registers with the `subagents` service. */
   readonly provider: GateProvider
@@ -60,13 +65,17 @@ export interface GateLauncher {
 const PROMPT = /^hourness-gate job (\S+)$/
 
 /** A job's verdict that never rejects: a throw is an `error` verdict. */
-function settle(job: GateJob, signal: AbortSignal): Promise<GateVerdict> {
+function settle(job: GateJob, signal: AbortSignal, hooks?: GateLauncherHooks): Promise<GateVerdict> {
   return Promise.resolve()
     .then(() => job.run(signal))
     .catch((error: unknown) => ({ text: `the check did not finish: ${error instanceof Error ? error.message : String(error)}`, stopReason: 'error' as const }))
+    .then((verdict) => {
+      hooks?.onJobEnd?.({ id: job.id, cwd: job.cwd, status: verdict.stopReason, summary: verdict.text })
+      return verdict
+    })
 }
 
-export function createGateLauncher(): GateLauncher {
+export function createGateLauncher(hooks?: GateLauncherHooks): GateLauncher {
   const jobs = new Map<string, GateJob>()
   const active = new Map<string, readonly string[]>()
   let service: Pick<SubagentsService, 'registerProvider' | 'startActivation'> | undefined
@@ -83,13 +92,14 @@ export function createGateLauncher(): GateLauncher {
       if (request.signal.aborted) {
         jobs.delete(id)
         active.delete(id)
+        hooks?.onJobEnd?.({ id, cwd: job.cwd, status: 'aborted', summary: 'the check was stopped before it started' })
         return Promise.reject(new Error('the check was stopped before it started'))
       }
       jobs.delete(id)
       const controller = new AbortController()
       const stop = (): void => { controller.abort() }
       request.signal.addEventListener('abort', stop, { once: true })
-      const result = settle(job, controller.signal).then((verdict) => {
+      const result = settle(job, controller.signal, hooks).then((verdict) => {
         request.signal.removeEventListener('abort', stop)
         return { output: [{ type: 'text', text: verdict.text }], stopReason: verdict.stopReason }
       })
@@ -123,6 +133,7 @@ export function createGateLauncher(): GateLauncher {
       const job: GateJob = { ...given, run: run => given.run(run).finally(() => { active.delete(given.id) }) }
       jobs.set(job.id, job)
       if (service !== undefined) {
+        hooks?.onJobStart?.({ id: given.id, label: given.label, cwd: given.cwd, tasks: given.tasks ?? [], mode: 'activation' })
         try {
           const activation = await service.startActivation({
             provider: GATE_PROVIDER,
@@ -141,8 +152,9 @@ export function createGateLauncher(): GateLauncher {
           if (!jobs.has(job.id)) return 'activation'
         }
       }
+      hooks?.onJobStart?.({ id: given.id, label: given.label, cwd: given.cwd, tasks: given.tasks ?? [], mode: 'sync' })
       jobs.delete(job.id)
-      await settle(job, signal)
+      await settle(job, signal, hooks)
       return 'sync'
     },
   }

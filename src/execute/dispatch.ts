@@ -34,7 +34,8 @@ import { pinsOf, renderPins } from '../graph/pins.ts'
 import { projectOf } from '../data/project-root.ts'
 import { scopeComponents } from '../lessons/docs.ts'
 import { peakModeService } from '../shared/peak-mode.ts'
-import { isGlmModel } from '../shared/route.ts'
+import { CODING_PLAN_PROVIDER, isGlmModel, START_PLAN_PROVIDER } from '../shared/route.ts'
+import { startPlanStatusService } from '../shared/start-plan-status.ts'
 import type { AgentLike, LiveAgentLike, LlmCatalog, ServiceLookup, SubagentActivation, ToolDefinitionLike, ToolExecutionContext } from '../shared/dsh-min.ts'
 import { briefGate, renderAcceptanceBrief, renderBrief, renderDesignReviewBrief, renderReviewBrief, type Brief, type BriefContext, type BriefInput, type GateResult } from './brief.ts'
 import { latestDispatch, lostChildOf, makeChildId, nextAttempt, parseHandbackComment, registerAttempt, registeredDispatches, renderDispatchComment, type Attempt, type DispatchSummary, type HandbackComment, type PlanStatus } from './attempts.ts'
@@ -161,6 +162,8 @@ export interface DispatchDeps {
   readonly reviewTarget?: (graph: LoadedGraph, reviewTask: GraphNode) => { readonly handedBack: boolean, readonly stale: boolean }
   /** Run the handback processing of one settled activation (§3.6.2); the row wires it to the handback module. */
   readonly onHandback?: (attempt: Attempt, settlement: Settlement) => void
+  /** Notify the live-board store when a dispatch enters the register. */
+  readonly onBoardDispatch?: (projectRoot: string, attempt: Attempt) => void
   /** The runner of the setup commands; tests inject failures. */
   readonly runCommand?: CommandRunner
   /** The walk job's seams (user graph design 0.4.1 §5.5); undefined reads as no backend for the walk. */
@@ -417,10 +420,18 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
       const gateCommands = gate.commands.filter(command => command.kind === 'check').map(command => command.command)
       const outputSchemaOk = await schemaResolves(node, project)
       // The catalog of the call's provider, for the hint of an invalid call (§3.5.1 invalid row); a read failure reads as no catalog.
-      const hintProvider = isRecord(args) && typeof args.provider === 'string' ? args.provider : routeOf(agent)
+      const sessionProvider = routeOf(agent)
+      const hintProvider = isRecord(args) && typeof args.provider === 'string' ? args.provider : sessionProvider
       const services = readServices(deps.lookup)
       if (services === undefined) refuse('inactive', 'the subagents service is not available', 'the host needs the subagents row to start a dispatch')
-      const hintCatalog = hintProvider === undefined ? undefined : await services.catalog(hintProvider)
+      const catalogs = new Map<string, readonly CatalogEntry[] | undefined>()
+      const catalogOf = async (providerId: string): Promise<readonly CatalogEntry[] | undefined> => {
+        if (catalogs.has(providerId)) return catalogs.get(providerId)
+        const entries = await services.catalog(providerId)
+        catalogs.set(providerId, entries)
+        return entries
+      }
+      const hintCatalog = hintProvider === undefined ? undefined : await catalogOf(hintProvider)
       const reviewTask = node.kind === 'review' && !isDesignReview(graph, node)
       // The acceptance review of a goal reviews the trunk as it is now (§3.9.4); a round at this commit already makes it busy.
       let trunk: { readonly branch: string, readonly sha: string } | undefined
@@ -458,9 +469,37 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
 
       const { args: parsed } = verdict
       let walkLines: readonly string[] = []
-      const provider = parsed.provider ?? routeOf(agent)
+      let provider: string | undefined = parsed.provider ?? sessionProvider
+      let autoRouteNote: string | undefined
+      const startPlan = startPlanStatusService(deps.lookup)?.status(parsed.model)
+      if (
+        parsed.provider === undefined
+        && isGlmModel(parsed.model)
+        && (sessionProvider === CODING_PLAN_PROVIDER || sessionProvider === START_PLAN_PROVIDER)
+      ) {
+        const startCatalog = await catalogOf(START_PLAN_PROVIDER)
+        if (startCatalog?.some(entry => entry.id === parsed.model) === true) {
+          if (startPlan === undefined || startPlan.available) {
+            provider = START_PLAN_PROVIDER
+          }
+          else {
+            const codingCatalog = await catalogOf(CODING_PLAN_PROVIDER)
+            if (codingCatalog?.some(entry => entry.id === parsed.model) === true) {
+              provider = CODING_PLAN_PROVIDER
+              autoRouteNote = `免费套餐暂不可用（${startPlan.reason}），已自动切换个人套餐`
+            }
+          }
+        }
+      }
+      else if (parsed.provider === START_PLAN_PROVIDER && startPlan !== undefined && !startPlan.available) {
+        const codingCatalog = await catalogOf(CODING_PLAN_PROVIDER)
+        if (codingCatalog?.some(entry => entry.id === parsed.model) === true) {
+          provider = CODING_PLAN_PROVIDER
+          autoRouteNote = `免费套餐暂不可用（${startPlan.reason}），已自动切换个人套餐`
+        }
+      }
       if (provider === undefined) refuse('invalid', 'no provider to run the model on', 'pass provider, or dispatch from a session with a provider')
-      const catalog = await services.catalog(provider)
+      const catalog = await catalogOf(provider)
       if (catalog === undefined && parsed.provider !== undefined) refuse('unknown_provider', `provider "${parsed.provider}" is not registered`, 'use one of the providers of this host, or leave provider out')
       const efforts = await services.efforts(provider, parsed.model)
       const choice: ModelChoice = { provider, model: parsed.model, ...(parsed.reasoningEffort === undefined ? {} : { reasoningEffort: parsed.reasoningEffort }) }
@@ -697,6 +736,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
         ...(policy === undefined ? {} : { policy }),
       }
       registerAttempt(record)
+      deps.onBoardDispatch?.(project, record)
       // The handback processing runs when the activation settles (§3.6.2); a settlement that rejects is an error handback, never an unhandled rejection.
       if (deps.onHandback !== undefined && activation !== null && typeof activation === 'object') {
         const result = (activation as { result?: unknown }).result
@@ -712,6 +752,7 @@ export function dispatchTool(deps: DispatchDeps): ToolDefinitionLike {
       const notes = [
         ...(worktree?.renamedFrom === undefined ? [] : [`旧分支留在 ${worktree.renamedFrom}`]),
         ...(checked.note === CATALOG_UNCHECKED_NOTE ? [CATALOG_UNCHECKED_NOTE] : []),
+        ...(autoRouteNote === undefined ? [] : [autoRouteNote]),
       ]
       const base = worktree !== undefined ? { branch: worktree.base, sha: worktree.baseSha.slice(0, 12) }
         : reviewedTrunk === undefined ? undefined : { branch: reviewedTrunk.branch, sha: reviewedTrunk.sha.slice(0, 12) }

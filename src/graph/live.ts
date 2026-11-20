@@ -48,7 +48,7 @@ export const FOCUS_TOOL = 'graph_focus'
 export const LIVE_KEY = 'graphLive'
 
 /** Tool results the view keeps, newest last. */
-const RECENT = 6
+const RECENT = 12
 
 /** Matters kept in `awaiting` (the design row asks at most three per reply). */
 const AWAITING_MAX = 3
@@ -61,6 +61,26 @@ const CLOSED_REQUEST_OUTCOMES: ReadonlySet<string> = new Set(['approved', 'decli
 
 /** The code points an argument keeps (plain-ui 1.3 §4.9: keep the projection small). */
 const ARGS_MAX = 200
+
+/** Maximum code points kept for a concise tool argument hint or error message. */
+const HINT_MAX = 100
+const ERROR_MAX = 200
+
+export type LivePhase = 'idle' | 'thinking' | 'tool' | 'waiting-approval' | 'ended'
+const LIVE_PHASES: readonly string[] = ['idle', 'thinking', 'tool', 'waiting-approval', 'ended']
+
+/** Pending tool-approval question tracked across approval/asked and approval/decided. */
+interface PendingApproval {
+  readonly id: string
+  readonly toolName: string
+  readonly since: number
+}
+
+/** Latest error observed on the session (agent/request-error, llm/retry, or error turn/end). */
+interface LiveError {
+  readonly at: number
+  readonly message: string
+}
 
 /** One matter the human has not answered yet (plain-ui 1.3 §4.9); plain-view.ts and the panel read the entries off the view. */
 export interface AwaitingEntry {
@@ -87,10 +107,18 @@ export interface RequestLiveEntry {
   readonly at: number
 }
 
-interface LiveCall {
+export interface LiveCall {
   readonly name: string
   readonly at: number
   readonly ok: boolean
+  readonly ms?: number
+  readonly argHint?: string
+}
+
+interface LiveTool {
+  readonly name: string
+  readonly since: number
+  readonly argHint?: string
 }
 
 /** What the panel shows for one agent. */
@@ -102,16 +130,25 @@ export interface LiveView {
   readonly turnSince: number | null
   readonly steps: number
   /** The tool call running now, if any. */
-  readonly tool: { readonly name: string, readonly since: number } | null
+  readonly tool: LiveTool | null
   readonly recent: readonly LiveCall[]
   readonly awaiting: readonly AwaitingEntry[]
   /** The request plans the human has not answered yet (m4-request-card design §5.8). */
   readonly requests: readonly RequestLiveEntry[]
+  readonly turn?: number
+  readonly stepSince?: number | null
+  readonly phase?: LivePhase
+  readonly turnEndReason?: string | null
+  readonly provider?: string | null
+  readonly pendingApproval?: PendingApproval | null
+  readonly lastError?: LiveError | null
 }
 
 interface Pending {
   readonly name: string
   readonly since: number
+  /** Concise argument hint extracted at tool/call time. */
+  readonly argHint?: string
   /** The node a graph_focus call names. */
   readonly focus?: string
   /** The arguments of a propose_to_human / record_human_answer call, as far as they read. */
@@ -140,7 +177,22 @@ export interface LiveEvent {
 }
 
 const EMPTY: Omit<LiveState, 'inherited'> = {
-  focus: null, model: null, turnSince: null, steps: 0, tool: null, recent: [], awaiting: [], requests: [], pending: {},
+  focus: null,
+  model: null,
+  provider: null,
+  turn: 0,
+  turnSince: null,
+  stepSince: null,
+  steps: 0,
+  phase: 'idle',
+  turnEndReason: null,
+  tool: null,
+  recent: [],
+  awaiting: [],
+  requests: [],
+  pendingApproval: null,
+  lastError: null,
+  pending: {},
 }
 
 export function initialLive(inherited: number): LiveState {
@@ -169,6 +221,50 @@ function argumentsOf(args: unknown): Record<string, unknown> {
 /** The name the view shows: a DeferredToolCall wrapper shows the deferred tool it runs. */
 function shownName(name: string, args: Record<string, unknown>): string {
   return name === DEFERRED_TOOL_CALL_NAME ? text(args.name) ?? name : name
+}
+
+/** Trim to the first non-empty line and clip to `max` code points. */
+function clipLine(value: string, max: number): string | undefined {
+  const firstLine = value.split(/\r?\n/).map(line => line.trim()).find(line => line.length > 0)
+  if (firstLine === undefined) return undefined
+  const points = [...firstLine]
+  return points.length <= max ? firstLine : `${points.slice(0, max - 1).join('')}…`
+}
+
+function firstString(args: Record<string, unknown>, keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    const value = text(args[key])
+    if (value !== undefined) return value
+  }
+  return undefined
+}
+
+const FILE_HINT_TOOLS: ReadonlySet<string> = new Set([
+  'Read', 'Write', 'Edit', 'MultiEdit', 'str_replace_editor', 'read_file', 'write_file', 'edit_file', 'View', 'NotebookEdit', 'Glob', 'Grep',
+])
+const COMMAND_HINT_TOOLS: ReadonlySet<string> = new Set([
+  'Bash', 'pwsh', 'powershell', 'terminal_send', 'run_command', 'Terminal',
+])
+const GRAPH_EXECUTE_HINT_TOOLS: ReadonlySet<string> = new Set([
+  'dispatch_task', 'check_commit', 'answer_worker', 'submit_plan', 'ask_main', 'propose_to_human', 'record_human_answer', 'request_exception',
+])
+
+/** Extract a concise <= 100-char hint from a tool call's arguments. */
+function argHintOf(name: string, args: Record<string, unknown>): string | undefined {
+  let raw: string | undefined
+  if (FILE_HINT_TOOLS.has(name)) {
+    raw = firstString(args, ['file_path', 'path', 'filePath', 'target_file', 'notebook_path', 'pattern'])
+  }
+  else if (COMMAND_HINT_TOOLS.has(name)) {
+    raw = firstString(args, ['command', 'cmd', 'CommandLine', 'input'])
+  }
+  else if (name.startsWith('graph_') || GRAPH_EXECUTE_HINT_TOOLS.has(name)) {
+    raw = firstString(args, ['id', 'node', 'task', 'request', 'ref', 'commit', 'goal', 'question'])
+  }
+  else {
+    raw = firstString(args, ['id', 'file_path', 'path', 'command', 'query', 'url', 'name', 'title', 'request', 'ref'])
+  }
+  return raw === undefined ? undefined : clipLine(raw, HINT_MAX)
 }
 
 /** A string argument, cut to ARGS_MAX code points; absent for anything else. */
@@ -252,7 +348,13 @@ function awaitingOf(call: Pending, isError: boolean, content: unknown, at: numbe
 function runningOf(pending: Readonly<Record<string, Pending>>): LiveView['tool'] {
   let latest: Pending | undefined
   for (const call of Object.values(pending)) if (latest === undefined || call.since >= latest.since) latest = call
-  return latest === undefined ? null : { name: latest.name, since: latest.since }
+  return latest === undefined ? null : { name: latest.name, since: latest.since, ...(latest.argHint === undefined ? {} : { argHint: latest.argHint }) }
+}
+
+function activePhaseOf(state: Pick<LiveState, 'turnSince' | 'tool' | 'pendingApproval'>): LivePhase {
+  if (state.pendingApproval !== undefined && state.pendingApproval !== null) return 'waiting-approval'
+  if (state.tool !== null) return 'tool'
+  return state.turnSince !== null ? 'thinking' : 'idle'
 }
 
 /** Fold one committed event; an event the view does not depend on returns the same state. */
@@ -261,11 +363,42 @@ export function foldLive(state: LiveState, event: LiveEvent): LiveState {
   const data = record(event.data)
   switch (event.type) {
     case 'turn/start':
-      return { ...state, turnSince: event.time, steps: 0 }
-    case 'turn/end':
-      return { ...state, turnSince: null, tool: null, pending: {} }
-    case 'step/start':
-      return { ...state, steps: state.steps + 1 }
+      return {
+        ...state,
+        turn: typeof data.turn === 'number' ? data.turn : (state.turn ?? 0) + 1,
+        turnSince: event.time,
+        stepSince: null,
+        steps: 0,
+        phase: 'thinking',
+        turnEndReason: null,
+        pendingApproval: null,
+      }
+    case 'turn/end': {
+      const reason = record(data.reason)
+      const kind = text(reason.kind) ?? text(data.reason) ?? null
+      const errMessage = kind === 'error' ? clipLine(text(record(reason.error).message) ?? 'turn ended with error', ERROR_MAX) : undefined
+      return {
+        ...state,
+        turnSince: null,
+        stepSince: null,
+        tool: null,
+        pending: {},
+        pendingApproval: null,
+        phase: 'ended',
+        turnEndReason: kind,
+        ...(errMessage === undefined ? {} : { lastError: { at: event.time, message: errMessage } }),
+      }
+    }
+    case 'step/start': {
+      const next: LiveState = {
+        ...state,
+        steps: state.steps + 1,
+        stepSince: event.time,
+      }
+      return { ...next, phase: activePhaseOf(next) }
+    }
+    case 'step/end':
+      return state.stepSince === null || state.stepSince === undefined ? state : { ...state, stepSince: null }
     case 'tool/call': {
       const callId = text(data.callId)
       const name = text(data.name)
@@ -276,9 +409,21 @@ export function foldLive(state: LiveState, event: LiveEvent): LiveState {
       const shown = shownName(name, args)
       // A DeferredToolCall wrapper carries the inner call in `input`.
       const inner = shown === name ? args : argumentsOf(args.input)
+      const argHint = argHintOf(shown, inner)
       const ask = shown === PROPOSE_TO_HUMAN || shown === RECORD_HUMAN_ANSWER ? askOf(inner) : undefined
-      const pending = { ...state.pending, [callId]: { name: shown, since: event.time, ...(focus === undefined ? {} : { focus }), ...(ask === undefined ? {} : { ask }) } }
-      return { ...state, pending, tool: runningOf(pending) }
+      const pending = {
+        ...state.pending,
+        [callId]: {
+          name: shown,
+          since: event.time,
+          ...(argHint === undefined ? {} : { argHint }),
+          ...(focus === undefined ? {} : { focus }),
+          ...(ask === undefined ? {} : { ask }),
+        },
+      }
+      const tool = runningOf(pending)
+      const next: LiveState = { ...state, pending, tool }
+      return { ...next, phase: activePhaseOf(next) }
     }
     case 'tool/result': {
       const message = record(data.message)
@@ -303,15 +448,50 @@ export function foldLive(state: LiveState, event: LiveEvent): LiveState {
             : withoutRequest(state.requests, shown.ref)
         }
       }
-      return {
+      const tool = runningOf(pending)
+      const ms = Math.max(0, event.time - call.since)
+      const recentCall: LiveCall = {
+        name: call.name,
+        at: event.time,
+        ok,
+        ms,
+        ...(call.argHint === undefined ? {} : { argHint: call.argHint }),
+      }
+      const next: LiveState = {
         ...state,
         pending,
-        tool: runningOf(pending),
+        tool,
         awaiting,
         requests,
-        recent: [...state.recent, { name: call.name, at: event.time, ok }].slice(-RECENT),
+        recent: [...state.recent, recentCall].slice(-RECENT),
         focus: ok && call.focus !== undefined ? call.focus : state.focus,
       }
+      return { ...next, phase: activePhaseOf(next) }
+    }
+    case 'approval/asked': {
+      const id = text(data.id)
+      const toolName = text(data.toolName)
+      if (id === undefined || toolName === undefined) return state
+      return {
+        ...state,
+        pendingApproval: { id, toolName, since: event.time },
+        phase: 'waiting-approval',
+      }
+    }
+    case 'approval/decided': {
+      if (state.pendingApproval === undefined || state.pendingApproval === null) return state
+      const id = text(data.id)
+      if (id !== undefined && id !== state.pendingApproval.id) return state
+      const next: LiveState = { ...state, pendingApproval: null }
+      return { ...next, phase: activePhaseOf(next) }
+    }
+    case 'agent/request-error':
+    case 'llm/retry': {
+      const failure = record(data.failure)
+      const raw = text(failure.message) ?? text(data.message)
+      const msg = raw === undefined ? undefined : clipLine(raw, ERROR_MAX)
+      if (msg === undefined) return state
+      return { ...state, lastError: { at: event.time, message: msg } }
     }
     case 'user/message': {
       // A request notice's close (m4-request-card design §5.8): the reminder's facts carry the ref and the outcome.
@@ -323,8 +503,12 @@ export function foldLive(state: LiveState, event: LiveEvent): LiveState {
       return requests === state.requests ? state : { ...state, requests }
     }
     case 'request/header': {
-      const model = text(record(record(data.header).config).model) ?? null
-      return model === state.model ? state : { ...state, model }
+      const config = record(record(data.header).config)
+      const model = text(config.model) ?? null
+      const provider = text(config.provider) ?? null
+      return model === state.model && provider === (state.provider ?? null)
+        ? state
+        : { ...state, model, provider }
     }
     default:
       return state
@@ -386,9 +570,35 @@ function parseView(value: unknown): LiveView {
   if (!(view.focus === null || typeof view.focus === 'string')) fail('focus must be a string or null')
   if (!(view.model === null || typeof view.model === 'string')) fail('model must be a string or null')
   if (!isNullableNumber(view.turnSince) || typeof view.steps !== 'number') fail('turnSince and steps must be numbers')
+  if (view.turn !== undefined && typeof view.turn !== 'number') fail('turn must be a number')
+  if (view.stepSince !== undefined && !isNullableNumber(view.stepSince)) fail('stepSince must be a number or null')
+  if (view.phase !== undefined && !LIVE_PHASES.includes(view.phase as string)) fail('phase must be a valid live phase')
+  if (view.turnEndReason !== undefined && view.turnEndReason !== null && typeof view.turnEndReason !== 'string') fail('turnEndReason must be a string or null')
+  if (view.provider !== undefined && view.provider !== null && typeof view.provider !== 'string') fail('provider must be a string or null')
   const tool = view.tool
-  if (!(tool === null || (typeof record(tool).name === 'string' && typeof record(tool).since === 'number'))) fail('tool must be {name, since} or null')
-  if (!Array.isArray(view.recent) || !view.recent.every(call => typeof record(call).name === 'string' && typeof record(call).at === 'number' && typeof record(call).ok === 'boolean')) fail('recent must be a list of {name, at, ok}')
+  if (!(tool === null || (typeof record(tool).name === 'string' && typeof record(tool).since === 'number' && (record(tool).argHint === undefined || typeof record(tool).argHint === 'string')))) {
+    fail('tool must be {name, since} or null')
+  }
+  if (!Array.isArray(view.recent) || !view.recent.every((call) => {
+    const item = record(call)
+    return typeof item.name === 'string'
+      && typeof item.at === 'number'
+      && typeof item.ok === 'boolean'
+      && (item.ms === undefined || typeof item.ms === 'number')
+      && (item.argHint === undefined || typeof item.argHint === 'string')
+  })) fail('recent must be a list of {name, at, ok}')
+  if (view.pendingApproval !== undefined && view.pendingApproval !== null) {
+    const approval = record(view.pendingApproval)
+    if (typeof approval.id !== 'string' || typeof approval.toolName !== 'string' || typeof approval.since !== 'number') {
+      fail('pendingApproval must be {id, toolName, since} or null')
+    }
+  }
+  if (view.lastError !== undefined && view.lastError !== null) {
+    const error = record(view.lastError)
+    if (typeof error.at !== 'number' || typeof error.message !== 'string') {
+      fail('lastError must be {at, message} or null')
+    }
+  }
   parseAwaiting(view.awaiting)
   parseRequests(view.requests)
   return value as LiveView
@@ -402,6 +612,7 @@ function parseState(value: unknown): LiveState {
   for (const call of Object.values(pending)) {
     const item = record(call)
     if (typeof item.name !== 'string' || typeof item.since !== 'number') fail('pending calls must be {name, since}')
+    if (item.argHint !== undefined && typeof item.argHint !== 'string') fail('pending argHint must be a string')
     const ask = item.ask
     if (ask === undefined) continue
     const args = record(ask)
@@ -421,7 +632,7 @@ function parseState(value: unknown): LiveState {
  */
 export const liveProjection = {
   key: LIVE_KEY,
-  stateVersion: 4,
+  stateVersion: 5,
   stateSchema: { parse: parseState },
   init: (_header: unknown, inheritedEventCount: number): LiveState => initialLive(inheritedEventCount),
   apply: foldLive,

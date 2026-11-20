@@ -39,6 +39,7 @@ function RunningRow({ graph, agent }: { readonly graph: LoadedGraph, readonly ag
       <div className="glmg-row-main">
         <div className="glmg-agent-head">
           <span className="glmg-row-title">{agent.name}</span>
+          {view?.provider === null || view?.provider === undefined ? null : <span className="glmg-who relay">{view.provider}</span>}
           {view?.model === null || view?.model === undefined ? null : <span className="glmg-who human">{view.model}</span>}
           <Tokens agent={agent} />
         </div>
@@ -48,7 +49,10 @@ function RunningRow({ graph, agent }: { readonly graph: LoadedGraph, readonly ag
           ? null
           : (
               <div className="glmg-chips">
-                {view.recent.map(call => <span key={`${call.at}:${call.name}`} className={call.ok ? 'glmg-chip' : 'glmg-chip bad'} title={call.ok ? '成功' : '出错'}>{call.name}{call.ok ? null : <span className="glmg-sr">，出错</span>}</span>)}
+                {view.recent.map((call, index) => {
+                  const detail = [call.ok ? '成功' : '出错', call.ms === undefined ? undefined : `${call.ms}ms`, call.argHint].filter(Boolean).join(' · ')
+                  return <span key={`${index}:${call.at}:${call.name}`} className={call.ok ? 'glmg-chip' : 'glmg-chip bad'} title={detail}>{call.name}{call.ok ? null : <span className="glmg-sr">，出错</span>}</span>
+                })}
               </div>
             )}
       </div>
@@ -83,7 +87,7 @@ function StoppedRow({ graph, agent }: { readonly graph: LoadedGraph, readonly ag
  * session carries only its cached projections); with nothing running they
  * fold into a line of their own, since they carry no data.
  */
-export function LiveSection({ graph, agents, tasks }: { readonly graph: LoadedGraph, readonly agents: readonly AgentLive[], readonly tasks: number }): ReactElement {
+export function LiveSection({ graph, agents, tasks, sidebarRight }: { readonly graph: LoadedGraph, readonly agents: readonly AgentLive[], readonly tasks: number, readonly sidebarRight?: { openTab(kind: string): void } }): ReactElement {
   const [unfolded, setUnfolded] = useState(false)
   const { running, quiet, folded } = liveGroups(agents)
   const main = agents.find(agent => agent.main)
@@ -92,6 +96,7 @@ export function LiveSection({ graph, agents, tasks }: { readonly graph: LoadedGr
     : unfolded ? '收起之前的子 agent' : `还有 ${folded.length} 个子 agent 是这次启动之前跑的`
   return (
     <Part title={`现场 · ${running.length} 个在跑`}>
+      {sidebarRight === undefined ? null : <button type="button" className="glmg-more" onClick={() => { sidebarRight.openTab('glm-hourness-subagents') }}>打开子智能体监看面板 ›</button>}
       {main?.view === undefined
         ? <div className="glmg-notice">还没有现场数据：会话开始干活后这里会出现；如果一直没有，看一下 graph-panel 行是不是关了。</div>
         : running.length === 0 ? <div className="glmg-notice">{nobodyRunningText(tasks)}<div className="glmg-notice-sub">{LIVE_SCOPE_TEXT}</div></div> : null}

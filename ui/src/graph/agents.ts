@@ -8,8 +8,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { spanText } from '../../../src/graph/plain-view.ts'
-import { placeOf, type LiveView } from '../../../src/graph/live.ts'
-import type { SessionsClient, TokenUsage } from '../dsh.ts'
+import { placeOf, type LivePhase, type LiveView } from '../../../src/graph/live.ts'
+import type { SessionsClient, SubagentTimingView, TokenUsage } from '../dsh.ts'
 
 export interface AgentLive {
   readonly id: string
@@ -21,6 +21,11 @@ export interface AgentLive {
   readonly tokens: number | undefined
   /** A turn is open. */
   readonly running: boolean
+  readonly model?: string | null
+  readonly provider?: string | null
+  readonly timing?: SubagentTimingView
+  readonly phase?: LivePhase
+  readonly tokenUsage?: TokenUsage
 }
 
 function total(usage: TokenUsage | undefined): number | undefined {
@@ -35,7 +40,22 @@ export function useAgents(sessions: SessionsClient, sessionId: string): readonly
     const own = projections[sessionId]?.values
     const agent = (id: string, name: string, main: boolean): AgentLive => {
       const values = projections[id]?.values
-      return { id, name, main, view: values?.graphLive, tokens: total(values?.tokenUsage), running: values?.graphLive?.turnSince !== null && values?.graphLive?.turnSince !== undefined }
+      const view = values?.graphLive
+      const timing = values?.subagentTiming
+      const tokenUsage = values?.tokenUsage
+      return {
+        id,
+        name,
+        main,
+        view,
+        tokens: total(tokenUsage),
+        running: view?.turnSince !== null && view?.turnSince !== undefined,
+        ...(view?.model !== undefined ? { model: view.model } : {}),
+        ...(view?.provider !== undefined ? { provider: view.provider } : {}),
+        ...(timing !== undefined ? { timing } : {}),
+        ...(view?.phase !== undefined ? { phase: view.phase } : {}),
+        ...(tokenUsage !== undefined ? { tokenUsage } : {}),
+      }
     }
     const children = (own?.subagentCatalog ?? []).filter(entry => entry.mode !== 'external')
     return [agent(sessionId, '主 Agent', true), ...children.map(entry => agent(entry.id, entry.label ?? entry.id, false))]
@@ -74,7 +94,13 @@ const elapsedText = spanText
 export function doingText(agent: AgentLive, now: number): string {
   const view = agent.view
   if (view === undefined) return agent.main ? '还没有现场数据' : '这次启动之前跑的，没有现场数据'
-  if (view.tool !== null) return `在跑 ${view.tool.name} · ${elapsedText(now - view.tool.since)}`
+  if (view.pendingApproval !== undefined && view.pendingApproval !== null) {
+    return `等审批 ${view.pendingApproval.toolName} · ${elapsedText(now - view.pendingApproval.since)}`
+  }
+  if (view.tool !== null) {
+    const hint = view.tool.argHint === undefined ? '' : ` · ${view.tool.argHint}`
+    return `在跑 ${view.tool.name}${hint} · ${elapsedText(now - view.tool.since)}`
+  }
   if (view.turnSince !== null) return `在想 · 第 ${view.steps} 步 · ${elapsedText(now - view.turnSince)}`
   return agent.main ? '空闲，等你说话' : '已停下'
 }

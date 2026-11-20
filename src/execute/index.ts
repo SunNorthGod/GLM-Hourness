@@ -65,27 +65,31 @@
  * (packages/hourness/cordis.patch.yml); the E9 verification turns it on.
  */
 import { appendFile, mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { graphService } from '../graph/service.ts'
 import type { LoadedGraph } from '../graph/parse.ts'
 import { projectOf } from '../data/project-root.ts'
 import { isMainAgentFor } from '../data/main-agent.ts'
 import { rowJournal } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
-import type { AgentsService, AgentLike, GoalChangedPayload, InjectHost, PostExecuteListener, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
+import type { AgentCommandInvocationLike, AgentsService, AgentLike, CommandDefinitionLike, CommandResultLike, GoalChangedPayload, GoalsService, InjectHost, PostExecuteListener, PreExecuteListener, ProvideHost, ServiceLookup, SessionLike } from '../shared/dsh-min.ts'
 import { LOOPS_SERVICE, loopsService } from '../loops/service.ts'
 import { EXECUTE_SERVICE, type ExecuteService } from '../shared/execute-service.ts'
 import { FACES_NOTE, registerFaceSource } from '../shared/face-policy.ts'
 import { provideRowHealth, sessionIdOf, type HealthState } from '../shared/health.ts'
 import { emitMetric as emitSharedMetric, type EmittedEvent } from '../shared/metrics.ts'
+import { peakModeService } from '../shared/peak-mode.ts'
+import { CODING_PLAN_PROVIDER, START_PLAN_PROVIDER } from '../shared/route.ts'
 import { disposerList, registerSessionProjection } from '../shared/row-support.ts'
 import Schema from '../shared/schemastery.ts'
+import { startPlanStatusService } from '../shared/start-plan-status.ts'
 import { installExecuteRules, type ExecuteRulesDeps } from '../guard/execute-rules.ts'
 import { latestDispatch, registeredAttempt, recordCommunication, reviewTargetOf, writesPlannedFile } from './attempts.ts'
-import { createGraphCache, dispatchTool, realCommandRunner, type DispatchDeps, type GraphCache } from './dispatch.ts'
+import { createGraphCache, dispatchTool, realCommandRunner, routeOf, type DispatchDeps, type GraphCache } from './dispatch.ts'
+import { parseDispatchMode, planRoutingNoticeLine, readProjectDispatchMode, writeProjectDispatchMode, type DispatchMode } from './dispatch-mode.ts'
 import { answerWorkerTool, askMainTool, submitPlanTool, type RequestsDeps } from './requests.ts'
 import { sha256Hex } from './digest.ts'
-import { handbackProjection, HANDBACK_PROJECTION, readCalls, settleHandback, startHandback, stoppedInMemory, type HandbackDeps } from './handback.ts'
+import { handbackProjection, HANDBACK_PROJECTION, readCalls, settleHandback, stoppedInMemory, type HandbackDeps } from './handback.ts'
 import { createGit } from './git.ts'
 import { executeFaceSource, type FaceDeps } from './faces.ts'
 import { checkCommitTool, trunkCheck, type CheckDeps } from './check.ts'
@@ -97,15 +101,22 @@ import type { WalkDeps, WalkStart } from './walk.ts'
 import { installTrunkGate } from './advance.ts'
 import { floorHits, parseFloor } from './floor.ts'
 import { setDefaultMetricSink } from './metrics.ts'
+import { createLiveBoardStore, executeBoardProjection } from './live-board.ts'
 
-/** Row config: the parallel write slots. */
+/** Row config: the parallel write slots and default dispatch mode preference. */
 export interface ExecuteConfig {
   readonly slots?: number
+  readonly dispatchMode?: DispatchMode
 }
 
-/** Runtime Config schema: the parallel write slots as a setting in the DSH plugin manager. */
+/** Runtime Config schema: the parallel write slots and dispatch preference as settings in the DSH plugin manager. */
 export const Config = Schema.object({
   slots: Schema.number().default(3).description('同时进行的写任务上限（审查与检查不占槽）。缺省 3。'),
+  dispatchMode: Schema.union([
+    Schema.const('eco'),
+    Schema.const('adaptive'),
+    Schema.const('burn'),
+  ]).default('adaptive').description('默认派发偏好：eco（省额度）/ adaptive（自适应）/ burn（燃烧）。可用 /dispatch-mode 按项目覆盖。'),
 })
 
 /** cordis plugin identity. */
@@ -130,6 +141,7 @@ export const EXECUTE_ACTIVE = '主 Agent：dispatch_task 可用，派发链的�
 export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => void {
   const { list: disposers, drain: dispose } = disposerList()
   const slots = config.slots ?? 3
+  const defaultDispatchMode: DispatchMode = config.dispatchMode ?? 'adaptive'
   const journal = rowJournal(name, () => dataHomes(ctx, undefined))
 
   let toolsNote: string | undefined = '执行行的工具要工具服务（tools）'
@@ -280,7 +292,42 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   }
 
   // The merge checks (§3.8.2–§3.8.3) and the walk job (user graph design 0.4.1 §5.5) share the check backend: its launcher is built here, attached to the subagents service when that arrives.
-  const launcher = createGateLauncher()
+  const projectOfGraphDir = (dir: string, cwd?: string): string =>
+    (cwd !== undefined ? projectOf(cwd)?.root : undefined) ?? projectOf(dir)?.root ?? dirname(dirname(dir))
+
+  const liveBoard = createLiveBoardStore({
+    execDir,
+    slots,
+    dispatchMode: defaultDispatchMode,
+    onWriteError: (projectRoot, error) => {
+      warnOnce(`live-board write failed for ${projectRoot}: ${error instanceof Error ? error.message : String(error)}`)
+    },
+  })
+  disposers.push(() => { liveBoard.dispose() })
+
+  const effectiveDispatchMode = (projectRoot: string | undefined): DispatchMode =>
+    (projectRoot === undefined ? undefined : readProjectDispatchMode(execDir(projectRoot))) ?? defaultDispatchMode
+
+  const launcher = createGateLauncher({
+    onJobStart: (job) => {
+      const projectRoot = projectOf(job.cwd)?.root ?? job.cwd
+      liveBoard.startJob(projectRoot, {
+        id: job.id,
+        kind: job.id.startsWith('walk-') ? 'walk' : 'gate',
+        label: job.label,
+        tasks: job.tasks,
+        mode: job.mode,
+      })
+    },
+    onJobEnd: (job) => {
+      const projectRoot = projectOf(job.cwd)?.root ?? job.cwd
+      liveBoard.endJob(projectRoot, {
+        id: job.id,
+        status: job.status,
+        ...(job.summary === undefined ? {} : { summary: job.summary }),
+      })
+    },
+  })
   // The walk-review activations go through `startActivation`; undefined until the subagents service is there (a `截图` or `终端` flow then reads as `review_failed`).
   let walkStart: WalkStart | undefined
   const walkDeps: WalkDeps = {
@@ -289,6 +336,25 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     launcher,
     report,
     emit: (project, sessionId, event) => { loopLink.emit(project, sessionId, event) },
+    onWalkEvent: (event) => {
+      if (event.kind === 'start') {
+        liveBoard.startJob(event.project, {
+          id: event.job,
+          kind: 'walk',
+          label: `hourness walk ${event.goalId}`,
+          goalId: event.goalId,
+          flows: event.flows,
+          mode: 'activation',
+        })
+      }
+      else {
+        liveBoard.endJob(event.project, {
+          id: event.job,
+          status: event.status,
+          summary: event.summary,
+        })
+      }
+    },
     runCommand: realCommandRunner,
     get start() { return walkStart },
   }
@@ -304,7 +370,18 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     report,
     stoppedInMemory,
     reviewTarget: (graph, reviewTask) => reviewTargetOf(graph, reviewTask, sha256Hex),
-    onHandback: (attempt, settlement) => startHandback(handbackDeps, attempt, settlement),
+    onBoardDispatch: (projectRoot, attempt) => {
+      liveBoard.startDispatch(projectRoot, attempt)
+      syncDriveAndPeak(projectRoot, attempt.parentSession)
+    },
+    onHandback: (attempt, settlement) => {
+      const projectRoot = projectOfGraphDir(attempt.graphDir)
+      liveBoard.settleDispatch(projectRoot, attempt, settlement)
+      void settleHandback(handbackDeps, attempt, settlement).finally(() => {
+        liveBoard.markHandbackDone(projectRoot, attempt.childId)
+        syncDriveAndPeak(projectRoot, attempt.parentSession)
+      })
+    },
     walk: walkDeps,
   }
   const dispatch = dispatchTool(dispatchDeps)
@@ -337,15 +414,44 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   }
 
   // The plan and communication tools (§3.3, §3.4): the worker's two and the main agent's one.
+  const activeRequestScopes = new Set<{ readonly projectRoot: string, readonly graphDir: string }>()
+  const requestLookup: ServiceLookup = {
+    get(key: string) {
+      if (key === 'agents') {
+        for (const scope of activeRequestScopes) liveBoard.syncRequests(scope.projectRoot, scope.graphDir)
+      }
+      return typeof ctx.get === 'function' ? ctx.get(key) : undefined
+    },
+  }
   const requestDeps: RequestsDeps = {
-    lookup: ctx,
+    lookup: requestLookup,
     graphDir: graphDirOf,
     cache,
     isMainAgent: isMain,
     designPresent,
     report,
   }
-  const requestTools = [submitPlanTool(requestDeps), askMainTool(requestDeps), answerWorkerTool(requestDeps)]
+  const scopeOfExec = (exec: unknown): { readonly projectRoot: string, readonly graphDir: string } | undefined => {
+    const cwd = (exec as { readonly agent?: AgentLike } | undefined)?.agent?.session?.header?.cwd
+    const dir = graphDirOf(cwd)
+    return dir === undefined ? undefined : { projectRoot: projectOfGraphDir(dir, cwd), graphDir: dir }
+  }
+  const requestTools = [submitPlanTool(requestDeps), askMainTool(requestDeps), answerWorkerTool(requestDeps)].map(tool => ({
+    ...tool,
+    async execute(args: unknown, exec: unknown) {
+      const scope = scopeOfExec(exec)
+      if (scope !== undefined) activeRequestScopes.add(scope)
+      try {
+        return await tool.execute(args, exec)
+      }
+      finally {
+        if (scope !== undefined) {
+          activeRequestScopes.delete(scope)
+          liveBoard.syncRequests(scope.projectRoot, scope.graphDir)
+        }
+      }
+    },
+  }))
 
   // The merge checks (§3.8.2–§3.8.3): check_commit, its jobs on the check backend; a pass writes the evidence an earlier unchecked move waits for.
   const checkDeps: CheckDeps = {
@@ -359,6 +465,34 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     launcher,
     onPassed: (project, commit, _record, sessionId) => trunkGate?.checkedAfter(project, commit, sessionId) ?? Promise.resolve(),
     emit: (project, sessionId, event) => { loopLink.emit(project, sessionId, event) },
+  }
+
+  const syncDriveAndPeak = (projectRoot: string, sessionId: string | undefined): void => {
+    liveBoard.updateDispatchMode(projectRoot, effectiveDispatchMode(projectRoot))
+    const driveStatus = sessionId === undefined ? undefined : drive.status(sessionId)
+    const agent = sessionId === undefined ? undefined : agentsService()?.get(sessionId)
+    const goals = typeof ctx.get === 'function' ? ctx.get('goals') as GoalsService | undefined : undefined
+    const goalView = agent !== undefined && typeof goals?.get === 'function' ? goals.get(agent) : undefined
+    const peak = peakModeService(ctx)
+    const peakState = sessionId !== undefined ? (peak?.stateFor(sessionId) ?? peak?.stateForProject(projectRoot)) : peak?.stateForProject(projectRoot)
+    liveBoard.updateDrive(
+      projectRoot,
+      {
+        ...(goalView?.id === undefined ? {} : { goalId: goalView.id }),
+        ...(goalView?.phase === undefined ? {} : { phase: goalView.phase }),
+        ...(goalView?.blockedReason?.code === undefined ? {} : { blockedCode: goalView.blockedReason.code }),
+        ...(driveStatus?.state === undefined ? {} : { stateLine: driveStatus.state }),
+        counters: driveStatus?.counters ?? { idle: 0, peak: 0 },
+      },
+      peakState === undefined || peakState.peak === undefined
+        ? undefined
+        : {
+            peak: peakState.peak,
+            level: peakState.level,
+            ...(peakState.until === undefined ? {} : { until: peakState.until }),
+            ...(peakState.glmWorkerCap === undefined ? {} : { glmWorkerCap: peakState.glmWorkerCap }),
+          },
+    )
   }
 
   // The drive (§3.9): the holder's goal started on a release, resumed and held by the table of §3.9.1, the completion gate, await_human, the batch marks and the reconcile after a restart (§3.9.6).
@@ -441,7 +575,82 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     }
   }
 
-  // The handback projection (§3.9.6 step 3): what the reconcile reads back of a dispatch the host lost. Without it a lost dispatch is commented lost.
+  // The dispatch-mode preference command (/dispatch-mode): fail-open when `commands` is absent or unavailable.
+  if (typeof ctx.inject === 'function') {
+    let commandUndo: (() => void) | undefined
+    disposers.push(() => {
+      const undo = commandUndo
+      commandUndo = undefined
+      undo?.()
+    })
+    try {
+      ctx.inject(['commands'], (commandsCtx) => {
+        const definition: CommandDefinitionLike<AgentCommandInvocationLike> = {
+          definitionId: 'dsh-glm-hourness/dispatch-mode',
+          name: 'dispatch-mode',
+          description: '查看或设置当前项目的派发模式偏好（eco 省额度 / adaptive 自适应 / burn 燃烧）',
+          input: { hint: 'eco | adaptive | burn' },
+          async handler(invocation): Promise<CommandResultLike> {
+            const raw = invocation.rawInput.trim()
+            const cwd = invocation.agent.session?.header?.cwd
+            const project = cwd === undefined ? undefined : projectOf(cwd)
+            if (raw === '') {
+              const persisted = project === undefined ? undefined : readProjectDispatchMode(execDir(project.root))
+              const effective = persisted ?? defaultDispatchMode
+              const sp = startPlanStatusService(ctx)?.status()
+              const spText = sp === undefined
+                ? '免费套餐状态：未接入'
+                : `免费套餐状态：${sp.available ? '可用' : `暂不可用（${sp.reason}）`}${sp.balanceSummary === undefined ? '' : ` · ${sp.balanceSummary}`}`
+              return {
+                kind: 'success',
+                text: [
+                  `当前派发模式：${effective}（${persisted === undefined ? '行默认配置' : '项目偏好'}）`,
+                  spText,
+                  '用法：/dispatch-mode <eco|adaptive|burn>（支持 省额度 / 自适应 / 燃烧）',
+                ].join('\n'),
+              }
+            }
+            const parsedMode = parseDispatchMode(raw)
+            if (parsedMode === undefined) {
+              return {
+                kind: 'error',
+                text: '无效的派发模式；用法：/dispatch-mode <eco|adaptive|burn>（也支持 省额度 / 自适应 / 燃烧）。',
+              }
+            }
+            if (project === undefined) {
+              return {
+                kind: 'error',
+                text: '当前会话不在项目目录内，无法写入项目派发模式偏好。',
+              }
+            }
+            await writeProjectDispatchMode(execDir(project.root), parsedMode)
+            liveBoard.updateDispatchMode(project.root, parsedMode)
+            return {
+              kind: 'success',
+              text: `已将项目派发模式设为 ${parsedMode}。`,
+            }
+          },
+        }
+        try {
+          const undo = commandsCtx.commands?.register?.(definition)
+          commandUndo = typeof undo === 'function' ? undo : undefined
+        }
+        catch {
+          return undefined
+        }
+        return () => {
+          const undo = commandUndo
+          commandUndo = undefined
+          undo?.()
+        }
+      })
+    }
+    catch {
+      // Fail-open: absence or rejection of commands service never degrades execute row health.
+    }
+  }
+
+  // The handback projection (§3.9.6 step 3) and the live-board path projection: what the reconcile and the subagents tab read.
   if (typeof ctx.inject === 'function') {
     const projectionFailed = (error: unknown): void => {
       projectionNote = `会话投影 ${HANDBACK_PROJECTION} 没注册上（${error instanceof Error ? error.message : String(error)}）：宿主重启时丢的交回读不回来，只记为丢失`
@@ -457,10 +666,17 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
           },
         })
         if (!reg.ok) return undefined
+        const boardReg = registerSessionProjection(projectionCtx.sessionProjections, executeBoardProjection(execDir), {
+          onError: (error) => {
+            if (!active) return
+            console.warn(`${name}: the live-board projection is off: ${error instanceof Error ? error.message : String(error)}`)
+          },
+        })
         projectionNote = undefined
         reactivate()
         return () => {
           active = false
+          boardReg.dispose()
           reg.dispose()
         }
       })
@@ -560,7 +776,13 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     rulesNote = `完成门禁没装上：${error instanceof Error ? error.message : String(error)}`
   }
   try {
-    disposers.push(ctx.on('goal/changed', (payload) => { void drive.onGoalChanged(payload) }))
+    disposers.push(ctx.on('goal/changed', (payload) => {
+      const cwd = payload.agent.session?.header.cwd
+      const projectRoot = cwd === undefined ? undefined : projectOf(cwd)?.root
+      void drive.onGoalChanged(payload).finally(() => {
+        if (projectRoot !== undefined && isMain(payload.agent)) syncDriveAndPeak(projectRoot, payload.agent.id)
+      })
+    }))
   }
   catch (error) {
     console.warn(`${name}: goal/changed is not listened to; the drive keeps no pause line and no completion credential is paired: ${error instanceof Error ? error.message : String(error)}`)
@@ -598,7 +820,24 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
   const installNotice = (agent: AgentLike): void => {
     if (noticed.has(agent) || agent.session === undefined || !isMain(agent)) return
     noticed.add(agent)
-    const uninstall = installDispatchNotice(agent, { lookup: ctx, cache, graphDirOf, isMain, drive: session => drive.status(session), report })
+    const uninstall = installDispatchNotice(agent, {
+      lookup: ctx,
+      cache,
+      graphDirOf,
+      isMain,
+      drive: session => drive.status(session),
+      report,
+      dispatchMode: (sessionId) => {
+        const cwd = agentsService()?.get(sessionId)?.session?.header.cwd ?? agent.session?.header.cwd
+        const root = cwd === undefined ? undefined : projectOf(cwd)?.root
+        return effectiveDispatchMode(root)
+      },
+      planRouting: (targetAgent) => {
+        const route = routeOf(targetAgent)
+        const dualGlm = route === CODING_PLAN_PROVIDER || route === START_PLAN_PROVIDER
+        return planRoutingNoticeLine(startPlanStatusService(ctx)?.status(), dualGlm)
+      },
+    })
     if (uninstall !== undefined) disposers.push(uninstall)
   }
   /** The dispatch status notice of one agent; its failure stops nothing. */
@@ -626,7 +865,11 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
       const loops = loopsService(ctx, (message) => { problem = message })
       if (loops !== undefined || problem !== undefined) loopLink.attach(loops, problem)
       // The holder created or restored hands over hourness.host-started; a former holder's drive goal goes (§3.9.1).
-      return drive.onCreated(agent)
+      const cwd = session?.header.cwd
+      const projectRoot = cwd === undefined ? undefined : projectOf(cwd)?.root
+      return drive.onCreated(agent).then(() => {
+        if (projectRoot !== undefined && isMain(agent)) syncDriveAndPeak(projectRoot, agent.id)
+      })
     }))
   }
   catch (error) {
@@ -640,6 +883,9 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
       loopLink.flushHeld(sessionIdOf(agent))
       // The drive's goal operations land before the step (§3.9.1, U12).
       await drive.onStep(agent, messages ?? [])
+      const cwd = agent.session?.header.cwd
+      const projectRoot = cwd === undefined ? undefined : projectOf(cwd)?.root
+      if (projectRoot !== undefined && isMain(agent)) syncDriveAndPeak(projectRoot, agent.id)
       return next()
     }))
   }
