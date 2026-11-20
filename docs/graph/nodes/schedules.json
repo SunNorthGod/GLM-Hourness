@@ -3,9 +3,22 @@
   "type": "feature",
   "title": "定时任务面板：默认带几项例行的活，人也能自己加，按时间或事件触发",
   "why": "反复做的事集中在一块板上，到点或碰到事件就做，人也能自己加",
-  "status": "doing",
+  "status": "done",
   "parent": "orch",
   "body": "一个单独的面板放反复做的事，替代在项目图里给任务加「定期」状态（plain-ui P4 的问题由此解决）：每项写明做什么、多久一次或碰到什么事件就做（和钩子系统联动，例如合入之后、出错之后、会话开始时）、交给谁做（默认是主 Agent）、上次与下次。默认带几项本项目已有的例行工作（编排方理解为每周读文章、晨报与周报、夜间巡检，待人确认「美化工作」指什么）；人可以自己加，例如服务器巡查。到点由 harness 提醒主 Agent 去做（d-one-main-agent），结果写进指标流水，每次的结论记成那一项的批注；项目图里的节点在两次之间不挂在「在做」。按 d-design-onepage 先写设计、过评审，再给人一页人话放行稿。",
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "ecc18403",
+      "note": "latest board fix (reconcile beats chained, row-health per family), on top of the consent/clock/tail series all merged to main"
+    },
+    {
+      "kind": "test",
+      "ref": "probe loops/loops-peak/loops-peak-restart + rules-script consent accepts + desktop l4bat 5/5 and l4rc3 9/9",
+      "exit": 0,
+      "note": "board scenarios green in the 626 floor; real clock fire 02:55 2026-11-18 (l4bat), morning/weekly cold-fires verbatim 2026-11-16 (w2)"
+    }
+  ],
   "history": [
     {
       "at": "2026-10-29T17:33:17.129Z",
@@ -547,6 +560,27 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-19 合入批（rc.3 桌面 L4 九项全过后两件跟进）：其一，板面消息教的 /loops accept id 改为提议记录 id lp-（4a761086，缺陷根修：e0dc0a06 起工具侧误喂条目 id，命令/两步窗/attach/规则板同款全认 lp-，不做双 id 宽容）；其二，拆臂清理刷屏与板页重复行根修（ecc18403）——四条对账路全排进 beatChain（此前只有钟拍在链上，级联对账看不见在途绑定就重复 create 互删互建，schedule_not_found 落成 deleted:false），行健康改 reportState 按族替换收行（loops-kept/loops-wait/loops-holder），L2 红绿对照，ORCHESTRATION §18.10 同批。桌面 L4 已过九项：schedule_edit 形状相符（UNVERIFIED 注记可清）、/loops accept 两步+reject、m4-checks 真跑、超时行四来源、指标板+/glm-status metrics 行、状态板块条目、四答晨报+面板条件 17、lessons 路径提醒、unsynced-daily 板面（真火 18:05 另察）。已知项：两步同意的板路缺省桌面组合不可达（/wish 硬依赖图行），loader isolate 配方在 desktop-l4-rc3/progress.md，是否转缺省等人定。"
+    },
+    {
+      "at": "2026-11-20T05:07:10.068Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "loops board complete per design 0.6 and ORCHESTRATION 18: registry, /loops and page, machine runner, script/check entries, consent path (loops-s5: loop_propose/show/note, two-step accept, byte-pinned scripts), board clock (clock-fire 39441048), one-shot delivery fix and flood fix (62bb7d7b, HANDOFF 5.30/31), board message id fix (4a761086), reconcile beats chained (ecc18403), rc.3 schedule adaptation; desktop L4: l4bat 5/5 incl. real clock fire, l4rc3 9/9; real cold-fires: morning 08:30 and weekly 09:00 verbatim 2026-11-16 on the person's desktop",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "ecc18403",
+          "note": "latest board fix (reconcile beats chained, row-health per family), on top of the consent/clock/tail series all merged to main"
+        },
+        {
+          "kind": "test",
+          "ref": "probe loops/loops-peak/loops-peak-restart + rules-script consent accepts + desktop l4bat 5/5 and l4rc3 9/9",
+          "exit": 0,
+          "note": "board scenarios green in the 626 floor; real clock fire 02:55 2026-11-18 (l4bat), morning/weekly cold-fires verbatim 2026-11-16 (w2)"
+        }
+      ]
     }
   ]
 }
