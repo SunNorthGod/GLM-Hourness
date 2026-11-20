@@ -117,6 +117,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-20 主人拍板（「全按你推荐的来」）：第三轮提议 ①②采纳、④不做——① M5 式评估先预注册判据（预注册依据采纳进方法论，下次评估先写判据再看结果）；② 标定 result.json 记 profile 行组合与提交号、跨配置不比较（排进 pre-bootstrap 实现班）；④「出题前审题」与「交回报告可读性」不做。③ M7 复审检查单加 grader 三件纪律（判据原子二元、边界写明、藏元数据）同班实现。"
+    },
+    {
+      "at": "2026-11-20T19:05:17.930Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-20 人定案（15:14 批注）②③已实现并合入 main（7cb089bd，merge preboot）：② 标定配置戳——scripts/calibrate/stamp.mjs 读 overlay 补丁取 profile 行组合，每次运行与整批 results 记提交号、行组合、arm/permission；compare 在规则板前退出，跨配置拒绝并逐条列差异，无戳旧批次一律拒绝（a9707b9c；L2 calibrate-compare.spec，探针 compare 拒绝与匹配两查）。③ 复审 grader 三件——判据原子二元、边界写明、无参考解无预期裁决按真实对待，进三份审查简报约束栏（任务复审、模块设计复审、目标整体验收）（eb85d10f；L2 execute-brief.spec 三处钉，M7 设计 0.6 第八次修订，探针 glm-exec-review 钉派出简报）。顺带修根 probe-lock spec 偶发挂（9c396b4d，mkdtemp 随机后缀可 2 开头打掉槽位守卫）。"
     }
   ]
 }

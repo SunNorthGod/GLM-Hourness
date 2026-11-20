@@ -164,6 +164,12 @@
       "actor": "llm",
       "op": "comment",
       "text": "2026-11-20 主人拍板（原话「全按你推荐的来」）：自动推进的两个行为定案——〔G15〕GLM 配额耗尽时：停下、把重置时间告诉人、到点自动接着跑（不等发话）；〔G18〕目标做完时：对话里一行话带审查结论。实现排进 pre-bootstrap 批（实现班核对现行 drive 的缺口后落地，额度投影机器已在 src/shared/quota.ts）。"
+    },
+    {
+      "at": "2026-11-20T19:05:17.684Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "2026-11-20 人定案的 G15/G18 已实现并合入 main（fast-forward 至 7cb089bd，merge preboot）：G15 配额停等——触发取计价服务缓存额度视图两路（适配器 429 限额记录 1308/1310/1316-1321 的 until、5 小时/每周窗 spent 用满的 resetAt，取较早者；两路都拿不到不停，预估 exhausts 不停车），停等形态 hourness-quota-wait 镜像高峰行（drive.jsonl 记 until、行健康态、五分钟宽限计时器与高峰共用），恢复三路：计时器到点、重启后步路径读回、人说继续；恢复后服务端未重置则 429 再停（自愈环）。L3 场景 glm-exec-quota 实测启动 3.8 秒写入 quota-wait、until 为种子重置时刻。G18 完成一行话——completionTell 发持有者（goal/changed 凭据路与对账重判路都发；门禁外完成仍只批注），行内容为目标题加整体验收审查结论。设计补记 2e3ccb4f、G15 7562fb83、G18 4d37ee55；execute.resume-drive 保持高峰专用不变。"
     }
   ]
 }
