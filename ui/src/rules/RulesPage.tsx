@@ -36,24 +36,24 @@ type Checklist = Group['lists'][number]
 const RULES_CSS = `
 .glmr{padding:4px 2px 16px;animation:glmg-fade .18s ease-out}
 .glmr-head{margin:2px 0 10px}
-.glmr-head h2{margin:0;color:var(--g-ink);font-size:15px;line-height:24px;font-weight:500}
-.glmr-notice{margin:0 0 10px;padding:8px 10px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-md,12px);color:var(--g-ink2);font-size:12px}
+.glmr-head h2{margin:0;color:var(--g-ink);font-size:15px;line-height:24px;font-weight:500;overflow-wrap:anywhere}
+.glmr-notice{margin:0 0 10px;padding:8px 10px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-md,12px);color:var(--g-ink2);font-size:12px;overflow-wrap:anywhere}
 .glmr-items{margin:0 0 10px;padding:8px 10px;border-radius:var(--dsw-radius-md,12px);background:var(--g-layer);font-size:12px}
 .glmr-items>div+div,.glmr-items>details{margin-top:4px}
 .glmr-section{margin:14px 2px 4px;color:var(--g-ink3);font-size:11px;font-weight:600;letter-spacing:.02em}
-.glmr-grey,.glmr-small{color:var(--g-ink3);font-size:11px}
+.glmr-grey,.glmr-small{color:var(--g-ink3);font-size:11px;overflow-wrap:anywhere}
 .glmr-small{margin-left:6px;font-family:var(--dsw-font-mono,monospace)}
-.glmr-line{margin:2px 2px 0;font-size:12px}
+.glmr-line{margin:2px 2px 0;font-size:12px;overflow-wrap:anywhere}
 .glmr-entry{margin:6px 0 10px;padding:10px 12px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-lg,16px);background:var(--g-layer)}
-.glmr-entry.is-grey{opacity:.62}
-.glmr-name{font-size:13px;font-weight:500;line-height:20px}
+.glmr-entry.is-grey,.glmr-entry.is-grey .glmr-line{color:var(--g-ink3)}
+.glmr-name{font-size:13px;font-weight:500;line-height:20px;overflow-wrap:anywhere}
 .glmr-entry .glmr-line{margin:2px 0 0}
 .glmr-entry .glmr-grey{margin-top:3px}
 .glmr details{color:var(--g-ink3);font-size:11px}
 .glmr summary{cursor:pointer}
 .glmr-list{margin:4px 0 0 16px;padding:0;font-size:12px}
 .glmr-list li{margin:2px 0}
-.glmr-jump{color:var(--g-ink2);font-size:12px}
+.glmr-jump{padding:0;border:0;background:none;color:var(--g-link);font:inherit;font-size:12px;text-align:left;text-decoration:underline;cursor:pointer}
 `
 
 /** 讲细点 over some lines; nothing when there are none. */
@@ -69,9 +69,13 @@ function Details({ lines }: { readonly lines: readonly string[] }): ReactElement
 
 /** The link down to the waiting work: it only scrolls the page. */
 function Jump({ text, to }: { readonly text: string, readonly to: RefObject<HTMLDivElement> }): ReactElement {
+  const scroll = (): void => {
+    const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    to.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+  }
   return (
     <div className="glmr-line">
-      <a className="glmr-jump" href="#" onClick={(event) => { event.preventDefault(); to.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}>{text}</a>
+      <button type="button" className="glmr-jump" onClick={scroll}>{text}</button>
     </div>
   )
 }
@@ -189,16 +193,19 @@ function makeRulesPage(remote: RemoteRoot, sessions: SessionsClient): (props: { 
     const [source, setSource] = useState<RulesSource | undefined>(undefined)
     const [graph, setGraph] = useState<GraphSource | undefined>(undefined)
     useEffect(() => {
-      if (viewFile === null) return undefined
+      if (viewFile === null) {
+        setSource(undefined)
+        return undefined
+      }
       const held = holdRulesSource(remote, sessionId, viewFile)
       setSource(held.source)
       return () => { held.release() }
-    }, [sessionId, viewFile])
+    }, [remote, sessionId, viewFile])
     useEffect(() => {
       const held = holdSource(remote, sessionId)
       setGraph(held.source)
       return () => { held.release() }
-    }, [sessionId])
+    }, [remote, sessionId])
     if (where === 'absent') return null
     if (where !== 'project') return <RulesBody model={buildRulesPage(null, new Map(), { noProject: where })} loading={false} problem={null} />
     if (source === undefined || graph === undefined || viewFile === null) return null

@@ -9,11 +9,12 @@
  * (ui/src/graph/boards.ts).
  */
 import { Tag, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactElement } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactElement } from 'react'
 import type { ClientContext, RemoteRoot, SessionsClient } from '../dsh.ts'
 import { registerBoard } from '../graph/boards.ts'
+import { NowContext } from '../graph/common.tsx'
 import { lessonsBoard } from './board.ts'
-import type { DeclinedRow, FactRow, LessonRow, LessonsPageModel, PreferenceRow } from './model.ts'
+import { buildLessonsPage, memoryRows, type DeclinedRow, type FactRow, type LessonRow, type LessonsPageModel, type PreferenceRow } from './model.ts'
 import { holdLessonsSource, type LessonsPaths, type LessonsSnapshot, type LessonsSource } from './source.ts'
 
 /**
@@ -26,14 +27,14 @@ const LESSONS_CSS = `
 .glml-head{margin:2px 0 10px}
 .glml-head h2{margin:0;color:var(--g-ink);font-size:15px;line-height:24px;font-weight:500}
 .glml-sub{color:var(--g-ink3);font-size:12px}
-.glml-notice{margin:0 0 10px;padding:8px 10px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-md,12px);color:var(--g-ink2);font-size:12px}
-.glml-topline{margin:2px 0 8px;color:var(--g-ink2);font-size:12px}
+.glml-notice{margin:0 0 10px;padding:8px 10px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-md,12px);color:var(--g-ink2);font-size:12px;overflow-wrap:anywhere}
+.glml-topline{margin:2px 0 8px;color:var(--g-ink2);font-size:12px;overflow-wrap:anywhere}
 .glml-item{margin:0 0 10px;padding:10px 12px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-lg,16px);background:var(--g-layer)}
-.glml-title{font-size:13px;font-weight:500;line-height:20px}
-.glml-state{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px;font-size:12px}
+.glml-title{font-size:13px;font-weight:500;line-height:20px;overflow-wrap:anywhere}
+.glml-state{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px;font-size:12px;overflow-wrap:anywhere}
 .glml-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-.glml-grey{margin-top:3px;color:var(--g-ink3);font-size:11px}
-.glml-change{margin-top:6px;color:var(--g-ink3);font-size:11px}
+.glml-grey{margin-top:3px;color:var(--g-ink3);font-size:11px;overflow-wrap:anywhere}
+.glml-change{margin-top:6px;color:var(--g-ink3);font-size:11px;overflow-wrap:anywhere}
 .glml-fold{margin:2px 0 10px}
 .glml-fold summary{padding:4px 2px;color:var(--g-ink2);font-size:12px;cursor:pointer}
 .glml-memory{margin-top:18px;padding-top:12px;border-top:1px solid var(--g-line)}
@@ -134,7 +135,13 @@ function MemoryHalf({ memory }: { readonly memory: LessonsPageModel['memory'] })
 
 function LessonsContent({ source }: { readonly source: LessonsSource }): ReactElement {
   const snapshot: LessonsSnapshot = useSyncExternalStore(source.subscribe, source.getSnapshot)
-  const { model } = snapshot
+  const now = useContext(NowContext)
+  const model = useMemo(
+    () => now > 0
+      ? buildLessonsPage(snapshot.states.lessons, memoryRows(snapshot.states.project, snapshot.states.user, now), now)
+      : snapshot.model,
+    [snapshot, now],
+  )
   return (
     <div className="glml">
       <style>{LESSONS_CSS}</style>
@@ -185,7 +192,10 @@ function makeLessonsPage(remote: RemoteRoot, sessions: SessionsClient): (props: 
     const paths = useProjectionPaths(sessions, sessionId)
     const [source, setSource] = useState<LessonsSource | undefined>(undefined)
     useEffect(() => {
-      if (paths === undefined) return undefined
+      if (paths === undefined) {
+        setSource(undefined)
+        return undefined
+      }
       const held = holdLessonsSource(remote, sessionId, paths)
       setSource(held.source)
       return () => { held.release() }

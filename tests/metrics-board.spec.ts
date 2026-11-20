@@ -511,7 +511,7 @@ test('the board page is read-only and speaks plain words: no commands.execute, t
     assert.ok(!text.includes('commands.execute'), 'the page never executes commands')
     assert.ok(!text.includes('流水'), 'no 换词表 word either')
   }
-  for (const sentence of ['系统记下的数，只给你看，主 Agent 不转述', '还没有算过：项目编排启用后几分钟内算第一次', '讲细点', '也可以在插件仓库的命令行打 npm run metrics -- summary --project']) {
+  for (const sentence of ['系统记下的数，只给你看，主 Agent 不转述', '还没有算过：项目编排启用后几分钟内算第一次', '讲细点', '这些数每小时自动重算一次，打开这里就能看到最新结果']) {
     assert.ok(pageSource.includes(sentence), sentence)
   }
   assert.ok(pageSource.includes('<h2>指标</h2>'), 'the head names the board')
@@ -521,7 +521,7 @@ test('the board page is read-only and speaks plain words: no commands.execute, t
     '系统记下的数，只给你看，主 Agent 不转述',
     '还没有算过：项目编排启用后几分钟内算第一次',
     '讲细点',
-    '也可以在插件仓库的命令行打 npm run metrics -- summary --project <这个项目的目录>',
+    '这些数每小时自动重算一次，打开这里就能看到最新结果',
   ]
   for (const name of fixed) {
     assert.deepEqual(plainWordsIn(name), [], name)

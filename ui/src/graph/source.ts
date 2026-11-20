@@ -14,7 +14,7 @@ import type { RemoteRoot, WatchFrame } from '../dsh.ts'
 import { baseName, graphRevisionOf, revisionOfBytes } from './model.ts'
 
 /** The graph directory relative to the session workspace (the graph tools' default, src/graph/tools.ts). */
-export const GRAPH_DIR = 'docs/graph'
+const GRAPH_DIR = 'docs/graph'
 
 /** A node file the panel could not read; its node is missing from the panel's graph (the engine reads the files itself). */
 interface UnreadableFile {

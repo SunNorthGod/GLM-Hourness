@@ -28,9 +28,6 @@ body:not([data-ds-dark-theme]) .glmg{--g-ink3:${LIGHT_TOKENS.ink3};--g-link:${LI
 .glmg-live{display:inline-flex;align-items:center;gap:5px;color:var(--g-ink3);font-size:11px;white-space:nowrap}
 .glmg-live i{width:6px;height:6px;border-radius:50%;background:var(--g-done);box-shadow:0 0 0 0 color-mix(in srgb,var(--g-done) 60%,transparent);animation:glmg-ping 2.4s ease-out infinite}
 .glmg-live.off i{background:var(--g-ink3);animation:none}
-.glmg-tabs{padding:0 12px 8px}
-.glmg-count{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;margin-left:5px;padding:0 4px;border-radius:8px;background:var(--g-wait);color:#fff;font-size:10px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
-.glmg-count.quiet{background:var(--g-hover);color:var(--g-ink2)}
 /* the stage does not scroll: the list scrolls inside it, the node detail covers it */
 .glmg-stage{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
 .glmg-body{position:relative;flex:1;min-height:0;overflow:auto;padding:4px 12px 16px;scrollbar-gutter:stable}
@@ -60,24 +57,8 @@ body:not([data-ds-dark-theme]) .glmg{--g-ink3:${LIGHT_TOKENS.ink3};--g-link:${LI
 .glmg .glmg-md>div>:is(h1,h2,h3,h4,h5,h6):first-child{margin-top:0}
 .glmg .glmg-md :not(pre)>code{padding:0 4px;border-radius:4px;background:var(--g-hover);color:var(--g-ink);font-size:.9em;line-height:inherit;overflow-wrap:anywhere}
 .glmg-options{display:flex;flex-direction:column;gap:6px;margin-top:10px}
-.glmg-option{display:flex;flex-direction:column;gap:2px;width:100%;padding:8px 10px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-md,12px);background:transparent;color:var(--g-ink);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s,transform .15s}
-.glmg-option:hover{background:var(--g-hover);border-color:var(--g-line-strong)}
-.glmg-option:active{transform:scale(.99)}
-.glmg-option.picked{border-color:var(--g-accent);background:color-mix(in srgb,var(--g-accent) 10%,transparent)}
-.glmg-option.current{border-style:dashed;cursor:default;opacity:.7}
-.glmg-option-head{display:flex;align-items:center;gap:6px;font-weight:500}
-.glmg-option-key{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;background:var(--g-hover);color:var(--g-ink2);font-size:11px;font-weight:600}
-.glmg-option-text{color:var(--g-ink3);font-size:12px}
-.glmg-confirm{display:flex;gap:6px;align-items:center;margin-top:8px;animation:glmg-fade .15s ease-out}
-/* the answer input is the shell's own Input primitive (rc.3 Input.module.css): 34 px high, .5px l4 on the layer fill, radius-md, focus turns the border to the business color */
-.glmg-confirm input{flex:1;min-width:0;height:34px;padding:0 12px;border:.5px solid var(--dsw-alias-border-l4,rgba(255,255,255,.2));border-radius:var(--dsw-radius-md,12px);background:var(--dsw-alias-bg-layer-3,rgba(127,127,127,.1));color:var(--dsw-alias-label-primary,#e6e6e6);font:inherit;font-size:13px;line-height:1.5}
-.glmg-confirm input:focus-visible{outline:none;border-color:var(--g-accent)}
 .glmg-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.glmg-result{margin-top:8px;font-size:12px;color:var(--g-done);animation:glmg-fade .2s ease-out}
-.glmg-result.bad{color:var(--g-wait)}
-.glmg-leaving{animation:glmg-leave .32s cubic-bezier(.4,0,.2,1) forwards;pointer-events:none}
 .glmg-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:44px 12px 24px;text-align:center;color:var(--g-ink3)}
-.glmg-empty-mark{display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:color-mix(in srgb,var(--g-done) 16%,transparent);color:var(--g-done);animation:glmg-pop .45s cubic-bezier(.2,1.4,.4,1) both}
 .glmg-empty-title{color:var(--g-ink);font-size:14px;font-weight:600}
 .glmg-row{position:relative;display:flex;gap:10px;align-items:flex-start;padding:9px 6px;border-radius:var(--dsw-radius-md,12px);cursor:pointer;transition:background .12s}
 .glmg-row:hover{background:var(--g-hover)}
@@ -121,8 +102,8 @@ body:not([data-ds-dark-theme]) .glmg{--g-ink3:${LIGHT_TOKENS.ink3};--g-link:${LI
 .glmg-toggle{display:block;margin:6px 6px 2px}
 .glmg-chip.bad{background:color-mix(in srgb,var(--g-wait) 14%,transparent);color:var(--g-wait)}
 /* graph view */
-.glmg-graph{position:absolute;inset:0;display:flex;flex-direction:column}
-.glmg-toolbar{display:flex;align-items:center;gap:4px;padding:0 12px 6px}
+.glmg-graph{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;width:100%;height:100%}
+.glmg-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px 12px}
 .glmg-toolbar .grow{flex:1}
 .glmg-filter{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 8px;border:1px solid var(--g-line);border-radius:var(--dsw-radius-sm,8px);background:transparent;color:var(--g-ink2);font:inherit;font-size:12px;cursor:pointer}
 .glmg-filter:hover{background:var(--g-hover)}
@@ -162,8 +143,9 @@ body:not([data-ds-dark-theme]) .glmg{--g-ink3:${LIGHT_TOKENS.ink3};--g-link:${LI
 .glmg-canvas-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--g-ink3);font-size:12.5px;pointer-events:none}
 /* node detail */
 .glmg-detail{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base,var(--dsw-specific-sidebar-fill,#1d1d1f));animation:glmg-slide .24s cubic-bezier(.2,.8,.2,1)}
-.glmg-detail-head{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--g-line)}
+.glmg-detail-head{flex:none;display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--g-line)}
 .glmg-detail-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 14px 20px}
+.glmg-detail-body--flush{display:flex;flex-direction:column;padding:0;overflow:hidden}
 .glmg-detail-body>h2{margin:6px 0 6px;font-size:16px;line-height:22px;font-weight:500;color:var(--g-ink)}
 .glmg-detail-body>.glmg-fold>.glmg-text{margin-top:12px;font-size:13px}
 .glmg-crumbs{display:flex;flex-wrap:wrap;gap:2px 4px;color:var(--g-ink3);font-size:11.5px}
@@ -177,7 +159,22 @@ body:not([data-ds-dark-theme]) .glmg{--g-ink3:${LIGHT_TOKENS.ink3};--g-link:${LI
 .glmg-part>.glmg-notice+.glmg-agent{margin-top:4px}
 .glmg-view>.glmg-part:first-child{margin-top:4px;padding-top:0;border-top:0}
 .glmg-part .glmg-actions{margin-top:8px}
-.glmg-notes{display:flex;flex-direction:column;gap:2px;color:var(--g-ink3);font-size:12px}
+.glmg-planrow{position:relative;display:flex;gap:8px;align-items:flex-start;padding:4px 0}
+.glmg-planrow+.glmg-planrow{border-top:1px solid var(--g-line)}
+.glmg-planrow .glmg-row{padding:5px 6px}
+.glmg-planrow .glmg-row-main>.glmg-meta{padding:0 6px}
+.glmg-plan-no{flex:none;min-width:1.6em;padding-top:7px;color:var(--g-ink3);font-size:11.5px;font-variant-numeric:tabular-nums;text-align:right}
+.glmg-goalrow{padding:7px 2px}
+.glmg-goalrow+.glmg-goalrow{border-top:1px solid var(--g-line)}
+.glmg-goalrow .glmg-text{margin-top:0}
+.glmg-goalrow .glmg-more{display:block;margin-top:3px;text-align:left}
+.glmg-changes-row{padding:8px 2px}
+.glmg-changes-row+.glmg-changes-row{border-top:1px solid var(--g-line)}
+.glmg-changes-row .glmg-text{margin-top:0}
+.glmg-changes-row .glmg-meta{margin-top:2px}
+.glmg-modulerow{padding:4px 0}
+.glmg-modulerow+.glmg-modulerow{border-top:1px solid var(--g-line)}
+.glmg-modulerow>.glmg-meta{padding:0 6px 4px 24px}
 .glmg-list{margin:4px 0 0;padding:0;list-style:none}
 .glmg-list li{display:flex;gap:8px;align-items:flex-start;padding:3px 0;color:var(--g-ink2)}
 .glmg-list li::before{content:"";flex:none;width:6px;height:6px;margin-top:7px;border-radius:50%;background:var(--g-ink3)}
@@ -190,10 +187,6 @@ body:not([data-ds-dark-theme]) .glmg{--g-ink3:${LIGHT_TOKENS.ink3};--g-link:${LI
 .glmg-history .glmg-quote{margin-top:6px}
 .glmg-id{margin-top:16px;padding-top:12px;border-top:1px solid var(--g-line);color:var(--g-ink3);font-size:11px}
 .glmg-id code{font-family:var(--dsw-font-mono,ui-monospace,monospace)}
-.glmg-comment{display:flex;flex-direction:column;gap:6px;margin-top:6px}
-/* the comment field is the shell's own multiline input (rc.3 user-questions customBlock): .5px l4 on the module-platform fill, radius-lg, focus turns the border to the business color */
-.glmg-comment textarea{min-height:56px;padding:8px 12px;border:.5px solid var(--dsw-alias-border-l4,rgba(255,255,255,.2));border-radius:var(--dsw-radius-lg,16px);background:var(--dsw-alias-bg-module-platform,rgba(127,127,127,.1));color:var(--g-ink);font:inherit;resize:vertical}
-.glmg-comment textarea:focus{outline:none;border-color:var(--g-accent)}
 /* a border like the cards: the layer fill equals the panel base in the light theme */
 .glmg-notice{padding:10px 12px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-md,12px);background:var(--g-layer);color:var(--g-ink2);font-size:12.5px}
 .glmg-notice-sub{margin-top:2px;color:var(--g-ink3);font-size:12px}
@@ -216,6 +209,8 @@ body:not([data-ds-dark-theme]) .glmg{--g-ink3:${LIGHT_TOKENS.ink3};--g-link:${LI
 .glmg-uv-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;width:100%;padding:5px 6px;border:1px solid transparent;border-radius:var(--dsw-radius-sm,8px);background:none;color:var(--g-ink);font:inherit;font-size:12.5px;text-align:left;cursor:pointer}
 .glmg-uv-row:hover{background:var(--g-hover)}
 .glmg-uv-row:focus-visible{outline:none;border-color:var(--g-accent)}
+.glmg-uv-row.is-static{cursor:default}
+.glmg-uv-row.is-static:hover{background:none}
 .glmg-uv-row.flow{font-weight:500}
 .glmg-uv-num{flex:none;min-width:1.4em;color:var(--g-ink3);font-variant-numeric:tabular-nums}
 .glmg-uv-title{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
@@ -234,7 +229,6 @@ body:not([data-ds-dark-theme]) .glmg{--g-ink3:${LIGHT_TOKENS.ink3};--g-link:${LI
 @keyframes glmg-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes glmg-slide{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
 @keyframes glmg-pop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
-@keyframes glmg-leave{0%{opacity:1;transform:none;max-height:600px}60%{opacity:0;transform:translateX(24px);max-height:600px}100%{opacity:0;transform:translateX(24px);max-height:0;margin:0;padding-top:0;padding-bottom:0;border-width:0}}
 @keyframes glmg-breathe{0%,100%{opacity:.45;transform:scale(.85)}50%{opacity:1;transform:scale(1.15)}}
 @keyframes glmg-halo{0%,100%{opacity:0}50%{opacity:.75}}
 @keyframes glmg-ring{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(1.7)}}

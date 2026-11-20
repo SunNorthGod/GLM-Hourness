@@ -22,7 +22,7 @@ import { RULES_EVENT_TABLE } from '../../../src/rules/events.ts'
 import { RECOVERED_TEXT, type Condition, type RowState, type SignalValue } from '../../../src/rules/model.ts'
 import type { RulesCodeView, RulesPersonView, RulesView } from '../../../src/rules/view.ts'
 import { STATUS_LABELS } from '../../../src/shared/health.ts'
-import { PEAK_LEVEL_WORDS, PEAK_REDUCE_GLM_WORKERS, peakModeIntro, type PeakLevel } from '../../../src/shared/peak-mode.ts'
+import { PEAK_LEVEL_WORDS, peakModeIntro, type PeakLevel } from '../../../src/shared/peak-mode.ts'
 import { pluginLabel } from '../../../src/shared/plugin-labels.ts'
 
 /** One entry of a group: its title, what it is like now, where it comes from and how to change it, and 讲细点. */
@@ -153,7 +153,7 @@ function gatesGroup(nodes: ReadonlyMap<string, ChecklistNode> | string): RulesGr
         const node = nodes.get(id)
         return node === undefined
           ? { id, title: name, from: null, items: [`这个项目还没有${name}`], tail: null }
-          : { id, title: node.title, from: `项目图上的规范「${node.title}」· 你批过的`, items: node.acceptance ?? [], tail: '由派活与合入那一块执行，它还没装上' }
+          : { id, title: node.title, from: `项目图上的规范「${node.title}」· 你批过的`, items: node.acceptance ?? [], tail: '由派活与合入那一块执行' }
       })
   return {
     key: 'gates',
@@ -203,7 +203,6 @@ function peakModeEntry(view: RulesView): RulesEntry {
       intro[0] ?? '',
       now,
       ...levels,
-      ...(peak.level === 'reduce' ? [`派活那一块还没装上，同时至多 ${PEAK_REDUCE_GLM_WORKERS} 个这一条现在只在提醒主 Agent`] : []),
       ...(holds ? [loops ? '高峰结束时叫醒主 Agent、接上挪开的活，由循环板做' : '循环板没装上：高峰结束后主 Agent 要等下一次有人或有事叫它'] : []),
       '主 Agent 不受高峰模式影响，任何时候都照常回你的话；高峰模式只管它派出去的子 agent 与重活',
       ...(peak.now === undefined ? [`读不到是不是高峰（${peak.problem ?? '原因不明'}），这一档现在不生效`] : []),

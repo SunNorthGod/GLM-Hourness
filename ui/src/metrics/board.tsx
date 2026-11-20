@@ -6,6 +6,7 @@
  * from the reader (./board.ts) over the `hournessMetrics` projection; this
  * file registers the board in the panel's table (ui/src/graph/boards.ts).
  */
+import { TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactElement } from 'react'
 import type { ClientContext, RemoteRoot, SessionsClient } from '../dsh.ts'
 import { registerBoard } from '../graph/boards.ts'
@@ -21,17 +22,17 @@ const METRICS_CSS = `
 .glmm-head{margin:2px 0 10px}
 .glmm-head h2{margin:0;color:var(--g-ink);font-size:15px;line-height:24px;font-weight:500}
 .glmm-sub{color:var(--g-ink3);font-size:12px}
-.glmm-notice{margin:0 0 10px;padding:8px 10px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-md,12px);color:var(--g-ink2);font-size:12px}
+.glmm-notice{margin:0 0 10px;padding:8px 10px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-md,12px);color:var(--g-ink2);font-size:12px;overflow-wrap:anywhere}
 .glmm-topline{margin:2px 0 8px;color:var(--g-ink2);font-size:12px}
 .glmm-group{margin:0 0 10px;padding:10px 12px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-lg,16px);background:var(--g-layer)}
-.glmm-group h3{margin:0 0 4px;color:var(--g-ink);font-size:13px;line-height:20px;font-weight:500}
-.glmm-row{display:flex;justify-content:space-between;gap:12px;font-size:12px;line-height:22px}
-.glmm-label{color:var(--g-ink2)}
-.glmm-value{color:var(--g-ink)}
-.glmm-note{margin-top:4px;color:var(--g-ink3);font-size:11px}
+.glmm-group h3{margin:0 0 4px;color:var(--g-ink);font-size:13px;line-height:20px;font-weight:500;overflow-wrap:anywhere}
+.glmm-row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;font-size:12px;line-height:22px}
+.glmm-label{color:var(--g-ink2);min-width:0;overflow-wrap:anywhere}
+.glmm-value{color:var(--g-ink);overflow-wrap:anywhere}
+.glmm-note{margin-top:4px;color:var(--g-ink3);font-size:11px;overflow-wrap:anywhere}
 .glmm-fold{margin:2px 0 10px}
 .glmm-fold summary{padding:4px 2px;color:var(--g-ink2);font-size:12px;cursor:pointer}
-.glmm-foot{margin-top:12px;color:var(--g-ink3);font-size:11px}
+.glmm-foot{margin-top:12px;color:var(--g-ink3);font-size:11px;overflow-wrap:anywhere}
 `
 
 /** One row of a group: the name and the two windows' values, already formatted by the host. */
@@ -44,7 +45,7 @@ function Row({ row }: { readonly row: { readonly label: string, readonly values:
   )
 }
 
-function MetricsContent({ snapshot }: { readonly snapshot: MetricsSnapshot }): ReactElement {
+function MetricsContent({ snapshot, loading }: { readonly snapshot: MetricsSnapshot, readonly loading: boolean }): ReactElement {
   const view = snapshot.view
   const topLine = view === null || view.at === null
     ? '还没有算过：项目编排启用后几分钟内算第一次'
@@ -56,6 +57,8 @@ function MetricsContent({ snapshot }: { readonly snapshot: MetricsSnapshot }): R
         <h2>指标</h2>
         <span className="glmm-sub">系统记下的数，只给你看，主 Agent 不转述</span>
       </div>
+      {loading ? <TextShimmer active>正在读指标板…</TextShimmer> : null}
+      {snapshot.problem === null ? null : <div className="glmm-notice" role="status">指标板读不出：{snapshot.problem}</div>}
       <div className="glmm-topline">{topLine}</div>
       {view === null ? null : (
         <>
@@ -77,7 +80,7 @@ function MetricsContent({ snapshot }: { readonly snapshot: MetricsSnapshot }): R
           </details>
         </>
       )}
-      <div className="glmm-foot">也可以在插件仓库的命令行打 npm run metrics -- summary --project &lt;这个项目的目录&gt;</div>
+      <div className="glmm-foot">这些数每小时自动重算一次，打开这里就能看到最新结果</div>
     </div>
   )
 }
@@ -95,20 +98,25 @@ function useViewFile(sessions: SessionsClient, sessionId: string): string | null
 function makeMetricsPage(remote: RemoteRoot, sessions: SessionsClient): (props: { readonly sessionId: string }) => ReactElement | null {
   return function MetricsPage({ sessionId }: { readonly sessionId: string }): ReactElement | null {
     const path = useViewFile(sessions, sessionId)
-    const [state, setState] = useState<{ readonly snapshot: MetricsSnapshot } | undefined>(undefined)
+    const [state, setState] = useState<{ readonly snapshot: MetricsSnapshot, readonly loading: boolean } | undefined>(undefined)
     useEffect(() => {
-      if (path === null) return undefined
+      if (path === null) {
+        setState(undefined)
+        return undefined
+      }
       const held = holdMetricsSource(remote, sessionId, path)
-      const update = (): void => setState({ snapshot: held.source.getSnapshot() })
-      update()
-      const unsubscribe = held.source.subscribe(update)
+      const initial = held.source.getSnapshot()
+      setState({ snapshot: initial, loading: initial.view === null && initial.problem === null })
+      const unsubscribe = held.source.subscribe(() => {
+        setState({ snapshot: held.source.getSnapshot(), loading: false })
+      })
       return () => {
         unsubscribe()
         held.release()
       }
     }, [remote, sessionId, path])
     if (path === null || state === undefined) return null
-    return <MetricsContent snapshot={state.snapshot} />
+    return <MetricsContent snapshot={state.snapshot} loading={state.loading} />
   }
 }
 

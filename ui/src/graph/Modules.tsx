@@ -6,10 +6,18 @@
  * decided in the main agent's chat. The page exists only when the
  * directions are on the graph (modulesView returns a view then).
  */
-import type { ReactElement } from 'react'
+import { useEffect, useRef, type ReactElement } from 'react'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { MODULE_PHRASES, type ModuleState, type ModulesGoalView, type ModulesView } from '../../../src/graph/plain-view.ts'
 import { NodeRow, Part } from './common.tsx'
+import { dotTone } from './model.ts'
+
+function moduleTone(state: ModuleState): string {
+  if (state === 'done') return 'done'
+  if (state === 'developing' || state === 'released') return 'doing'
+  if (state === 'awaiting-release') return 'wait'
+  return 'proposed'
+}
 
 /** One module line: the state, and for a working module its remaining work. */
 function ModuleLine({ graph, line }: { readonly graph: LoadedGraph, readonly line: { readonly node: ModulesGoalView['modules'][number]['node'], readonly state: ModuleState, readonly done: number, readonly left: number } }): ReactElement {
@@ -18,23 +26,32 @@ function ModuleLine({ graph, line }: { readonly graph: LoadedGraph, readonly lin
     : MODULE_PHRASES[line.state]
   return (
     <div className="glmg-modulerow">
-      <NodeRow graph={graph} node={line.node} tone="doing" status={false} />
+      <NodeRow graph={graph} node={line.node} tone={moduleTone(line.state)} status={false} />
       <div className="glmg-meta"><span>{text}</span></div>
     </div>
   )
 }
 
 /** The page's body: one section per split goal, the directions last. */
-export function ModulesPage({ graph, view }: { readonly graph: LoadedGraph, readonly view: ModulesView }): ReactElement {
+export function ModulesPage({ graph, view, focusGoalId }: { readonly graph: LoadedGraph, readonly view: ModulesView, readonly focusGoalId?: string | undefined }): ReactElement {
+  const root = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (focusGoalId === undefined) return
+    const target = root.current?.querySelector(`[data-goal="${CSS.escape(focusGoalId)}"]`)?.closest('.glmg-part')
+    if (target instanceof HTMLElement) {
+      const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+    }
+  }, [focusGoalId])
   return (
-    <div className="glmg-view">
+    <div ref={root} className="glmg-view">
       <div className="glmg-notice">框架与模块 · 先定框架、模块与方向，再一块一块地设计、放行、开发</div>
       {view.goals.map((section: ModulesGoalView) => (
-        <Part key={section.goal.id} title={section.goal.title}>
+        <Part key={section.goal.id} title={<span data-goal={section.goal.id}>{section.goal.title}</span>}>
           <Part title="框架">
             {section.framework.length === 0
               ? <div className="glmg-meta">框架还没写到图上</div>
-              : section.framework.map(decision => <NodeRow key={decision.id} graph={graph} node={decision} tone="doing" status />)}
+              : section.framework.map(decision => <NodeRow key={decision.id} graph={graph} node={decision} tone={dotTone(decision)} status />)}
             {section.changing ? <div className="glmg-meta">在改：主 Agent 会在对话里跟你定，受影响的活先停着</div> : null}
           </Part>
           <Part title={`模块 · ${section.modules.length}`}>

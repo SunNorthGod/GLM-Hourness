@@ -17,6 +17,13 @@ const GROUP_TITLES: Readonly<Record<'doing' | 'ready' | 'waiting' | 'unsplit', s
   unsplit: '还没细分',
 }
 
+function planTone(kind: keyof typeof GROUP_TITLES, status: PlanItem['node']['status']): string {
+  if (status === 'done') return 'done'
+  if (status === 'doing' || kind === 'doing') return 'doing'
+  if (kind === 'waiting') return 'wait'
+  return 'proposed'
+}
+
 /** One group's rows: 第 n 件 in front, the status line under the title. */
 function Group({ graph, kind, title, items, goalTitle, severalGoals }: {
   readonly graph: LoadedGraph
@@ -34,7 +41,7 @@ function Group({ graph, kind, title, items, goalTitle, severalGoals }: {
           <span className="glmg-plan-no" aria-hidden="true">{item.number}</span>
           <span className="glmg-sr">第 {item.number} 件，</span>
           <div className="glmg-row-main">
-            <NodeRow graph={graph} node={item.node} tone="doing" status={false} />
+            <NodeRow graph={graph} node={item.node} tone={planTone(kind, item.node.status)} status={false} />
             <div className="glmg-meta">
               <span>{item.status}</span>
               {severalGoals ? <span>属于「{goalTitle(item.goalId) ?? item.goalId}」</span> : null}

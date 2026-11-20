@@ -38,7 +38,7 @@ import { headlineGoals } from './model.ts'
 import { ModulesPage } from './Modules.tsx'
 import { Frame, NodeDetail } from './NodeDetail.tsx'
 import { PlanPage } from './Plan.tsx'
-import { GRAPH_DIR, type GraphSource } from './source.ts'
+import { type GraphSource } from './source.ts'
 import { initialSeen, nextSeen, seenKeyOf, seenRecordOf, watchVisibility, writeSeenRecord, type SeenEvent, type VisibilityHost } from './seen.ts'
 import { PANEL_CSS } from './styles.ts'
 import { hasUserPage } from './user-view.ts'
@@ -129,12 +129,19 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   const [boardId, setBoardId] = useState<string | undefined>(undefined)
   /** The goal whose 用户怎么用 page is open (user graph design 0.4.1 §6.1). */
   const [userGoal, setUserGoal] = useState<string | undefined>(undefined)
+  /** The goal whose 模块页 was opened from the home page. */
+  const [moduleGoal, setModuleGoal] = useState<string | undefined>(undefined)
   const [seen, setSeen] = useState(initialSeen)
   const selected = trail.at(-1)
   const depth = useRef(0)
   depth.current = trail.length
+  const covered = page !== undefined || boardId !== undefined || selected !== undefined
+  const coveredRef = useRef(false)
+  coveredRef.current = covered
   /** What had focus when a layer opened; it gets focus back when everything closed. */
   const opener = useRef<HTMLElement | SVGElement | null>(null)
+  /** What had focus inside a second-layer page when a node detail opened over it. */
+  const trailOpener = useRef<HTMLElement | SVGElement | null>(null)
   const body = useRef<HTMLDivElement>(null)
   /** The seen machine's state as the events left it: an unmount writes its departure from here, where a state update would be dropped. */
   const seenNow = useRef(initialSeen)
@@ -146,8 +153,15 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
    * the page stands instead of the home. 手动打开 works without a graph.
    */
   const [guide, setGuide] = useState<boolean | undefined>(undefined)
+  const captureOpener = useCallback(() => {
+    if (!coveredRef.current) {
+      opener.current = document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement ? document.activeElement : null
+    }
+  }, [])
   const open = useCallback((id: string) => {
-    if (depth.current === 0) opener.current = document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement ? document.activeElement : null
+    const active = document.activeElement instanceof HTMLElement || document.activeElement instanceof SVGElement ? document.activeElement : null
+    if (!coveredRef.current) opener.current = active
+    else if (depth.current === 0) trailOpener.current = active
     setTrail(current => current.at(-1) === id ? current : [...current, id])
   }, [])
   const services = useMemo<PanelServices>(() => ({ open }), [open])
@@ -215,10 +229,78 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
   const closeLayer = useCallback((): void => {
     setPage(undefined)
     setBoardId(undefined)
+    setUserGoal(undefined)
+    setModuleGoal(undefined)
     setTrail(current => current.length === 0 ? current : [])
   }, [])
+  const openPage = useCallback((next: PageId): void => {
+    captureOpener()
+    setTrail([])
+    setBoardId(undefined)
+    setUserGoal(undefined)
+    setModuleGoal(undefined)
+    setGuide(false)
+    setPage(next)
+  }, [captureOpener])
+  const openModules = useCallback((goalId: string): void => {
+    captureOpener()
+    setTrail([])
+    setBoardId(undefined)
+    setUserGoal(undefined)
+    setGuide(false)
+    setModuleGoal(goalId)
+    setPage('modules')
+  }, [captureOpener])
+  const openUser = useCallback((goalId: string): void => {
+    captureOpener()
+    setTrail([])
+    setBoardId(undefined)
+    setModuleGoal(undefined)
+    setGuide(false)
+    setUserGoal(goalId)
+    setPage('user')
+  }, [captureOpener])
+  const openBoardPage = useCallback((id: string, clearGuide = false): void => {
+    captureOpener()
+    setTrail([])
+    setPage(undefined)
+    setUserGoal(undefined)
+    setModuleGoal(undefined)
+    if (clearGuide) setGuide(false)
+    setBoardId(id)
+  }, [captureOpener])
+  const openGuide = useCallback((): void => {
+    setTrail([])
+    setPage(undefined)
+    setBoardId(undefined)
+    setUserGoal(undefined)
+    setModuleGoal(undefined)
+    setGuide(true)
+  }, [])
+  const prevSessionId = useRef(sessionId)
+  useEffect(() => {
+    if (prevSessionId.current === sessionId) return
+    prevSessionId.current = sessionId
+    opener.current = null
+    trailOpener.current = null
+    holderAsked.current = undefined
+    setGuide(undefined)
+    setPage(undefined)
+    setTrail([])
+    setBoardId(undefined)
+    setUserGoal(undefined)
+    setModuleGoal(undefined)
+  }, [sessionId])
+  const prevSelected = useRef<string | undefined>(undefined)
+  useLayoutEffect(() => {
+    const wasSelected = prevSelected.current !== undefined
+    prevSelected.current = selected
+    if (!wasSelected || selected !== undefined || !covered) return
+    const target = trailOpener.current
+    trailOpener.current = null
+    if (target?.isConnected === true) target.focus()
+  }, [selected, covered])
   // While a layer is open the list behind it takes no focus; on close the opener gets it back; a page starts at its top.
-  const covered = page !== undefined || boardId !== undefined || selected !== undefined
   useLayoutEffect(() => {
     const element = body.current
     if (element !== null) {
@@ -231,54 +313,49 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
     if (target?.isConnected === true) target.focus()
   }, [covered])
 
+  const openBoard = boardId === undefined ? undefined : boards().find(board => board.id === boardId)
+
   if (snapshot.status !== 'ready' || graph === undefined) {
-    // 没有项目图的一节 (plain-ui 1.3 §6.6): the 接管行 is not registered on main, so the wording is the without-bootstrap branch; 上手说明 opens manually, without a graph.
+    // 没有项目图的一节 (plain-ui 1.3 §6.6): bootstrap 启用后指向 /wish；上手说明 opens manually, without a graph.
     return (
       <div className="glmg">
         <style>{PANEL_CSS}</style>
-        {guide === true
-          ? (
-              <div className="glmg-body">
-                <GuidePage sessionId={sessionId} onOpenBoard={() => {}} onDone={() => { setGuide(false) }} />
-              </div>
-            )
-            : (
-                <div className="glmg-body">
-                  {snapshot.status === 'loading'
-                    ? <div className="glmg-empty"><span className="glmg-empty-title">正在读项目图…</span></div>
-                    : (
-                        <div className="glmg-empty">
-                          <span className="glmg-empty-title">{snapshot.status === 'missing' ? '这个工作区还没有项目图' : '项目图读不出来'}</span>
-                          <span>{snapshot.status === 'missing' ? '项目图记下这个项目要做成什么、接下来做什么、哪些要你回话。有了它，主 Agent 才能接手。' : snapshot.status === 'failed' ? snapshot.message : ''}</span>
-                          {snapshot.status === 'missing' ? <span>在对话里让 agent 建空目录 {GRAPH_DIR}/nodes，面板会自己跟上。</span> : null}
-                          <div className="glmg-actions">
-                            <button type="button" className="glmg-more" onClick={() => { void source.retry() }}>重新读取</button>
-                            <button type="button" className="glmg-more" onClick={() => { setGuide(true) }}>上手说明 ›</button>
-                          </div>
-                        </div>
-                      )}
-                </div>
-              )}
+        <div className="glmg-stage">
+          <div ref={body} className="glmg-body">
+            {guide === true
+              ? <GuidePage sessionId={sessionId} onOpenBoard={id => { openBoardPage(id) }} onDone={() => { setGuide(false) }} />
+              : snapshot.status === 'loading'
+                ? <div className="glmg-empty"><span className="glmg-empty-title">正在读项目图…</span></div>
+                : (
+                    <div className="glmg-empty">
+                      <span className="glmg-empty-title">{snapshot.status === 'missing' ? '这个工作区还没有项目图' : '项目图读不出来'}</span>
+                      <span>{snapshot.status === 'missing' ? '项目图记下这个项目要做成什么、接下来做什么、哪些要你回话。有了它，主 Agent 才能接手。' : snapshot.status === 'failed' ? snapshot.message : ''}</span>
+                      {snapshot.status === 'missing' ? <span>在对话里打 /wish：主 Agent 会接管这里，问清要做什么，项目图随之建起来。</span> : null}
+                      <div className="glmg-actions">
+                        <button type="button" className="glmg-more" onClick={() => { void source.retry() }}>重新读取</button>
+                        <button type="button" className="glmg-more" onClick={openGuide}>上手说明 ›</button>
+                      </div>
+                    </div>
+                  )}
+          </div>
+          {openBoard !== undefined
+            ? (
+                <Frame onBack={closeLayer} onClose={closeLayer}>
+                  <PanelBoundary key={openBoard.id} label={`${openBoard.label}页`}>
+                    <openBoard.Page sessionId={sessionId} />
+                  </PanelBoundary>
+                </Frame>
+              )
+            : null}
+        </div>
       </div>
     )
   }
 
   const { items, live, unreadable } = snapshot
-  const goalTitles = [...graph.nodes.values()].filter(node => node.type === 'goal').map(goal => goal.title)
+  const goalTitles = headlineGoals(graph).map(goal => goal.title)
   const errors = graph.issues.filter(issue => issue.severity === 'error')
-  const openBoard = boardId === undefined ? undefined : boards().find(board => board.id === boardId)
-  // A plain closure, not useCallback: a hook here would change the panel's hook order between the
-  // not-ready early return above and this branch — React 18.3.1's error #310 on the desktop
-  // (keepMounted tab, session switch between a workspace without a graph and one with one).
-  // Its only consumer (PlanPage) re-renders whenever the panel does, so the identity never mattered.
   const goalTitle = (id: string): string | undefined => graph.nodes.get(id)?.title
-  // 用户怎么用 opens over whatever is open, the node trail included (a node page leads there); plain closures, as above.
-  const openUser = (goalId: string): void => {
-    setTrail([])
-    setBoardId(undefined)
-    setUserGoal(goalId)
-    setPage('user')
-  }
   const footUser = headlineGoals(graph).find(goal => hasUserPage(graph, goal))
   const pageBody = page === 'user' && userGoal !== undefined
     ? <UserPage graph={graph} goalId={userGoal} />
@@ -293,7 +370,7 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
           : page === 'decided'
             ? <Decisions graph={graph} items={items} />
           : page === 'modules'
-            ? modules === null ? <div className="glmg-notice">图上还没有方向清单，两层循环的显示不出现。</div> : <ModulesPage graph={graph} view={modules} />
+            ? modules === null ? <div className="glmg-notice">图上还没有方向清单，两层循环的显示不出现。</div> : <ModulesPage graph={graph} view={modules} focusGoalId={moduleGoal} />
             : <GraphCanvas graph={graph} selected={selected} onPick={open} agents={agents} />
 
   return (
@@ -313,7 +390,7 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
           <div className="glmg-stage">
             <div ref={body} className="glmg-body">
               {guide === true
-                ? <GuidePage sessionId={sessionId} onOpenBoard={id => { setBoardId(id) }} onDone={() => { setGuide(false) }} />
+                ? <GuidePage sessionId={sessionId} onOpenBoard={id => { openBoardPage(id) }} onDone={() => { setGuide(false) }} />
                 : (
                     <Home
                       graph={graph}
@@ -324,33 +401,29 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
                       quiet={quiet}
                       sessionId={sessionId}
                       mainHere={mainHere}
-                      onPlan={() => { setPage('plan') }}
-                      onChanges={() => { setPage('changes') }}
-                      onLive={() => { setPage('live') }}
-                      onNeeds={() => { setPage('needs') }}
-                      onModules={() => { setPage('modules') }}
+                      onPlan={() => { openPage('plan') }}
+                      onChanges={() => { openPage('changes') }}
+                      onLive={() => { openPage('live') }}
+                      onNeeds={() => { openPage('needs') }}
+                      onModules={openModules}
                       onUser={openUser}
-                      onBoard={id => { setBoardId(id) }}
+                      onBoard={id => { openBoardPage(id) }}
                     />
                   )}
             </div>
-            {selected !== undefined
+            {page !== undefined
               ? (
-                  <Frame onBack={() => { setTrail(current => current.slice(0, -1)) }} onClose={closeLayer}>
-                    <NodeDetail key={selected} graph={graph} id={selected} agents={agents} onBack={() => { setTrail(current => current.slice(0, -1)) }} onClose={closeLayer} onUserPage={openUser} />
-                  </Frame>
-                )
-              : null}
-            {page !== undefined && selected === undefined
-              ? (
-                  <Frame onBack={closeLayer} onClose={closeLayer}>
+                  <Frame onBack={closeLayer} onClose={closeLayer} flush={page === 'graph'} inert={selected !== undefined}>
                     <PanelBoundary key={page} label="这一页">
                       {pageBody}
                     </PanelBoundary>
                   </Frame>
                 )
               : null}
-            {openBoard !== undefined
+            {selected !== undefined
+              ? <NodeDetail key={selected} graph={graph} id={selected} agents={agents} onBack={() => { setTrail(current => current.slice(0, -1)) }} onClose={closeLayer} onUserPage={openUser} />
+              : null}
+            {openBoard !== undefined && page === undefined && selected === undefined
               ? (
                   <Frame onBack={closeLayer} onClose={closeLayer}>
                     <PanelBoundary key={openBoard.id} label={`${openBoard.label}页`}>
@@ -361,10 +434,10 @@ export function GraphPanel({ source, sessions, files, workspace, sessionId }: Gr
               : null}
           </div>
           <div className="glmg-foot">
-            {boards().map(board => <BoardLine key={board.id} board={board} sessionId={sessionId} onOpen={() => { setBoardId(board.id) }} />)}
-            <button type="button" className="glmg-more" onClick={() => { setGuide(true) }}>上手说明 ›</button>
+            {boards().map(board => <BoardLine key={board.id} board={board} sessionId={sessionId} onOpen={() => { openBoardPage(board.id, true) }} />)}
+            <button type="button" className="glmg-more" onClick={openGuide}>上手说明 ›</button>
             {footUser === undefined ? null : <button type="button" className="glmg-more" onClick={() => { openUser(footUser.id) }}>用户怎么用 ›</button>}
-            <button type="button" className="glmg-more" onClick={() => { setPage('graph') }}>整张图 ›</button>
+            <button type="button" className="glmg-more" onClick={() => { openPage('graph') }}>整张图 ›</button>
           </div>
         </div>
         </NowContext.Provider>

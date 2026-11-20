@@ -43,7 +43,7 @@ export function NeedsPage({ graph, needs }: { readonly graph: LoadedGraph, reado
           <div key={node.id} className="glmg-card wait">
             <h3 className="glmg-card-title"><button type="button" className="glmg-card-link" onClick={() => { open(node.id) }}>{node.title}</button></h3>
             <div className="glmg-meta">
-              <span>{parent === undefined || parent.type === 'goal' ? null : `挂在「${parent.title}」下`}</span>
+              {parent === undefined || parent.type === 'goal' ? null : <span>挂在「{parent.title}」下</span>}
               <When at={need.since} />
             </div>
             {node.status === 'proposed' ? <div className="glmg-notice">要批准或不要</div> : <Options node={node} />}

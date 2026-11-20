@@ -9,7 +9,7 @@
  * 效果是 with the way to start (§4.10). The panel only looks.
  */
 import type { ReactElement } from 'react'
-import { useSyncExternalStore, useContext } from 'react'
+import { useContext } from 'react'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import type { GraphNode } from '../../../src/graph/schema.ts'
 import type { AwaitingEntry, RequestLiveEntry } from '../../../src/graph/live.ts'
@@ -17,7 +17,8 @@ import {
   changesSince, liveLine, moduleRowText, needsOf, planOf, progressLine,
   type ChangeRow, type NeedEntry,
 } from '../../../src/graph/plain-view.ts'
-import { boards, checkedBoardState, type Board } from './boards.ts'
+import { useBoard } from './board-state.ts'
+import { boards, type Board } from './boards.ts'
 import type { AgentLive } from './agents.ts'
 import { Bold, NowContext, Options, Part, RequestCard, useServices, When } from './common.tsx'
 import { CopyWish } from './Guide.tsx'
@@ -93,10 +94,7 @@ function NeedCard({ need, first }: { readonly need: NeedEntry, readonly first: b
 
 /** One board's home line, read through the table's snapshot hooks. */
 function BoardLineInner({ board, sessionId, onOpen }: { readonly board: Board, readonly sessionId: string, readonly onOpen: () => void }): ReactElement | null {
-  const state = useSyncExternalStore(
-    listener => board.subscribe(sessionId, listener),
-    () => checkedBoardState(board.id, board.snapshot(sessionId)) ?? { available: false, homeLine: null, guideLine: null, peakApplies: false },
-  )
+  const state = useBoard(board, sessionId)
   if (!state.available || state.homeLine === null) return null
   return <button type="button" className="glmg-more" onClick={onOpen}>{state.homeLine} ›</button>
 }

@@ -114,17 +114,17 @@ test('the page has its head and the groups in the order of rules design §9.1; t
 
 // --- Group 1: the gates ----------------------------------------------------
 
-test('the gates group lists both checklists of the graph verbatim, says who enforces them is not installed, and names a checklist the graph does not hold', () => {
+test('the gates group lists both checklists of the graph verbatim, says who enforces them, and names a checklist the graph does not hold', () => {
   const gates = groupOf(pageOf(viewOf()), 'gates')
   assert.deepEqual(gates.lists, [
-    { id: 'norm-merge-gate', title: '合入主干前必须全部通过的命令', from: '项目图上的规范「合入主干前必须全部通过的命令」· 你批过的', items: NODES.get('norm-merge-gate')?.acceptance, tail: '由派活与合入那一块执行，它还没装上' },
-    { id: 'norm-review-floor', title: '本仓库必须全审的改动', from: '项目图上的规范「本仓库必须全审的改动」· 你批过的', items: NODES.get('norm-review-floor')?.acceptance, tail: '由派活与合入那一块执行，它还没装上' },
+    { id: 'norm-merge-gate', title: '合入主干前必须全部通过的命令', from: '项目图上的规范「合入主干前必须全部通过的命令」· 你批过的', items: NODES.get('norm-merge-gate')?.acceptance, tail: '由派活与合入那一块执行' },
+    { id: 'norm-review-floor', title: '本仓库必须全审的改动', from: '项目图上的规范「本仓库必须全审的改动」· 你批过的', items: NODES.get('norm-review-floor')?.acceptance, tail: '由派活与合入那一块执行' },
   ])
   assert.deepEqual(gates.tail, ['要改：跟主 Agent 说「合入前的检查加一条……」；清单在项目图上由你批，改松要你同意'])
   assert.equal(JSON.stringify(gates).includes('机器认得'), false, 'no floor note before M7 lands')
   const one = groupOf(buildRulesPage(viewOf(), new Map([['norm-merge-gate', { title: '合入前要过的命令' }]])), 'gates')
   assert.deepEqual(one.lists.map(list => [list.title, list.from, list.items, list.tail]), [
-    ['合入前要过的命令', '项目图上的规范「合入前要过的命令」· 你批过的', [], '由派活与合入那一块执行，它还没装上'],
+    ['合入前要过的命令', '项目图上的规范「合入前要过的命令」· 你批过的', [], '由派活与合入那一块执行'],
     ['必须全审的改动', null, ['这个项目还没有必须全审的改动'], null],
   ])
   const unread = groupOf(buildRulesPage(viewOf(), '项目图读不出：boom'), 'gates')
@@ -133,7 +133,7 @@ test('the gates group lists both checklists of the graph verbatim, says who enfo
 
 // --- Group 2: the default rule and the peak mode ---------------------------
 
-test('the peak mode lists the three levels as text with 「← 现在」 on the current one only, the cap of the reduce level as not installed, and the end of a peak by the loop board', () => {
+test('the peak mode lists the three levels as text with 「← 现在」 on the current one only, and the end of a peak by the loop board', () => {
   const page = pageOf(viewOf({ rows: { 'glm-prompt': 'active', rules: 'active', loops: 'active' } }))
   const defaults = groupOf(page, 'defaults')
   assert.deepEqual(defaults.grey, ['项目编排带来的 · 只能看；高峰时段来自 GLM 通道'])
@@ -149,7 +149,6 @@ test('the peak mode lists the three levels as text with 「← 现在」 on the 
     '无影响：照常做，只提醒',
     '少做：高峰里同时至多 1 个 GLM 子 agent，重活挪到高峰之后，必要的活照做 ← 现在',
     '不做：高峰里 GLM 的活停下排队，高峰结束后接着做',
-    '派活那一块还没装上，同时至多 1 个这一条现在只在提醒主 Agent',
     '高峰结束时叫醒主 Agent、接上挪开的活，由循环板做',
     '主 Agent 不受高峰模式影响，任何时候都照常回你的话；高峰模式只管它派出去的子 agent 与重活',
   ])
@@ -537,10 +536,14 @@ test('the reader keeps the last view on a failed read and says why, refuses a te
 // --- The page never writes ----------------------------------------------------
 
 const WRITE_MARK = /remote\.commands|commands\.execute|\.write(?:File|Bytes)?\(|radio|<(?:button|input|textarea|select|form)[\s/>]/i
+const JUMP_BUTTON = '<button type="button" className="glmr-jump" onClick={scroll}>{text}</button>'
 
-test('no file under ui/src/rules/ calls remote.commands, writes a file or renders a button, an input or a radio', async () => {
+test('no file under ui/src/rules/ calls remote.commands, writes a file or renders a write control (only the read-only scroll jump button)', async () => {
   const dir = join(import.meta.dirname, '..', 'ui', 'src', 'rules')
   const files = (await readdir(dir)).filter(name => /\.(ts|tsx)$/.test(name))
   assert.deepEqual(files.sort(), ['RulesPage.tsx', 'board.ts', 'model.ts', 'source.ts'])
-  for (const file of files) assert.equal(WRITE_MARK.test(await readFile(join(dir, file), 'utf8')), false, `${file} must not write: no command call, no file write, no button, input or radio`)
+  for (const file of files) {
+    const text = (await readFile(join(dir, file), 'utf8')).replaceAll(JUMP_BUTTON, '')
+    assert.equal(WRITE_MARK.test(text), false, `${file} must not write: no command call, no file write, no button, input or radio`)
+  }
 })

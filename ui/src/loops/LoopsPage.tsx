@@ -29,25 +29,25 @@ import { holdLoopsSource, type LoopsSnapshot, type LoopsSource } from './source.
 const LOOPS_CSS = `
 .glmo{padding:4px 2px 16px;animation:glmg-fade .18s ease-out}
 .glmo-head{margin:2px 0 10px}
-.glmo-head h2{margin:0;color:var(--g-ink);font-size:15px;line-height:24px;font-weight:500}
-.glmo-sub,.glmo-small{color:var(--g-ink3);font-size:12px}
-.glmo-holder{margin-top:4px;color:var(--g-ink2);font-size:12px}
-.glmo-notice{margin:0 0 10px;padding:8px 10px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-md,12px);color:var(--g-ink2);font-size:12px}
+.glmo-head h2{margin:0;color:var(--g-ink);font-size:15px;line-height:24px;font-weight:500;overflow-wrap:anywhere}
+.glmo-sub,.glmo-small{color:var(--g-ink3);font-size:12px;overflow-wrap:anywhere}
+.glmo-holder{margin-top:4px;color:var(--g-ink2);font-size:12px;overflow-wrap:anywhere}
+.glmo-notice{margin:0 0 10px;padding:8px 10px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-md,12px);color:var(--g-ink2);font-size:12px;overflow-wrap:anywhere}
 .glmo-look{margin:0 0 10px;padding:8px 10px;border-radius:var(--dsw-radius-md,12px);background:var(--g-layer);font-size:12px}
 .glmo-look div+div{margin-top:4px}
 .glmo-look details{margin-top:4px;color:var(--g-ink3);font-size:11px}
 .glmo-look summary{cursor:pointer}
 .glmo-section{margin:12px 2px 6px;color:var(--g-ink3);font-size:11px;font-weight:600;letter-spacing:.02em}
 .glmo-entry{margin:0 0 10px;padding:10px 12px;border:.5px solid var(--dsw-alias-border-l1,rgba(127,127,127,.28));border-radius:var(--dsw-radius-lg,16px);background:var(--g-layer)}
-.glmo-entry.is-grey{opacity:.62}
-.glmo-name{font-size:13px;font-weight:500;line-height:20px}
-.glmo-line{margin-top:2px;font-size:12px}
-.glmo-grey{margin-top:3px;color:var(--g-ink3);font-size:11px}
+.glmo-entry.is-grey,.glmo-entry.is-grey .glmo-line{color:var(--g-ink3)}
+.glmo-name{font-size:13px;font-weight:500;line-height:20px;overflow-wrap:anywhere}
+.glmo-line{margin-top:2px;font-size:12px;overflow-wrap:anywhere}
+.glmo-grey{margin-top:3px;color:var(--g-ink3);font-size:11px;overflow-wrap:anywhere}
 .glmo-entry details{margin-top:4px;color:var(--g-ink3);font-size:11px}
 .glmo-entry summary{cursor:pointer}
 .glmo-fold{margin:2px 0 10px}
 .glmo-fold>summary{padding:4px 2px;color:var(--g-ink2);font-size:12px;cursor:pointer}
-.glmo-run{padding:2px 2px;color:var(--g-ink2);font-size:12px}
+.glmo-run{padding:2px 2px;color:var(--g-ink2);font-size:12px;overflow-wrap:anywhere}
 `
 
 /** The grey line under the head (design §8.2 item 1): where the timed entries also show, and what archiving the session does to them. */
@@ -162,7 +162,10 @@ function makeLoopsPage(remote: RemoteRoot, sessions: SessionsClient): (props: { 
     const viewFile = useViewFile(sessions, sessionId)
     const [source, setSource] = useState<LoopsSource | undefined>(undefined)
     useEffect(() => {
-      if (viewFile === null) return undefined
+      if (viewFile === null) {
+        setSource(undefined)
+        return undefined
+      }
       const held = holdLoopsSource(remote, sessionId, viewFile)
       setSource(held.source)
       return () => { held.release() }

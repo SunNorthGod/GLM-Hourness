@@ -192,6 +192,10 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
     return () => { observer.disconnect() }
   }, [])
 
+  useEffect(() => () => {
+    if (settle.current !== undefined) clearTimeout(settle.current)
+  }, [])
+
   /**
    * A readable zoom centred on what matters now: the first node that waits
    * for the human, else the main agent's focus, else the first task in
@@ -315,8 +319,8 @@ export function GraphCanvas({ graph, selected, onPick, agents }: GraphCanvasProp
           anchor={<button type="button" className="glmg-filter" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => { setMenuOpen(!menuOpen) }}>{FILTER_LABELS[filter]} ▾</button>}
         />
         <span className="grow" />
-        <Button variant="ghost" size="sm" aria-label="缩小" onClick={() => { zoomAt(1 / 1.25, ...centre()) }}>−</Button>
-        <Button variant="ghost" size="sm" aria-label="放大" onClick={() => { zoomAt(1.25, ...centre()) }}>+</Button>
+        <Button variant="ghost" size="sm" aria-label="缩小" disabled={current.k <= MIN_ZOOM} onClick={() => { zoomAt(1 / 1.25, ...centre()) }}>−</Button>
+        <Button variant="ghost" size="sm" aria-label="放大" disabled={current.k >= MAX_ZOOM} onClick={() => { zoomAt(1.25, ...centre()) }}>+</Button>
         <Button variant="ghost" size="sm" onClick={() => { place('overview') }}>全貌</Button>
         <Button variant="ghost" size="sm" onClick={() => { place('home') }}>回到重点</Button>
       </div>

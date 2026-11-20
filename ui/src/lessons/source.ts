@@ -33,6 +33,12 @@ export interface LessonsSnapshot {
   readonly problem: string | null
   /** The last good content. */
   readonly model: LessonsPageModel
+  /** The folded states for re-formatting live timestamps against NowContext. */
+  readonly states: {
+    readonly lessons: LessonsState | null
+    readonly project: MemoryState | null
+    readonly user: MemoryState | null
+  }
 }
 
 /** The labels the problem line names the journals by. */
@@ -64,7 +70,12 @@ interface Journal {
 }
 
 export class LessonsSource {
-  private snapshot: LessonsSnapshot = { loading: true, problem: null, model: buildLessonsPage(null, memoryRows(null, null, Date.now()), Date.now()) }
+  private snapshot: LessonsSnapshot = {
+    loading: true,
+    problem: null,
+    model: buildLessonsPage(null, memoryRows(null, null, Date.now()), Date.now()),
+    states: { lessons: null, project: null, user: null },
+  }
   private readonly listeners = new Set<() => void>()
   private readonly journals: readonly Journal[]
   private readonly files: WatchedFiles
@@ -104,6 +115,7 @@ export class LessonsSource {
       loading: this.journals.some(journal => !journal.readAtLeastOnce),
       problem: problems.length === 0 ? null : problems.join('；'),
       model: buildLessonsPage(lessons ?? null, memoryRows(project ?? null, user ?? null, now), now),
+      states: { lessons: lessons ?? null, project: project ?? null, user: user ?? null },
     }
     for (const listener of this.listeners) listener()
   }

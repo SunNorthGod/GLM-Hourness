@@ -10,7 +10,7 @@
  * record keeps it away from then on. It rides M3's card styles, so the
  * opening screen keeps one look.
  */
-import { useEffect, useMemo, type ReactElement } from 'react'
+import { useCallback, useEffect, useMemo, useSyncExternalStore, type ReactElement } from 'react'
 import type { ClientContext, RemoteRoot, SessionSlotProps, SessionsClient } from '../dsh.ts'
 import { cwdKeyOf } from '../graph/main-chat.ts'
 import { useGraph } from '../flow/session.ts'
@@ -31,7 +31,10 @@ function makeCard(remote: RemoteRoot, sessions: SessionsClient): (props: Session
   return function NoGraphCard({ sessionId, useSession }: SessionSlotProps): ReactElement | null {
     const blank = useBlank(sessions, sessionId, useSession)
     const snapshot = useGraph(remote, sessionId, blank)
-    const cwd = useMemo(() => sessions.list.getSnapshot().byId[sessionId]?.cwd, [sessions, sessionId])
+    const cwd = useSyncExternalStore(
+      useCallback(listener => sessions.list.subscribe(listener), [sessions]),
+      useCallback(() => sessions.list.getSnapshot().byId[sessionId]?.cwd, [sessions, sessionId]),
+    )
     const key = useMemo(() => cwd === undefined ? undefined : noGraphKey(cwdKeyOf(cwd, isWindows())), [cwd])
     const shown = blank && snapshot?.status === 'missing' && key !== undefined && readStamp(window.localStorage, key) === undefined
     useEffect(() => {

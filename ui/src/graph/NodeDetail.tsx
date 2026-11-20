@@ -8,7 +8,7 @@
  * telling the LLM which node is meant.
  */
 import { Button, IconChevronLeftOutlineRegular, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
-import { useEffect, useRef, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import { EVIDENCE_LABELS, KIND_LABELS, STAGE_LABELS, STATUS_LABELS, TIER_LABELS, TYPE_LABELS, VERIFICATION_LABELS } from '../../../src/graph/labels.ts'
 import type { LoadedGraph } from '../../../src/graph/parse.ts'
 import { whyOf } from '../../../src/graph/plain-view.ts'
@@ -81,18 +81,21 @@ interface DetailProps {
  * when it opens (the frame mounts once per page), so the keyboard starts
  * inside it. The board pages of the panel open in the same frame.
  */
-export function Frame({ onBack, onClose, children }: Pick<DetailProps, 'onBack' | 'onClose'> & { readonly children: ReactNode }): ReactElement {
+export function Frame({ onBack, onClose, flush, inert, children }: Pick<DetailProps, 'onBack' | 'onClose'> & { readonly flush?: boolean, readonly inert?: boolean, readonly children: ReactNode }): ReactElement {
   const root = useRef<HTMLDivElement>(null)
   useEffect(() => { root.current?.querySelector<HTMLButtonElement>('.glmg-detail-head button')?.focus() }, [])
+  useLayoutEffect(() => {
+    if (root.current !== null) root.current.inert = inert === true
+  }, [inert])
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
     event.stopPropagation()
     onClose()
   }
   return (
-    <div ref={root} className="glmg-detail" onKeyDown={onKeyDown}>
+    <div ref={root} className="glmg-detail" aria-hidden={inert === true ? true : undefined} onKeyDown={onKeyDown}>
       <div className="glmg-detail-head"><Button variant="ghost" size="sm" onClick={onBack}><IconChevronLeftOutlineRegular size={14} />返回</Button></div>
-      <div className="glmg-detail-body">{children}</div>
+      <div className={flush === true ? 'glmg-detail-body glmg-detail-body--flush' : 'glmg-detail-body'}>{children}</div>
     </div>
   )
 }

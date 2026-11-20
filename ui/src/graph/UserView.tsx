@@ -86,21 +86,26 @@ function RoleBlock({ role, unfolded, onToggle, onPick }: { readonly role: RoleRo
   )
 }
 
-function DevLine({ row, onPick }: { readonly row: DevRow, readonly onPick: (id: string) => void }): ReactElement {
+function DevLine({ row, onPick }: { readonly row: DevRow, readonly onPick?: ((id: string) => void) | undefined }): ReactElement {
+  const inner = (
+    <>
+      <span className="glmg-uv-title">{row.depth > 0 ? '├ ' : ''}{row.title}</span>
+      <span className="glmg-uv-state">{row.status}</span>
+      <span className="glmg-uv-tag">服务 {row.serves} 步</span>
+      {row.orphan === undefined ? null : <span className="glmg-uv-orphan">{row.orphan}</span>}
+      <MarkWord mark={row.mark} />
+    </>
+  )
   return (
     <div className={`glmg-uv-step${markClass(row.mark)}`} data-node={row.id} style={{ paddingLeft: `${row.depth * 14}px` }}>
-      <button type="button" className="glmg-uv-row" aria-pressed={row.mark === 'selected'} onClick={() => { onPick(row.id) }}>
-        <span className="glmg-uv-title">{row.depth > 0 ? '├ ' : ''}{row.title}</span>
-        <span className="glmg-uv-state">{row.status}</span>
-        <span className="glmg-uv-tag">服务 {row.serves} 步</span>
-        {row.orphan === undefined ? null : <span className="glmg-uv-orphan">{row.orphan}</span>}
-        <MarkWord mark={row.mark} />
-      </button>
+      {onPick === undefined
+        ? <div className="glmg-uv-row is-static">{inner}</div>
+        : <button type="button" className="glmg-uv-row" aria-pressed={row.mark === 'selected'} onClick={() => { onPick(row.id) }}>{inner}</button>}
     </div>
   )
 }
 
-function DevColumn({ rows, onPick }: { readonly rows: readonly DevRow[], readonly onPick: (id: string) => void }): ReactElement {
+function DevColumn({ rows, onPick }: { readonly rows: readonly DevRow[], readonly onPick?: ((id: string) => void) | undefined }): ReactElement {
   return (
     <section className="glmg-uv-col" aria-label={SIDE_WORDS.dev}>
       <div className="glmg-section">{SIDE_WORDS.dev}</div>
@@ -124,6 +129,7 @@ export function UserPage({ graph, goalId }: { readonly graph: LoadedGraph, reado
   useLayoutEffect(() => {
     const element = root.current
     if (element === null) return undefined
+    setWidth(element.clientWidth)
     const observer = new ResizeObserver(([entry]) => {
       if (entry !== undefined) setWidth(entry.contentRect.width)
     })
@@ -168,7 +174,7 @@ export function UserPage({ graph, goalId }: { readonly graph: LoadedGraph, reado
     content = (
       <>
         <div className="glmg-notice">{view.text}</div>
-        <DevColumn rows={view.dev} onPick={() => {}} />
+        <DevColumn rows={view.dev} />
       </>
     )
   }
