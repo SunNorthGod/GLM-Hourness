@@ -42,7 +42,7 @@ import { BOOTSTRAP_TOOL_NAMES, DESIGN_TOOL_NAMES, DISPATCH_TOOL_NAMES, DISPATCH_
 import { emitMetric, setMetricSink, type MetricEvent } from '../src/execute/metrics.ts'
 import { HANDBACK_SCHEMA, REVIEW_SCHEMA, handbackProblems, mergeHandbackSchema, reviewProblems } from '../src/execute/schemas.ts'
 import { GRAPH_WRITE_TOOLS } from '../src/execute/faces.ts'
-import { GRAPH_WRITE_NAMES } from '../src/guard/execute-rules.ts'
+import { EXECUTE_RULES, GRAPH_WRITE_NAMES } from '../src/guard/execute-rules.ts'
 import { RESIDENT_TOOLS } from '../src/toolsearch/exposure.ts'
 import { apply as hournessApply } from '../src/report/index.ts'
 import { apply as compactApply } from '../src/glm-prompt/compact-row.ts'
@@ -259,6 +259,19 @@ test('guard catalog: each listed rule is the id of a rule object its row install
     assert.ok(entry.title.length > 0 && entry.blocks.length > 0, entry.id)
   }
   assert.equal(new Set(GUARD_RULES.map(rule => rule.id)).size, GUARD_RULES.length, 'ids are unique across the table')
+  // The three tables (guard catalog, M3's MAIN_AGENT_RULES, M7's EXECUTE_RULES)
+  // share no id beyond the one deliberate double entry: handback-cause is the
+  // execute row's catalog registration of the same rule whose source table is
+  // EXECUTE_RULES. Any other overlap across the tables fails here
+  // (m4-final-review D3).
+  const idsOf = (table: readonly { readonly id: string }[]): string[] => table.map(rule => rule.id)
+  const shared = (a: string[], b: string[]): string[] => a.filter(id => b.includes(id))
+  const guardIds = idsOf(GUARD_RULES)
+  const mainIds = idsOf(MAIN_AGENT_RULES)
+  const executeIds = idsOf(EXECUTE_RULES)
+  assert.deepEqual(shared(guardIds, mainIds), [], 'the guard catalog and M3\'s table share no id')
+  assert.deepEqual(shared(mainIds, executeIds), [], 'M3\'s table and M7\'s table share no id')
+  assert.deepEqual(shared(guardIds, executeIds), ['handback-cause'], 'handback-cause is the only catalog registration of an execute source-table rule')
 })
 
 test('guard catalog: the rows with rules install their pre-execute listeners through installRuleGate', () => {
