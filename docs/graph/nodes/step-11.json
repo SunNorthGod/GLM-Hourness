@@ -1,0 +1,45 @@
+{
+  "id": "step-11",
+  "type": "step",
+  "title": "点开看大图",
+  "why": "要看细节时点开 GLM 对话框",
+  "status": "approved",
+  "parent": "flow-4",
+  "acceptance": [
+    "大图里两个窗口的重置时间与预估可见"
+  ],
+  "edges": [
+    {
+      "type": "next",
+      "to": "step-12"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:54:38.192Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用法第二步",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:54:48.814Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "看过大图后到点等提醒",
+      "edge": {
+        "type": "next",
+        "to": "step-12"
+      }
+    },
+    {
+      "at": "2026-11-21T05:20:44.662Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_59417ef3e3b64bf9b7444262）",
+      "relay": "上面那两个都可以",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

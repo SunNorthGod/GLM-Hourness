@@ -1,0 +1,124 @@
+{
+  "id": "task-11",
+  "type": "task",
+  "title": "审查：运行时升级后的全面体检",
+  "status": "done",
+  "parent": "task-1",
+  "kind": "review",
+  "acceptance": [
+    "verdict APPROVED under the docs/DEVELOPMENT.md §1.1 standard, at the depth recorded in the latest dispatch"
+  ],
+  "edges": [
+    {
+      "type": "source",
+      "to": "task-1"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "check",
+      "ref": "review hz-task-11-a1-bh654x",
+      "exit": 0,
+      "note": "9ef06039bd8c · 全审 · patch 0cec8af7358dfd110680a81440d5336ba095eaf2 · glm-zcode/glm-5.3-flash"
+    },
+    {
+      "kind": "check",
+      "ref": "review hz-task-11-a2-4p6vh5",
+      "exit": 0,
+      "note": "a5ae479c4dce · 全审 · patch a6ca5ecac8d58dc6215bb46f4bb7604e16a17e52 · glm-start-plan/glm-5.3-flash"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T06:31:58.377Z",
+      "actor": "harness",
+      "op": "propose",
+      "reason": "review task of task-1 (handback hz-task-1-a2-gjejvg)",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T06:33:16.861Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次派发 · hz-task-11-a1-bh654x · 模型 glm-zcode/glm-5.3-flash，理由：主人嘱咐派 flash；审的是证据链与归因是否站得住，逐条核对为主 · 审查：全审 · 简报 aed681f2960d · 免费套餐暂不可用（empty），已自动切换个人套餐\npins: task-11@66d246235d96 task-1@7417041c4d95 goal-1@7f137167d429\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T06:33:17.181Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "dispatch hz-task-11-a1-bh654x",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-21T06:59:41.704Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "审查交回 · hz-task-11-a1-bh654x · APPROVED · 提交 9ef06039bd8c · 挡路 0 · 不挡路 2\n- [non-blocking] acceptance:2 at docs/HANDOFF.md:212 §11 现行基线 sentence → .agents/tasks/rc5-rebaseline/logs/probe.log: acceptance:2 is met (the baseline line is committed and accurate for the lane), but its evidence pointer targets a gitignored file: .gitignore:11 `.agents/tasks/**/*` whitelists only *.md/*.svg, so probe.log exists only in this lane worktree and the committed pointer dangles once the worktree is cleaned up. The load-bearing numbers and both red attributions survive in tracked progress.md §1.1, so no acceptance item is unmet — this only weakens the raw-log traceability the sentence advertises. (fix: Point §11 at the tracked record (progress.md §1.1) instead of, or in addition to, the log file; or store the verdict log under a tracked path if the raw line must survive worktree cleanup.)\n- [non-blocking] acceptance:2 at git topology: parent of 9ef06039 is a8fb8d5c, main is at dce167f1 (11 commits ahead of the fork: 6a950473..dce167f1, incl. dual-route, live-board, rc.5 runtime fixes): The recorded baseline (633/635, rc.5) certifies the lane tree forked at a8fb8d5c, not main's tip; main's subsequent 11 commits are not covered by this probe run. The HANDOFF sentence scopes itself honestly (\"task-1 车道\", \"在 worktree hz-task-1\"), so the acceptance item stands; the gap only opens at merge time when the merged tree differs from the probed one. Note also the brief's stated base dce167f1 is not the real parent — the 182-file diff dce167f1..9ef06039 is fork-point skew, not this task's edits (true change: 3 files, +137/−1). (fix: At merge, run the full probe on the merged tree before treating 633/635 as the merged baseline (DEVELOPMENT.md L3/L4 discipline); dispatch briefs should carry the real parent commit as base.)"
+    },
+    {
+      "at": "2026-11-21T06:59:41.948Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 轮：挡路 0，不挡路 2 · 全审 · hz-task-11-a1-bh654x"
+    },
+    {
+      "at": "2026-11-21T06:59:42.513Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "review passed (hz-task-11-a1-bh654x)",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "check",
+          "ref": "review hz-task-11-a1-bh654x",
+          "exit": 0,
+          "note": "9ef06039bd8c · 全审 · patch 0cec8af7358dfd110680a81440d5336ba095eaf2 · glm-zcode/glm-5.3-flash"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-21T08:22:50.201Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "task-1 三棒换了新提交（a5ae479c 摘果解冲突），重开审查任务跑新一轮",
+      "from": "done",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-21T08:23:02.252Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 2 次派发 · hz-task-11-a2-4p6vh5 · 模型 glm-start-plan/glm-5.3-flash，理由：主人嘱咐派 flash；文档冲突解法与两条遗留发现的核对 · 审查：全审 · 简报 2aad7b989886\npins: task-11@66d246235d96 task-1@7417041c4d95 goal-1@7f137167d429\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T08:43:26.572Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "审查交回 · hz-task-11-a2-4p6vh5 · APPROVED · 提交 a5ae479c4dce · 挡路 0 · 不挡路 1\n- [non-blocking] none at .agents/tasks/rc5-rebaseline/progress.md §1 与 §1.1（附带核对句）: 记录与盘上产物不符（不涉任何验收项）：§1.1 称「attempt 1 的运行目录与本轮运行目录的场景集合一致（52 个场景目录同名）」，实测 %TEMP%\\…T05-01-20-980Z-HkOE5s 顶层 52 个目录、重跑目录 127 个，Compare-Object 全部为重跑侧独有（75 个多出），重跑是超集；§1 的「52 个场景目录齐全」同样不成立（attempt 1 目录只是全量子集）。重跑自身的全量性不受影响：probe.log 635 条判定行，分母 635 与自举门槛在主干同一代码面记录的 635/635 地板一致。 (fix: 把这两句改为「attempt 1 目录含本轮 127 个场景目录中的 52 个，集合是其子集而非一致」，或删去比较句只留重跑自身的证据。)"
+    },
+    {
+      "at": "2026-11-21T08:43:26.701Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 2 轮：挡路 0，不挡路 1 · 全审 · hz-task-11-a2-4p6vh5"
+    },
+    {
+      "at": "2026-11-21T08:43:26.915Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "review passed (hz-task-11-a2-4p6vh5)",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "check",
+          "ref": "review hz-task-11-a2-4p6vh5",
+          "exit": 0,
+          "note": "a5ae479c4dce · 全审 · patch a6ca5ecac8d58dc6215bb46f4bb7604e16a17e52 · glm-start-plan/glm-5.3-flash"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "role-2",
+  "type": "role",
+  "title": "主人",
+  "why": "看额度与收提醒都发生在主人的输入框旁与提醒流里",
+  "status": "approved",
+  "parent": "goal-2",
+  "history": [
+    {
+      "at": "2026-11-21T04:54:17.124Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "访谈 2b：这个目标的使用者也只有主人",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T05:20:44.070Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_59417ef3e3b64bf9b7444262）",
+      "relay": "上面那两个都可以",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "id": "task-15",
+  "type": "task",
+  "title": "审查：循环板三样提醒",
+  "status": "done",
+  "parent": "task-7",
+  "kind": "review",
+  "acceptance": [
+    "verdict APPROVED under the docs/DEVELOPMENT.md §1.1 standard, at the depth recorded in the latest dispatch"
+  ],
+  "edges": [
+    {
+      "type": "source",
+      "to": "task-7"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "check",
+      "ref": "review hz-task-15-a1-4mraay",
+      "exit": 0,
+      "note": "6dc57b4764a2 · 全审 · patch fabbfa39f6da672fdd0a9ed9dbc28109fd99bccb · glm-start-plan/glm-5.3-flash"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T12:11:39.634Z",
+      "actor": "harness",
+      "op": "propose",
+      "reason": "review task of task-7 (handback hz-task-7-a2-ovrnwh)",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T12:29:31.351Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次派发 · hz-task-15-a1-4mraay · 模型 glm-start-plan/glm-5.3-flash，理由：主人嘱咐派 flash；全审十条清单逐条核对，flash 够用 · 审查：全审 · 简报 e7c50ec0a0e7\npins: task-15@66d246235d96 task-7@1f6f0ee5bd3a goal-2@d1fc06cc0bbf\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T12:29:31.577Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "dispatch hz-task-15-a1-4mraay",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-21T12:57:13.413Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "审查交回 · hz-task-15-a1-4mraay · APPROVED · 提交 6dc57b4764a2 · 挡路 0 · 不挡路 4\n- [non-blocking] acceptance:2 at scripts/probe/run-probe.mjs（本批未动）；task-7 验收 2 括号「探针钉住」: 验收括号写的钉法尚不存在：三个提醒（两条重置、撑不到）没有 L3 探针场景。判定边界：本条实质（高危时主 Agent 会话收到一句）已成立——发投时机与载荷行由 tests/loops-machine.spec.ts 钉、条目动作文本含 {line} 由 tests/loops-registry.spec.ts 钉、行文由 tests/hourness.spec.ts 钉、收件箱→tell-main→会话为既有且已钉的机器；探针/桌面点验由 goal-2 验收第 5 条「随批次」承接，批准计划六步全 L2、交回不做清单明列探针 L3 场景，故不算本任务验收未达。 (fix: 在批次级验证任务里为三样提醒落 L3 探针场景（机器级事件进收件箱、主 Agent 会话收到该句、一期一次）与桌面点验，之后才关 goal-2。)\n- [non-blocking] acceptance:1 at docs/ORCHESTRATION.md §18.4（L2023）、§18.9（L2069）、§18.7、§11.4: 四段文档落后于代码：§18.9 仍写「账号一级的两件事」与两条目、§18.4 仍写三个通道事件，而代码已是四事件、七条目、板带额度判定段、晨报带判定行。交回已声明欠账（「等后续任务」），AGENTS.md 未动 still true 成立；仓库规则「文档与行为同一批提交」本批被有意欠着，非挡路，但合批前必须有人接。 (fix: 后续文档任务把 §18.4/§18.7/§18.9/§11.4 四段整段重写到与代码一致（旧文本留 git 历史），随本批合入 main 前落地。)\n- [non-blocking] acceptance:0 at src/loops/index.ts:428: 本批引入的格式滑痕：loopsStatusItemsOf 的 JSDoc 收尾 */ 与函数签名挤到同一行（「   */  function loopsStatusItemsOf...」）。三道门禁与 lint 全过，纯观感，不影响行为。 (fix: 下次动 src/loops/index.ts 时把注释收尾与函数签名拆回两行。)\n- [non-blocking] acceptance:1 at src/loops/index.ts fillQuotaBoard（readFileSync）: 循环板额度判定段的填充在 60 秒缓存边界上同步读整本用量流水（宿主事件循环内、每个项目的 show 都可能触发一次），而 machine.ts 的 usageAll 是异步整读。当前流水规模无碍（验收不涉此项），流水变大后视图写出会被拖住。 (fix: 后续批次把填充改走异步整读（照 machine.ts usageAll 的 open/readFile/close 形状），保持失败缺席语义不变。)"
+    },
+    {
+      "at": "2026-11-21T12:57:13.628Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 轮：挡路 0，不挡路 4 · 全审 · hz-task-15-a1-4mraay"
+    },
+    {
+      "at": "2026-11-21T12:57:13.888Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "review passed (hz-task-15-a1-4mraay)",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "check",
+          "ref": "review hz-task-15-a1-4mraay",
+          "exit": 0,
+          "note": "6dc57b4764a2 · 全审 · patch fabbfa39f6da672fdd0a9ed9dbc28109fd99bccb · glm-start-plan/glm-5.3-flash"
+        }
+      ]
+    }
+  ]
+}

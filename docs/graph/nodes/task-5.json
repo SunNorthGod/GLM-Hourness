@@ -1,0 +1,166 @@
+{
+  "id": "task-5",
+  "type": "task",
+  "title": "共享层：速率与撑不到判定",
+  "why": "三处共用的判定先算好，后面的活才有的接",
+  "status": "done",
+  "parent": "goal-2",
+  "kind": "implement",
+  "tier": "standard",
+  "worktree": true,
+  "body": "照 decision-2：近 7 天与 5 小时两窗口的平均消耗速率、撑不到判定、用太少判定；输入为额度视图与用量事实；早期 input 为 0 的记录不算速率。不依赖体检结果，可即开。\n\n## 计划\n第 1 版 · 主 Agent 已批 · 摘要 041f4bb04d95\n1. quota.ts 新增速率与撑不到判定纯函数\n   路径：src/shared/quota.ts · 验证：L2\n2. tests/quota.spec.ts 补两窗口边界与等价性单测\n   路径：tests/quota.spec.ts · 验证：L2\n3. 门禁与提交\n   路径：src/shared/quota.ts、tests/quota.spec.ts · 验证：L3",
+  "acceptance": [
+    "src/shared/quota.ts 新增速率与撑不到判定纯函数，两窗口边界有单测",
+    "数据不足时返回「待数据」而不是硬算",
+    "npm run build 与相关单测绿"
+  ],
+  "nonGoals": [
+    "不改 glm-login 的请求"
+  ],
+  "writeScope": [
+    "src/shared/quota.ts",
+    "tests/quota.spec.ts"
+  ],
+  "edges": [
+    {
+      "type": "source",
+      "to": "decision-2"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "5f04b3d749982555774fb68dac058d8672a2dafc"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run build",
+      "exit": 0,
+      "note": ".llm/execute/checks/5f04b3d749982555774fb68dac058d8672a2dafc/2026-11-21T08-02-25-619Z/1.log"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run preflight",
+      "exit": 0,
+      "note": ".llm/execute/checks/5f04b3d749982555774fb68dac058d8672a2dafc/2026-11-21T08-02-25-619Z/2.log"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0,
+      "note": ".llm/execute/checks/5f04b3d749982555774fb68dac058d8672a2dafc/2026-11-21T08-02-25-619Z/3.log"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T05:15:27.394Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "计算先行，不依赖体检",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T05:20:44.342Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_59417ef3e3b64bf9b7444262）",
+      "relay": "上面那两个都可以",
+      "from": "proposed",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T05:20:59.902Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次派发 · hz-task-5-a1-w3n2vn · 基线 main@dce167f10de7 · 模型 glm-start-plan/glm-5.3-flash，理由：主人嘱咐子代理派 flash；纯函数扩展是标准件活，轻档够 · 审查：轻审，理由：纯函数加单测，模式照既有 quota.ts 扩展，影响面清晰 · 简报 2510b2fe8aa4\npins: task-5@7491796bb973 goal-2@d1fc06cc0bbf decision-2@c86f33e4b3a8\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T05:21:00.077Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "dispatch hz-task-5-a1-w3n2vn",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-21T05:31:05.647Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "计划第 1 版待审（submit_plan R-on3noj）",
+      "changes": {
+        "body": {
+          "from": "照 decision-2：近 7 天与 5 小时两窗口的平均消耗速率、撑不到判定、用太少判定；输入为额度视图与用量事实；早期 input 为 0 的记录不算速率。不依赖体检结果，可即开。",
+          "to": "照 decision-2：近 7 天与 5 小时两窗口的平均消耗速率、撑不到判定、用太少判定；输入为额度视图与用量事实；早期 input 为 0 的记录不算速率。不依赖体检结果，可即开。\n\n## 计划\n第 1 版 · 等主 Agent 审 · 摘要 041f4bb04d95\n1. quota.ts 新增速率与撑不到判定纯函数\n   路径：src/shared/quota.ts · 验证：L2\n2. tests/quota.spec.ts 补两窗口边界与等价性单测\n   路径：tests/quota.spec.ts · 验证：L2\n3. 门禁与提交\n   路径：src/shared/quota.ts、tests/quota.spec.ts · 验证：L3"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T05:31:10.811Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "主 Agent 批准计划第 1 版（answer_worker R-on3noj）",
+      "changes": {
+        "body": {
+          "from": "照 decision-2：近 7 天与 5 小时两窗口的平均消耗速率、撑不到判定、用太少判定；输入为额度视图与用量事实；早期 input 为 0 的记录不算速率。不依赖体检结果，可即开。\n\n## 计划\n第 1 版 · 等主 Agent 审 · 摘要 041f4bb04d95\n1. quota.ts 新增速率与撑不到判定纯函数\n   路径：src/shared/quota.ts · 验证：L2\n2. tests/quota.spec.ts 补两窗口边界与等价性单测\n   路径：tests/quota.spec.ts · 验证：L2\n3. 门禁与提交\n   路径：src/shared/quota.ts、tests/quota.spec.ts · 验证：L3",
+          "to": "照 decision-2：近 7 天与 5 小时两窗口的平均消耗速率、撑不到判定、用太少判定；输入为额度视图与用量事实；早期 input 为 0 的记录不算速率。不依赖体检结果，可即开。\n\n## 计划\n第 1 版 · 主 Agent 已批 · 摘要 041f4bb04d95\n1. quota.ts 新增速率与撑不到判定纯函数\n   路径：src/shared/quota.ts · 验证：L2\n2. tests/quota.spec.ts 补两窗口边界与等价性单测\n   路径：tests/quota.spec.ts · 验证：L2\n3. 门禁与提交\n   路径：src/shared/quota.ts、tests/quota.spec.ts · 验证：L3"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T05:31:10.909Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "计划第 1 版已批 · 摘要 041f4bb04d95 · hz-task-5-a1-w3n2vn · call_b159c76526bc4724b1753b62"
+    },
+    {
+      "at": "2026-11-21T06:07:11.424Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "已提交 ef0b07cb（hz/task-5）：quota.ts 新增 quotaRateOf / quotaEnduranceOf（口径方案 A：tokens 换算百分比、标尺取本周期 facts ÷ 服务端百分比；窗口长度与阈值由调用方传参，shared 层不内置），单测 53 例全绿，含等价性钉子与全部 pending 分支。门禁：npm run build、npm run preflight 绿；npm test 仅 tests/graph-render.spec.ts 失败——入库的 docs/graph/graph.svg（rev 7298fb04，291 节点）落后于活图（rev 8e12407a19a4，280 节点），是派发写图后的渲染漂移，非本任务改动所致；集成时 npm run graph:render 重渲提交即可，不在本任务写域。另：新检出首跑 lint 会在 calibrate-ablation 报 no-unsafe-return，npm run build 生成 dist 后即消——构建产物先行的既有约定，无需处理。"
+    },
+    {
+      "at": "2026-11-21T06:07:52.758Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次交回 · done · hz-task-5-a1-w3n2vn\n提交 1 个（最新 ef0b07cb） · 文件 2 个 · 报告 C:\\Users\\29596\\Desktop\\Project\\GLM-Hourness\\.llm\\execute\\reports\\hz-task-5-a1-w3n2vn.md · 基线 dce167f10de7\n问题 2 · 假设 3 · 问了 1 次（答 1、超时 0）· 计划 1 版 · 主 Agent 发来 0 条 · 候选经验 2 条\n有效深浅 全审（审查改为全审：碰到必须全审清单第 2 类（删东西、推送这类收不回的操作：删文件或分支（清理已合入的除外）、推送、改写提交历史 `deletes` `commands git push, git branch -d, git branch -D, git update-ref -d, git filter-branch, git filter-repo`））\n改动 `src/shared/quota.ts` `tests/quota.spec.ts`"
+    },
+    {
+      "at": "2026-11-21T08:15:43.936Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "进主干 5f04b3d74998（从 3451a79a0083）· 检查 5f04b3d74998"
+    },
+    {
+      "at": "2026-11-21T08:15:44.087Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "the trunk reached 5f04b3d74998 with a passed merge check",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "5f04b3d749982555774fb68dac058d8672a2dafc"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run build",
+          "exit": 0,
+          "note": ".llm/execute/checks/5f04b3d749982555774fb68dac058d8672a2dafc/2026-11-21T08-02-25-619Z/1.log"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run preflight",
+          "exit": 0,
+          "note": ".llm/execute/checks/5f04b3d749982555774fb68dac058d8672a2dafc/2026-11-21T08-02-25-619Z/2.log"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0,
+          "note": ".llm/execute/checks/5f04b3d749982555774fb68dac058d8672a2dafc/2026-11-21T08-02-25-619Z/3.log"
+        }
+      ]
+    }
+  ]
+}

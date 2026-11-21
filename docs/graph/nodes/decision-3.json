@@ -1,0 +1,37 @@
+{
+  "id": "decision-3",
+  "type": "decision",
+  "title": "圆圈画在 GLM 按钮上，不碰宿主",
+  "why": "自己的按钮最稳，宿主界面 rc 升级易碎",
+  "status": "approved",
+  "parent": "goal-2",
+  "verification": "unverified",
+  "body": "理由：不碰宿主自己的模型选择器（rc 升级易碎），咱们自己的 GLM 按钮本来就是通道入口，圆圈放这里最稳。\n架构：glm-ui 包的 GLM 按钮加双环（外圈 5 小时、内圈周），变色档与既有低额度行同一张表；数据通路按 glm-ui 现有取数模式（view 文件或投影），设计任务先查现状再定；rc.5 客户端接口风险先看体检归因。\n查过的现成方案：rc3-ui 车道的锚定对话框（CSS Anchor Positioning）与面板 view.json 模式；m8-ui-audit 的视觉审查面。\n如果失败：体检报出客户端接口又变，圆圈实现先走适配车道。",
+  "acceptance": [
+    "圆圈在 GLM 按钮上双环呈现，两窗口余量与变色档可见",
+    "点开对话框见大图、重置时间与预估",
+    "窄 dock 与宽窗两形态不挤不溢"
+  ],
+  "nonGoals": [
+    "不注入宿主模型选择器",
+    "不动面板页的布局"
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T05:15:08.246Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "设计决策二：呈现放哪",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T05:20:44.197Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_59417ef3e3b64bf9b7444262）",
+      "relay": "上面那两个都可以",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

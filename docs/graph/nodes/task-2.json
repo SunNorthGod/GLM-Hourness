@@ -3,7 +3,7 @@
   "type": "task",
   "title": "把许愿线走一遍",
   "why": "许愿三步在本会话真实走通，就是自举入口的验收",
-  "status": "approved",
+  "status": "done",
   "parent": "goal-1",
   "kind": "test",
   "tier": "simple",
@@ -32,6 +32,13 @@
       "to": "decision-1"
     }
   ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "dce167f1",
+      "note": "goal-1 带主人原话入库，访谈九项与确认记录（record_human_answer）均在图"
+    }
+  ],
   "history": [
     {
       "at": "2026-11-21T04:47:39.425Z",
@@ -48,6 +55,21 @@
       "relay": "可以放行",
       "from": "proposed",
       "to": "approved"
+    },
+    {
+      "at": "2026-11-21T04:53:49.876Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "许愿线三步在本会话真实走通：立卡带原话、访谈填齐、主人确认，全部记录随图入库",
+      "from": "approved",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "dce167f1",
+          "note": "goal-1 带主人原话入库，访谈九项与确认记录（record_human_answer）均在图"
+        }
+      ]
     }
   ]
 }

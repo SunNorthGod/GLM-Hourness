@@ -1,0 +1,76 @@
+{
+  "id": "task-10",
+  "type": "task",
+  "title": "审查：共享层：速率与撑不到判定",
+  "status": "done",
+  "parent": "task-5",
+  "kind": "review",
+  "acceptance": [
+    "verdict APPROVED under the docs/DEVELOPMENT.md §1.1 standard, at the depth recorded in the latest dispatch"
+  ],
+  "edges": [
+    {
+      "type": "source",
+      "to": "task-5"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "check",
+      "ref": "review hz-task-10-a1-1tsv4n",
+      "exit": 0,
+      "note": "ef0b07cb5c86 · 全审 · patch 1c7dc64b84b2e4c0dec35923ea7a96651825177f · glm-zcode/glm-5.3-flash"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T06:07:52.852Z",
+      "actor": "harness",
+      "op": "propose",
+      "reason": "review task of task-5 (handback hz-task-5-a1-w3n2vn)",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T06:33:13.936Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次派发 · hz-task-10-a1-1tsv4n · 模型 glm-zcode/glm-5.3-flash，理由：主人嘱咐派 flash；审纯函数数学与用例覆盖，读代码为主 · 审查：全审 · 简报 38276769ad9a · 免费套餐暂不可用（empty），已自动切换个人套餐\npins: task-10@66d246235d96 task-5@7491796bb973 goal-2@d1fc06cc0bbf\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T06:33:14.143Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "dispatch hz-task-10-a1-1tsv4n",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-21T06:41:09.474Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "审查交回 · hz-task-10-a1-1tsv4n · APPROVED · 提交 ef0b07cb5c86 · 挡路 0 · 不挡路 1\n- [non-blocking] none at tests/graph-render.spec.ts:392 (docs/graph/graph.svg vs renderer output): npm test 整体 exit 1：graph 一致性用例失败（提交的 graph.svg 与渲染输出不同）。与被审任务无关——git diff dce167f10de7..ef0b07cb 对 docs/graph 为空，该提交只动 quota 两文件，失败在基线上同样存在；acceptance:2 的口径是 build 与相关单测（quota 102 例全绿），此项不受影响。 (fix: 不随本任务处理；graph.svg 需要一次 npm run graph:render 重渲染并随节点文件提交，归图相关的任务。)"
+    },
+    {
+      "at": "2026-11-21T06:41:09.636Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 轮：挡路 0，不挡路 1 · 全审 · hz-task-10-a1-1tsv4n"
+    },
+    {
+      "at": "2026-11-21T06:41:09.846Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "review passed (hz-task-10-a1-1tsv4n)",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "check",
+          "ref": "review hz-task-10-a1-1tsv4n",
+          "exit": 0,
+          "note": "ef0b07cb5c86 · 全审 · patch 1c7dc64b84b2e4c0dec35923ea7a96651825177f · glm-zcode/glm-5.3-flash"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "question-48",
+  "type": "question",
+  "title": "两个依赖 major 升不升",
+  "ask": "我建议两个 major 都缓升，等生态跟进再统一动，因为 TS7 是新编译器世代，工具链兼容性未知，可以吗？",
+  "form": "recommend",
+  "status": "approved",
+  "parent": "goal-1",
+  "proposal": "两个 major 都缓升，等生态跟进再统一动",
+  "reason": "TS7 是新编译器世代，工具链兼容性未知",
+  "cost": "旧主版本会一直挂着这两条 major 提示与少量类型债",
+  "history": [
+    {
+      "at": "2026-11-21T13:25:31.831Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "主 Agent 在对话里把这件事交给人（propose_to_human call_f03891532a404627a7668fd3）",
+      "to": "approved"
+    }
+  ]
+}

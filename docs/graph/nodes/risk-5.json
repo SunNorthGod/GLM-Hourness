@@ -1,0 +1,18 @@
+{
+  "id": "risk-5",
+  "type": "risk",
+  "title": "客户端接口又变",
+  "why": "rc.3 就砍过一次锚定钩子，rc.5 未必稳",
+  "status": "approved",
+  "parent": "goal-2",
+  "body": "体检（task-1）先出结果：rc.5 若又砍客户端接口，圆圈实现要先适配；设计前先读体检归因。",
+  "history": [
+    {
+      "at": "2026-11-21T04:55:23.820Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "风险一：宿主客户端接口漂移",
+      "to": "approved"
+    }
+  ]
+}

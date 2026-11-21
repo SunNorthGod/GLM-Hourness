@@ -1,0 +1,330 @@
+{
+  "id": "task-6",
+  "type": "task",
+  "title": "GLM 按钮圆圈与大图",
+  "why": "一眼见量的主体呈现",
+  "status": "doing",
+  "parent": "goal-2",
+  "kind": "implement",
+  "tier": "standard",
+  "worktree": true,
+  "body": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 5 版 · 主 Agent 已批 · 摘要 cc2b906e14b2\n1. 登记 glm-quota.ts 进 packages.mjs；门禁前置项全绿\n   路径：ui/src/glm-quota.ts、tests/ui-quota-ring.spec.ts、ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts、src/shared/pricing.ts、package.json、scripts/packages.mjs · 验证：L2\n2. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n3. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n4. 收尾：提交与交回报告\n   路径：.agents/tasks/m5/lessons-seed.json · 验证：L1",
+  "acceptance": [
+    "GLM 按钮双环呈现两窗口余量与变色档，窄宽两形态不挤",
+    "对话框大图带重置时间与预估",
+    "探针场景与桌面点验过一轮"
+  ],
+  "nonGoals": [
+    "不碰宿主模型选择器"
+  ],
+  "writeScope": [
+    "packages/glm/ui/",
+    "ui/src/",
+    "tests/",
+    ".agents/tasks/m5/lessons-seed.json",
+    ".agents/tasks/quota-circle/",
+    "package.json",
+    "src/shared/pricing.ts",
+    "scripts/packages.mjs"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "task-5"
+    },
+    {
+      "type": "serves",
+      "to": "step-10"
+    },
+    {
+      "type": "serves",
+      "to": "step-11"
+    },
+    {
+      "type": "source",
+      "to": "decision-3"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T05:15:27.561Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "呈现活，认领瞥一眼与看大图两步",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T05:15:39.080Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "圆圈变色与预估读共享层判定，先有纯函数",
+      "edge": {
+        "type": "depends",
+        "to": "task-5"
+      }
+    },
+    {
+      "at": "2026-11-21T05:20:44.407Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_59417ef3e3b64bf9b7444262）",
+      "relay": "上面那两个都可以",
+      "from": "proposed",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T08:17:25.628Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次派发 · hz-task-6-a1-adh2ob · 基线 main@5f04b3d74998 · 模型 glm-zcode/glm-5.3-flash，理由：主人嘱咐派 flash；UI 活按既有模式扩展，flash＋全审兜住风险面 · 审查：全审，理由：UI 实现碰客户端兼容与视觉两处风险面（risk-5/7），全审 · 简报 294829cdc8ea · 免费套餐暂不可用（empty），已自动切换个人套餐\npins: task-6@03ef4e3b24d4 goal-2@d1fc06cc0bbf decision-3@c86f33e4b3a8\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T08:17:25.853Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "dispatch hz-task-6-a1-adh2ob",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-21T08:30:37.630Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "通路 A 需要：新 spec 进 tests、种子文件复制、车道目录；探针不改不加",
+      "changes": {
+        "writeScope": {
+          "from": [
+            "packages/glm/ui/",
+            "ui/src/"
+          ],
+          "to": [
+            "packages/glm/ui/",
+            "ui/src/",
+            "tests/",
+            ".agents/tasks/m5/lessons-seed.json",
+            ".agents/tasks/quota-circle/"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T08:33:31.568Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "新 spec 的 test:3 挂链照 rc3-ui 先例由车道自己改",
+      "changes": {
+        "writeScope": {
+          "from": [
+            "packages/glm/ui/",
+            "ui/src/",
+            "tests/",
+            ".agents/tasks/m5/lessons-seed.json",
+            ".agents/tasks/quota-circle/"
+          ],
+          "to": [
+            "packages/glm/ui/",
+            "ui/src/",
+            "tests/",
+            ".agents/tasks/m5/lessons-seed.json",
+            ".agents/tasks/quota-circle/",
+            "package.json"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T08:53:47.169Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "计划第 1 版待审（submit_plan R-dfmp0g）",
+      "changes": {
+        "body": {
+          "from": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。",
+          "to": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 1 版 · 等主 Agent 审 · 摘要 900a87d236c6\n1. 备料：复制 lessons-seed、读 rc5 点验脚本、立车道目录\n   路径：.agents/tasks/m5/lessons-seed.json、.agents/tasks/quota-circle/progress.md · 验证：L2\n2. ui/src/glm-quota.ts：客户端额度模型（解析、事实、环档、判定）\n   路径：ui/src/glm-quota.ts · 验证：L2\n3. tests/ui-quota-ring.spec.ts：真实 handler 产文的契约与纯函数层\n   路径：tests/ui-quota-ring.spec.ts · 验证：L2\n4. 接线：channel.js 双环＋对话框大图、glm-client.js inject sessions、dsh.ts readBytes range 类型\n   路径：ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts · 验证：L2\n5. 门禁：build、preflight、npm test 全量＋新 spec\n   路径：无 · 验证：L3\n6. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n7. 收尾：提交与交回报告\n   路径：无 · 验证：L1"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T08:54:23.189Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "计划第 2 版待审（submit_plan R-8ahcdg）",
+      "changes": {
+        "body": {
+          "from": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 1 版 · 等主 Agent 审 · 摘要 900a87d236c6\n1. 备料：复制 lessons-seed、读 rc5 点验脚本、立车道目录\n   路径：.agents/tasks/m5/lessons-seed.json、.agents/tasks/quota-circle/progress.md · 验证：L2\n2. ui/src/glm-quota.ts：客户端额度模型（解析、事实、环档、判定）\n   路径：ui/src/glm-quota.ts · 验证：L2\n3. tests/ui-quota-ring.spec.ts：真实 handler 产文的契约与纯函数层\n   路径：tests/ui-quota-ring.spec.ts · 验证：L2\n4. 接线：channel.js 双环＋对话框大图、glm-client.js inject sessions、dsh.ts readBytes range 类型\n   路径：ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts · 验证：L2\n5. 门禁：build、preflight、npm test 全量＋新 spec\n   路径：无 · 验证：L3\n6. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n7. 收尾：提交与交回报告\n   路径：无 · 验证：L1",
+          "to": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 2 版 · 等主 Agent 审 · 摘要 ff126bd0a6b5\n1. 备料：复制 lessons-seed、读 rc5 点验脚本、立车道目录\n   路径：.agents/tasks/m5/lessons-seed.json、.agents/tasks/quota-circle/progress.md · 验证：L2\n2. ui/src/glm-quota.ts：客户端额度模型（解析、事实、环档、判定）\n   路径：ui/src/glm-quota.ts · 验证：L2\n3. tests/ui-quota-ring.spec.ts＋挂进 package.json test:3\n   路径：tests/ui-quota-ring.spec.ts、package.json · 验证：L2\n4. 接线：channel.js 双环＋对话框大图、glm-client.js inject sessions、dsh.ts readBytes range 类型\n   路径：ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts · 验证：L2\n5. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n6. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n7. 收尾：提交与交回报告\n   路径：无 · 验证：L1"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T08:54:55.129Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "主 Agent 批准计划第 2 版（answer_worker R-8ahcdg）",
+      "changes": {
+        "body": {
+          "from": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 2 版 · 等主 Agent 审 · 摘要 ff126bd0a6b5\n1. 备料：复制 lessons-seed、读 rc5 点验脚本、立车道目录\n   路径：.agents/tasks/m5/lessons-seed.json、.agents/tasks/quota-circle/progress.md · 验证：L2\n2. ui/src/glm-quota.ts：客户端额度模型（解析、事实、环档、判定）\n   路径：ui/src/glm-quota.ts · 验证：L2\n3. tests/ui-quota-ring.spec.ts＋挂进 package.json test:3\n   路径：tests/ui-quota-ring.spec.ts、package.json · 验证：L2\n4. 接线：channel.js 双环＋对话框大图、glm-client.js inject sessions、dsh.ts readBytes range 类型\n   路径：ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts · 验证：L2\n5. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n6. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n7. 收尾：提交与交回报告\n   路径：无 · 验证：L1",
+          "to": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 2 版 · 主 Agent 已批 · 摘要 ff126bd0a6b5\n1. 备料：复制 lessons-seed、读 rc5 点验脚本、立车道目录\n   路径：.agents/tasks/m5/lessons-seed.json、.agents/tasks/quota-circle/progress.md · 验证：L2\n2. ui/src/glm-quota.ts：客户端额度模型（解析、事实、环档、判定）\n   路径：ui/src/glm-quota.ts · 验证：L2\n3. tests/ui-quota-ring.spec.ts＋挂进 package.json test:3\n   路径：tests/ui-quota-ring.spec.ts、package.json · 验证：L2\n4. 接线：channel.js 双环＋对话框大图、glm-client.js inject sessions、dsh.ts readBytes range 类型\n   路径：ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts · 验证：L2\n5. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n6. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n7. 收尾：提交与交回报告\n   路径：无 · 验证：L1"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T08:54:55.237Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "计划第 2 版已批 · 摘要 ff126bd0a6b5 · hz-task-6-a1-adh2ob · call_f5e6478f58b148dca4606da5"
+    },
+    {
+      "at": "2026-11-21T09:14:54.265Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "通路 A 的最小修复要动一行共享层导入：pricing.ts 改指 cordis-min 真源",
+      "changes": {
+        "writeScope": {
+          "from": [
+            "packages/glm/ui/",
+            "ui/src/",
+            "tests/",
+            ".agents/tasks/m5/lessons-seed.json",
+            ".agents/tasks/quota-circle/",
+            "package.json"
+          ],
+          "to": [
+            "packages/glm/ui/",
+            "ui/src/",
+            "tests/",
+            ".agents/tasks/m5/lessons-seed.json",
+            ".agents/tasks/quota-circle/",
+            "package.json",
+            "src/shared/pricing.ts"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T09:15:40.716Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "计划第 3 版待审（submit_plan R-vbkfez）",
+      "changes": {
+        "body": {
+          "from": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 2 版 · 主 Agent 已批 · 摘要 ff126bd0a6b5\n1. 备料：复制 lessons-seed、读 rc5 点验脚本、立车道目录\n   路径：.agents/tasks/m5/lessons-seed.json、.agents/tasks/quota-circle/progress.md · 验证：L2\n2. ui/src/glm-quota.ts：客户端额度模型（解析、事实、环档、判定）\n   路径：ui/src/glm-quota.ts · 验证：L2\n3. tests/ui-quota-ring.spec.ts＋挂进 package.json test:3\n   路径：tests/ui-quota-ring.spec.ts、package.json · 验证：L2\n4. 接线：channel.js 双环＋对话框大图、glm-client.js inject sessions、dsh.ts readBytes range 类型\n   路径：ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts · 验证：L2\n5. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n6. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n7. 收尾：提交与交回报告\n   路径：无 · 验证：L1",
+          "to": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 3 版 · 等主 Agent 审 · 摘要 1016758c2c04\n1. src/shared/pricing.ts：ServiceLookup 改取真源 cordis-min（UI 编译链去 Node 化最小修复）\n   路径：src/shared/pricing.ts · 验证：L2\n2. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n3. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n4. 收尾：提交与交回报告\n   路径：无 · 验证：L1"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T09:15:52.543Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "主 Agent 批准计划第 3 版（answer_worker R-vbkfez）",
+      "changes": {
+        "body": {
+          "from": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 3 版 · 等主 Agent 审 · 摘要 1016758c2c04\n1. src/shared/pricing.ts：ServiceLookup 改取真源 cordis-min（UI 编译链去 Node 化最小修复）\n   路径：src/shared/pricing.ts · 验证：L2\n2. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n3. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n4. 收尾：提交与交回报告\n   路径：无 · 验证：L1",
+          "to": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 3 版 · 主 Agent 已批 · 摘要 1016758c2c04\n1. src/shared/pricing.ts：ServiceLookup 改取真源 cordis-min（UI 编译链去 Node 化最小修复）\n   路径：src/shared/pricing.ts · 验证：L2\n2. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n3. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n4. 收尾：提交与交回报告\n   路径：无 · 验证：L1"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T09:15:52.620Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "计划第 3 版已批 · 摘要 1016758c2c04 · hz-task-6-a1-adh2ob · call_4e528ca942db4fbcb7e47cc4"
+    },
+    {
+      "at": "2026-11-21T09:18:08.290Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "计划第 4 版待审（submit_plan R-ki6zt6）",
+      "changes": {
+        "body": {
+          "from": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 3 版 · 主 Agent 已批 · 摘要 1016758c2c04\n1. src/shared/pricing.ts：ServiceLookup 改取真源 cordis-min（UI 编译链去 Node 化最小修复）\n   路径：src/shared/pricing.ts · 验证：L2\n2. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n3. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n4. 收尾：提交与交回报告\n   路径：无 · 验证：L1",
+          "to": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 4 版 · 等主 Agent 审 · 摘要 66b11aa734a6\n1. 模型链去 dsh-min：route 常量本地化＋spec 钉值＋spec 修整；接线收尾\n   路径：ui/src/glm-quota.ts、tests/ui-quota-ring.spec.ts、ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts、src/shared/pricing.ts、package.json · 验证：L2\n2. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n3. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n4. 收尾：提交与交回报告\n   路径：.agents/tasks/m5/lessons-seed.json · 验证：L1"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T09:18:28.781Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "主 Agent 批准计划第 4 版（answer_worker R-ki6zt6）",
+      "changes": {
+        "body": {
+          "from": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 4 版 · 等主 Agent 审 · 摘要 66b11aa734a6\n1. 模型链去 dsh-min：route 常量本地化＋spec 钉值＋spec 修整；接线收尾\n   路径：ui/src/glm-quota.ts、tests/ui-quota-ring.spec.ts、ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts、src/shared/pricing.ts、package.json · 验证：L2\n2. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n3. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n4. 收尾：提交与交回报告\n   路径：.agents/tasks/m5/lessons-seed.json · 验证：L1",
+          "to": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 4 版 · 主 Agent 已批 · 摘要 66b11aa734a6\n1. 模型链去 dsh-min：route 常量本地化＋spec 钉值＋spec 修整；接线收尾\n   路径：ui/src/glm-quota.ts、tests/ui-quota-ring.spec.ts、ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts、src/shared/pricing.ts、package.json · 验证：L2\n2. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n3. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n4. 收尾：提交与交回报告\n   路径：.agents/tasks/m5/lessons-seed.json · 验证：L1"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T09:18:28.855Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "计划第 4 版已批 · 摘要 66b11aa734a6 · hz-task-6-a1-adh2ob · call_5d2e34acabc84dce9429bbea"
+    },
+    {
+      "at": "2026-11-21T09:21:04.433Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "新客户端源文件要在 scripts/packages.mjs 登记（preflight/eslint/knip 唯一源头，既定流程）",
+      "changes": {
+        "writeScope": {
+          "from": [
+            "packages/glm/ui/",
+            "ui/src/",
+            "tests/",
+            ".agents/tasks/m5/lessons-seed.json",
+            ".agents/tasks/quota-circle/",
+            "package.json",
+            "src/shared/pricing.ts"
+          ],
+          "to": [
+            "packages/glm/ui/",
+            "ui/src/",
+            "tests/",
+            ".agents/tasks/m5/lessons-seed.json",
+            ".agents/tasks/quota-circle/",
+            "package.json",
+            "src/shared/pricing.ts",
+            "scripts/packages.mjs"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T09:21:34.875Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "计划第 5 版待审（submit_plan R-snvuog）",
+      "changes": {
+        "body": {
+          "from": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 4 版 · 主 Agent 已批 · 摘要 66b11aa734a6\n1. 模型链去 dsh-min：route 常量本地化＋spec 钉值＋spec 修整；接线收尾\n   路径：ui/src/glm-quota.ts、tests/ui-quota-ring.spec.ts、ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts、src/shared/pricing.ts、package.json · 验证：L2\n2. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n3. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n4. 收尾：提交与交回报告\n   路径：.agents/tasks/m5/lessons-seed.json · 验证：L1",
+          "to": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 5 版 · 等主 Agent 审 · 摘要 cc2b906e14b2\n1. 登记 glm-quota.ts 进 packages.mjs；门禁前置项全绿\n   路径：ui/src/glm-quota.ts、tests/ui-quota-ring.spec.ts、ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts、src/shared/pricing.ts、package.json、scripts/packages.mjs · 验证：L2\n2. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n3. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n4. 收尾：提交与交回报告\n   路径：.agents/tasks/m5/lessons-seed.json · 验证：L1"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T09:21:40.568Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "主 Agent 批准计划第 5 版（answer_worker R-snvuog）",
+      "changes": {
+        "body": {
+          "from": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 5 版 · 等主 Agent 审 · 摘要 cc2b906e14b2\n1. 登记 glm-quota.ts 进 packages.mjs；门禁前置项全绿\n   路径：ui/src/glm-quota.ts、tests/ui-quota-ring.spec.ts、ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts、src/shared/pricing.ts、package.json、scripts/packages.mjs · 验证：L2\n2. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n3. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n4. 收尾：提交与交回报告\n   路径：.agents/tasks/m5/lessons-seed.json · 验证：L1",
+          "to": "照 decision-3：glm-ui 的 GLM 按钮加双环、对话框加大图；数据通路先查 glm-ui 现有取数模式再定；开工前先读 rc.5 体检归因（接口若有变先适配）。\n\n## 计划\n第 5 版 · 主 Agent 已批 · 摘要 cc2b906e14b2\n1. 登记 glm-quota.ts 进 packages.mjs；门禁前置项全绿\n   路径：ui/src/glm-quota.ts、tests/ui-quota-ring.spec.ts、ui/src/channel.js、ui/src/glm-client.js、ui/src/dsh.ts、src/shared/pricing.ts、package.json、scripts/packages.mjs · 验证：L2\n2. 门禁：build、preflight、npm test 全量\n   路径：无 · 验证：L3\n3. 桌面点验：免锁隔离实例一轮（rc5 配方，L4-batch 批次复核）\n   路径：.agents/tasks/quota-circle/progress.md、.agents/tasks/quota-circle/scratch/setup.mjs、.agents/tasks/quota-circle/scratch/start.ps1、.agents/tasks/quota-circle/scratch/check.mjs、.agents/tasks/quota-circle/scratch/teardown.mjs、.agents/tasks/quota-circle/scratch/shots/ · 验证：L4-batch\n4. 收尾：提交与交回报告\n   路径：.agents/tasks/m5/lessons-seed.json · 验证：L1"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T09:21:40.669Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "计划第 5 版已批 · 摘要 cc2b906e14b2 · hz-task-6-a1-adh2ob · call_d6dd4c5e8fa849b886ee0ac4"
+    },
+    {
+      "at": "2026-11-21T11:16:52.543Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次交回 · done · hz-task-6-a1-adh2ob\n提交 2 个（最新 76ec5f15） · 文件 15 个 · 报告 C:\\Users\\29596\\Desktop\\Project\\GLM-Hourness\\.llm\\execute\\reports\\hz-task-6-a1-adh2ob.md · 基线 5f04b3d74998\n问题 3 · 假设 3 · 问了 4 次（答 3、超时 1）· 计划 5 版 · 主 Agent 发来 0 条 · 候选经验 5 条\n有效深浅 全审（审查改为全审：碰到必须全审清单第 2 类（删东西、推送这类收不回的操作：删文件或分支（清理已合入的除外）、推送、改写提交历史 `deletes` `commands git push, git branch -d, git branch -D, git update-ref -d, git filter-branch, git filter-repo`））\n改动 `src/shared/pricing.ts`\nDocs: updated: glm 客户端面（ui/src/channel.js 头注、glm-quota.ts 模块注）与车道记录 .agents/tasks/quota-circle/progress.md；src/shared/pricing.ts 注释新增「UI 链上不得 reach Node 导入」的缘由\n校验不过：files[13] is not a repository-relative path"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "id": "decision-4",
+  "type": "decision",
+  "title": "提醒走循环板机器级，高危才说话",
+  "why": "账号级的事归机器一级，安静为主",
+  "status": "approved",
+  "parent": "goal-2",
+  "verification": "unverified",
+  "body": "理由：额度是账号级不是项目级，提醒归机器一级；安静为主是主人定的，会话只收高危一句。\n架构：循环板机器级条目两条（5 小时窗、周窗），到点投一行「已重置」；撑不到与用太少由条目的检查读共享层判定，摆进循环板与晨报；高危（预计撑不到当天重置）才通知主 Agent 会话。\n查过的现成方案：循环板机器一级运行者与 glm-login 的 loopDefaults 四条默认条目；G15 配额停等的判定表。\n如果失败：判定数据不够时提醒降级为「待数据」，不硬报。",
+  "acceptance": [
+    "重置、撑不到、用太少三样提醒各就位，循环板可看可停",
+    "高危时主 Agent 会话收到一句",
+    "提醒不新增上游请求"
+  ],
+  "nonGoals": [
+    "不做固定时点预告",
+    "不碰派发调速"
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T05:15:08.431Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "设计决策三：提醒怎么送",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T05:20:44.270Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_59417ef3e3b64bf9b7444262）",
+      "relay": "上面那两个都可以",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

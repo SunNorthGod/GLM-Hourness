@@ -1,0 +1,88 @@
+{
+  "id": "task-14",
+  "type": "task",
+  "title": "审查：GLM 按钮圆圈与大图",
+  "status": "doing",
+  "parent": "task-6",
+  "kind": "review",
+  "acceptance": [
+    "verdict APPROVED under the docs/DEVELOPMENT.md §1.1 standard, at the depth recorded in the latest dispatch"
+  ],
+  "edges": [
+    {
+      "type": "source",
+      "to": "task-6"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T11:16:52.661Z",
+      "actor": "harness",
+      "op": "propose",
+      "reason": "review task of task-6 (handback hz-task-6-a1-adh2ob)",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T11:23:37.443Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次派发 · hz-task-14-a1-pzjefg · 模型 glm-zcode/glm-5.3-flash，理由：主人嘱咐派 flash；全审清单逐条核对为主，flash 够用 · 审查：全审 · 简报 4049afab55a0 · 免费套餐暂不可用（empty），已自动切换个人套餐\npins: task-14@66d246235d96 task-6@03ef4e3b24d4 goal-2@d1fc06cc0bbf\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T11:23:37.703Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "dispatch hz-task-14-a1-pzjefg",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-21T11:35:21.999Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次结束：error · hz-task-14-a1-pzjefg"
+    },
+    {
+      "at": "2026-11-21T11:47:40.874Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 2 次派发 · hz-task-14-a2-0rjz40 · 模型 glm-zcode/glm-5.3-flash，理由：主人嘱咐派 flash；全审清单逐条核对，flash 够用 · 审查：全审 · 简报 0849dc513f27 · 免费套餐暂不可用（empty），已自动切换个人套餐\npins: task-14@66d246235d96 task-6@03ef4e3b24d4 goal-2@d1fc06cc0bbf\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T12:07:23.738Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "审查作废 · hz-task-14-a2-0rjz40 · the verdict names a commit that is not the reviewed one"
+    },
+    {
+      "at": "2026-11-21T12:07:24.729Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 3 次派发 · hz-task-14-a3-dd2sny · 模型 glm-zcode/glm-5.3-flash，理由：主人嘱咐派 flash；全审清单逐条核对，flash 够用 · 审查：全审 · 简报 69b43b6a8242\npins: task-14@66d246235d96 task-6@03ef4e3b24d4 goal-2@d1fc06cc0bbf\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T12:29:55.804Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 4 次派发 · hz-task-14-a4-rw00y0 · 模型 glm-zcode/glm-5.3-flash，理由：主人嘱咐派 flash；前两棒败在裁决格式，指令写死后 flash 仍够 · 审查：全审 · 简报 50a943daecd6 · 免费套餐暂不可用（empty），已自动切换个人套餐\npins: task-14@66d246235d96 task-6@03ef4e3b24d4 goal-2@d1fc06cc0bbf\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T12:58:18.765Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 5 次派发 · hz-task-14-a5-yjkjz8 · 模型 glm-start-plan/glm-5.3，理由：flash 在此审连续三棒裁决格式不合格，升级 glm-5.3 保裁决可用；审查内容不变 · 审查：全审 · 简报 8dfb6d7a8998\npins: task-14@66d246235d96 task-6@03ef4e3b24d4 goal-2@d1fc06cc0bbf\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T13:21:29.002Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 5 次结束：error · hz-task-14-a5-yjkjz8"
+    },
+    {
+      "at": "2026-11-21T13:22:51.419Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 6 次派发 · hz-task-14-a6-y0cex7 · 模型 glm-start-plan/glm-5.3-flash，理由：主人嘱咐派 flash；前几棒长简报接连 error，这次最短简报试 flash · 审查：全审 · 简报 1d927f5d9489\npins: task-14@66d246235d96 task-6@03ef4e3b24d4 goal-2@d1fc06cc0bbf\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    }
+  ]
+}

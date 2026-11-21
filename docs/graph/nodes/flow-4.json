@@ -1,0 +1,58 @@
+{
+  "id": "flow-4",
+  "type": "flow",
+  "title": "看额度与收提醒",
+  "why": "从瞥一眼圆圈到收到重置提醒，一条线走完",
+  "status": "approved",
+  "parent": "role-2",
+  "body": "走法：你来走",
+  "acceptance": [
+    "余量、重置时间、到点提醒三样都真实见过一次"
+  ],
+  "edges": [
+    {
+      "type": "next",
+      "to": "step-10"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:54:28.352Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "访谈 2b：额度目标的用法一条流程装得下",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:54:54.702Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "流程起点连到第一步",
+      "edge": {
+        "type": "next",
+        "to": "step-10"
+      }
+    },
+    {
+      "at": "2026-11-21T04:54:58.052Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "给看额度线写走法",
+      "changes": {
+        "body": {
+          "from": null,
+          "to": "走法：你来走"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T05:20:44.537Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_59417ef3e3b64bf9b7444262）",
+      "relay": "上面那两个都可以",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

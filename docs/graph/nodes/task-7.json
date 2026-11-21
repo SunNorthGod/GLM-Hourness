@@ -1,0 +1,243 @@
+{
+  "id": "task-7",
+  "type": "task",
+  "title": "循环板三样提醒",
+  "why": "到点与判定提醒的落点",
+  "status": "done",
+  "parent": "goal-2",
+  "kind": "implement",
+  "tier": "standard",
+  "worktree": true,
+  "body": "照 decision-4：机器级两条目（5 小时窗、周窗）+ 三样提醒；判定读共享层；高危才通知主 Agent。开工等共享层纯函数合入。\n\n## 计划\n第 1 版 · 主 Agent 已批 · 摘要 6f9ce703e65b\n1. 新建纯模块 src/loops/quota-endurance.ts（映射+措辞，判定只 import shared/quota.ts）与 tests/loops-quota-endurance.spec.ts\n   路径：src/loops/quota-endurance.ts、tests/loops-quota-endurance.spec.ts · 验证：L2\n2. channel.ts：加 channel.quota-reset 与 channel.quota-exhausts 事件、quotaResetKey/quotaExhaustsKey、quotaOf 在时 channelEntries 追加三条 machine 条目；loops-registry.spec 钉五事件与 4/7 条\n   路径：src/loops/channel.ts、tests/loops-registry.spec.ts · 验证：L2\n3. machine.ts：每拍缓存读数判重置投 channel.quota-reset（一期一次）；quota() 读数成功后判 exhausts 投 channel.quota-exhausts（每窗每期一次）；off 条件与阈值口径调整；loops-machine.spec 更新与新增\n   路径：src/loops/machine.ts、tests/loops-machine.spec.ts · 验证：L2\n4. 循环板 quota 段：view/boards/commands/index 四文件，60 秒缓存 quotaBoardOf 传 createBoards\n   路径：src/loops/view.ts、src/loops/boards.ts、src/loops/commands.ts、src/loops/index.ts · 验证：L2\n5. 晨报：panel.ts quotaSection 加第 6 参 facts；report/index.ts refreshQuota 读 usage 传 facts；hourness.spec 逐字钉住并补直调用例\n   路径：src/report/panel.ts、src/report/index.ts、tests/hourness.spec.ts · 验证：L2\n6. 收口：复制主检出 lessons-seed（L-79a259），worktree 三道全绿，分支提交\n   路径：无 · 验证：L2",
+  "acceptance": [
+    "循环板机器级条目两条落地，重置到点投一行，可看可停",
+    "撑不到与用太少由检查读共享层判定，摆进循环板与晨报",
+    "高危时主 Agent 会话收到一句（探针钉住）"
+  ],
+  "nonGoals": [
+    "不做预告、不碰派发调速"
+  ],
+  "writeScope": [
+    "src/loops/",
+    "src/report/",
+    "src/glm-llm/quota.ts",
+    "tests/",
+    "package.json"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "task-5"
+    },
+    {
+      "type": "serves",
+      "to": "step-12"
+    },
+    {
+      "type": "source",
+      "to": "decision-4"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "9bd2243a00be553230fc820d36a07ab1566c23f2"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run build",
+      "exit": 0,
+      "note": ".llm/execute/checks/9bd2243a00be553230fc820d36a07ab1566c23f2/2026-11-21T12-58-27-837Z/1.log"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run preflight",
+      "exit": 0,
+      "note": ".llm/execute/checks/9bd2243a00be553230fc820d36a07ab1566c23f2/2026-11-21T12-58-27-837Z/2.log"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0,
+      "note": ".llm/execute/checks/9bd2243a00be553230fc820d36a07ab1566c23f2/2026-11-21T12-58-27-837Z/3.log"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T05:15:27.795Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "提醒活，认领收提醒一步",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T05:15:39.221Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "提醒的判定读共享层，先有纯函数",
+      "edge": {
+        "type": "depends",
+        "to": "task-5"
+      }
+    },
+    {
+      "at": "2026-11-21T05:20:44.471Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_59417ef3e3b64bf9b7444262）",
+      "relay": "上面那两个都可以",
+      "from": "proposed",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T08:17:31.786Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次派发 · hz-task-7-a1-pn01n8 · 基线 main@5f04b3d74998 · 模型 glm-zcode/glm-5.3-flash，理由：主人嘱咐派 flash；接线活按既有模式扩展，flash＋全审兜住 · 审查：全审，理由：提醒通路上碰循环板与晨报两处既有机制，接线正确性要全审 · 简报 18e7527bb0a8 · 免费套餐暂不可用（empty），已自动切换个人套餐\npins: task-7@1f6f0ee5bd3a goal-2@d1fc06cc0bbf decision-4@c86f33e4b3a8\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T08:17:32.008Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "dispatch hz-task-7-a1-pn01n8",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-21T08:33:32.795Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次结束：error · hz-task-7-a1-pn01n8"
+    },
+    {
+      "at": "2026-11-21T11:08:55.913Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 2 次派发 · hz-task-7-a2-ovrnwh · 基线 main@a5ae479c4dce · 模型 glm-start-plan/glm-5.3-flash，理由：主人嘱咐派 flash；接线活按批定设计落码，flash＋全审兜住 · 审查：全审，理由：提醒通路上碰循环板与晨报两处既有机制，接线正确性要全审 · 简报 79f5eff385f7\npins: task-7@1f6f0ee5bd3a goal-2@d1fc06cc0bbf decision-4@c86f33e4b3a8\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T11:23:36.100Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "批准计划含对应测试四个文件，写界放宽到 tests/",
+      "changes": {
+        "writeScope": {
+          "from": [
+            "src/loops/",
+            "src/report/",
+            "src/glm-llm/quota.ts"
+          ],
+          "to": [
+            "src/loops/",
+            "src/report/",
+            "src/glm-llm/quota.ts",
+            "tests/"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T11:24:15.872Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "计划第 1 版待审（submit_plan R-6phgzv）",
+      "changes": {
+        "body": {
+          "from": "照 decision-4：机器级两条目（5 小时窗、周窗）+ 三样提醒；判定读共享层；高危才通知主 Agent。开工等共享层纯函数合入。",
+          "to": "照 decision-4：机器级两条目（5 小时窗、周窗）+ 三样提醒；判定读共享层；高危才通知主 Agent。开工等共享层纯函数合入。\n\n## 计划\n第 1 版 · 等主 Agent 审 · 摘要 6f9ce703e65b\n1. 新建纯模块 src/loops/quota-endurance.ts（映射+措辞，判定只 import shared/quota.ts）与 tests/loops-quota-endurance.spec.ts\n   路径：src/loops/quota-endurance.ts、tests/loops-quota-endurance.spec.ts · 验证：L2\n2. channel.ts：加 channel.quota-reset 与 channel.quota-exhausts 事件、quotaResetKey/quotaExhaustsKey、quotaOf 在时 channelEntries 追加三条 machine 条目；loops-registry.spec 钉五事件与 4/7 条\n   路径：src/loops/channel.ts、tests/loops-registry.spec.ts · 验证：L2\n3. machine.ts：每拍缓存读数判重置投 channel.quota-reset（一期一次）；quota() 读数成功后判 exhausts 投 channel.quota-exhausts（每窗每期一次）；off 条件与阈值口径调整；loops-machine.spec 更新与新增\n   路径：src/loops/machine.ts、tests/loops-machine.spec.ts · 验证：L2\n4. 循环板 quota 段：view/boards/commands/index 四文件，60 秒缓存 quotaBoardOf 传 createBoards\n   路径：src/loops/view.ts、src/loops/boards.ts、src/loops/commands.ts、src/loops/index.ts · 验证：L2\n5. 晨报：panel.ts quotaSection 加第 6 参 facts；report/index.ts refreshQuota 读 usage 传 facts；hourness.spec 逐字钉住并补直调用例\n   路径：src/report/panel.ts、src/report/index.ts、tests/hourness.spec.ts · 验证：L2\n6. 收口：复制主检出 lessons-seed（L-79a259），worktree 三道全绿，分支提交\n   路径：无 · 验证：L2"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T11:24:26.047Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "主 Agent 批准计划第 1 版（answer_worker R-6phgzv）",
+      "changes": {
+        "body": {
+          "from": "照 decision-4：机器级两条目（5 小时窗、周窗）+ 三样提醒；判定读共享层；高危才通知主 Agent。开工等共享层纯函数合入。\n\n## 计划\n第 1 版 · 等主 Agent 审 · 摘要 6f9ce703e65b\n1. 新建纯模块 src/loops/quota-endurance.ts（映射+措辞，判定只 import shared/quota.ts）与 tests/loops-quota-endurance.spec.ts\n   路径：src/loops/quota-endurance.ts、tests/loops-quota-endurance.spec.ts · 验证：L2\n2. channel.ts：加 channel.quota-reset 与 channel.quota-exhausts 事件、quotaResetKey/quotaExhaustsKey、quotaOf 在时 channelEntries 追加三条 machine 条目；loops-registry.spec 钉五事件与 4/7 条\n   路径：src/loops/channel.ts、tests/loops-registry.spec.ts · 验证：L2\n3. machine.ts：每拍缓存读数判重置投 channel.quota-reset（一期一次）；quota() 读数成功后判 exhausts 投 channel.quota-exhausts（每窗每期一次）；off 条件与阈值口径调整；loops-machine.spec 更新与新增\n   路径：src/loops/machine.ts、tests/loops-machine.spec.ts · 验证：L2\n4. 循环板 quota 段：view/boards/commands/index 四文件，60 秒缓存 quotaBoardOf 传 createBoards\n   路径：src/loops/view.ts、src/loops/boards.ts、src/loops/commands.ts、src/loops/index.ts · 验证：L2\n5. 晨报：panel.ts quotaSection 加第 6 参 facts；report/index.ts refreshQuota 读 usage 传 facts；hourness.spec 逐字钉住并补直调用例\n   路径：src/report/panel.ts、src/report/index.ts、tests/hourness.spec.ts · 验证：L2\n6. 收口：复制主检出 lessons-seed（L-79a259），worktree 三道全绿，分支提交\n   路径：无 · 验证：L2",
+          "to": "照 decision-4：机器级两条目（5 小时窗、周窗）+ 三样提醒；判定读共享层；高危才通知主 Agent。开工等共享层纯函数合入。\n\n## 计划\n第 1 版 · 主 Agent 已批 · 摘要 6f9ce703e65b\n1. 新建纯模块 src/loops/quota-endurance.ts（映射+措辞，判定只 import shared/quota.ts）与 tests/loops-quota-endurance.spec.ts\n   路径：src/loops/quota-endurance.ts、tests/loops-quota-endurance.spec.ts · 验证：L2\n2. channel.ts：加 channel.quota-reset 与 channel.quota-exhausts 事件、quotaResetKey/quotaExhaustsKey、quotaOf 在时 channelEntries 追加三条 machine 条目；loops-registry.spec 钉五事件与 4/7 条\n   路径：src/loops/channel.ts、tests/loops-registry.spec.ts · 验证：L2\n3. machine.ts：每拍缓存读数判重置投 channel.quota-reset（一期一次）；quota() 读数成功后判 exhausts 投 channel.quota-exhausts（每窗每期一次）；off 条件与阈值口径调整；loops-machine.spec 更新与新增\n   路径：src/loops/machine.ts、tests/loops-machine.spec.ts · 验证：L2\n4. 循环板 quota 段：view/boards/commands/index 四文件，60 秒缓存 quotaBoardOf 传 createBoards\n   路径：src/loops/view.ts、src/loops/boards.ts、src/loops/commands.ts、src/loops/index.ts · 验证：L2\n5. 晨报：panel.ts quotaSection 加第 6 参 facts；report/index.ts refreshQuota 读 usage 传 facts；hourness.spec 逐字钉住并补直调用例\n   路径：src/report/panel.ts、src/report/index.ts、tests/hourness.spec.ts · 验证：L2\n6. 收口：复制主检出 lessons-seed（L-79a259），worktree 三道全绿，分支提交\n   路径：无 · 验证：L2"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T11:24:26.135Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "计划第 1 版已批 · 摘要 6f9ce703e65b · hz-task-7-a2-ovrnwh · call_ca1def5f37d940939b1b5669"
+    },
+    {
+      "at": "2026-11-21T11:47:47.423Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "新 spec 要挂 test:3 链，加 package.json",
+      "changes": {
+        "writeScope": {
+          "from": [
+            "src/loops/",
+            "src/report/",
+            "src/glm-llm/quota.ts",
+            "tests/"
+          ],
+          "to": [
+            "src/loops/",
+            "src/report/",
+            "src/glm-llm/quota.ts",
+            "tests/",
+            "package.json"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T12:10:27.280Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "已落地并全绿：分支 hz/task-7 提交 6dc57b47（task-7 前缀，未推送）。channel.quota-reset 与 channel.quota-exhausts 两事件、三条机器级默认条目（quota 读取器在时追加，4→7 条）、machine.ts 重置一期一行与撑不到每窗每期一句（缓存读数零新请求）、循环板 /loops 与 view.json 的「额度判定」段（60 秒缓存）、晨报 quotaSection facts 接线；判定只 import shared/quota.ts。npm run build / preflight / test 与 lint 三查全绿。交回不做：探针 L3 场景、ORCHESTRATION §11.4/§18.4/§18.7/§18.9 文档段。长报告 .hourness/hz-task-7-a2-ovrnwh.md。"
+    },
+    {
+      "at": "2026-11-21T12:11:39.563Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 2 次交回 · done · hz-task-7-a2-ovrnwh\n提交 1 个（最新 6dc57b47） · 文件 15 个 · 报告 C:\\Users\\29596\\Desktop\\Project\\GLM-Hourness\\.llm\\execute\\reports\\hz-task-7-a2-ovrnwh.md · 基线 a5ae479c4dce\n问题 2 · 假设 6 · 问了 2 次（答 2、超时 0）· 计划 1 版 · 主 Agent 发来 0 条 · 候选经验 5 条\n有效深浅 全审（审查改为全审：碰到必须全审清单第 2 类（删东西、推送这类收不回的操作：删文件或分支（清理已合入的除外）、推送、改写提交历史 `deletes` `commands git push, git branch -d, git branch -D, git update-ref -d, git filter-branch, git filter-repo`））\n改动 `.agents/tasks/rc5-rebaseline/logs/README.md` `.agents/tasks/rc5-rebaseline/progress.md` `docs/HANDOFF.md` `package.json` `src/loops/boards.ts` `src/loops/channel.ts` `src/loops/commands.ts` `src/loops/index.ts` `src/loops/machine.ts` `src/loops/quota-endurance.ts` `src/loops/view.ts` `src/report/index.ts` `src/report/panel.ts` `tests/hourness.spec.ts` `tests/loops-machine.spec.ts` `tests/loops-quota-endurance.spec.ts` `tests/loops-registry.spec.ts` `tests/loops-row.spec.ts`\nDocs: still true: AGENTS.md 仓库规则未动仍适用；本批零 docs 改动，ORCHESTRATION §11.4/§18.4/§18.7/§18.9 的段落欠账在交回不做清单里等后续任务\n校验不过：commit 6dc57b47 is not on top of the dispatch's base"
+    },
+    {
+      "at": "2026-11-21T13:22:13.022Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "进主干 9bd2243a00be（从 a5ae479c4dce）· 检查 9bd2243a00be"
+    },
+    {
+      "at": "2026-11-21T13:22:13.185Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "the trunk reached 9bd2243a00be with a passed merge check",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "9bd2243a00be553230fc820d36a07ab1566c23f2"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run build",
+          "exit": 0,
+          "note": ".llm/execute/checks/9bd2243a00be553230fc820d36a07ab1566c23f2/2026-11-21T12-58-27-837Z/1.log"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run preflight",
+          "exit": 0,
+          "note": ".llm/execute/checks/9bd2243a00be553230fc820d36a07ab1566c23f2/2026-11-21T12-58-27-837Z/2.log"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0,
+          "note": ".llm/execute/checks/9bd2243a00be553230fc820d36a07ab1566c23f2/2026-11-21T12-58-27-837Z/3.log"
+        }
+      ]
+    }
+  ]
+}

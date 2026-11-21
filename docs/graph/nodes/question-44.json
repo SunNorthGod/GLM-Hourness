@@ -1,0 +1,44 @@
+{
+  "id": "question-44",
+  "type": "question",
+  "title": "重置提醒第一版做哪几样",
+  "ask": "我建议第一版做三样提醒：重置后一声、撑不到预警、用太少提示，因为撑不到与用太少都由平均消耗速率推算，派任务调速牵涉执行行另立设计，可以吗？",
+  "form": "recommend",
+  "status": "done",
+  "parent": "goal-1",
+  "proposal": "第一版做三样提醒：重置后一声、撑不到预警、用太少提示",
+  "reason": "撑不到与用太少都由平均消耗速率推算，派任务调速牵涉执行行另立设计",
+  "notTaken": "派任务调速也进第一版",
+  "conclusion": "第一版做三样提醒：重置后一声、撑不到预警（按平均消耗速率推算）、用太少提示；派任务调速另立设计",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "conclusion"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:59:38.506Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "主 Agent 在对话里把这件事交给人（propose_to_human call_d7b121c583224d6a87001669）",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T05:07:35.169Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "人在对话里同意（record_human_answer call_503f3e6a8f5f4336afbec4bc）",
+      "relay": "可以",
+      "from": "approved",
+      "to": "done",
+      "conclusion": "第一版做三样提醒：重置后一声、撑不到预警（按平均消耗速率推算）、用太少提示；派任务调速另立设计",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "conclusion"
+        }
+      ]
+    }
+  ]
+}

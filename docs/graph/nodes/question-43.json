@@ -1,0 +1,51 @@
+{
+  "id": "question-43",
+  "type": "question",
+  "title": "重置提醒要不要预告",
+  "ask": "我建议先只做重置后的一声提醒，因为预告容易吵，等真实用两周再定要不要，可以吗？",
+  "form": "recommend",
+  "status": "done",
+  "parent": "goal-1",
+  "proposal": "先只做重置后的一声提醒",
+  "reason": "预告容易吵，等真实用两周再定要不要",
+  "cost": "想提前安排跑量时少一个参考数",
+  "notTaken": "重置前也预告（比如前半小时报剩余）",
+  "conclusion": "被 question-44 取代并定案：第一版做三样提醒（重置后一声、撑不到预警、用太少提示），固定时点预告不做，调速另立设计",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "conclusion"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:55:38.377Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "主 Agent 在对话里把这件事交给人（propose_to_human call_4f78a920cc9c46eaaecc812f）",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T04:59:15.660Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "人在对话里补充：「就是看近7天或者5小时的平均消耗速率\n看能不能撑到重置或者用的太少\n做提醒或者以这个为标尺改派任务的速度之类的」；主 Agent 记成：重置提醒加速率推算：按近 7 天与 5 小时平均消耗速率推算撑不撑得到重置，撑不到预警、用太少也提示；派任务调速另立设计（record_human_answer call_810c105610764fe083d3e473）"
+    },
+    {
+      "at": "2026-11-21T05:07:44.927Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "主人在补充后于 question-44 拍板「可以」，旧题随新题定案关闭",
+      "relay": "可以",
+      "from": "approved",
+      "to": "done",
+      "conclusion": "被 question-44 取代并定案：第一版做三样提醒（重置后一声、撑不到预警、用太少提示），固定时点预告不做，调速另立设计",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "conclusion"
+        }
+      ]
+    }
+  ]
+}

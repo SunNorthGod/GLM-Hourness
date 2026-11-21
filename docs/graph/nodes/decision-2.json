@@ -1,0 +1,36 @@
+{
+  "id": "decision-2",
+  "type": "decision",
+  "title": "速率推算进共享层，一处第三处用",
+  "why": "判定被三处共用，算一次放共享层",
+  "status": "approved",
+  "parent": "goal-2",
+  "verification": "unverified",
+  "body": "理由：撑不到撑不到的判定要被圆圈、循环板提醒、晨报三处共用，放展示层会三处三样。\n架构：src/shared/quota.ts 新增消耗速率与撑不到判定的纯函数（近 7 天与 5 小时两窗口，输入为额度视图与用量事实）；glm-login 只供数不新算。\n查过的现成方案：M6 额度契约的 quotaLines/quotaLowOf/peakLine 已在共享层，同模式扩展。\n如果失败：用量流水口径不足（早期记录 input 为 0 的那批），判定要能声明「数据不够」而不是硬算。",
+  "acceptance": [
+    "速率与撑不到判定是纯函数，入共享层，单测覆盖两窗口边界",
+    "glm-login 不改请求，只供已有额度视图与用量事实"
+  ],
+  "nonGoals": [
+    "不动 glm-login 的上游请求",
+    "不上向量/统计库"
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T05:15:08.081Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "设计决策一：计算放哪",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T05:20:44.134Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_59417ef3e3b64bf9b7444262）",
+      "relay": "上面那两个都可以",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

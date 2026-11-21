@@ -1,0 +1,42 @@
+{
+  "id": "task-9",
+  "type": "task",
+  "title": "仓库规则补根因修复一条",
+  "why": "全局 md 退役时工程规则不丢，重复的不搬运",
+  "status": "approved",
+  "parent": "hourness",
+  "kind": "docs",
+  "tier": "simple",
+  "worktree": true,
+  "body": "全局 md 退役计划的一环：主人把人设与文风贴进 design 行 persona 配置后整份删掉 ~/.dsh/AGENTS.md；其中工程规则大多仓库 AGENTS.md 已有，只缺根因修复条款（同一处被第三次修时停下来重查根因，禁止反复打补丁；改规则/文档同理不叠补丁）。把这条补进仓库 AGENTS.md 的代码节，写法与周边条款一致，不加重复。",
+  "acceptance": [
+    "仓库 AGENTS.md 的代码节新增根因修复条款（同一处第三次修先停下重查根因，不打叠加补丁），与既有条款同风格",
+    "不新增重复条款：已有的不动（干净区、不留死代码、长会话重读等）",
+    "npm run preflight 过"
+  ],
+  "nonGoals": [
+    "不动全局 md（主人自己删）",
+    "不碰其他章节"
+  ],
+  "writeScope": [
+    "AGENTS.md"
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T05:22:13.196Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "主人批准迁移计划并明确重复的不搬；缺的条款补进仓库规则文件",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T05:29:46.402Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "主人在对话里明确说「批准」这两项待批任务",
+      "relay": "批准",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

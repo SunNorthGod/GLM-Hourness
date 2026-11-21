@@ -97,6 +97,60 @@
       "actor": "harness",
       "op": "comment",
       "text": "自动推进已开始 · 放行 2026-11-21T04:52:02.995Z · goal goal-3070ec53-a350-441e-9af4-4e6f38749296 · 会话 session-02bc89c4-1218-4cf3-9a18-acff254b8a22 · 主干 main"
+    },
+    {
+      "at": "2026-11-21T04:55:38.713Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "批次 4 · 交给你 1 件 · 告知 agent 自己定的 0 件 · call_4f78a920cc9c46eaaecc812f"
+    },
+    {
+      "at": "2026-11-21T04:59:39.284Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "批次 5 · 交给你 1 件 · 告知 agent 自己定的 0 件 · call_d7b121c583224d6a87001669"
+    },
+    {
+      "at": "2026-11-21T05:06:34.902Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "批次 6 · 交给你 1 件 · 告知 agent 自己定的 0 件 · call_04fbc08ea45a4d43b21ae4c7"
+    },
+    {
+      "at": "2026-11-21T05:08:18.235Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "批次 7 · 交给你 1 件 · 告知 agent 自己定的 0 件 · call_f986db92f77d44ef815f0a6c"
+    },
+    {
+      "at": "2026-11-21T05:13:04.864Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "批次 8 · 交给你 1 件 · 告知 agent 自己定的 0 件 · call_5e4e0304e1544dfcac16488d"
+    },
+    {
+      "at": "2026-11-21T05:13:57.945Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "批次 9 · 交给你 1 件 · 告知 agent 自己定的 0 件 · call_ecad74838d04401eac2e1c88"
+    },
+    {
+      "at": "2026-11-21T05:18:26.255Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "批次 10 · 交给你 1 件 · 告知 agent 自己定的 0 件 · call_eddc0b3b0a45471fa6fa5ce9"
+    },
+    {
+      "at": "2026-11-21T11:00:10.798Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "批次 11 · 交给你 1 件 · 告知 agent 自己定的 0 件 · call_f644b17965674f769f4f11e4"
+    },
+    {
+      "at": "2026-11-21T13:25:32.081Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "批次 12 · 交给你 1 件 · 告知 agent 自己定的 0 件 · call_f03891532a404627a7668fd3"
     }
   ]
 }

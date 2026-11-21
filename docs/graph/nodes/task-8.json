@@ -1,0 +1,203 @@
+{
+  "id": "task-8",
+  "type": "task",
+  "title": "子代理注入与工具面逐行核查",
+  "why": "人设泄漏实证了，但注入与工具面从没逐行看过，不能再靠推断",
+  "status": "done",
+  "parent": "hourness",
+  "kind": "test",
+  "tier": "standard",
+  "worktree": true,
+  "body": "主人发现子代理仍带人设（工人收工语为证）。逐行核查 rc.5 上子代理的上下文注入与工具面：系统提示各段来源（含用户级 AGENTS.md 的注入点）、worker 面过滤了什么没过滤什么、工具面与设计对照。只查不改，发现另立车道。\n\n## 计划\n第 2 版 · 主 Agent 已批 · 摘要 5f642b4f70ee\n1. 删 tests/graph-user-format.spec.ts:267-270 过时的时点窗断言，readdir 导入缩为 readFile\n   路径：tests/graph-user-format.spec.ts · 验证：L2\n2. 分段跑 test:1、test:2、test:3 全绿\n   路径：无 · 验证：L3\n3. 干净区提交（注明删的是设计 0.4.1 §7.5 一次性时点窗、golden 兜底仍在）+ 报告 + 交回\n   路径：无 · 验证：L3",
+  "acceptance": [
+    "子代理组装路径逐行读完：系统提示各段来源、注入清单、工具面清单写成核查表",
+    "实测一次子代理：记录实际收到的上下文与工具面，与设计比对",
+    "发现分三类归因（设计如此/实现缺口/上游行为），写进核查报告"
+  ],
+  "nonGoals": [
+    "不顺风改代码"
+  ],
+  "writeScope": [
+    ".agents/tasks/subagent-face-audit/",
+    "tests/graph-user-format.spec.ts"
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "3451a79a",
+      "note": "核查报告＋svg 快照＋时点窗断言退场，终审 task-12 全审过、合入检查过"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T05:17:21.061Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "主人四问之二：子代理注入与工具面要逐行看过才算数",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T05:17:57.103Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "核查活归项目总目标名下，不在自举目标里硬拉步骤关系",
+      "changes": {
+        "parent": {
+          "from": "goal-1",
+          "to": "hourness"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T05:29:45.770Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "主人在对话里明确说「批准」这两项待批任务",
+      "relay": "批准",
+      "from": "proposed",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T05:30:12.913Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次派发 · hz-task-8-a1-rghkkb · 基线 main@dce167f10de7 · 模型 glm-start-plan/glm-5.3-flash，理由：主人嘱咐派 flash；逐行读代码加对表是标准核查活，轻档够 · 审查：轻审，理由：只读核查加报告，不改代码；审核查表与归因的完整性 · 简报 5a34bbe13623\npins: task-8@ef23af358f25 hourness@b97762051045\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T05:30:13.088Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "dispatch hz-task-8-a1-rghkkb",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-21T05:37:51.342Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "计划第 1 版待审（submit_plan R-6qhleb）",
+      "changes": {
+        "body": {
+          "from": "主人发现子代理仍带人设（工人收工语为证）。逐行核查 rc.5 上子代理的上下文注入与工具面：系统提示各段来源（含用户级 AGENTS.md 的注入点）、worker 面过滤了什么没过滤什么、工具面与设计对照。只查不改，发现另立车道。",
+          "to": "主人发现子代理仍带人设（工人收工语为证）。逐行核查 rc.5 上子代理的上下文注入与工具面：系统提示各段来源（含用户级 AGENTS.md 的注入点）、worker 面过滤了什么没过滤什么、工具面与设计对照。只查不改，发现另立车道。\n\n## 计划\n第 1 版 · 等主 Agent 审 · 摘要 2ee1bf55d6ad\n1. 核查表定稿：系统提示各段来源与工具面（代码阅读收尾）\n   路径：.agents/tasks/subagent-face-audit/scratch/ · 验证：L2\n2. 实测一次子代理：跑已钉的派发场景（探针锁空后），记录 worker 实际收到的提示与工具面\n   路径：.agents/tasks/subagent-face-audit/scratch/、.agents/tasks/subagent-face-audit/report.md · 验证：L3\n3. 写核查报告 report.md（三类归因），清理 scratch，三连检查，提交\n   路径：.agents/tasks/subagent-face-audit/report.md · 验证：L3"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T05:37:57.364Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "主 Agent 批准计划第 1 版（answer_worker R-6qhleb）",
+      "changes": {
+        "body": {
+          "from": "主人发现子代理仍带人设（工人收工语为证）。逐行核查 rc.5 上子代理的上下文注入与工具面：系统提示各段来源（含用户级 AGENTS.md 的注入点）、worker 面过滤了什么没过滤什么、工具面与设计对照。只查不改，发现另立车道。\n\n## 计划\n第 1 版 · 等主 Agent 审 · 摘要 2ee1bf55d6ad\n1. 核查表定稿：系统提示各段来源与工具面（代码阅读收尾）\n   路径：.agents/tasks/subagent-face-audit/scratch/ · 验证：L2\n2. 实测一次子代理：跑已钉的派发场景（探针锁空后），记录 worker 实际收到的提示与工具面\n   路径：.agents/tasks/subagent-face-audit/scratch/、.agents/tasks/subagent-face-audit/report.md · 验证：L3\n3. 写核查报告 report.md（三类归因），清理 scratch，三连检查，提交\n   路径：.agents/tasks/subagent-face-audit/report.md · 验证：L3",
+          "to": "主人发现子代理仍带人设（工人收工语为证）。逐行核查 rc.5 上子代理的上下文注入与工具面：系统提示各段来源（含用户级 AGENTS.md 的注入点）、worker 面过滤了什么没过滤什么、工具面与设计对照。只查不改，发现另立车道。\n\n## 计划\n第 1 版 · 主 Agent 已批 · 摘要 2ee1bf55d6ad\n1. 核查表定稿：系统提示各段来源与工具面（代码阅读收尾）\n   路径：.agents/tasks/subagent-face-audit/scratch/ · 验证：L2\n2. 实测一次子代理：跑已钉的派发场景（探针锁空后），记录 worker 实际收到的提示与工具面\n   路径：.agents/tasks/subagent-face-audit/scratch/、.agents/tasks/subagent-face-audit/report.md · 验证：L3\n3. 写核查报告 report.md（三类归因），清理 scratch，三连检查，提交\n   路径：.agents/tasks/subagent-face-audit/report.md · 验证：L3"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T05:37:57.450Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "计划第 1 版已批 · 摘要 2ee1bf55d6ad · hz-task-8-a1-rghkkb · call_51b75c25c5d14b87a11b43b2"
+    },
+    {
+      "at": "2026-11-21T05:53:49.777Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "核查完成，报告 .agents/tasks/subagent-face-audit/report.md（提交 d9dd798c）。要点：①人设泄漏注入点 = DSH 核心 agent-instructions 行 agent/pre-step 的基线指令（用户级 $DSH_HOME/AGENTS.md + 项目链），rc.5 asar 逐行复核未变，子会话照收、无插件过滤——ORCHESTRATION §3.1 564 行已记录「插件不动」，属上游行为+已记录取舍；②实现缺口一处：bootstrap source 对 origin=subagent 返回 NO_REMOVALS，worker 面保留 bootstrap_review（探针实测三场景全见），与自身注释和 face-migration §6 D 矛盾，边界无险（工具体查调用者）；③worker 面裁剪其余全部实测吻合（memory/lessons/design/execute 四 source）。另披露：探针锁接管——task-1 的 probe-runner（pid 15844，13:01 声明）判定 pid 已死，槽 1 被本次运行按协议接管（stale 文件在旁），task-1 全量探针需确认重跑；npm test 在基线 dce167f1 上即红（docs/graph/graph.svg 过期，graph:render 未随图提交重跑），非本车道造成。"
+    },
+    {
+      "at": "2026-11-21T05:54:20.793Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次交回 · partial · hz-task-8-a1-rghkkb\n提交 1 个（最新 d9dd798c） · 文件 1 个 · 报告 无 · 基线 dce167f10de7\n问题 4 · 假设 4 · 问了 0 次（答 0、超时 0）· 计划 1 版 · 主 Agent 发来 0 条 · 候选经验 3 条\n校验不过：the long report could not be copied out of the worktree"
+    },
+    {
+      "at": "2026-11-21T06:33:15.641Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 2 次派发 · hz-task-8-a2-v2g87f · 基线 main@dce167f10de7 · 模型 glm-zcode/glm-5.3-flash，理由：主人嘱咐派 flash；出图加提交是机械活 · 审查：轻审，理由：重新生成一张快照图并提交，机械操作 · 简报 e5814486564d · 免费套餐暂不可用（empty），已自动切换个人套餐\npins: task-8@ef23af358f25 hourness@b97762051045\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T06:54:22.821Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 2 次交回 · partial · hz-task-8-a2-v2g87f\n提交 1 个（最新 bfb7bc84ff69） · 文件 1 个 · 报告 C:\\Users\\29596\\Desktop\\Project\\GLM-Hourness\\.llm\\execute\\reports\\hz-task-8-a2-v2g87f.md · 基线 dce167f10de7\n问题 2 · 假设 2 · 问了 0 次（答 0、超时 0）· 计划 0 版 · 主 Agent 发来 0 条 · 候选经验 2 条"
+    },
+    {
+      "at": "2026-11-21T07:00:42.175Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 3 次派发 · hz-task-8-a3-vpijvi · 基线 main@dce167f10de7 · 模型 glm-start-plan/glm-5.3-flash，理由：主人嘱咐派 flash；断言对齐是读清楚再改一行的事 · 审查：轻审，理由：一处测试断言对齐加分段验证，机械修复 · 简报 f9a857b04a71\npins: task-8@ef23af358f25 hourness@b97762051045\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T07:09:30.881Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "三棒收尾需要修那一行测试，写界扩到这一个文件",
+      "changes": {
+        "writeScope": {
+          "from": [
+            ".agents/tasks/subagent-face-audit/"
+          ],
+          "to": [
+            ".agents/tasks/subagent-face-audit/",
+            "tests/graph-user-format.spec.ts"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T07:10:13.777Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "计划第 2 版待审（submit_plan R-o4je12）",
+      "changes": {
+        "body": {
+          "from": "主人发现子代理仍带人设（工人收工语为证）。逐行核查 rc.5 上子代理的上下文注入与工具面：系统提示各段来源（含用户级 AGENTS.md 的注入点）、worker 面过滤了什么没过滤什么、工具面与设计对照。只查不改，发现另立车道。\n\n## 计划\n第 1 版 · 主 Agent 已批 · 摘要 2ee1bf55d6ad\n1. 核查表定稿：系统提示各段来源与工具面（代码阅读收尾）\n   路径：.agents/tasks/subagent-face-audit/scratch/ · 验证：L2\n2. 实测一次子代理：跑已钉的派发场景（探针锁空后），记录 worker 实际收到的提示与工具面\n   路径：.agents/tasks/subagent-face-audit/scratch/、.agents/tasks/subagent-face-audit/report.md · 验证：L3\n3. 写核查报告 report.md（三类归因），清理 scratch，三连检查，提交\n   路径：.agents/tasks/subagent-face-audit/report.md · 验证：L3",
+          "to": "主人发现子代理仍带人设（工人收工语为证）。逐行核查 rc.5 上子代理的上下文注入与工具面：系统提示各段来源（含用户级 AGENTS.md 的注入点）、worker 面过滤了什么没过滤什么、工具面与设计对照。只查不改，发现另立车道。\n\n## 计划\n第 2 版 · 等主 Agent 审 · 摘要 5f642b4f70ee\n1. 删 tests/graph-user-format.spec.ts:267-270 过时的时点窗断言，readdir 导入缩为 readFile\n   路径：tests/graph-user-format.spec.ts · 验证：L2\n2. 分段跑 test:1、test:2、test:3 全绿\n   路径：无 · 验证：L3\n3. 干净区提交（注明删的是设计 0.4.1 §7.5 一次性时点窗、golden 兜底仍在）+ 报告 + 交回\n   路径：无 · 验证：L3"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T07:10:18.825Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "主 Agent 批准计划第 2 版（answer_worker R-o4je12）",
+      "changes": {
+        "body": {
+          "from": "主人发现子代理仍带人设（工人收工语为证）。逐行核查 rc.5 上子代理的上下文注入与工具面：系统提示各段来源（含用户级 AGENTS.md 的注入点）、worker 面过滤了什么没过滤什么、工具面与设计对照。只查不改，发现另立车道。\n\n## 计划\n第 2 版 · 等主 Agent 审 · 摘要 5f642b4f70ee\n1. 删 tests/graph-user-format.spec.ts:267-270 过时的时点窗断言，readdir 导入缩为 readFile\n   路径：tests/graph-user-format.spec.ts · 验证：L2\n2. 分段跑 test:1、test:2、test:3 全绿\n   路径：无 · 验证：L3\n3. 干净区提交（注明删的是设计 0.4.1 §7.5 一次性时点窗、golden 兜底仍在）+ 报告 + 交回\n   路径：无 · 验证：L3",
+          "to": "主人发现子代理仍带人设（工人收工语为证）。逐行核查 rc.5 上子代理的上下文注入与工具面：系统提示各段来源（含用户级 AGENTS.md 的注入点）、worker 面过滤了什么没过滤什么、工具面与设计对照。只查不改，发现另立车道。\n\n## 计划\n第 2 版 · 主 Agent 已批 · 摘要 5f642b4f70ee\n1. 删 tests/graph-user-format.spec.ts:267-270 过时的时点窗断言，readdir 导入缩为 readFile\n   路径：tests/graph-user-format.spec.ts · 验证：L2\n2. 分段跑 test:1、test:2、test:3 全绿\n   路径：无 · 验证：L3\n3. 干净区提交（注明删的是设计 0.4.1 §7.5 一次性时点窗、golden 兜底仍在）+ 报告 + 交回\n   路径：无 · 验证：L3"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T07:10:18.917Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "计划第 2 版已批 · 摘要 5f642b4f70ee · hz-task-8-a3-vpijvi · call_1223cafc8c064bf684b43071"
+    },
+    {
+      "at": "2026-11-21T07:38:16.214Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 3 次交回 · done · hz-task-8-a3-vpijvi\n提交 1 个（最新 3451a79a） · 文件 3 个 · 报告 C:\\Users\\29596\\Desktop\\Project\\GLM-Hourness\\.llm\\execute\\reports\\hz-task-8-a3-vpijvi.md · 基线 dce167f10de7\n问题 3 · 假设 3 · 问了 1 次（答 1、超时 0）· 计划 1 版 · 主 Agent 发来 0 条 · 候选经验 3 条\n有效深浅 全审（审查改为全审：碰到必须全审清单第 2 类（删东西、推送这类收不回的操作：删文件或分支（清理已合入的除外）、推送、改写提交历史 `deletes` `commands git push, git branch -d, git branch -D, git update-ref -d, git filter-branch, git filter-repo`））\n原因 红根因：dce167f1 入库了第一个写入者（goal-1 用户图）后，af530c99 留下的「图上尚无用户节点」时点窗断言从此永假；删掉整条断言即修在根上——该窗口在 design 0.4.1 §7.5 里本就是一次性的（U4 访谈才是首个写入者），图进 git 是设计正路，其余保护（golden 逐字节、graph-store 夹具）原位不动。\n改动 `.agents/tasks/subagent-face-audit/report.md` `docs/graph/graph.svg` `tests/graph-user-format.spec.ts`\nDocs: still true: 未动任何组件 AGENTS.md；纯测试删改，docs/DESIGN、ORCHESTRATION、FACTS 所述行为无变化"
+    },
+    {
+      "at": "2026-11-21T08:54:20.329Z",
+      "actor": "llm",
+      "op": "status",
+      "reason": "核查报告入主干（人设注入点实锤、worker 面实测、bootstrap_review 缺口与用户级 AGENTS.md 取舍均归因），终审过",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "3451a79a",
+          "note": "核查报告＋svg 快照＋时点窗断言退场，终审 task-12 全审过、合入检查过"
+        }
+      ]
+    }
+  ]
+}

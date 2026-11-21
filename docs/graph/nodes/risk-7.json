@@ -1,0 +1,18 @@
+{
+  "id": "risk-7",
+  "type": "risk",
+  "title": "按钮挤到输入框",
+  "why": "按钮上元素已不少，窄窗先挤",
+  "status": "approved",
+  "parent": "goal-2",
+  "body": "GLM 按钮已经带文字与状态，再叠两个圆圈可能挤到输入框布局（窄 dock 与宽窗两种形态都要核）；视觉归 m8-ui-audit 的审查面。",
+  "history": [
+    {
+      "at": "2026-11-21T04:55:24.452Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "风险三：布局拥挤",
+      "to": "approved"
+    }
+  ]
+}

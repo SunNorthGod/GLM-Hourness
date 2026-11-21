@@ -1,0 +1,76 @@
+{
+  "id": "task-12",
+  "type": "task",
+  "title": "审查：子代理注入与工具面逐行核查",
+  "status": "done",
+  "parent": "task-8",
+  "kind": "review",
+  "acceptance": [
+    "verdict APPROVED under the docs/DEVELOPMENT.md §1.1 standard, at the depth recorded in the latest dispatch"
+  ],
+  "edges": [
+    {
+      "type": "source",
+      "to": "task-8"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "check",
+      "ref": "review hz-task-12-a1-g7qm1n",
+      "exit": 0,
+      "note": "3451a79a0083 · 全审 · patch 4f37f10fdab9ec5a33fcc2af2281b128aff75a8b · glm-start-plan/glm-5.3-flash"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T07:38:16.329Z",
+      "actor": "harness",
+      "op": "propose",
+      "reason": "review task of task-8 (handback hz-task-8-a3-vpijvi)",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T07:40:41.869Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次派发 · hz-task-12-a1-g7qm1n · 模型 glm-start-plan/glm-5.3-flash，理由：主人嘱咐派 flash；审一笔测试删除的意图正确性，读历史与设计为主 · 审查：全审 · 简报 035327f3632d\npins: task-12@66d246235d96 task-8@ef23af358f25 hourness@b97762051045\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T07:40:42.148Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "dispatch hz-task-12-a1-g7qm1n",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-21T08:01:05.415Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "审查交回 · hz-task-12-a1-g7qm1n · APPROVED · 提交 3451a79a0083 · 挡路 0 · 不挡路 2\n- [non-blocking] acceptance:2 at .agents/tasks/subagent-face-audit/report.md §3.2 (cites src/shared/role-face.ts:8): Citation path slip: the quoted sentence «it spares the model a tool it cannot use» lives at src/design/role-face.ts:8-9, not src/shared/role-face.ts (no such file exists). The finding itself (bootstrap_review kept on delegated subagent faces) is real: src/bootstrap/index.ts:315 returns NO_REMOVALS for origin 'subagent', contradicting the comment at line 307 and src/shared/tool-names.ts:230. Boundary judged by: a wrong directory in one evidence citation does not make the attribution wrong, so acceptance:2 stays met. (fix: Correct the path in the report to src/design/role-face.ts:8-9 (or leave to the follow-up lane that fixes the §3.2 gap, since the report line will be touched there anyway).)\n- [non-blocking] repo-hygiene at .agents/tasks/subagent-face-audit/scratch/ (untracked, 9 files incl. extract-asar.mjs and rc5-agent-instructions.js): One-off audit scratch was not deleted before handback: report §5 and the script header both say it is deleted with the scratch, yet the directory is still present and untracked in the worktree (git status shows it). One-off scripts belong under .llm/scratch/ (git-ignored); this one sits under .agents/tasks/, which is not ignored, so it lingers. Non-blocking: nothing in it is tracked, and rc5-agent-instructions.js is the very extraction the report cites, so it is usable evidence until deleted. (fix: Delete the directory (report §5 already documents the asar extraction format, so the artifacts are regenerable), or move it under .llm/scratch/ if the lead wants it kept for the bootstrap_review fix lane.)"
+    },
+    {
+      "at": "2026-11-21T08:01:05.641Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 轮：挡路 0，不挡路 2 · 全审 · hz-task-12-a1-g7qm1n"
+    },
+    {
+      "at": "2026-11-21T08:01:05.929Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "review passed (hz-task-12-a1-g7qm1n)",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "check",
+          "ref": "review hz-task-12-a1-g7qm1n",
+          "exit": 0,
+          "note": "3451a79a0083 · 全审 · patch 4f37f10fdab9ec5a33fcc2af2281b128aff75a8b · glm-start-plan/glm-5.3-flash"
+        }
+      ]
+    }
+  ]
+}

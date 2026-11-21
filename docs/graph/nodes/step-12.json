@@ -1,0 +1,29 @@
+{
+  "id": "step-12",
+  "type": "step",
+  "title": "收重置提醒",
+  "why": "到点不用自己盯着，提醒自己来",
+  "status": "approved",
+  "parent": "flow-4",
+  "acceptance": [
+    "重置发生时收到一行提醒，可在循环板停"
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:54:38.435Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用法第三步",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T05:20:44.727Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_59417ef3e3b64bf9b7444262）",
+      "relay": "上面那两个都可以",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "question-47",
+  "type": "question",
+  "title": "桌面验证零输入注入",
+  "ask": "我建议立硬规则：含 CDP 鼠标键盘合成事件的命令一律拦下，桌面点验只许页面内触发或纯 spec、要碰真桌面先问你，因为主人的输入设备不该被程序碰，红线要写成拦得住的规则，可以吗？",
+  "form": "recommend",
+  "status": "approved",
+  "parent": "goal-1",
+  "body": "规则板提议 `p-de281859`",
+  "proposal": "含 CDP 鼠标键盘合成事件的命令一律拦下",
+  "reason": "主人的输入设备不该被程序碰，红线要写成拦得住的规则",
+  "cost": "桌面点验遇到非点不可的控件时只能跳过标注或先问你",
+  "history": [
+    {
+      "at": "2026-11-21T11:00:10.589Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "主 Agent 在对话里把这件事交给人（propose_to_human call_f644b17965674f769f4f11e4）",
+      "to": "approved"
+    }
+  ]
+}

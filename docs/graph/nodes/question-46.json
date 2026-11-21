@@ -1,0 +1,45 @@
+{
+  "id": "question-46",
+  "type": "question",
+  "title": "额度预警要多吵",
+  "ask": "额度预警要多吵？",
+  "form": "recommend",
+  "status": "done",
+  "parent": "goal-2",
+  "proposal": "安静为主：预警躺循环板与晨报、圆圈变琥珀，只有高危时主 Agent 才在会话说一声",
+  "reason": "天天说话容易吵，真撑不到时才值得打断你",
+  "cost": "高危前的缓冲只剩圆圈变色提醒",
+  "notTaken": "所有预警都在会话说一声",
+  "conclusion": "安静为主：预警躺循环板与晨报、圆圈变琥珀，只有高危时主 Agent 才在会话说一声",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "conclusion"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T05:12:39.647Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "主人已就同一岔路拍板，把它记到额度目标自己的子树里再定案",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T05:13:54.276Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "人在对话里同意（record_human_answer call_bf7fee200a654395b5c4b114）",
+      "relay": "可以",
+      "from": "approved",
+      "to": "done",
+      "conclusion": "安静为主：预警躺循环板与晨报、圆圈变琥珀，只有高危时主 Agent 才在会话说一声",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "conclusion"
+        }
+      ]
+    }
+  ]
+}

@@ -3,12 +3,12 @@
   "type": "task",
   "title": "运行时升级后的全面体检",
   "why": "基线停在上一版，先体检再开工新活",
-  "status": "approved",
+  "status": "done",
   "parent": "goal-1",
   "kind": "test",
   "tier": "standard",
   "worktree": true,
-  "body": "桌面运行时已是 0.2.2-rc.5，全量探针与桌面点验停在 rc.3；照 rc3-probe 车道的做法在 rc.5 上重演：跑全量探针、逐条归因红项、桌面隔离实例点验、基线数字入册。只查不改，发现缺陷另立车道。",
+  "body": "桌面运行时已是 0.2.2-rc.5，全量探针与桌面点验停在 rc.3；照 rc3-probe 车道的做法在 rc.5 上重演：跑全量探针、逐条归因红项、桌面隔离实例点验、基线数字入册。只查不改，发现缺陷另立车道。\n\n## 计划\n第 3 版 · 主 Agent 已批 · 摘要 cdf332453078\n1. 门禁：npm run build（探针前置，attempt 1 已绿，续跑沿用）\n   路径：.agents/tasks/rc5-rebaseline/logs/ · 验证：L2\n2. 全量探针（rc.5）：等待主车道探针自然跑完，不重启不占锁，轮询运行目录与锁释放\n   路径：.agents/tasks/rc5-rebaseline/logs/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n3. 红项逐条归因（对照 rc3-probe 分类：运行时契约变化/基线漂移/真缺陷）\n   路径：.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n4. 桌面隔离实例点验：免锁路（先查进程表无其他隔离实例，全新端口 9377，scratch home，用完拆场）\n   路径：.agents/tasks/rc5-rebaseline/scratch/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n5. 交接文档记一行现行基线\n   路径：docs/HANDOFF.md · 验证：L2\n6. 回交检查：preflight 与 npm test（种子文件复制进本 worktree）\n   路径：.agents/tasks/m5/lessons-seed.json · 验证：L2\n7. 提交到 hz/task-1\n   路径：.agents/tasks/rc5-rebaseline/、docs/HANDOFF.md · 验证：L2",
   "acceptance": [
     "全量探针在 rc.5 上跑完，绿数与红项归因写进运行记录",
     "桌面隔离实例点验（行健康、面板、无新错误）记录在案",
@@ -17,10 +17,39 @@
   "nonGoals": [
     "不顺手修产品缺陷（另立车道）"
   ],
+  "writeScope": [
+    ".agents/tasks/rc5-rebaseline/",
+    "docs/HANDOFF.md",
+    ".agents/tasks/m5/lessons-seed.json"
+  ],
   "edges": [
     {
       "type": "source",
       "to": "decision-1"
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "commit",
+      "ref": "a5ae479c4dce10e05ad436961935366d430c36b1"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run build",
+      "exit": 0,
+      "note": ".llm/execute/checks/a5ae479c4dce10e05ad436961935366d430c36b1/2026-11-21T08-54-02-009Z/1.log"
+    },
+    {
+      "kind": "test",
+      "ref": "npm run preflight",
+      "exit": 0,
+      "note": ".llm/execute/checks/a5ae479c4dce10e05ad436961935366d430c36b1/2026-11-21T08-54-02-009Z/2.log"
+    },
+    {
+      "kind": "test",
+      "ref": "npm test",
+      "exit": 0,
+      "note": ".llm/execute/checks/a5ae479c4dce10e05ad436961935366d430c36b1/2026-11-21T08-54-02-009Z/3.log"
     }
   ],
   "history": [
@@ -51,6 +80,226 @@
           "to": true
         }
       }
+    },
+    {
+      "at": "2026-11-21T04:53:15.109Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "补上运行记录与交接文档的写范围，满足派发属性",
+      "changes": {
+        "writeScope": {
+          "from": null,
+          "to": [
+            ".agents/tasks/rc5-rebaseline/",
+            "docs/HANDOFF.md"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T04:53:40.490Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次派发 · hz-task-1-a1-rf3ktu · 基线 main@dce167f10de7 · 模型 glm-start-plan/glm-5.3-flash，理由：主人嘱咐子代理派 flash；体检是照 rc3-probe 先例重演的检查活，轻档够用 · 审查：轻审，理由：只跑检查、点验与记录，不改产品代码；产物是运行记录与一行文档，审记录与证据即可 · 简报 0f00ab2b3a92\npins: task-1@7417041c4d95 goal-1@7f137167d429 decision-1@c86f33e4b3a8\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T04:53:40.672Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "dispatch hz-task-1-a1-rf3ktu",
+      "from": "approved",
+      "to": "doing"
+    },
+    {
+      "at": "2026-11-21T04:57:24.203Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "计划第 1 版待审（submit_plan R-wjlc23）",
+      "changes": {
+        "body": {
+          "from": "桌面运行时已是 0.2.2-rc.5，全量探针与桌面点验停在 rc.3；照 rc3-probe 车道的做法在 rc.5 上重演：跑全量探针、逐条归因红项、桌面隔离实例点验、基线数字入册。只查不改，发现缺陷另立车道。",
+          "to": "桌面运行时已是 0.2.2-rc.5，全量探针与桌面点验停在 rc.3；照 rc3-probe 车道的做法在 rc.5 上重演：跑全量探针、逐条归因红项、桌面隔离实例点验、基线数字入册。只查不改，发现缺陷另立车道。\n\n## 计划\n第 1 版 · 等主 Agent 审 · 摘要 b7f14bff6e74\n1. 门禁：npm run build（探针前置）\n   路径：.agents/tasks/rc5-rebaseline/logs/ · 验证：L2\n2. 全量探针（rc.5）\n   路径：.agents/tasks/rc5-rebaseline/logs/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n3. 红项逐条归因（对照 rc3-probe 分类）\n   路径：.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n4. 桌面点验清单落档（L4-batch，执行归桌面批次）\n   路径：.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n5. 交接文档记一行现行基线\n   路径：docs/HANDOFF.md · 验证：L2\n6. 回交检查：preflight 与 npm test（先补经验种子文件）\n   路径：无 · 验证：L2\n7. 提交到 hz/task-1\n   路径：.agents/tasks/rc5-rebaseline/、docs/HANDOFF.md · 验证：L2"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T04:59:54.765Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "计划第 2 版待审（submit_plan R-cy0vd4）",
+      "changes": {
+        "body": {
+          "from": "桌面运行时已是 0.2.2-rc.5，全量探针与桌面点验停在 rc.3；照 rc3-probe 车道的做法在 rc.5 上重演：跑全量探针、逐条归因红项、桌面隔离实例点验、基线数字入册。只查不改，发现缺陷另立车道。\n\n## 计划\n第 1 版 · 等主 Agent 审 · 摘要 b7f14bff6e74\n1. 门禁：npm run build（探针前置）\n   路径：.agents/tasks/rc5-rebaseline/logs/ · 验证：L2\n2. 全量探针（rc.5）\n   路径：.agents/tasks/rc5-rebaseline/logs/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n3. 红项逐条归因（对照 rc3-probe 分类）\n   路径：.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n4. 桌面点验清单落档（L4-batch，执行归桌面批次）\n   路径：.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n5. 交接文档记一行现行基线\n   路径：docs/HANDOFF.md · 验证：L2\n6. 回交检查：preflight 与 npm test（先补经验种子文件）\n   路径：无 · 验证：L2\n7. 提交到 hz/task-1\n   路径：.agents/tasks/rc5-rebaseline/、docs/HANDOFF.md · 验证：L2",
+          "to": "桌面运行时已是 0.2.2-rc.5，全量探针与桌面点验停在 rc.3；照 rc3-probe 车道的做法在 rc.5 上重演：跑全量探针、逐条归因红项、桌面隔离实例点验、基线数字入册。只查不改，发现缺陷另立车道。\n\n## 计划\n第 2 版 · 等主 Agent 审 · 摘要 1a68139059bf\n1. 门禁：npm run build（探针前置）\n   路径：.agents/tasks/rc5-rebaseline/logs/ · 验证：L2\n2. 全量探针（rc.5）\n   路径：.agents/tasks/rc5-rebaseline/logs/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n3. 红项逐条归因（对照 rc3-probe 分类）\n   路径：.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n4. 桌面隔离实例快点验（隔离实例 + CDP）\n   路径：.agents/tasks/rc5-rebaseline/scratch/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n5. 交接文档记一行现行基线\n   路径：docs/HANDOFF.md · 验证：L2\n6. 回交检查：preflight 与 npm test（先补经验种子文件）\n   路径：无 · 验证：L2\n7. 提交到 hz/task-1\n   路径：.agents/tasks/rc5-rebaseline/、docs/HANDOFF.md · 验证：L2"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T05:00:24.390Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "主 Agent 批准计划第 2 版（answer_worker R-cy0vd4）",
+      "changes": {
+        "body": {
+          "from": "桌面运行时已是 0.2.2-rc.5，全量探针与桌面点验停在 rc.3；照 rc3-probe 车道的做法在 rc.5 上重演：跑全量探针、逐条归因红项、桌面隔离实例点验、基线数字入册。只查不改，发现缺陷另立车道。\n\n## 计划\n第 2 版 · 等主 Agent 审 · 摘要 1a68139059bf\n1. 门禁：npm run build（探针前置）\n   路径：.agents/tasks/rc5-rebaseline/logs/ · 验证：L2\n2. 全量探针（rc.5）\n   路径：.agents/tasks/rc5-rebaseline/logs/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n3. 红项逐条归因（对照 rc3-probe 分类）\n   路径：.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n4. 桌面隔离实例快点验（隔离实例 + CDP）\n   路径：.agents/tasks/rc5-rebaseline/scratch/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n5. 交接文档记一行现行基线\n   路径：docs/HANDOFF.md · 验证：L2\n6. 回交检查：preflight 与 npm test（先补经验种子文件）\n   路径：无 · 验证：L2\n7. 提交到 hz/task-1\n   路径：.agents/tasks/rc5-rebaseline/、docs/HANDOFF.md · 验证：L2",
+          "to": "桌面运行时已是 0.2.2-rc.5，全量探针与桌面点验停在 rc.3；照 rc3-probe 车道的做法在 rc.5 上重演：跑全量探针、逐条归因红项、桌面隔离实例点验、基线数字入册。只查不改，发现缺陷另立车道。\n\n## 计划\n第 2 版 · 主 Agent 已批 · 摘要 1a68139059bf\n1. 门禁：npm run build（探针前置）\n   路径：.agents/tasks/rc5-rebaseline/logs/ · 验证：L2\n2. 全量探针（rc.5）\n   路径：.agents/tasks/rc5-rebaseline/logs/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n3. 红项逐条归因（对照 rc3-probe 分类）\n   路径：.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n4. 桌面隔离实例快点验（隔离实例 + CDP）\n   路径：.agents/tasks/rc5-rebaseline/scratch/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n5. 交接文档记一行现行基线\n   路径：docs/HANDOFF.md · 验证：L2\n6. 回交检查：preflight 与 npm test（先补经验种子文件）\n   路径：无 · 验证：L2\n7. 提交到 hz/task-1\n   路径：.agents/tasks/rc5-rebaseline/、docs/HANDOFF.md · 验证：L2"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T05:00:24.470Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "计划第 2 版已批 · 摘要 1a68139059bf · hz-task-1-a1-rf3ktu · call_ce72c8e3cc334a749b57d608"
+    },
+    {
+      "at": "2026-11-21T05:05:40.500Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 1 次交回 · partial · hz-task-1-a1-rf3ktu\n提交 0 个 · 文件 4 个 · 报告 无 · 基线 dce167f10de7\n问题 2 · 假设 2 · 问了 1 次（答 1、超时 0）· 计划 2 版 · 主 Agent 发来 0 条 · 候选经验 1 条\n校验不过：report must be a .hourness/ path inside the worktree\n校验不过：the long report could not be copied out of the worktree"
+    },
+    {
+      "at": "2026-11-21T05:06:34.095Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "桌面点验要先占桌面锁，锁是协调文件不是仓库内容，补进写域",
+      "changes": {
+        "writeScope": {
+          "from": [
+            ".agents/tasks/rc5-rebaseline/",
+            "docs/HANDOFF.md"
+          ],
+          "to": [
+            ".agents/tasks/rc5-rebaseline/",
+            "docs/HANDOFF.md",
+            ".llm/desktop-lock/"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T05:06:48.941Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 2 次派发 · hz-task-1-a2-gjejvg · 基线 main@dce167f10de7 · 模型 glm-start-plan/glm-5.3-flash，理由：续跑体检后半段：等探针、归因、点验、入册；主人嘱咐子代理用 flash · 审查：轻审，理由：只跑检查、点验与记录，不改产品代码；审运行记录与证据即可 · 简报 b4576024da19\npins: task-1@7417041c4d95 goal-1@7f137167d429 decision-1@c86f33e4b3a8\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T05:10:25.410Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "种子文件补进写域让工人自复制；主检出的锁路径工人物理写不了，换成隔离实例免锁方案",
+      "changes": {
+        "writeScope": {
+          "from": [
+            ".agents/tasks/rc5-rebaseline/",
+            "docs/HANDOFF.md",
+            ".llm/desktop-lock/"
+          ],
+          "to": [
+            ".agents/tasks/rc5-rebaseline/",
+            "docs/HANDOFF.md",
+            ".agents/tasks/m5/lessons-seed.json"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T05:12:23.762Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "计划第 3 版待审（submit_plan R-r8p2r9）",
+      "changes": {
+        "body": {
+          "from": "桌面运行时已是 0.2.2-rc.5，全量探针与桌面点验停在 rc.3；照 rc3-probe 车道的做法在 rc.5 上重演：跑全量探针、逐条归因红项、桌面隔离实例点验、基线数字入册。只查不改，发现缺陷另立车道。\n\n## 计划\n第 2 版 · 主 Agent 已批 · 摘要 1a68139059bf\n1. 门禁：npm run build（探针前置）\n   路径：.agents/tasks/rc5-rebaseline/logs/ · 验证：L2\n2. 全量探针（rc.5）\n   路径：.agents/tasks/rc5-rebaseline/logs/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n3. 红项逐条归因（对照 rc3-probe 分类）\n   路径：.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n4. 桌面隔离实例快点验（隔离实例 + CDP）\n   路径：.agents/tasks/rc5-rebaseline/scratch/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n5. 交接文档记一行现行基线\n   路径：docs/HANDOFF.md · 验证：L2\n6. 回交检查：preflight 与 npm test（先补经验种子文件）\n   路径：无 · 验证：L2\n7. 提交到 hz/task-1\n   路径：.agents/tasks/rc5-rebaseline/、docs/HANDOFF.md · 验证：L2",
+          "to": "桌面运行时已是 0.2.2-rc.5，全量探针与桌面点验停在 rc.3；照 rc3-probe 车道的做法在 rc.5 上重演：跑全量探针、逐条归因红项、桌面隔离实例点验、基线数字入册。只查不改，发现缺陷另立车道。\n\n## 计划\n第 3 版 · 等主 Agent 审 · 摘要 cdf332453078\n1. 门禁：npm run build（探针前置，attempt 1 已绿，续跑沿用）\n   路径：.agents/tasks/rc5-rebaseline/logs/ · 验证：L2\n2. 全量探针（rc.5）：等待主车道探针自然跑完，不重启不占锁，轮询运行目录与锁释放\n   路径：.agents/tasks/rc5-rebaseline/logs/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n3. 红项逐条归因（对照 rc3-probe 分类：运行时契约变化/基线漂移/真缺陷）\n   路径：.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n4. 桌面隔离实例点验：免锁路（先查进程表无其他隔离实例，全新端口 9377，scratch home，用完拆场）\n   路径：.agents/tasks/rc5-rebaseline/scratch/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n5. 交接文档记一行现行基线\n   路径：docs/HANDOFF.md · 验证：L2\n6. 回交检查：preflight 与 npm test（种子文件复制进本 worktree）\n   路径：.agents/tasks/m5/lessons-seed.json · 验证：L2\n7. 提交到 hz/task-1\n   路径：.agents/tasks/rc5-rebaseline/、docs/HANDOFF.md · 验证：L2"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T05:12:40.184Z",
+      "actor": "harness",
+      "op": "edit",
+      "reason": "主 Agent 批准计划第 3 版（answer_worker R-r8p2r9）",
+      "changes": {
+        "body": {
+          "from": "桌面运行时已是 0.2.2-rc.5，全量探针与桌面点验停在 rc.3；照 rc3-probe 车道的做法在 rc.5 上重演：跑全量探针、逐条归因红项、桌面隔离实例点验、基线数字入册。只查不改，发现缺陷另立车道。\n\n## 计划\n第 3 版 · 等主 Agent 审 · 摘要 cdf332453078\n1. 门禁：npm run build（探针前置，attempt 1 已绿，续跑沿用）\n   路径：.agents/tasks/rc5-rebaseline/logs/ · 验证：L2\n2. 全量探针（rc.5）：等待主车道探针自然跑完，不重启不占锁，轮询运行目录与锁释放\n   路径：.agents/tasks/rc5-rebaseline/logs/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n3. 红项逐条归因（对照 rc3-probe 分类：运行时契约变化/基线漂移/真缺陷）\n   路径：.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n4. 桌面隔离实例点验：免锁路（先查进程表无其他隔离实例，全新端口 9377，scratch home，用完拆场）\n   路径：.agents/tasks/rc5-rebaseline/scratch/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n5. 交接文档记一行现行基线\n   路径：docs/HANDOFF.md · 验证：L2\n6. 回交检查：preflight 与 npm test（种子文件复制进本 worktree）\n   路径：.agents/tasks/m5/lessons-seed.json · 验证：L2\n7. 提交到 hz/task-1\n   路径：.agents/tasks/rc5-rebaseline/、docs/HANDOFF.md · 验证：L2",
+          "to": "桌面运行时已是 0.2.2-rc.5，全量探针与桌面点验停在 rc.3；照 rc3-probe 车道的做法在 rc.5 上重演：跑全量探针、逐条归因红项、桌面隔离实例点验、基线数字入册。只查不改，发现缺陷另立车道。\n\n## 计划\n第 3 版 · 主 Agent 已批 · 摘要 cdf332453078\n1. 门禁：npm run build（探针前置，attempt 1 已绿，续跑沿用）\n   路径：.agents/tasks/rc5-rebaseline/logs/ · 验证：L2\n2. 全量探针（rc.5）：等待主车道探针自然跑完，不重启不占锁，轮询运行目录与锁释放\n   路径：.agents/tasks/rc5-rebaseline/logs/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n3. 红项逐条归因（对照 rc3-probe 分类：运行时契约变化/基线漂移/真缺陷）\n   路径：.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n4. 桌面隔离实例点验：免锁路（先查进程表无其他隔离实例，全新端口 9377，scratch home，用完拆场）\n   路径：.agents/tasks/rc5-rebaseline/scratch/、.agents/tasks/rc5-rebaseline/progress.md · 验证：L2\n5. 交接文档记一行现行基线\n   路径：docs/HANDOFF.md · 验证：L2\n6. 回交检查：preflight 与 npm test（种子文件复制进本 worktree）\n   路径：.agents/tasks/m5/lessons-seed.json · 验证：L2\n7. 提交到 hz/task-1\n   路径：.agents/tasks/rc5-rebaseline/、docs/HANDOFF.md · 验证：L2"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T05:12:40.486Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "计划第 3 版已批 · 摘要 cdf332453078 · hz-task-1-a2-gjejvg · call_7ee0ad3e4ad948738f5434de"
+    },
+    {
+      "at": "2026-11-21T06:31:14.655Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "rc.5 重基线完成（2026-11-21，worker 车道 hz/task-1，提交 9ef06039）：全量探针重跑 633/635，两条红均为编排并发会话在探针窗内自写真实用量/主检出经验流水（非产品红，逐条归因见 .agents/tasks/rc5-rebaseline/progress.md §1.1）；桌面隔离实例点验过（onboarding 需应用内走完——rc.3 的 desktopNextOnboarding 键在 rc.5 已删；面板渲染与包注册正常、无本包新错误、拆场干净）；HANDOFF §11 已记现行基线一行。发现待立任务：桌面锁编排方写不了（免锁路已在 progress.md §2）、探针判定行不落盘、探针文件隔离断言与编排并存的冲突。"
+    },
+    {
+      "at": "2026-11-21T06:31:58.303Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 2 次交回 · done · hz-task-1-a2-gjejvg\n提交 1 个（最新 9ef06039） · 文件 4 个 · 报告 C:\\Users\\29596\\Desktop\\Project\\GLM-Hourness\\.llm\\execute\\reports\\hz-task-1-a2-gjejvg.md · 基线 dce167f10de7\n问题 2 · 假设 5 · 问了 2 次（答 2、超时 0）· 计划 1 版 · 主 Agent 发来 0 条 · 候选经验 5 条\n有效深浅 全审（审查改为全审：碰到必须全审清单第 0 类（改到拦截与权限：guard 规则、写入范围、主 Agent 与子 agent 的工具面 `files src/guard/, src/execute/scope.ts, src/execute/faces.ts, src/execute/advance.ts, src/execute/floor.ts, src/execute/gate-norm.ts, src/rules/, src/design/index.ts, src/shared/tool-names.ts, src/shared/dialect.ts`））\n改动 `.agents/tasks/rc5-rebaseline/logs/README.md` `.agents/tasks/rc5-rebaseline/progress.md` `.llm/b10-l4/ws-new/docs/graph/nodes/decision-1.json` `.llm/b10-l4/ws-new/docs/graph/nodes/decision-2.json` `.llm/b10-l4/ws-new/docs/graph/nodes/decision-3.json` `.llm/b10-l4/ws-new/docs/graph/nodes/decision-4.json` `.llm/b10-l4/ws-new/docs/graph/nodes/decision-5.json` `.llm/b10-l4/ws-new/docs/graph/nodes/decision-6.json` `.llm/b10-l4/ws-new/docs/graph/nodes/env.json` `.llm/b10-l4/ws-new/docs/graph/nodes/feature-1.json` `.llm/b10-l4/ws-new/docs/graph/nodes/feature-2.json` `.llm/b10-l4/ws-new/docs/graph/nodes/feature-3.json` `.llm/b10-l4/ws-new/docs/graph/nodes/feature-4.json` `.llm/b10-l4/ws-new/docs/graph/nodes/feature-5.json` `.llm/b10-l4/ws-new/docs/graph/nodes/feature-6.json` `.llm/b10-l4/ws-new/docs/graph/nodes/feature-7.json` `.llm/b10-l4/ws-new/docs/graph/nodes/feature-8.json` `.llm/b10-l4/ws-new/docs/graph/nodes/feature-9.json` `.llm/b10-l4/ws-new/docs/graph/nodes/goal-1.json` `.llm/b10-l4/ws-new/docs/graph/nodes/goal-2.json` `.llm/b10-l4/ws-new/docs/graph/nodes/goal-glm-hourness.json` `.llm/b10-l4/ws-new/docs/graph/nodes/norm-merge-gate.json` `.llm/b10-l4/ws-new/docs/graph/nodes/norm-review-floor.json` `.llm/b10-l4/ws-new/docs/graph/nodes/task-1.json` `.llm/b10-l4/ws-new/docs/graph/nodes/task-10.json` `.llm/b10-l4/ws-new/docs/graph/nodes/task-11.json` `.llm/b10-l4/ws-new/docs/graph/nodes/task-12.json` `.llm/b10-l4/ws-new/docs/graph/nodes/task-2.json` `.llm/b10-l4/ws-new/docs/graph/nodes/task-3.json` `.llm/b10-l4/ws-new/docs/graph/nodes/task-4.json` `.llm/b10-l4/ws-new/docs/graph/nodes/task-5.json` `.llm/b10-l4/ws-new/docs/graph/nodes/task-6.json` `.llm/b10-l4/ws-new/docs/graph/nodes/task-7.json` `.llm/b10-l4/ws-new/docs/graph/nodes/task-8.json` `.llm/b10-l4/ws-new/docs/graph/nodes/task-9.json` `.llm/b10-l4/ws-new/docs/graph/nodes/tool-1.json` `.llm/b10-l4/ws-new/docs/graph/nodes/tool-2.json` `docs/DESIGN.md` `docs/HANDOFF.md` `docs/ORCHESTRATION.md` `docs/graph/nodes/decision-1.json` `docs/graph/nodes/flow-1.json` `docs/graph/nodes/flow-2.json` `docs/graph/nodes/flow-3.json` `docs/graph/nodes/goal-1.json` `docs/graph/nodes/goal-2.json` `docs/graph/nodes/question-42.json` `docs/graph/nodes/risk-2.json` `docs/graph/nodes/risk-3.json` `docs/graph/nodes/risk-4.json` `docs/graph/nodes/role-1.json` `docs/graph/nodes/step-1.json` `docs/graph/nodes/step-2.json` `docs/graph/nodes/step-3.json` `docs/graph/nodes/step-4.json` `docs/graph/nodes/step-5.json` `docs/graph/nodes/step-6.json` `docs/graph/nodes/step-7.json` `docs/graph/nodes/step-8.json` `docs/graph/nodes/step-9.json` `docs/graph/nodes/task-1.json` `docs/graph/nodes/task-2.json` `docs/graph/nodes/task-3.json` `docs/graph/nodes/task-4.json` `package.json` `packages/glm/README.md` `packages/glm/cordis.patch.yml` `packages/glm/locale/glm-llm/en.json` `packages/glm/locale/glm-llm/zh.json` `packages/glm/locale/glm-login/en.json` `packages/glm/locale/glm-login/zh.json` `packages/hourness/cordis.patch.yml` `packages/hourness/icon.svg` `packages/hourness/locale/bootstrap/en.json` `packages/hourness/locale/bootstrap/zh.json` `packages/hourness/locale/execute/en.json` `packages/hourness/locale/execute/zh.json` `packages/hourness/locale/loops/en.json` `packages/hourness/locale/loops/zh.json` `scripts/packages.mjs` `src/bootstrap/runtime.ts` `src/bootstrap/takeover.ts` `src/design/index.ts` `src/design/persona.ts` `src/design/propose.ts` `src/execute/brief.ts` `src/execute/dispatch-mode.ts` `src/execute/dispatch.ts` `src/execute/drive.ts` `src/execute/gate-provider.ts` `src/execute/handback.ts` `src/execute/index.ts` `src/execute/live-board.ts` `src/execute/notice.ts` `src/execute/walk.ts` `src/glm-llm/account-signals.ts` `src/glm-llm/anthropic.ts` `src/glm-llm/config-fields.ts` `src/glm-llm/headers.ts` `src/glm-llm/index.ts` `src/glm-llm/login-row.ts` `src/glm-llm/models.ts` `src/glm-llm/quota-journal.ts` `src/glm-llm/quota.ts` `src/glm-llm/start-plan-balance.ts` `src/glm-llm/start-plan.ts` `src/glm-llm/zcode.ts` `src/glm-prompt/index.ts` `src/glm-prompt/peak-reminder.ts` `src/graph/live.ts` `src/graph/proposal.ts` `src/guard/main-agent.ts` `src/guard/request-service.ts` `src/guard/rules.ts` `src/guard/shell.ts` `src/shared/data-home.ts` `src/shared/live-board.ts` `src/shared/quota.ts` `src/shared/route.ts` `src/shared/start-plan-status.ts` `tests/bootstrap-row.spec.ts` `tests/contracts.spec.ts` `tests/data-home.spec.ts` `tests/design-persona.spec.ts` `tests/design-tools-helpers.ts` `tests/execute-advance.spec.ts` `tests/execute-brief.spec.ts` `tests/execute-handback.spec.ts` `tests/execute-live-board.spec.ts` `tests/execute-notice.spec.ts` `tests/execute-quota.spec.ts` `tests/execute-row.spec.ts` `tests/flow-bar.spec.ts` `tests/glm-channel.spec.ts` `tests/glm-prompt.spec.ts` `tests/glm-quota.spec.ts` `tests/glm-startplan.spec.ts` `tests/glm-transport.spec.ts` `tests/glm-zcode.spec.ts` `tests/graph-live.spec.ts` `tests/guard-request.spec.ts` `tests/guard-rules.spec.ts` `tests/guard-scratch-worker.spec.ts` `tests/lessons-seed.spec.ts` `tests/metrics-board.spec.ts` `tests/preflight.spec.ts` `tests/proposal.spec.ts` `tests/propose-to-human.spec.ts` `tests/quota.spec.ts` `tests/rules-panel-model.spec.ts` `tests/subagents-board-model.spec.ts` `ui/src/channel-model.ts` `ui/src/channel.js` `ui/src/dsh.ts` `ui/src/flow/FlowBar.tsx` `ui/src/flow/styles.ts` `ui/src/glm-client.js` `ui/src/graph/GraphCanvas.tsx` `ui/src/graph/Home.tsx` `ui/src/graph/Live.tsx` `ui/src/graph/Modules.tsx` `ui/src/graph/NeedsYou.tsx` `ui/src/graph/NodeDetail.tsx` `ui/src/graph/Panel.tsx` `ui/src/graph/Plan.tsx` `ui/src/graph/UserView.tsx` `ui/src/graph/agents.ts` `ui/src/graph/source.ts` `ui/src/graph/styles.ts` `ui/src/guide/NoGraphCard.tsx` `ui/src/hourness-client.tsx` `ui/src/lessons/LessonsPage.tsx` `ui/src/lessons/source.ts` `ui/src/loops/LoopsPage.tsx` `ui/src/metrics/board.tsx` `ui/src/rules/RulesPage.tsx` `ui/src/rules/model.ts` `ui/src/subagents/SubagentsBoard.tsx` `ui/src/subagents/model.ts` `ui/src/subagents/source.ts` `ui/src/subagents/styles.ts` `ui/src/wish/styles.ts`\nDocs: updated: docs/HANDOFF.md §11 现行基线一行（rc.5、633/635、2026-11-21）；各组件 AGENTS.md 未动、仍成立\n校验不过：commit 9ef06039 is not on top of the dispatch's base"
+    },
+    {
+      "at": "2026-11-21T08:16:43.459Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 3 次派发 · hz-task-1-a3-jbpj0a · 基线 main@5f04b3d74998 · 模型 glm-start-plan/glm-5.3-flash，理由：主人嘱咐派 flash；文档冲突按给定意图解，轻档够 · 审查：轻审，理由：摘果解冲突一笔文档提交，按意图融合即可 · 简报 0df2d1d70f05\npins: task-1@7417041c4d95 goal-1@7f137167d429 decision-1@c86f33e4b3a8\npolicy: gate@04296c2e28a8 floor@609d16bdc327 rules@e3b0c44298fc checker@4f53cda18c2b"
+    },
+    {
+      "at": "2026-11-21T08:21:05.305Z",
+      "actor": "llm",
+      "op": "comment",
+      "text": "摘果重做完成：9ef06039 cherry-pick 到现主干 5f04b3d7，HANDOFF.md §11 世界状态段同段冲突按意图融合——保留主干狗食修正首段与三个子弹，在「门禁与验证」前插入现行基线段（rc.5、探针 633/635、判定行 probe.log、两条红归因并发编排会话、桌面隔离实例点验、2026-11-21）。新提交 a5ae479c（父 5f04b3d7，trailer Hourness-Task: task-1），lane 记录两文件原样带入，未跑门禁由主车道送检。"
+    },
+    {
+      "at": "2026-11-21T08:21:44.526Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "第 3 次交回 · done · hz-task-1-a3-jbpj0a\n提交 1 个（最新 a5ae479c） · 文件 3 个 · 报告 无 · 基线 5f04b3d74998\n问题 0 · 假设 2 · 问了 0 次（答 0、超时 0）· 计划 0 版 · 主 Agent 发来 0 条 · 候选经验 1 条\n有效深浅 全审（审查改为全审：碰到必须全审清单第 2 类（删东西、推送这类收不回的操作：删文件或分支（清理已合入的除外）、推送、改写提交历史 `deletes` `commands git push, git branch -d, git branch -D, git update-ref -d, git filter-branch, git filter-repo`））\n改动 `.agents/tasks/rc5-rebaseline/logs/README.md` `.agents/tasks/rc5-rebaseline/progress.md` `docs/HANDOFF.md`"
+    },
+    {
+      "at": "2026-11-21T09:14:43.001Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "进主干 a5ae479c4dce（从 5f04b3d74998）· 检查 a5ae479c4dce"
+    },
+    {
+      "at": "2026-11-21T09:14:43.148Z",
+      "actor": "harness",
+      "op": "status",
+      "reason": "the trunk reached a5ae479c4dce with a passed merge check",
+      "from": "doing",
+      "to": "done",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "a5ae479c4dce10e05ad436961935366d430c36b1"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run build",
+          "exit": 0,
+          "note": ".llm/execute/checks/a5ae479c4dce10e05ad436961935366d430c36b1/2026-11-21T08-54-02-009Z/1.log"
+        },
+        {
+          "kind": "test",
+          "ref": "npm run preflight",
+          "exit": 0,
+          "note": ".llm/execute/checks/a5ae479c4dce10e05ad436961935366d430c36b1/2026-11-21T08-54-02-009Z/2.log"
+        },
+        {
+          "kind": "test",
+          "ref": "npm test",
+          "exit": 0,
+          "note": ".llm/execute/checks/a5ae479c4dce10e05ad436961935366d430c36b1/2026-11-21T08-54-02-009Z/3.log"
+        }
+      ]
     }
   ]
 }

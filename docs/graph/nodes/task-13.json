@@ -1,0 +1,33 @@
+{
+  "id": "task-13",
+  "type": "task",
+  "title": "委派子会话面裁剪补漏",
+  "why": "给模型一件永远用不了的工具，正是面契约说要省掉的",
+  "status": "proposed",
+  "parent": "hourness",
+  "kind": "implement",
+  "tier": "simple",
+  "worktree": true,
+  "body": "task-8 核查发现（报告 §3.2）：src/bootstrap/index.ts:313-318 对 origin subagent 直接返回不裁剪，委派子会话的面保留 bootstrap_review，与 face-migration 设计 §6 D「只留有开着接管的主 Agent」矛盾。修法：该分支反转为返回 REVIEW_REMOVALS（子会话不可能是主 Agent）。无边界风险（工具体已按调用者拒），纯面噪音清理。",
+  "acceptance": [
+    "委派子会话（origin subagent）的工具面不再出现 bootstrap_review",
+    "主 Agent（开着接管）的面保留 bootstrap_review，探针既有检查不红",
+    "build、preflight、相关单测绿"
+  ],
+  "nonGoals": [
+    "不动 ask_user_question 的面（设计名单如此，上游必拒）"
+  ],
+  "writeScope": [
+    "src/bootstrap/",
+    "tests/"
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T08:54:37.518Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "task-8 核查的实现缺口发现，对齐已定设计，主 Agent 按分级自断立任务",
+      "to": "proposed"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "id": "step-10",
+  "type": "step",
+  "title": "瞥一眼圆圈",
+  "why": "不打断打字，扫一眼就知道还能跑多少",
+  "status": "approved",
+  "parent": "flow-4",
+  "acceptance": [
+    "GLM 按钮上两个小圆圈可见，余量一眼读出"
+  ],
+  "edges": [
+    {
+      "type": "next",
+      "to": "step-11"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:54:38.031Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用法第一步",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:54:48.547Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "看完圆圈想看细节就点开",
+      "edge": {
+        "type": "next",
+        "to": "step-11"
+      }
+    },
+    {
+      "at": "2026-11-21T05:20:44.600Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_59417ef3e3b64bf9b7444262）",
+      "relay": "上面那两个都可以",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}
