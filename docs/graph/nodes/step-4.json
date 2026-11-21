@@ -1,0 +1,45 @@
+{
+  "id": "step-4",
+  "type": "step",
+  "title": "看晨报或面板",
+  "why": "进展只交一次，晨报面板同一来源",
+  "status": "approved",
+  "parent": "flow-2",
+  "acceptance": [
+    "在做与等你回话各两三行，一眼看完"
+  ],
+  "edges": [
+    {
+      "type": "next",
+      "to": "step-5"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:32:35.839Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "拍板第一步",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:32:55.506Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "看到要拍板的事就回话",
+      "edge": {
+        "type": "next",
+        "to": "step-5"
+      }
+    },
+    {
+      "at": "2026-11-21T04:51:52.950Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_4205e18665224a7a99ed6682）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

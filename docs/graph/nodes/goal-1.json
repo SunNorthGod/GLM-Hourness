@@ -1,0 +1,102 @@
+{
+  "id": "goal-1",
+  "type": "goal",
+  "title": "进入自举：项目交给自己的编排层接管",
+  "why": "收尾与 preboot 全部落地、编排层已装机，项目从今天起按项目图自己管自己",
+  "status": "approved",
+  "stage": "release",
+  "body": "需求：现在进入自举。给我汇报一下状态\n\n来源：主人 2026-11-21 在 /wish 会话里的原话。交接现状见 docs/HANDOFF.md 第 11 节（2026-11-21 自举移交）：门槛决策 d-finish-then-bootstrap 已满足，自举只等开机与 /wish；本会话就是那一次开机，主人已用 /wish 把本会话立为主 Agent。\n给谁：主人——这个项目唯一的人与唯一的拍板者。\n问题：开发至今靠 ZCode 侧编排方与人工接力，换模型、换 IDE 就断头，交接全靠文档；自举后由装好的编排层沿图推进，人只出场在需求确认、岔路拍板与设计放行。\n做成以后的日子：主人只管许愿与拍板，进展看晨报与面板，成果带证据来汇报——这条是喵桃的猜测，主人可改。\n用户流程：见子节点（主人：许愿一件活、看进展与拍板、收成果）。\n约束：不改 ~/.dsh profile（AGENTS.md 第 6 条）；不动 .worktrees/ablation-trial；高峰 14:00–18:00 按少做档；npm 发版由人执行。\n风险：见三个风险子节点（运行时漂移、问人失度、完成判定虚报）。\n岔路：无——并行推进与派发深浅已有定案（尽可能多并行；派发计划主 Agent 批），唯一要人点头的就是这张需求卡。",
+  "acceptance": [
+    "主人问的状态已当面答清，依据是实读的 HANDOFF 与 git、图，不是推断",
+    "运行图入 git 并推到双远端，git ls-files 可核对",
+    "接管流跑通：主人确认需求卡，目标从访谈进设计",
+    "此后新的活从这张图走：许愿、访谈、设计、放行、派活、合入门",
+    "等真火与真机的节点保持等待（docs-at-hand 日更、m7-7 夜巡、lessons 与 onboarding 桌面核对、subdir 缺省值），不提前开工"
+  ],
+  "nonGoals": [
+    "npm 0.3.1 发版由主人执行（等 OTP），不挡自举",
+    "不改 ~/.dsh profile（AGENTS.md 第 6 条）",
+    "不动 .worktrees/ablation-trial",
+    "comms-split 实现继续搁置（设计驻留）"
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:28:00.632Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "图工具已绑回库内图 docs/graph，在正式图上重立主人的愿望节点，临时图上的旧稿随运行图提交入库作历史",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:32:06.829Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "访谈空白按猜测一次填齐，等主人改不对的地方",
+      "changes": {
+        "body": {
+          "from": "需求：现在进入自举。给我汇报一下状态\n\n来源：主人 2026-11-21 在 /wish 会话里的原话。交接现状见 docs/HANDOFF.md 第 11 节（2026-11-21 自举移交）：门槛决策 d-finish-then-bootstrap 已满足，自举只等开机与 /wish；本会话就是那一次开机，主人已用 /wish 把本会话立为主 Agent。备注：前一份草稿记在接管运行的临时图上（.llm/b10-l4/ws-new），图工具已绑回库内图 docs/graph，本节点为正式稿。",
+          "to": "需求：现在进入自举。给我汇报一下状态\n\n来源：主人 2026-11-21 在 /wish 会话里的原话。交接现状见 docs/HANDOFF.md 第 11 节（2026-11-21 自举移交）：门槛决策 d-finish-then-bootstrap 已满足，自举只等开机与 /wish；本会话就是那一次开机，主人已用 /wish 把本会话立为主 Agent。\n给谁：主人——这个项目唯一的人与唯一的拍板者。\n问题：开发至今靠 ZCode 侧编排方与人工接力，换模型、换 IDE 就断头，交接全靠文档；自举后由装好的编排层沿图推进，人只出场在需求确认、岔路拍板与设计放行。\n做成以后的日子：主人只管许愿与拍板，进展看晨报与面板，成果带证据来汇报——这条是喵桃的猜测，主人可改。\n用户流程：见子节点（主人：许愿一件活、看进展与拍板、收成果）。\n约束：不改 ~/.dsh profile（AGENTS.md 第 6 条）；不动 .worktrees/ablation-trial；高峰 14:00–18:00 按少做档；npm 发版由人执行。\n风险：见三个风险子节点（运行时漂移、问人失度、完成判定虚报）。\n岔路：无——并行推进与派发深浅已有定案（尽可能多并行；派发计划主 Agent 批），唯一要人点头的就是这张需求卡。"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T04:33:21.410Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "批次 1 · 交给你 1 件 · 告知 agent 自己定的 0 件 · call_68f44aeefe8548839ba02a13"
+    },
+    {
+      "at": "2026-11-21T04:36:58.012Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "批次 2 · 交给你 1 件 · 告知 agent 自己定的 0 件 · call_9ae37747871b485db993ca0e"
+    },
+    {
+      "at": "2026-11-21T04:45:39.964Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "人在对话里同意（record_human_answer call_09440f11762e41eaa8e9fbcf）",
+      "relay": "其余确认。进入自举",
+      "changes": {
+        "stage": {
+          "from": "wish",
+          "to": "design"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T04:45:40.049Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_09440f11762e41eaa8e9fbcf）",
+      "relay": "其余确认。进入自举",
+      "from": "proposed",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T04:50:16.092Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "批次 3 · 交给你 1 件 · 告知 agent 自己定的 0 件 · call_8409815f571d434090d4a8e5"
+    },
+    {
+      "at": "2026-11-21T04:52:02.995Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "人在对话里同意（record_human_answer call_6b15a016ecaa4743a93a2c2c）",
+      "relay": "可以放行",
+      "changes": {
+        "stage": {
+          "from": "design",
+          "to": "release"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T04:52:08.369Z",
+      "actor": "harness",
+      "op": "comment",
+      "text": "自动推进已开始 · 放行 2026-11-21T04:52:02.995Z · goal goal-3070ec53-a350-441e-9af4-4e6f38749296 · 会话 session-02bc89c4-1218-4cf3-9a18-acff254b8a22 · 主干 main"
+    }
+  ]
+}

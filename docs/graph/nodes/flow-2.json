@@ -1,0 +1,71 @@
+{
+  "id": "flow-2",
+  "type": "flow",
+  "title": "看进展与拍板",
+  "why": "晨报与面板说清现状，要人定的事走卡",
+  "status": "approved",
+  "parent": "role-1",
+  "body": "走法：你来走",
+  "acceptance": [
+    "在做的事和等主人的事一眼可见",
+    "拍板都发生在卡片或聊天回话上，回话进图"
+  ],
+  "edges": [
+    {
+      "type": "next",
+      "to": "step-4"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:32:20.632Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "访谈 2b：第二条用法",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:32:55.037Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "看进展一条线的起点",
+      "edge": {
+        "type": "next",
+        "to": "step-4"
+      }
+    },
+    {
+      "at": "2026-11-21T04:47:40.728Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "给拍板线写走法",
+      "changes": {
+        "body": {
+          "from": null,
+          "to": "走法：你来走——看晨报或面板，在卡片或聊天里回话；大活看一页放行稿点头。"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T04:48:21.290Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "走法行按格式收净",
+      "changes": {
+        "body": {
+          "from": "走法：你来走——看晨报或面板，在卡片或聊天里回话；大活看一页放行稿点头。",
+          "to": "走法：你来走"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T04:51:52.328Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_4205e18665224a7a99ed6682）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

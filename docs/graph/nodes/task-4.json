@@ -1,0 +1,67 @@
+{
+  "id": "task-4",
+  "type": "task",
+  "title": "把收成果线走一遍",
+  "why": "以体检交回为实例，收成果三步走通",
+  "status": "approved",
+  "parent": "goal-1",
+  "kind": "test",
+  "tier": "simple",
+  "worktree": false,
+  "body": "收成果线（听汇报看证据→抽查或收货→周报数字）以体检任务的交回为实例走通：汇报带证据与归因，主人收货；周报数字等首个周报。",
+  "acceptance": [
+    "体检任务交回带命令级证据与红项归因",
+    "主人抽查或收货一次",
+    "周报数字那步等首个周报出来补验（可晚于本目标关单）"
+  ],
+  "edges": [
+    {
+      "type": "depends",
+      "to": "task-1"
+    },
+    {
+      "type": "serves",
+      "to": "step-7"
+    },
+    {
+      "type": "serves",
+      "to": "step-8"
+    },
+    {
+      "type": "serves",
+      "to": "step-9"
+    },
+    {
+      "type": "source",
+      "to": "decision-1"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:47:40.043Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户图收成果线三步由走线任务认领",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:48:02.314Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "收成果线以体检交回为实例，先有体检交回才能走通",
+      "edge": {
+        "type": "depends",
+        "to": "task-1"
+      }
+    },
+    {
+      "at": "2026-11-21T04:51:42.749Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_2a2198b4d00942a9beefbc00）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

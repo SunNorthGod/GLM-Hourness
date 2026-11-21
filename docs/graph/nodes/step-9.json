@@ -1,0 +1,29 @@
+{
+  "id": "step-9",
+  "type": "step",
+  "title": "周报看减负数字",
+  "why": "减负效果每周见数",
+  "status": "approved",
+  "parent": "flow-3",
+  "acceptance": [
+    "周报报四个减负数字"
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:32:38.111Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "收成果第三步",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:51:54.184Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_4205e18665224a7a99ed6682）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

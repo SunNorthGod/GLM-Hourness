@@ -1,0 +1,53 @@
+{
+  "id": "task-2",
+  "type": "task",
+  "title": "把许愿线走一遍",
+  "why": "许愿三步在本会话真实走通，就是自举入口的验收",
+  "status": "approved",
+  "parent": "goal-1",
+  "kind": "test",
+  "tier": "simple",
+  "worktree": false,
+  "body": "许愿线（说愿望→答访谈→点头确认）在本会话真实走通一遍；这条线本就是自举的入口，走通即是验收。",
+  "acceptance": [
+    "立卡带主人原话（已在图）",
+    "访谈九项填齐并经主人改定",
+    "需求确认由主人回话记入图"
+  ],
+  "edges": [
+    {
+      "type": "serves",
+      "to": "step-1"
+    },
+    {
+      "type": "serves",
+      "to": "step-2"
+    },
+    {
+      "type": "serves",
+      "to": "step-3"
+    },
+    {
+      "type": "source",
+      "to": "decision-1"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:47:39.425Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用户图许愿线三步由本目标的走线任务认领",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:51:42.386Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_2a2198b4d00942a9beefbc00）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

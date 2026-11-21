@@ -1,0 +1,45 @@
+{
+  "id": "step-1",
+  "type": "step",
+  "title": "说一句愿望",
+  "why": "入口只要一句话，不用先想清楚细节",
+  "status": "approved",
+  "parent": "flow-1",
+  "acceptance": [
+    "喵桃复述愿望并立目标卡，原话在卡上"
+  ],
+  "edges": [
+    {
+      "type": "next",
+      "to": "step-2"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:32:34.844Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "访谈 2b：许愿第一步",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:32:54.243Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "愿望立卡之后进入访谈",
+      "edge": {
+        "type": "next",
+        "to": "step-2"
+      }
+    },
+    {
+      "at": "2026-11-21T04:51:52.494Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_4205e18665224a7a99ed6682）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

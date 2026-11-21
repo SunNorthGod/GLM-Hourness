@@ -1,0 +1,37 @@
+{
+  "id": "decision-1",
+  "type": "decision",
+  "title": "自举第一波：重基线与现成活并行",
+  "why": "运行时已漂到新版，先体检再开工，别的线不守者",
+  "status": "approved",
+  "parent": "goal-1",
+  "verification": "unverified",
+  "body": "理由：桌面运行时已升 0.2.2-rc.5，适配与探针基线停在 rc.3（2026-11-18）；rc.3 当年就砍过客户端导出、拍平过子 agent 参数，不重基线就开工等于带着盲区干活。人已拍板并行开（question-42）。\n架构：重基线是一条独立任务，与别的线并行不互挡；额度圆圈与重置提醒是新产品活，另立目标走自己的设计；等真火真机的节点照旧等待，不提前开工。\n查过的现成方案：11-18 的 rc3-probe 车道先例（五轮收敛、逐条归因，记录在 .agents/tasks/rc3-probe/progress.md）；桌面点验按 HANDOFF §6 的隔离实例加 CDP 流程。\n如果失败：rc.5 又砍了咱们依赖的客户端导出（rc.3 先例），重基线转为适配车道再谈开工。",
+  "acceptance": [
+    "rc.5 上全量探针全绿，红项逐条归因入册",
+    "桌面隔离实例点验无本包新错误，记录入册",
+    "结论写进交接文档一行"
+  ],
+  "nonGoals": [
+    "不在重基线里顺手改产品代码",
+    "不等重基线完成才开其他线"
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:46:27.769Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "设计阶段的第一条决策：第一波怎么开",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:51:42.014Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_2a2198b4d00942a9beefbc00）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

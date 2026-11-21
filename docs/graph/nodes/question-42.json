@@ -1,0 +1,44 @@
+{
+  "id": "question-42",
+  "type": "question",
+  "title": "自举第一波要不要等重基线",
+  "ask": "我建议自举第一波重基线与现成活并行开，因为没有副作用就尽量并行是主人定过的节奏，可以吗？",
+  "form": "recommend",
+  "status": "done",
+  "parent": "goal-1",
+  "proposal": "重基线与现成活并行开",
+  "reason": "没有副作用就尽量并行是主人定过的节奏",
+  "notTaken": "先跑完 rc.5 重基线再派别的活",
+  "conclusion": "同意进自举；第一波重基线与现成活并行开",
+  "evidence": [
+    {
+      "kind": "decision",
+      "ref": "conclusion"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:33:21.092Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "主 Agent 在对话里把这件事交给人（propose_to_human call_68f44aeefe8548839ba02a13）",
+      "to": "approved"
+    },
+    {
+      "at": "2026-11-21T04:36:41.711Z",
+      "actor": "llm",
+      "op": "decide",
+      "reason": "人在对话里同意（record_human_answer call_647a9643586b4660ba7e91ab）",
+      "relay": "可以进自举",
+      "from": "approved",
+      "to": "done",
+      "conclusion": "同意进自举；第一波重基线与现成活并行开",
+      "evidence": [
+        {
+          "kind": "decision",
+          "ref": "conclusion"
+        }
+      ]
+    }
+  ]
+}

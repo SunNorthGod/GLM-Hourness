@@ -1,0 +1,29 @@
+{
+  "id": "step-6",
+  "type": "step",
+  "title": "大活看一页放行稿",
+  "why": "单向门的大活才要这一步",
+  "status": "approved",
+  "parent": "flow-2",
+  "acceptance": [
+    "一页稿看完点头，设计放行开工"
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:32:36.567Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "拍板第三步",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:51:53.423Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_4205e18665224a7a99ed6682）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

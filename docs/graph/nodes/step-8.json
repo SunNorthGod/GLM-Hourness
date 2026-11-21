@@ -1,0 +1,45 @@
+{
+  "id": "step-8",
+  "type": "step",
+  "title": "抽查或直接收货",
+  "why": "抽查自由，不强制",
+  "status": "approved",
+  "parent": "flow-3",
+  "acceptance": [
+    "任务关单，或抽查后关单"
+  ],
+  "edges": [
+    {
+      "type": "next",
+      "to": "step-9"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:32:37.261Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "收成果第二步",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:32:56.635Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "每周再看一次减负数",
+      "edge": {
+        "type": "next",
+        "to": "step-9"
+      }
+    },
+    {
+      "at": "2026-11-21T04:51:53.925Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_4205e18665224a7a99ed6682）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

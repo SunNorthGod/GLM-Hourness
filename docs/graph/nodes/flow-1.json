@@ -1,0 +1,70 @@
+{
+  "id": "flow-1",
+  "type": "flow",
+  "title": "许愿一件活",
+  "why": "一句话说要什么，剩下的由主 Agent 访谈补齐",
+  "status": "approved",
+  "parent": "role-1",
+  "body": "走法：你来走",
+  "acceptance": [
+    "主人的愿望变成图上已确认的目标，原话留在卡上"
+  ],
+  "edges": [
+    {
+      "type": "next",
+      "to": "step-1"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:32:20.462Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "访谈 2b：主人的第一条用法",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:32:54.065Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "许愿一条线的起点",
+      "edge": {
+        "type": "next",
+        "to": "step-1"
+      }
+    },
+    {
+      "at": "2026-11-21T04:47:40.550Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "给许愿线写走法",
+      "changes": {
+        "body": {
+          "from": null,
+          "to": "走法：你来走——从 /wish 说一句愿望开始，看立卡、答访谈、点头确认三步。"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T04:48:21.116Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "走法行按格式收净",
+      "changes": {
+        "body": {
+          "from": "走法：你来走——从 /wish 说一句愿望开始，看立卡、答访谈、点头确认三步。",
+          "to": "走法：你来走"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T04:51:42.999Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_2a2198b4d00942a9beefbc00）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

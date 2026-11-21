@@ -1,0 +1,71 @@
+{
+  "id": "flow-3",
+  "type": "flow",
+  "title": "收成果",
+  "why": "结论、影响、证据各一段，主人抽查或直接收货",
+  "status": "approved",
+  "parent": "role-1",
+  "body": "走法：你来走",
+  "acceptance": [
+    "做完的活带证据关单",
+    "合入前的检查全绿才进主干"
+  ],
+  "edges": [
+    {
+      "type": "next",
+      "to": "step-7"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:32:21.005Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "访谈 2b：第三条用法",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:32:55.825Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "收成果一条线的起点",
+      "edge": {
+        "type": "next",
+        "to": "step-7"
+      }
+    },
+    {
+      "at": "2026-11-21T04:47:41.211Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "给收成果线写走法",
+      "changes": {
+        "body": {
+          "from": null,
+          "to": "走法：你来走——听汇报看证据，抽查或直接收货；周报看四个减负数字。"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T04:48:21.735Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "走法行按格式收净",
+      "changes": {
+        "body": {
+          "from": "走法：你来走——听汇报看证据，抽查或直接收货；周报看四个减负数字。",
+          "to": "走法：你来走"
+        }
+      }
+    },
+    {
+      "at": "2026-11-21T04:51:52.407Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_4205e18665224a7a99ed6682）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

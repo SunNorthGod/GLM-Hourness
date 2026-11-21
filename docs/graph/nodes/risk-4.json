@@ -1,0 +1,18 @@
+{
+  "id": "risk-4",
+  "type": "risk",
+  "title": "完成判定虚报",
+  "why": "接管收尾已经虚报过一次",
+  "status": "approved",
+  "parent": "goal-1",
+  "body": "B10 出过「图已提交进 git」不成立的先例（空提交、节点未跟踪）。规矩：每个完成判定都要命令级证据（git ls-files、退出码），不收口头断言；喵桃转述结论时标注实读、实跑还是推断。",
+  "history": [
+    {
+      "at": "2026-11-21T04:31:53.030Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "访谈风险三",
+      "to": "approved"
+    }
+  ]
+}

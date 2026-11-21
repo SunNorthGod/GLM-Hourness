@@ -1,0 +1,45 @@
+{
+  "id": "step-7",
+  "type": "step",
+  "title": "听汇报看证据",
+  "why": "不收口头断言，证据先行",
+  "status": "approved",
+  "parent": "flow-3",
+  "acceptance": [
+    "结论、影响、证据各一段，出处标注实读实跑还是推断"
+  ],
+  "edges": [
+    {
+      "type": "next",
+      "to": "step-8"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:32:37.087Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "收成果第一步",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:32:56.114Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "看完证据再收货",
+      "edge": {
+        "type": "next",
+        "to": "step-8"
+      }
+    },
+    {
+      "at": "2026-11-21T04:51:53.678Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_4205e18665224a7a99ed6682）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

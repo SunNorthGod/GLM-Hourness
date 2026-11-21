@@ -1,0 +1,29 @@
+{
+  "id": "step-3",
+  "type": "step",
+  "title": "点头确认需求",
+  "why": "这一下点头让目标正式进设计",
+  "status": "approved",
+  "parent": "flow-1",
+  "acceptance": [
+    "需求卡确认，目标从访谈进设计"
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:32:35.463Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "许愿第三步",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:51:52.852Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_4205e18665224a7a99ed6682）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}

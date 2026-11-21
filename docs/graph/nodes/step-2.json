@@ -1,0 +1,45 @@
+{
+  "id": "step-2",
+  "type": "step",
+  "title": "答访谈两三个问题",
+  "why": "喵桃先猜后问，答一个改一个",
+  "status": "approved",
+  "parent": "flow-1",
+  "acceptance": [
+    "目标卡的空白被喵桃的猜测填上，主人只改不对的"
+  ],
+  "edges": [
+    {
+      "type": "next",
+      "to": "step-3"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-11-21T04:32:35.030Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "许愿第二步",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-21T04:32:54.683Z",
+      "actor": "llm",
+      "op": "link",
+      "reason": "访谈补齐后等确认",
+      "edge": {
+        "type": "next",
+        "to": "step-3"
+      }
+    },
+    {
+      "at": "2026-11-21T04:51:52.609Z",
+      "actor": "llm",
+      "op": "approve",
+      "reason": "人在对话里同意（record_human_answer call_4205e18665224a7a99ed6682）",
+      "relay": "可以放行",
+      "from": "proposed",
+      "to": "approved"
+    }
+  ]
+}
