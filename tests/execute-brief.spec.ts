@@ -618,3 +618,15 @@ test('renderBrief: a reopened task carries the cause sentence with the last reop
   const reasonless = withNode(graph, { ...task, history: [...task.history, { at: at(5), actor: 'llm' as const, op: 'status' as const, from: 'done' as const, to: 'doing' as const }] })
   assert.ok(renderBrief(briefInput({ graph: reasonless, task: get(reasonless, 'task-1') })).text.includes('- This task was reopened after being done, and the reopen recorded no reason.'))
 })
+
+test('renderReviewBrief lists numbered acceptance items under Context and explains the checked evidence format', () => {
+  const graph = withNode(plain(), { ...get(plain(), 'task-1'), acceptance: ['first criterion holds', 'second test passes'] })
+  const brief = renderReviewBrief(reviewBriefInput(graph))
+  const contextStart = brief.text.indexOf('## Context')
+  const constraintsStart = brief.text.indexOf('## Constraints')
+  const firstItem = brief.text.indexOf('  - acceptance:0 first criterion holds')
+  const secondItem = brief.text.indexOf('  - acceptance:1 second test passes')
+  assert.ok(contextStart >= 0 && constraintsStart > contextStart)
+  assert.ok(firstItem > contextStart && secondItem > firstItem && secondItem < constraintsStart)
+  assert.ok(brief.text.includes('"acceptance:<i> <evidence>"'))
+})

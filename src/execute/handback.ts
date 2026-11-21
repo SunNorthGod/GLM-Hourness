@@ -717,11 +717,20 @@ function problemsOf(settlement: unknown): string {
   return problems.length === 0 ? 'no structured verdict' : problems.join('; ')
 }
 
-/** One coverage item: `acceptance:<i>` (or `direction:<i>`) named in `checked`. */
+const ACCEPTANCE_ITEM = /^acceptance:(\d+)(?!\d)(?:$|[\s:：,，.—–-])/
+const DIRECTION_ITEM = /^direction:(\d+)(?!\d)(?:$|[\s:：,，.—–-])/
+
+/** One coverage item: `acceptance:<i>` or `direction:<i>` named in `checked`, bare or followed by evidence (`acceptance:<i> <evidence>`). */
 function covers(checked: readonly string[], kind: 'acceptance' | 'direction', count: number): readonly number[] {
+  const pattern = kind === 'acceptance' ? ACCEPTANCE_ITEM : DIRECTION_ITEM
+  const covered = new Set<number>()
+  for (const entry of checked) {
+    const match = pattern.exec(entry.trim())
+    if (match !== null) covered.add(Number(match[1]))
+  }
   const missing: number[] = []
   for (let index = 0; index < count; index++) {
-    if (!checked.includes(`${kind}:${index}`)) missing.push(index)
+    if (!covered.has(index)) missing.push(index)
   }
   return missing
 }

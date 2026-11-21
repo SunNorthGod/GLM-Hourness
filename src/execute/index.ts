@@ -377,9 +377,11 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
     onHandback: (attempt, settlement) => {
       const projectRoot = projectOfGraphDir(attempt.graphDir)
       liveBoard.settleDispatch(projectRoot, attempt, settlement)
+      void liveBoard.flush(projectRoot)
       void settleHandback(handbackDeps, attempt, settlement).finally(() => {
         liveBoard.markHandbackDone(projectRoot, attempt.childId)
         syncDriveAndPeak(projectRoot, attempt.parentSession)
+        void liveBoard.flush(projectRoot)
       })
     },
     walk: walkDeps,
@@ -402,7 +404,14 @@ export function apply(ctx: ExecuteContext, config: ExecuteConfig = {}): () => vo
       if (parent === undefined || parent.session === undefined) return false
       try {
         await dispatchTool(dispatchDeps).execute(
-          { id: reviewTaskId, model: attempt.model, why: attempt.why, ...(attempt.depth === undefined ? {} : { depth: attempt.depth }) },
+          {
+            id: reviewTaskId,
+            provider: attempt.provider,
+            model: attempt.model,
+            why: attempt.why,
+            ...(attempt.reasoningEffort === undefined ? {} : { reasoningEffort: attempt.reasoningEffort }),
+            ...(attempt.depth === undefined ? {} : { depth: attempt.depth }),
+          },
           { callId: `redispatch-${attempt.childId}`, signal: new AbortController().signal, agent: parent as unknown as AgentLike, deferContext: () => {}, concludeTurn: () => {} },
         )
         return true

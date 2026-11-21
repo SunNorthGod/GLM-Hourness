@@ -701,6 +701,51 @@ test('a full review that misses an acceptance item is voided once and re-dispatc
   }
 })
 
+test('a full review passes when checked carries evidence text after acceptance:<i>, and voids acceptance:10 or acceptance:0foo false prefixes', async () => {
+  const passing = await reviewFixture(project => ({
+    verdict: 'APPROVED',
+    commit: project.commit,
+    findings: [],
+    checked: ['acceptance:0 verified in src/guarded/writer.js', 'acceptance:1: npm test exits 0'],
+  }))
+  try {
+    const graph = await passing.rig1.cache.load(passing.project.graphDir)
+    assert.equal(reviewTaskOf(graph).status, 'done', 'evidence text after acceptance:<i> must count as covered')
+  }
+  finally {
+    forgetAttempt('hz-task-1-a1-aaaaaa')
+    forgetAttempt('hz-task-1-r1-rrrrrr')
+    rmSync(passing.project.root, { recursive: true, force: true })
+  }
+
+  const falsePrefix = await reviewFixture(project => ({
+    verdict: 'APPROVED',
+    commit: project.commit,
+    findings: [],
+    checked: ['acceptance:0', 'acceptance:10'],
+  }))
+  try {
+    const graph = await falsePrefix.rig1.cache.load(falsePrefix.project.graphDir)
+    const voidComment = reviewTaskOf(graph).history.find(entry => entry.op === 'comment' && typeof entry.text === 'string' && entry.text.startsWith('审查作废 · '))
+    assert.ok(voidComment !== undefined && voidComment.text?.includes('acceptance:1'), 'acceptance:10 must not satisfy acceptance:1')
+    assert.equal(falsePrefix.rig1.redispatches.length, 1)
+    await reviewRound(falsePrefix.rig1, falsePrefix.project, 'hz-task-1-r2-tttttt', 2, {
+      verdict: 'APPROVED',
+      commit: falsePrefix.project.commit,
+      findings: [],
+      checked: ['acceptance:0foo', 'acceptance:1'],
+    })
+    assert.equal(falsePrefix.rig1.redispatches.length, 1)
+    assert.ok(falsePrefix.rig1.sent.some(notice => notice.content[0].text.includes('does not cover acceptance:0')), 'acceptance:0foo must not satisfy acceptance:0')
+  }
+  finally {
+    forgetAttempt('hz-task-1-a1-aaaaaa')
+    forgetAttempt('hz-task-1-r1-rrrrrr')
+    forgetAttempt('hz-task-1-r2-tttttt')
+    rmSync(falsePrefix.project.root, { recursive: true, force: true })
+  }
+})
+
 // ---- the acceptance review of a goal (§3.9.4) ----
 
 interface AcceptanceRig {

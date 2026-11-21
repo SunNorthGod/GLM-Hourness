@@ -598,7 +598,9 @@ export function renderDesignReviewBrief(input: DesignReviewInput): Brief {
     '- Workspace: your working directory is the main checkout of the repository.',
     '- The design decisions under review:',
     ...sources.map(decision => `  - ${decision.id} "${decision.title}"${decision.body === undefined || decision.body.trim() === '' ? '' : ` — ${decision.body.trim().slice(0, DECISION_TEXT_LIMIT)}`}`),
-    `- The module's acceptance: ${(module.acceptance ?? []).join('; ') || 'none recorded'}.`,
+    ...((module.acceptance ?? []).length > 0
+      ? ['- The module\'s acceptance:', ...(module.acceptance ?? []).map((item, index) => `  - acceptance:${index} ${item}`)]
+      : ['- The module\'s acceptance: none recorded.']),
     `- Not in scope: ${(module.nonGoals ?? []).join('; ') || 'nothing recorded'}.`,
     ...(planned.length > 0 ? ['- Planning already under the module:', ...planned.map(entry => `  - ${entry.type} "${entry.title}"${(entry.acceptance ?? []).length > 0 ? ` (acceptance: ${(entry.acceptance ?? []).join('; ')})` : ''}`)] : []),
     '- The direction list:',
@@ -652,7 +654,7 @@ export function renderReviewBrief(input: ReviewBriefInput): Brief {
   const base = input.handback?.base ?? 'unknown'
   const head = input.handback?.head ?? 'unknown'
   const depthLine = input.depth === 'full'
-    ? 'Check every acceptance item; "checked" must list every acceptance:<i> with the evidence you looked at.'
+    ? 'Check every acceptance item; "checked" must hold one entry per item, written "acceptance:<i> <evidence>": the file, diff or command you looked at.'
     : 'Read the change; report only findings that meet one of the three blocking criteria, the rest as non-blocking.'
   const lines: string[] = [
     `# Task ${input.task.id}: ${input.task.title}`,
@@ -664,6 +666,9 @@ export function renderReviewBrief(input: ReviewBriefInput): Brief {
     '## Context',
     `- Reviewed: commit ${head}, made from base ${base}. Read the change with git diff ${base}..${head} in the worktree.`,
     `- The handback status was ${input.handback?.status ?? 'unknown'}; the task body carries its summary comment and the plan section.`,
+    ...((reviewed.acceptance ?? []).length > 0
+      ? ['- Acceptance items to check:', ...(reviewed.acceptance ?? []).map((item, index) => `  - acceptance:${index} ${item}`)]
+      : []),
     ...(input.cause !== undefined && input.cause !== '' ? [`- The task was reopened after being done; its accepted handback states the cause: ${input.cause}. When the change only treats a symptom and does not address this cause, record the gap as a non-blocking finding.`] : []),
     ...(input.handback?.docs !== undefined && input.handback.docs.length > 0 ? ['- The handback says of the component docs:', ...input.handback.docs.map(line => `  - ${line}`)] : []),
     ...(input.findings === undefined || input.findings.length === 0 ? [] : ['- Findings of the previous round (these come first):', ...input.findings.map(finding => `  - ${finding}`)]),
