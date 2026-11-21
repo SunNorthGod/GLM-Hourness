@@ -1,0 +1,35 @@
+{
+  "id": "feature-8",
+  "type": "feature",
+  "title": "执行、汇合与运维闭环",
+  "why": "后台派发、限定子任务能写哪里、完成与合入前的检查连成一条，主 Agent 派出去的活由 harness 收口",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "slope": "uphill",
+  "body": "执行行已出厂启用：dispatch_task 带模型档位、写入范围门禁、完成门禁、合入门禁（check_commit、主干推进检查）、驱动循环、简报门禁已合入。还缺：独立审查的完整接法、四答晨报、巡检会话、规范阶梯与周报、DORA 指标、标定集扩充。已知缺陷：rules-peak-stop 唤醒窗口的抖动已升级为缺陷待修。",
+  "acceptance": [
+    "从放行到目标完成的闭环在探针场景连成一条",
+    "汇合门禁、晨报、巡检、周报可用"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:12:08.037Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "路线的执行与运维块，进行中，是当前的主战场。",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-11T19:15:30.247Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "jargon 提醒：why 里不能用写入范围与门禁这样的内部词",
+      "changes": {
+        "why": {
+          "from": "后台派发、写入范围门禁、完成门禁与合入检查连成一条，主 Agent 洿任务的活由 harness 收口",
+          "to": "后台派发、限定子任务能写哪里、完成与合入前的检查连成一条，主 Agent 派出去的活由 harness 收口"
+        }
+      }
+    }
+  ]
+}

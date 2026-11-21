@@ -1,0 +1,22 @@
+{
+  "id": "task-7",
+  "type": "task",
+  "title": "额度读取、高峰档位与状态面板",
+  "status": "proposed",
+  "parent": "feature-7",
+  "kind": "implement",
+  "tier": "standard",
+  "body": "完成证据: 4018a7c, a3eb0ac, ee97e0f, cbc90a5, cbc46d3, 061bd32",
+  "acceptance": [
+    "状态面板与额度段落读数正确"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:15:00.163Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "用量与峰谷里程碑的落地任务，已在 git 历史中。",
+      "to": "proposed"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "decision-1",
+  "type": "decision",
+  "title": "不用 Agent Team 与角色 preset；人的界面不做网页",
+  "why": "这两个决定砍掉一整类复杂度，后面的派发与界面都按它设计",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "verification": "unverified",
+  "body": "2026-10-28 定案：同日的借用组件核实让其中几项不再需要；派发只走后台子 agent，派发属性取自任务节点。",
+  "history": [
+    {
+      "at": "2026-11-11T19:15:42.117Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "项目早已定案的方向，接管时照实登记（登记后保持未核实状态）。",
+      "to": "proposed"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "feature-5",
+  "type": "feature",
+  "title": "guard 补齐与环境检查",
+  "why": "拦截范围、兜底记录、告警棘轮与合入前的检查都由 harness 保证实施",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "slope": "downhill",
+  "body": "guard 判所有路由与模型、引号感知、声明注入提示词、工作区变更兜底；检查器门禁（ESLint、knip、jscpd 对照基线只减不增）、密钥扫描、依赖报告入库。",
+  "acceptance": [
+    "告警基线入库，只减不增",
+    "违规落盘可查"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:12:07.981Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "路线的第四块，检查器基线与 guard 改动均已合入。",
+      "to": "proposed"
+    }
+  ]
+}

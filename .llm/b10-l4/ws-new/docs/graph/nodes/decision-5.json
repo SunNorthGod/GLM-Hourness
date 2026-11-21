@@ -1,0 +1,31 @@
+{
+  "id": "decision-5",
+  "type": "decision",
+  "title": "项目图存储格式与引擎定案",
+  "why": "图是进度的事实源，格式定下来之后才有工具面与合入前的检查",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "verification": "unverified",
+  "body": "2026-10-28 用户批准引擎与存储格式定案；决策分级与转述同日合入；图行与面板行经验收后默认启用。",
+  "history": [
+    {
+      "at": "2026-11-11T19:15:42.244Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "M2.1 用户批准过的定案，接管时照实登记。",
+      "to": "proposed"
+    },
+    {
+      "at": "2026-11-11T19:15:58.876Z",
+      "actor": "llm",
+      "op": "edit",
+      "reason": "行话提醒：why 里不能用门禁，改成人话",
+      "changes": {
+        "why": {
+          "from": "图是进度的事实源，格式定案之后才有工具面与门禁",
+          "to": "图是进度的事实源，格式定下来之后才有工具面与合入前的检查"
+        }
+      }
+    }
+  ]
+}

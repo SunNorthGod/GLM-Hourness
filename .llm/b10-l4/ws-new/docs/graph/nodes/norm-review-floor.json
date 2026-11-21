@@ -1,0 +1,25 @@
+{
+  "id": "norm-review-floor",
+  "type": "norm",
+  "title": "本项目必须全审的改动",
+  "why": "这些改动出错代价大，主 Agent 不能把审查调浅",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "body": "审查深浅由主 Agent 定（全审：更强的模型对照验收逐条看；轻审：只扫改动；不审：只改文档、错字一类），但改动落在下列任一类时由 harness 强制全审，按改动的文件与执行的命令判断，主 Agent 绕不过去。周报统计降档或不审的活后来返工的次数，哪一类返工多就提议加进清单，人点头才改；放松清单要人同意。",
+  "acceptance": [
+    "改到拦截与权限：packages/hourness/locale/guard/、scripts/check-secrets.mjs、scripts/guard/、scripts/smoke-zcode-authorized.mjs、src/data/secret-shape.ts、src/glm-llm/auth/ 等 3 处 files packages/hourness/locale/guard/, scripts/check-secrets.mjs, scripts/guard/, scripts/smoke-zcode-authorized.mjs, src/data/secret-shape.ts, src/glm-llm/auth/, src/guard/, src/loops/guard.ts, src/rules/permissions.ts",
+    "改到数据格式与迁移：src/graph/schema.ts、src/metrics/schema.ts files src/graph/schema.ts, src/metrics/schema.ts",
+    "改到依赖与构建：package.json、pnpm-lock.yaml files package.json, pnpm-lock.yaml",
+    "删东西、推送这类收不回的操作：删文件或分支（清理已合入的除外）、推送、改写提交历史 deletes commands git push, git branch -d, git branch -D, git update-ref -d, git filter-branch, git filter-repo",
+    "改用户配置目录或写到项目目录之外 outside"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:15:58.840Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "审查下限规范，文本按仓库实况改自自举的 floor 草稿。",
+      "to": "proposed"
+    }
+  ]
+}

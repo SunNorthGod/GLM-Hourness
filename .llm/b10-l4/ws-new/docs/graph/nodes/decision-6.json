@@ -1,0 +1,19 @@
+{
+  "id": "decision-6",
+  "type": "decision",
+  "title": "两包各自独立 bundle，可单独安装",
+  "why": "只要通道或只要编排的人不该被另一层拖累",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "verification": "unverified",
+  "body": "2026-10-29 split 合入：两个包各自的 package.json 声明自己的补丁，宿主行按包命名；可以只装其中一层。",
+  "history": [
+    {
+      "at": "2026-11-11T19:15:42.280Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "仓库结构的基本决定，接管时照实登记。",
+      "to": "proposed"
+    }
+  ]
+}

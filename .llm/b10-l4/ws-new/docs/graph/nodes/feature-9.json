@@ -1,0 +1,23 @@
+{
+  "id": "feature-9",
+  "type": "feature",
+  "title": "呈现层界面收尾",
+  "why": "设置页、pill 与面板组件按官方壳层的组件表重做，视觉经用户终审",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "slope": "uphill",
+  "body": "项目图右侧栏面板已提前做完；还缺全部 UI 的视觉审查与替换（项目图上的 m8-ui-audit），按截图迭代，用户终审。",
+  "acceptance": [
+    "替换现有设置页与输入框 pill",
+    "用户对视觉终审接受"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:12:08.057Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "路线的最后一块，视觉审查尚未通过。",
+      "to": "proposed"
+    }
+  ]
+}

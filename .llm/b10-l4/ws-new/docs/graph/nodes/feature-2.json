@@ -1,0 +1,23 @@
+{
+  "id": "feature-2",
+  "type": "feature",
+  "title": "底层通道与方言对齐 ZCode 3.17.1",
+  "why": "GLM 的通道、提示词与工具面和官方 ZCode 代码级一致，真机可用",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "slope": "downhill",
+  "body": "ROADMAP 的第一个实施里程碑，已完成：版本基线统一、路由判定收口、数据目录与审计、行健康、事件钩子对照官方类型、沙盒探针、逐字门禁、todo 提醒、真机验收。",
+  "acceptance": [
+    "逐字门禁只对照 pristine 副本，已知偏差 0",
+    "真网冒烟与真机验收通过，行健康全绿"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:12:07.930Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "底层收口在路线里排在最前，1470 条历史显示已合入。",
+      "to": "proposed"
+    }
+  ]
+}

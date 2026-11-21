@@ -1,0 +1,26 @@
+{
+  "id": "goal-1",
+  "type": "goal",
+  "title": "GLM 通道质量与官方 ZCode 一致",
+  "why": "GLM 会话的系统提示词、工具面与请求形态和官方 ZCode 3.17.1 逐字一致，质量不打折",
+  "status": "proposed",
+  "slope": "uphill",
+  "acceptance": [
+    "逐字门禁只对照 reference/zcode-3.17.1/zcode.cjs，已知偏差 0",
+    "glm-llm 的 coding-plan 请求与本包能控的部分和 ZCode 代码级一致，沙盒真网运行全部 200",
+    "GLM 方言不影响非 GLM 会话；两包可单独安装",
+    "凭证、签名、端点路由、压缩镜像与工具检索都按 ZCode 的做法工作"
+  ],
+  "nonGoals": [
+    "不对 DSH 契约本身做 mock；mock 只用于网络与文件系统"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:10:16.892Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "README 分层表第一层：House 目标，独立成图的目标节点（目标不挂边）。",
+      "to": "proposed"
+    }
+  ]
+}

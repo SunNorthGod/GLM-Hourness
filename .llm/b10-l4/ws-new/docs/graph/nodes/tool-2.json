@@ -1,0 +1,21 @@
+{
+  "id": "tool-2",
+  "type": "tool",
+  "title": "TypeScript",
+  "status": "proposed",
+  "parent": "env",
+  "body": "用途：检查类型。用法：改完 .ts 一类文件后由检查器自动跑。选择理由：类型错误在合入之前发现。安装位置：项目的 node_modules（开发依赖）。",
+  "acceptance": [
+    "check tsc tsc $ node node_modules/typescript/bin/tsc --noEmit --pretty false when *.ts, *.mts, *.tsx",
+    "config tsconfig.json"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:15:58.806Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "环境下的工具节点，文本逐字取自自举的 defaults。",
+      "to": "proposed"
+    }
+  ]
+}

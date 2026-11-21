@@ -1,0 +1,22 @@
+{
+  "id": "task-6",
+  "type": "task",
+  "title": "记忆、经验板与夜间整理",
+  "status": "proposed",
+  "parent": "feature-6",
+  "kind": "implement",
+  "tier": "standard",
+  "body": "完成证据: f17e3e6, ec5532e, 78f77ef",
+  "acceptance": [
+    "记忆与经验的探针场景全绿；习惯先问再记"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:15:00.112Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "记忆与学习里程碑的落地任务，已在 git 历史中。",
+      "to": "proposed"
+    }
+  ]
+}

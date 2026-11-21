@@ -1,0 +1,23 @@
+{
+  "id": "feature-6",
+  "type": "feature",
+  "title": "记忆与学习",
+  "why": "记忆按会话与项目分处、开局召回、习惯先问再记、经验板把坑变成可查的经验",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "slope": "downhill",
+  "body": "记忆行、经验板行默认启用；夜间整理把反复出现的请求提为记忆候选（dream）；子 agent 不带记忆工具。",
+  "acceptance": [
+    "记忆与经验的读写、召回、习惯流在两侧路由的探针场景全绿",
+    "第一批经验已导入本项目并复查跳过"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:12:07.998Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "路线的记忆与学习块，大部分已合入。",
+      "to": "proposed"
+    }
+  ]
+}

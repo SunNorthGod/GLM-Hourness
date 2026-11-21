@@ -1,0 +1,27 @@
+{
+  "id": "task-12",
+  "type": "task",
+  "title": "修高峰唤醒窗口检查的抖动缺陷",
+  "status": "proposed",
+  "parent": "feature-8",
+  "kind": "implement",
+  "tier": "standard",
+  "body": "2026-11-10 连续三次同样红后升级为缺陷（交接文档已知问题清单），先重现再修，探针场景 rules-peak-stop 作为验收。",
+  "acceptance": [
+    "连续三天的同一检查运行全部绿色"
+  ],
+  "writeScope": [
+    "src/",
+    "tests/",
+    "scripts/probe/"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:15:06.219Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "已知缺陷清单升级的抖动，不修会一直污染检查结果。",
+      "to": "proposed"
+    }
+  ]
+}

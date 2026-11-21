@@ -1,0 +1,22 @@
+{
+  "id": "task-11",
+  "type": "task",
+  "title": "定期核对 ZCode 自动更新的漂移",
+  "status": "proposed",
+  "parent": "goal-1",
+  "kind": "review",
+  "tier": "standard",
+  "body": "2026-11-11 的核对：安装版自动更到 3.18.0，3.17.1 pristine 锚点不变（提交 a4d9ff0）。ZCode 还会继续自动更新，把每次漂移的核对做成常规任务：查安装版与 pristine 副本的差异，只把与通道相关的变化跟进进来。",
+  "acceptance": [
+    "方言文本仍逐字等于 3.17.1 pristine 副本；安装版的新行为有核对记录"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:15:00.341Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "ZCode 会自动更新，锚点又锚定在固定副本上，漂移需要有人定期看。",
+      "to": "proposed"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "task-1",
+  "type": "task",
+  "title": "宪章、设计与路线文档入库",
+  "status": "proposed",
+  "parent": "feature-1",
+  "kind": "docs",
+  "tier": "simple",
+  "body": "完成证据: 4037701, c518317, f2e0b36",
+  "acceptance": [
+    "宪章、设计、路线、事实账等文档入库，旧记录逐字导入"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:14:59.965Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "文档沉淀里程碑的落地任务，已在 git 历史中。",
+      "to": "proposed"
+    }
+  ]
+}

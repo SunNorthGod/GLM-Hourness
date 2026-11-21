@@ -1,0 +1,22 @@
+{
+  "id": "task-2",
+  "type": "task",
+  "title": "通道、方言与逐字检查对齐 3.17.1",
+  "status": "proposed",
+  "parent": "feature-2",
+  "kind": "implement",
+  "tier": "standard",
+  "body": "完成证据: b555795, 9ac065d, 939ea90, ee172e3, 4b3e0ca",
+  "acceptance": [
+    "逐字检查全绿，真网冒烟与真机验收通过"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:14:59.995Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "底层收口里程碑的落地任务，已在 git 历史中。",
+      "to": "proposed"
+    }
+  ]
+}

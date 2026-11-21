@@ -1,0 +1,29 @@
+{
+  "id": "task-9",
+  "type": "task",
+  "title": "补齐独立审查、晨报、巡检与周报",
+  "status": "proposed",
+  "parent": "feature-8",
+  "kind": "implement",
+  "tier": "hard",
+  "worktree": true,
+  "acceptance": [
+    "独立审查、晨报、巡检、规范阶梯与周报、周期指标、标定集扩充全部可用并在图上留验收记录"
+  ],
+  "writeScope": [
+    "src/",
+    "packages/hourness/",
+    "tests/",
+    "scripts/",
+    "docs/"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:15:00.235Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "执行与运维里程碑还缺的余项，是当前的主战场。",
+      "to": "proposed"
+    }
+  ]
+}

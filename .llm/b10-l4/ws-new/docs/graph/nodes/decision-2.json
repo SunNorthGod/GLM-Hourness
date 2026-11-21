@@ -1,0 +1,19 @@
+{
+  "id": "decision-2",
+  "type": "decision",
+  "title": "guard 拦截所有路由与模型",
+  "why": "执行边界不随模型变，换模型不放松纪律",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "verification": "unverified",
+  "body": "2026-10-29 split 第 7 步按当时的询问 G3 改定；此前只拦 GLM 调用。违规记录在项目目录的违规流水里。",
+  "history": [
+    {
+      "at": "2026-11-11T19:15:42.146Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "项目早已定案的方向，接管时照实登记。",
+      "to": "proposed"
+    }
+  ]
+}

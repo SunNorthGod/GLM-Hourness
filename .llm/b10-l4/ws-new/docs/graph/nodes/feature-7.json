@@ -1,0 +1,23 @@
+{
+  "id": "feature-7",
+  "type": "feature",
+  "title": "用量、峰谷与额度面板",
+  "why": "积分口径、高峰档位、额度读取与提醒让用量可见、高峰可避",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "slope": "downhill",
+  "body": "计价服务带 peakHours、quota、loopDefaults；高峰提醒按档位措辞；额度读数与预估进状态面板；指标事件进指标流水。",
+  "acceptance": [
+    "/hourness 面板与 /glm-status 的额度段落读数正确",
+    "删用量记录留缺口行的约定被遵守"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:12:08.017Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "路线的用量与峰谷块，已合入并经真机核对。",
+      "to": "proposed"
+    }
+  ]
+}

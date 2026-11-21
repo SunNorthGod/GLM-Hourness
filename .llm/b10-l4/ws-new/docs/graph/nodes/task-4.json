@@ -1,0 +1,22 @@
+{
+  "id": "task-4",
+  "type": "task",
+  "title": "主 Agent 模式与设计循环闭环",
+  "status": "proposed",
+  "parent": "feature-4",
+  "kind": "implement",
+  "tier": "standard",
+  "body": "完成证据: a178f32, d6a2c26",
+  "acceptance": [
+    "需求访谈标定任务从一句话到骨架放行全程走通"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:15:00.052Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "设计循环里程碑的落地任务，已在 git 历史中。",
+      "to": "proposed"
+    }
+  ]
+}

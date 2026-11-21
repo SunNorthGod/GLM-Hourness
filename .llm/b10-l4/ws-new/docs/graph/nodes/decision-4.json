@@ -1,0 +1,19 @@
+{
+  "id": "decision-4",
+  "type": "decision",
+  "title": "工具检索默认开启，图与记忆工具延迟进检索",
+  "why": "常驻工具面太宽，检索让每步只带用得到的工具",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "verification": "unverified",
+  "body": "2026-11-10 消融的 A3 臂采纳后合入：15 个图工具与 3 个记忆工具延迟进检索。工具检索在 ZCode 默认关闭，本项目经用户定案默认开启。",
+  "history": [
+    {
+      "at": "2026-11-11T19:15:42.208Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "2026-11-10 采纳的消融结论，接管时照实登记。",
+      "to": "proposed"
+    }
+  ]
+}

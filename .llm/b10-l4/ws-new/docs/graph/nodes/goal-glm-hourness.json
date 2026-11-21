@@ -1,0 +1,30 @@
+{
+  "id": "goal-glm-hourness",
+  "type": "goal",
+  "title": "GLM 住进 DSH，开发体系由编排层保证",
+  "why": "让 GLM 以 ZCode 3.17.1 的训练分布住进 DeepSeek Harness，其上把开发体系量化成 harness 保证实施的标准",
+  "status": "proposed",
+  "slope": "uphill",
+  "body": "两个目标各由一个包实现（docs/CHARTER.md §3）：House 由 GLM 通道包 dsh-glm-zcode（packages/glm）实现，Harness 由编排层包 dsh-hourness（packages/hourness）实现。里程碑与验收条件见 docs/ROADMAP.md，进度只记在项目图 docs/graph/。",
+  "acceptance": [
+    "两包构建、安装、测试三道全绿：pnpm run build、pnpm run preflight、pnpm test",
+    "桌面版真实会话选 glm-zcode 路由可用，各宿主行健康上报生效",
+    "项目进度与决策只记在项目图 docs/graph/ 上",
+    "逐字门禁全部通过，只对照 reference/zcode-3.17.1/zcode.cjs，已知偏差为 0"
+  ],
+  "nonGoals": [
+    "不依赖反向代理：任何行都不识别或依赖反代路由",
+    "不用 Agent Team、队友角色与角色 preset",
+    "人的界面不做网页形态",
+    "npm 等整体发版由人执行，不由 agent 发版"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:09:42.881Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "接管自举的锚点目标：项目存在的目的，来自 README 与宪章。",
+      "to": "proposed"
+    }
+  ]
+}

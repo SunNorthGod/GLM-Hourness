@@ -1,0 +1,22 @@
+{
+  "id": "task-8",
+  "type": "task",
+  "title": "执行行：派发、完成检查与合入检查",
+  "status": "proposed",
+  "parent": "feature-8",
+  "kind": "implement",
+  "tier": "standard",
+  "body": "执行行已出厂启用，完成部分入证据。完成证据: c0bd42f, 74e8a36, c85da4a, 77a0c87, c22156e, 72647c1, 86edd31, f1c137c, 504048e, 724897e",
+  "acceptance": [
+    "从放行到目标完成的闭环在探针场景连成一条"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:15:00.204Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "执行闭环已合入的部分先记证据，余项另开任务。",
+      "to": "proposed"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "task-5",
+  "type": "task",
+  "title": "guard 全路由拦截与检查器基线",
+  "status": "proposed",
+  "parent": "feature-5",
+  "kind": "implement",
+  "tier": "standard",
+  "body": "完成证据: e2b78ab, 95cb4aa, 223f8d3",
+  "acceptance": [
+    "告警基线入库只减不增；违规落盘可查"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:15:00.083Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "guard 与环境里程碑的落地任务，已在 git 历史中。",
+      "to": "proposed"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "feature-1",
+  "type": "feature",
+  "title": "文档沉淀：宪章、设计、路线、事实账",
+  "why": "git 之前的记录与设计决定入库，接手的人有完整的书面依据",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "slope": "downhill",
+  "body": "ROADMAP 上的第一个里程碑，已完成。",
+  "acceptance": [
+    "宪章、总体与底层设计、编排层设计、事实账、路线、流程、交接文档入库",
+    "git 之前的记录逐字导入后由新文档取代"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:12:07.914Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "路线上的第一个里程碑，纯文档且早已完成。",
+      "to": "proposed"
+    }
+  ]
+}

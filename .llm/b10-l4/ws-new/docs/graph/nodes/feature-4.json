@@ -1,0 +1,22 @@
+{
+  "id": "feature-4",
+  "type": "feature",
+  "title": "设计循环最小闭环",
+  "why": "主 Agent 模式、许愿访谈、方案与检查、决策卡、阶段提醒连成一条，从一句话到骨架放行走得通",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "slope": "downhill",
+  "body": "设计行默认启用：主 Agent 身份、访谈、五栏、决策卡（propose_to_human / record_human_answer）、阶段状态机、git 快照与不写入规矩都已合入。",
+  "acceptance": [
+    "标定测试集里的需求访谈任务从一句话到骨架放行全程走通"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:12:07.963Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "路线的第三块，历史显示已合入并默认启用。",
+      "to": "proposed"
+    }
+  ]
+}

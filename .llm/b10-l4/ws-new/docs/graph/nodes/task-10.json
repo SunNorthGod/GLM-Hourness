@@ -1,0 +1,27 @@
+{
+  "id": "task-10",
+  "type": "task",
+  "title": "全部 UI 视觉审查并替换设置页与 pill",
+  "status": "proposed",
+  "parent": "feature-9",
+  "kind": "implement",
+  "tier": "hard",
+  "body": "按官方壳层模块表里的组件做，项目图右侧栏面板沿用其组件与样式；按截图迭代。",
+  "acceptance": [
+    "替换现有设置页与输入框 pill；用户对视觉终审接受"
+  ],
+  "writeScope": [
+    "ui/",
+    "packages/glm/ui/",
+    "packages/hourness/ui/"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:15:00.307Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "呈现层是路线最后一块，视觉尚未经用户接受。",
+      "to": "proposed"
+    }
+  ]
+}

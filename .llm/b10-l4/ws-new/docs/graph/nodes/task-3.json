@@ -1,0 +1,22 @@
+{
+  "id": "task-3",
+  "type": "task",
+  "title": "项目图引擎、面板与决策分级",
+  "status": "proposed",
+  "parent": "feature-3",
+  "kind": "implement",
+  "tier": "standard",
+  "body": "完成证据: fe69bc5, 17b8e3f, 4e843f8, 038a3da, 663c6a0",
+  "acceptance": [
+    "无证据不能标完成；面板在桌面版可用"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:15:00.025Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "项目图里程碑的落地任务，已在 git 历史中。",
+      "to": "proposed"
+    }
+  ]
+}

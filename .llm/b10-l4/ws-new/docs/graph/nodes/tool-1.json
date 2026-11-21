@@ -1,0 +1,21 @@
+{
+  "id": "tool-1",
+  "type": "tool",
+  "title": "ESLint",
+  "status": "proposed",
+  "parent": "env",
+  "body": "用途：检查 JavaScript 与 TypeScript 的写法问题。用法：改完 .js、.ts 一类文件后由检查器自动跑。选择理由：社区默认方案，规则多、插件全。安装位置：项目的 node_modules（开发依赖）。",
+  "acceptance": [
+    "check eslint eslint-json $ node node_modules/eslint/bin/eslint.js --format json {files} when *.js, *.mjs, *.cjs, *.ts, *.mts, *.tsx",
+    "config eslint.config.mjs"
+  ],
+  "history": [
+    {
+      "at": "2026-11-11T19:15:58.774Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "环境下的工具节点，文本逐字取自自举的 defaults。",
+      "to": "proposed"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "decision-3",
+  "type": "decision",
+  "title": "ZCode 基线锚定 3.17.1 pristine 副本",
+  "why": "逐字一致需要一份不变的对照本，安装版不可靠",
+  "status": "proposed",
+  "parent": "goal-glm-hourness",
+  "verification": "unverified",
+  "body": "2026-10-30 起 3.17.1；逐字检查只对照 reference/zcode-3.17.1/zcode.cjs。2026-11-11 复核：安装版自动更到 3.18.0，锚点不变；本机安装版随自动更新变化、被用户打过补丁，只作机制参考。",
+  "history": [
+    {
+      "at": "2026-11-11T19:15:42.176Z",
+      "actor": "llm",
+      "op": "propose",
+      "reason": "仓库规则的基线条款，接管时照实登记。",
+      "to": "proposed"
+    }
+  ]
+}
