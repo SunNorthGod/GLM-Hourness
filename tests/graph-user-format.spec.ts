@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readdir, readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -262,9 +262,4 @@ test('liveOf: dropped and superseded, here and above, take a node out (design §
   assert.equal(live('feat-1'), true, 'done work is live')
   assert.equal(live('task-1'), true, 'doing work under a done feature is live')
   assert.equal(live('task-2'), false, 'doing work under a dropped feature is not')
-})
-
-test('readdir sees no user node in the committed graph yet (design §7.5: the engine lands before any writer)', async () => {
-  const nodes = await readdir(join(repository, 'docs', 'graph', 'nodes'))
-  assert.ok(nodes.every(name => !name.startsWith('role-') && !name.startsWith('flow-') && !name.startsWith('step-')), 'no user node files exist on the graph')
 })
