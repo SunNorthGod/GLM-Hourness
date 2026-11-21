@@ -209,15 +209,19 @@ Cursor 的 shell 会注入 `GIT_CONFIG_COUNT`、`GIT_CONFIG_KEY_0`、`GIT_CONFIG
 
 ## 11. 自举移交（2026-11-21）
 
-本节写给接手的编排层主 Agent（桌面 DSH 会话）。世界状态：基于远端同点 `a8fb8d5c`（2026-11-21）完成全面修复与增强——清理 `.llm/b10-l4` 与试验残留；修复 P0 阻塞项（`abandoned` 废弃接管不再写出 `state.closed`、`.llm/scratch/` 内自清理删除放行、worktree 公共目录判定、`personaName` 干净区隔离接线、G15 配额计时修复、默认禁用宿主 `agent-team`/`tool-agent-team` 隐藏个人/团队开关）；双路由平齐化（免费 `glm-start-plan` 与个人 `glm-zcode` 共享 `/glm-login` 凭证、仅暴露 `glm-5.3` 与 `glm-5.3-flash`、对齐 ZCode `3.19.1` 免费额度读取 `/api/v1/zcode-plan/billing/balance`、余额空/过期/并发满自动切 Coding Plan 并经 `glmHournessStartPlan` 广播）；执行行 StartPlan 优先调度、`/dispatch-mode` 三档偏好（`eco`/`adaptive`/`burn`）与面板 UI/对比度修复；新增右侧栏「子智能体」实时监测页签（`graphLive` v5、`hournessExecuteBoard`、`.llm/execute/live-board.json`、FlowBar 入口胶囊与偏好切换器）。
+本节写给接手的编排层主 Agent（桌面 DSH 会话）。世界状态：在 `a8fb8d5c`（2026-11-21）基础上完成 P0 阻塞修复、双路由平齐化、实时「子智能体」监看面板，以及基于 DSH `0.2.2-rc.5` 的隔离全链路实测与运行时根因修复（`6a950473..HEAD`）：
 
-门禁与验证（2026-11-21）：`npm run build`（含双包 `ui/client.js`）、`npm run preflight`（22 行全部合拢）与全量 `npm test`（`test:1 && test:2 && test:3`）全绿；`check-verbatim` 502/0 零偏差，棘轮持平（eslint 57 / knip 18 / jscpd 1），`check-secrets` 零泄露。DSH `0.2.2-rc.5` headless 探针全量在非交互终端的 Windows RestrictedToken 沙盒下跑得 563/635（72 项失败均发生在 `pwsh.exe` 触发 `0xC0000142` 的场景）；以 `DSH_PERMISSION_MODE=danger-full-access` 分组复测 `bootstrap-existing,glm-exec-modules,glm-exec-review` 得 34/34，其余 25 个受 `pwsh` 影响的场景得 218/220（2 项失败为 `--only` 未带对照组 `non-glm` 的跨场景检查，该两项在全量 RUN 中已通过）；仅 `bootstrap-trial` 的 3 项沙盒受限校验仍受宿主 `0xC0000142` 遮蔽。
+- **P0 与面板修复**：清理 `.llm/b10-l4` 与试验残留；`abandoned` 废弃接管不再写出 `state.closed`；`.llm/scratch/` 内自清理删除放行；worktree 公共目录判定修复；`personaName` 干净区隔离接线；G15 配额计时修复；默认禁用宿主 `agent-team`/`tool-agent-team` 隐藏个人/团队开关；UI 对比度、焦点与图标细化。
+- **双路由与派发偏好**：免费 `glm-start-plan` 与个人 `glm-zcode` 共享 `/glm-login` 凭证、仅暴露 `glm-5.3` 与 `glm-5.3-flash`，对齐 ZCode 免费额度读取 `/api/v1/zcode-plan/billing/balance`（补齐 `X-Device-Mid` 头并解析 `remaining_units` / `total_units` / `used_units` / `unit_type`）；修复 Start Plan 配额用尽返回 HTTP 200 `application/json` (`code: 1005`) 时 SSE 空吞问题并改为按模型维度自动切换 Coding Plan（`glmHournessStartPlan` 广播）；Start Plan 下发子代理将 `sessionType` 收口为 `main`（保留 `querySource: subagent`），消除上游 `405/3012`。执行行支持 StartPlan 优先调度、`/dispatch-mode` 三档偏好（`eco`/`adaptive`/`burn`）及右侧栏「子智能体」实时监看面板（`graphLive` v5、`hournessExecuteBoard`、`.llm/execute/live-board.json`、FlowBar 入口胶囊）。
+- **真机实测新修的执行与守护缺陷**：`guard` `request_exception` Step 5a 放宽为 `entry.source?.form !== 'notice'`，消除非 RPC 回合死锁；`execute` 的 `covers()` 支持 `acceptance:<i> <evidence>` 尾部证据文本且防数字前缀误伤，任务与设计审查简报在 `## Context` 列出编号后的 `acceptance:<i>` 列表，消除全审循环作废；`redispatch` 保留 `attempt.provider` 与 `reasoningEffort`；`onHandback` 在结算与标定完成后立即冲刷 `live-board.json`；`createLiveBoardStore` 重启时从磁盘回填历史已结算派发与作业（遗留 `running` 条目标为 `lost`/`aborted`，坏文件安全降级）。
+
+门禁与验证（2026-11-21）：`npm run build`（含双包 `ui/client.js`）、`npm run preflight`（22 行全部合拢）与全量 `npm test`（`test:1 && test:2 && test:3`）全绿；`check-verbatim` 502/0 零偏差，检查器棘轮持平（eslint 57 / knip 18 / jscpd 1），`check-secrets`（gitleaks 8.30.1）零泄露。隔离 DSH `0.2.2-rc.5` 全链路实测通过：Start Plan 余额读取与 Coding Plan 并发/超额故障转移均返回正常结果；多轮主会话与 Start Plan 子代理执行、1 轮 `glm-5.3-flash` 代码审查通过、快进合入 `main` 与 `npm test` 通过（`0` 工具错误，缓存命中 `78.7%–99.9%`，`hasTeamPolicy=false` / `hasTeamTools=false` / `hasOutputStyle=false`）；隔离桌面版 CDP 验视 `0` 报错、`TeamModeToggle` 不渲染、「子智能体」与「项目图」正常渲染。
 
 接手流程按接管行的设计走：`/wish` 开接管（若只当上主 Agent、没开始读项目，补发 `/hourness-init`），接管流自己读图与默认表、有缺口才提议、愿望经访谈转成目标。门槛决策 `d-finish-then-bootstrap` 已满足。第一读按 §9 的起步读法；此后进度只看图（`npm run -s graph -- open`）。
 
-桌面装载：profile 以 `link:` 指向本检出的 `packages/*`，加载 `dist/` 与 `packages/*/ui/client.js`；先关桌面版，`npm run build`，再启动。
+桌面装载与 profile 同步：`~/.dsh/profiles/desktop/package.json` 以 `link:` 指向本检出的 `packages/glm` 与 `packages/hourness`；`cordis.patch.yml` 已同步对齐（`agent-default-model` 设 `glm-start-plan` / `glm-5.3-flash`、`glm-prompt` 迁至 `reportingDepth`、移除已退役的 `glm-hourness/workflow` 行，改前已备份）。拉取改动后先关桌面版，`npm run build`，再启动。
 
-纪律不变：`~/.dsh` 不改（`AGENTS.md` 第 6 条）；桌面验证只走隔离实例加 CDP（§6），`#32770` 停手叫人；探针与标定不并行（§6）。`DEVELOPMENT.md` §7 的 2026-11-19（rc-* 日志外置快照进程看门狗）与 2026-11-20（junction 先拆再复制）两行是现行纪律。
+纪律不变：改动已同步推送 Gitee `origin/main` 与 GitHub 镜像 `github/main`；桌面验证只走隔离实例加 CDP（§6），`#32770` 停手叫人；探针与标定不并行（§6）。`DEVELOPMENT.md` §7 的 2026-11-19（rc-* 日志外置快照进程看门狗）与 2026-11-20（junction 先拆再复制）两行是现行纪律。
 
 等真火与真机的事（图上 waiting，此处只列触发条件特殊的）：docs-at-hand 两节点等 18:05 未同步日更真火，桌面须开机跨过 18:05；m7-7 巡检等 02:30 真夜间冷火，同一批开机跨夜；lessons 真实 profile 经验页 L4、onboarding 逐条件桌面核对、rc.3 行退役启动预检（`ORCHESTRATION.md` §10.6）与 `glm-subdir-instructions` 缺省值去留攒下一批桌面批次；m8-ui-audit 与面板第二阶段随面板线；`comms-split` 实现搁置（设计驻留 `.worktrees/comms-split`）。别动 `.worktrees/ablation-trial`（§10 第 7 条仍有效）。
 
