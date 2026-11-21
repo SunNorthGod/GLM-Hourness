@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -202,6 +202,73 @@ test('liveBoardStore persists dispatchMode and avoids redundant writes when unch
   }
   finally {
     store.dispose()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('liveBoardStore hydrates settled entries across restarts, marks leftover running entries lost/aborted, and tolerates corrupt disk files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'exec-board-hydrate-'))
+  const execDir = (p: string): string => join(p, '.llm', 'execute')
+  let nowMs = 1_000
+  const storeA = createLiveBoardStore({ execDir, debounceMs: 20, now: () => nowMs })
+  try {
+    await mkdir(join(root, '.git'), { recursive: true })
+    const settledAttempt = makeAttempt({ childId: 'hz-task-1-a1-111111', node: 'task-1' })
+    const staleAttempt = makeAttempt({ childId: 'hz-task-2-a1-222222', node: 'task-2' })
+    storeA.startDispatch(root, settledAttempt)
+    nowMs = 1_500
+    storeA.settleDispatch(root, settledAttempt, { stopReason: 'completed' }, true)
+    nowMs = 2_000
+    storeA.startDispatch(root, staleAttempt)
+    storeA.startJob(root, { id: 'gate-done', kind: 'gate', label: 'done gate', tasks: ['task-1'], mode: 'sync' })
+    nowMs = 2_500
+    storeA.endJob(root, { id: 'gate-done', status: 'completed', summary: 'ok' })
+    storeA.startJob(root, { id: 'gate-stale', kind: 'gate', label: 'stale gate', tasks: ['task-2'], mode: 'activation' })
+    await storeA.flush(root)
+    storeA.dispose()
+
+    nowMs = 5_000
+    const storeB = createLiveBoardStore({ execDir, debounceMs: 20, now: () => nowMs })
+    try {
+      const freshAttempt = makeAttempt({ childId: 'hz-task-3-a1-333333', node: 'task-3' })
+      storeB.startDispatch(root, freshAttempt)
+      await storeB.flush(root)
+
+      const hydrated = JSON.parse(await readFile(executeBoardPathOf(execDir, root), 'utf8')) as ExecuteLiveBoard
+      const keptDone = hydrated.dispatches.find(d => d.childId === 'hz-task-1-a1-111111')
+      const lostOld = hydrated.dispatches.find(d => d.childId === 'hz-task-2-a1-222222')
+      const activeNew = hydrated.dispatches.find(d => d.childId === 'hz-task-3-a1-333333')
+      assert.equal(keptDone?.status, 'completed')
+      assert.equal(keptDone?.handbackDone, true)
+      assert.equal(lostOld?.status, 'lost')
+      assert.equal(lostOld?.settledAt, 5_000)
+      assert.equal(activeNew?.status, 'running')
+
+      const doneJob = hydrated.jobs.find(j => j.id === 'gate-done')
+      const abortedJob = hydrated.jobs.find(j => j.id === 'gate-stale')
+      assert.equal(doneJob?.status, 'completed')
+      assert.equal(abortedJob?.status, 'aborted')
+      assert.equal(abortedJob?.endedAt, 5_000)
+    }
+    finally {
+      storeB.dispose()
+    }
+
+    await writeFile(executeBoardPathOf(execDir, root), '{broken json', 'utf8')
+    const storeCorrupt = createLiveBoardStore({ execDir, debounceMs: 20, now: () => 9_000 })
+    try {
+      storeCorrupt.startDispatch(root, makeAttempt({ childId: 'hz-task-4-a1-444444', node: 'task-4' }))
+      await storeCorrupt.flush(root)
+      const recovered = JSON.parse(await readFile(executeBoardPathOf(execDir, root), 'utf8')) as ExecuteLiveBoard
+      assert.equal(recovered.dispatches.length, 1)
+      assert.equal(recovered.dispatches[0]?.childId, 'hz-task-4-a1-444444')
+    }
+    finally {
+      storeCorrupt.dispose()
+    }
+  }
+  finally {
+    storeA.dispose()
     await rm(root, { recursive: true, force: true })
   }
 })

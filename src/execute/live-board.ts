@@ -9,6 +9,7 @@
  * external jobs are always kept; settled dispatches and settled jobs are capped
  * at the 20 most recent entries.
  */
+import { readFileSync } from 'node:fs'
 import { mkdir, open, rename, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ensureIgnored, projectOf } from '../data/project-root.ts'
@@ -248,6 +249,137 @@ function dispatchEntryFromAttempt(
   }
 }
 
+interface HydratedBoard {
+  readonly dispatches: readonly LiveDispatchEntry[]
+  readonly jobs: readonly LiveExternalJob[]
+  readonly dispatchMode: DispatchMode | undefined
+}
+
+const VALID_ROLES: ReadonlySet<string> = new Set(['worker', 'review', 'acceptance-review', 'check'])
+const VALID_PLANS: ReadonlySet<string> = new Set(['required', 'approved', 'skipped', 'none'])
+const VALID_DISPATCH_STATUSES: ReadonlySet<string> = new Set(['running', 'completed', 'error', 'aborted', 'max-tokens', 'refusal', 'lost'])
+const VALID_JOB_KINDS: ReadonlySet<string> = new Set(['gate', 'walk'])
+const VALID_JOB_STATUSES: ReadonlySet<string> = new Set(['running', 'completed', 'error', 'aborted'])
+const VALID_DISPATCH_MODES: ReadonlySet<string> = new Set(['eco', 'adaptive', 'burn'])
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function optionalStringList(value: unknown): readonly string[] | undefined {
+  return Array.isArray(value) && value.every(item => typeof item === 'string') ? value : undefined
+}
+
+function parseDispatchEntry(raw: unknown, nowMs: number): LiveDispatchEntry | undefined {
+  if (!isRecord(raw)) return undefined
+  if (
+    typeof raw.childId !== 'string'
+    || typeof raw.task !== 'string'
+    || typeof raw.role !== 'string' || !VALID_ROLES.has(raw.role)
+    || typeof raw.attempt !== 'number'
+    || typeof raw.status !== 'string' || !VALID_DISPATCH_STATUSES.has(raw.status)
+    || typeof raw.startedAt !== 'number'
+    || typeof raw.provider !== 'string'
+    || typeof raw.model !== 'string'
+    || typeof raw.plan !== 'string' || !VALID_PLANS.has(raw.plan)
+  ) {
+    return undefined
+  }
+  const stale = raw.status === 'running'
+  const status = stale ? 'lost' : raw.status as LiveDispatchStatus
+  const settledAt = typeof raw.settledAt === 'number' ? raw.settledAt : (stale ? nowMs : undefined)
+  const parentSession = optionalString(raw.parentSession)
+  const reasoningEffort = optionalString(raw.reasoningEffort)
+  const why = optionalString(raw.why)
+  const worktree = optionalString(raw.worktree)
+  const branch = optionalString(raw.branch)
+  const review = raw.review === 'full' || raw.review === 'light' || raw.review === 'skip' ? raw.review : undefined
+  const depth = raw.depth === 'full' || raw.depth === 'light' ? raw.depth : undefined
+  const handbackDone = typeof raw.handbackDone === 'boolean' ? raw.handbackDone : undefined
+  return {
+    childId: raw.childId,
+    task: raw.task,
+    role: raw.role as LiveDispatchEntry['role'],
+    attempt: raw.attempt,
+    status,
+    startedAt: raw.startedAt,
+    ...(settledAt === undefined ? {} : { settledAt }),
+    ...(parentSession === undefined ? {} : { parentSession }),
+    provider: raw.provider,
+    model: raw.model,
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+    ...(why === undefined ? {} : { why }),
+    ...(worktree === undefined ? {} : { worktree }),
+    ...(branch === undefined ? {} : { branch }),
+    ...(review === undefined ? {} : { review }),
+    ...(depth === undefined ? {} : { depth }),
+    plan: raw.plan as LiveDispatchEntry['plan'],
+    ...(handbackDone === undefined ? {} : { handbackDone }),
+  }
+}
+
+function parseJobEntry(raw: unknown, nowMs: number): LiveExternalJob | undefined {
+  if (!isRecord(raw)) return undefined
+  if (
+    typeof raw.id !== 'string'
+    || typeof raw.kind !== 'string' || !VALID_JOB_KINDS.has(raw.kind)
+    || typeof raw.label !== 'string'
+    || typeof raw.status !== 'string' || !VALID_JOB_STATUSES.has(raw.status)
+    || typeof raw.startedAt !== 'number'
+  ) {
+    return undefined
+  }
+  const stale = raw.status === 'running'
+  const status = stale ? 'aborted' : raw.status as LiveExternalJobStatus
+  const endedAt = typeof raw.endedAt === 'number' ? raw.endedAt : (stale ? nowMs : undefined)
+  const goalId = optionalString(raw.goalId)
+  const tasks = optionalStringList(raw.tasks)
+  const flows = optionalStringList(raw.flows)
+  const mode = raw.mode === 'activation' || raw.mode === 'sync' ? raw.mode : undefined
+  const summary = optionalString(raw.summary)
+  return {
+    id: raw.id,
+    kind: raw.kind as LiveExternalJobKind,
+    label: raw.label,
+    status,
+    startedAt: raw.startedAt,
+    ...(endedAt === undefined ? {} : { endedAt }),
+    ...(goalId === undefined ? {} : { goalId }),
+    ...(tasks === undefined ? {} : { tasks }),
+    ...(flows === undefined ? {} : { flows }),
+    ...(mode === undefined ? {} : { mode }),
+    ...(summary === undefined ? {} : { summary }),
+  }
+}
+
+const EMPTY_HYDRATED: HydratedBoard = { dispatches: [], jobs: [], dispatchMode: undefined }
+
+function hydrateFromDisk(file: string, nowMs: number): HydratedBoard {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'))
+    if (!isRecord(parsed) || parsed.version !== LIVE_BOARD_VERSION) return EMPTY_HYDRATED
+    const dispatches = Array.isArray(parsed.dispatches)
+      ? capSettledDispatches(parsed.dispatches.flatMap(entry => {
+          const item = parseDispatchEntry(entry, nowMs)
+          return item === undefined ? [] : [item]
+        }))
+      : []
+    const jobs = Array.isArray(parsed.jobs)
+      ? capSettledJobs(parsed.jobs.flatMap(entry => {
+          const item = parseJobEntry(entry, nowMs)
+          return item === undefined ? [] : [item]
+        }))
+      : []
+    const dispatchMode = typeof parsed.dispatchMode === 'string' && VALID_DISPATCH_MODES.has(parsed.dispatchMode)
+      ? parsed.dispatchMode as DispatchMode
+      : undefined
+    return { dispatches, jobs, dispatchMode }
+  }
+  catch {
+    return EMPTY_HYDRATED
+  }
+}
+
 export function createLiveBoardStore(options: LiveBoardOptions): LiveBoardStore {
   const defaultSlots = options.slots ?? 3
   const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS
@@ -259,16 +391,17 @@ export function createLiveBoardStore(options: LiveBoardOptions): LiveBoardStore 
     const key = rootKey(projectRoot)
     let state = projects.get(key)
     if (state === undefined) {
+      const hydrated = hydrateFromDisk(executeBoardPathOf(options.execDir, projectRoot), now())
       state = {
         projectRoot,
         maxSlots: defaultSlots,
         peakCap: undefined,
         drive: { counters: { idle: 0, peak: 0 } },
         peak: undefined,
-        dispatches: [],
+        dispatches: [...hydrated.dispatches],
         requests: [],
-        jobs: [],
-        dispatchMode: options.dispatchMode,
+        jobs: [...hydrated.jobs],
+        dispatchMode: options.dispatchMode ?? hydrated.dispatchMode,
         updatedAt: now(),
         dirty: false,
         timer: undefined,
