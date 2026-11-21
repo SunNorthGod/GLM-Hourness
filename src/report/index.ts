@@ -42,7 +42,8 @@ import { provideRowStatus } from '../shared/status-host.ts'
 import { projectOf } from '../data/project-root.ts'
 import { metricsOf, type MetricsCoverage } from '../shared/metrics.ts'
 import { pricingService, quotaOf, type UsagePricing } from '../shared/pricing.ts'
-import type { MomentZone, QuotaAsker } from '../shared/quota.ts'
+import { quotaUsageFactsOfText } from '../loops/quota-endurance.ts'
+import type { MomentZone, QuotaAsker, QuotaUsageFact } from '../shared/quota.ts'
 import type { StatusItem } from '../shared/status.ts'
 import type { CommandDefinitionLike, CommandsHost, ProvideHost, ServiceLookup } from '../shared/dsh-min.ts'
 
@@ -211,11 +212,22 @@ export function apply(ctx: CommandsHost & ServiceLookup & Partial<ProvideHost>, 
   const clock = config.now ?? (() => new Date())
   const zone = config.offsetMinutes === undefined ? undefined : { offsetMinutes: config.offsetMinutes }
   let quotaCache: { readonly at: number, readonly lines: readonly string[] } | undefined
+  /** The usage journal's facts for the pace lines (task-7), read once per invocation; a journal that is missing or cannot be read judges nothing, it is no failure. */
+  const usageFacts = (at: number): QuotaUsageFact[] => {
+    const path = auditPaths(dataHomes(ctx, config.home)).usage
+    if (path === undefined) return []
+    try {
+      return quotaUsageFactsOfText(readFile(path), at)
+    }
+    catch {
+      return []
+    }
+  }
   /** Read the quota for the cache; the read is the command's, in the session it ran in (the channel files its metric event there). */
   const refreshQuota = async (pricing: UsagePricing, sessionId: string | undefined): Promise<void> => {
     const at = clock().getTime()
     const asker: QuotaAsker = { kind: 'command', ...(sessionId === undefined ? {} : { sessionId }) }
-    quotaCache = { at, lines: await quotaSection(pricing, at, zone, problem, asker) }
+    quotaCache = { at, lines: await quotaSection(pricing, at, zone, problem, asker, usageFacts(at)) }
   }
   const status = provideRowStatus(ctx, 'hourness', () => {
     const items: StatusItem[] = []

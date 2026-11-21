@@ -6,8 +6,9 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { creditPricing } from '../src/glm-llm/credits.ts'
 import { loadGraph } from '../src/graph/store.ts'
+import { quotaUsageFactsOfText } from '../src/loops/quota-endurance.ts'
 import { apply, renderHourness } from '../src/report/index.ts'
-import { cacheHitRate, parseGaps, peakStatusItems, usagePanel, usagePanelLines, usagePanelOf, usageStatusItems, type PanelLineOptions } from '../src/report/panel.ts'
+import { cacheHitRate, parseGaps, peakStatusItems, quotaSection, usagePanel, usagePanelLines, usagePanelOf, usageStatusItems, type PanelLineOptions } from '../src/report/panel.ts'
 import { collectStatus } from '../src/report/status.ts'
 import { METRICS_SERVICE } from '../src/shared/metrics.ts'
 import { statusServiceName, provideRowStatus } from '../src/shared/status-host.ts'
@@ -528,7 +529,8 @@ test('the quota section is what the service\'s quota member returns, asked for a
   const asked: unknown[] = []
   const { text, lines } = await quotaSectionOf(withQuota((request: unknown) => { asked.push(request); return Promise.resolve(VIEW) }))
   assert.deepEqual(asked, [{ waitMs: 3000, asker: { kind: 'command', sessionId: 's1' } }])
-  assert.deepEqual(lines, quotaLines(VIEW, QUOTA_NOW.getTime(), ZONE))
+  // The command hands the journal's facts in (task-7): the fixture's one GLM call of the last five hours sits before the period began, so the judgment is 待数据.
+  assert.deepEqual(lines, [...quotaLines(VIEW, QUOTA_NOW.getTime(), ZONE), '5 小时额度判定待数据：没有可计的用量记录'])
   assert.equal(lines[0], '额度（服务端读数，含 ZCode 等其他客户端，读于 19:40）：max')
   assert.equal(lines[1], '- 5 小时：已用 41% · 21:30 重置 · 不预估：读数不足')
   assert.ok(text.indexOf('## 面板') < text.indexOf('## 额度'))
@@ -546,7 +548,24 @@ test('a pricing service without a quota member says so; without a pricing servic
 test('the quota section is there when the usage journal is empty: it is the server\'s reading, not the local records', async () => {
   const { text, lines } = await quotaSectionOf(withQuota(() => Promise.resolve(VIEW)), '')
   assert.ok(!text.includes('## 面板'))
-  assert.deepEqual(lines, quotaLines(VIEW, QUOTA_NOW.getTime(), ZONE))
+  // An empty journal is empty facts: the judgment says what it waits for (task-7).
+  assert.deepEqual(lines, [...quotaLines(VIEW, QUOTA_NOW.getTime(), ZONE), '5 小时额度判定待数据：没有可计的用量记录'])
+})
+
+test('quotaSection: without facts the section is the reading alone, word for word; with them the pace lines follow it (task-7)', async () => {
+  const pricing = withQuota(() => Promise.resolve(VIEW))
+  const now = QUOTA_NOW.getTime()
+  assert.deepEqual(await quotaSection(pricing, now, ZONE), quotaLines(VIEW, now, ZONE), 'no facts, no judgment lines')
+  assert.deepEqual(await quotaSection(pricing, now, ZONE, undefined, undefined, []), [...quotaLines(VIEW, now, ZONE), '5 小时额度判定待数据：没有可计的用量记录'])
+  // A GLM call inside the period (after 16:30) and an older one before it: 1120 tokens over five hours price 41% at 76.5 an hour, past the whole share at the reset.
+  const facts = quotaUsageFactsOfText([
+    JSON.stringify({ at: '2026-10-31T16:00:00+08:00', provider: 'glm-zcode', model: 'glm-5.3', usage: { inputTokens: 1000, outputTokens: 0 } }),
+    JSON.stringify({ at: '2026-10-31T17:00:00+08:00', provider: 'glm-zcode', model: 'glm-5.3', usage: { inputTokens: 100, outputTokens: 20 } }),
+  ].join('\n'), now)
+  assert.deepEqual(await quotaSection(pricing, now, ZONE, undefined, undefined, facts), [
+    ...quotaLines(VIEW, now, ZONE),
+    '5 小时额度撑不到重置，已用 41%，到 21:30 重置，照 5 小时平均速度预计到时约 156%',
+  ])
 })
 
 test('a quota member that rejects, answers with a non-object, or answers a view the lines cannot be made from prints one line and is reported; the panel is otherwise normal', async () => {

@@ -160,6 +160,14 @@ interface BoardsDeps {
    * host without the row status: the view carries none.
    */
   readonly itemsOf?: (projectRoot: string) => readonly StatusItem[]
+  /**
+   * The quota judgment the view carries (task-7): the reading the pricing
+   * service already holds and the pace lines over the usage journal's facts,
+   * with the moment it was read at. Machine-level — the caller may cache it
+   * across projects — and possibly a refill away, so `show` awaits it and
+   * carries on without the section when it fails.
+   */
+  readonly quotaOf?: (projectRoot: string) => Promise<LoopsView['quota'] | undefined>
 }
 
 export interface Boards {
@@ -192,8 +200,13 @@ export function createBoards(deps: BoardsDeps): Boards {
   const problems = new Map<string, readonly string[]>()
   const written = new Map<string, Written>()
   const listsByRoot = new Map<string, BoardLists>()
-  // What decides whether the view changed: everything but the moments — the view's `at` and the items' `asOf`, as the rules page's writer zeroes them.
-  const signatureOf = (view: LoopsView): string => JSON.stringify({ ...view, at: undefined, items: view.items.map(item => ({ ...item, asOf: '' })) })
+  // What decides whether the view changed: everything but the moments — the view's `at`, the items' `asOf` and the quota judgment's `at`, as the rules page's writer zeroes them.
+  const signatureOf = (view: LoopsView): string => JSON.stringify({
+    ...view,
+    at: undefined,
+    items: view.items.map(item => ({ ...item, asOf: '' })),
+    ...(view.quota === undefined ? {} : { quota: { ...view.quota, at: '' } }),
+  })
 
   function storeOf(root: string): LoopStore {
     let store = stores.get(root)
@@ -272,10 +285,23 @@ export function createBoards(deps: BoardsDeps): Boards {
     }
   }
 
+  /** The quota judgment of the view (task-7): the dep's read, awaited; a failure or nothing to read leaves the section out and says nothing. */
+  async function quotaSectionOf(root: string): Promise<LoopsView['quota'] | undefined> {
+    if (deps.quotaOf === undefined) return undefined
+    try {
+      return await deps.quotaOf(root)
+    }
+    catch {
+      return undefined
+    }
+  }
+
   /** Make the view from a read of the files and write it; note what is wrong with the files. */
   async function show(root: string, store: LoopStore, board: BoardRead): Promise<LoopsView> {
     const nowMs = deps.io.now()
     const peak = deps.peakOf?.(root)
+    // The quota judgment rides every view; a refill that fails leaves it out (task-7).
+    const quota = await quotaSectionOf(root)
     // Each plugin's entry with what its hand-over's details give for this project; one that cannot be read is said on the row health.
     const read = deps.registry.entries().map(item => ({ item, details: deps.registry.detailsOf(item.entry.id, root) }))
     note(root, 'details', read.flatMap(({ item, details }) => details?.ok === false ? [`「${item.entry.title}」的明细读不到：${details.reason}`] : []))
@@ -295,6 +321,8 @@ export function createBoards(deps: BoardsDeps): Boards {
       events: deps.registry.events(),
       runtime: await runtimeOf(store, nowMs),
       ...(peak === undefined ? {} : { peak }),
+      // The quota judgment may be a refill away: one that fails leaves the section out and says nothing (task-7).
+      ...(quota === undefined ? {} : { quota }),
       ...(deps.itemsOf === undefined ? {} : { items: deps.itemsOf(root) }),
       notes: entry => notes.get(entry),
       checks: entry => deps.registry.checksOf(entry, root),

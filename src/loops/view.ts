@@ -168,6 +168,14 @@ export interface LoopsView {
   readonly items: readonly StatusItem[]
   /** The GLM peak as it stands; absent while this host has no pricing service at all (no peak to show, design §5.2). */
   readonly peak?: PeakView
+  /**
+   * The quota judgment as it stands (task-7): the moment it was read at (ISO)
+   * and its lines — the reading the pricing service already held, worded by
+   * shared/quota.ts, followed by the pace lines of quota-endurance.ts. The
+   * account's quota does not vary by project, so one judgment serves every
+   * project this host writes a view for; absent while there is no reading.
+   */
+  readonly quota?: { readonly at: string, readonly lines: readonly string[] }
   /** The main agent's line; absent while the runtime of this project has not read the holder yet. */
   readonly holder?: HolderView
   /** How many things wait (design §7.2 「在等的 N 件」): runs whose debounce is not over, messages held for the main agent, runs the rules board queued. */
@@ -500,6 +508,8 @@ export function buildView(input: {
   readonly items?: readonly StatusItem[] | undefined
   /** The checks a plugin entry's hand-over gives the page for this project, with their timeouts (registry.ts `checksOf`). */
   readonly checks?: (entry: string) => readonly ViewCheck[] | undefined
+  /** The quota judgment (task-7); absent while there is no reading to judge. */
+  readonly quota?: { readonly at: string, readonly lines: readonly string[] }
   /** The conclusions the main agent recorded on a person's entry's runs (notes.ts), as the page's small print lines; absent or empty: none. */
   readonly notes?: (entry: string) => readonly string[] | undefined
   /** Whether a person's script file is the one agreed to, as the host reads it now (boards.ts); absent: taken as agreed. */
@@ -592,6 +602,7 @@ export function buildView(input: {
     attention: input.board === undefined ? [] : attentionOf(input.board).map(item => item.text),
     items: input.items ?? [],
     ...(input.peak === undefined ? {} : { peak: input.peak }),
+    ...(input.quota === undefined ? {} : { quota: input.quota }),
     ...(runtime.holder === undefined ? {} : { holder: runtime.holder }),
     waiting: runtime.waiting,
     recent: recentRuns(runtime.records, id => titles.get(id) ?? id, id => labels.get(id), input.events),

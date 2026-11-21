@@ -113,9 +113,10 @@ function entryLine(entry: ViewEntry): string {
 /**
  * The whole board as lines (design §7.2): the plugins' entries, then the
  * person's with how to change and delete them, the ones deleted in the last
- * 7 days with how to get them back, and how many things wait. A title never
- * carries its id: ids appear only where a command needs one, in the line of
- * the person's ids and in the restore line of a deleted entry.
+ * 7 days with how to get them back, how many things wait, and the quota
+ * judgment with the moment it was read at (task-7). A title never carries
+ * its id: ids appear only where a command needs one, in the line of the
+ * person's ids and in the restore line of a deleted entry.
  */
 function listText(view: LoopsView): string {
   const plugin = view.entries.filter(entry => entry.source === 'plugin')
@@ -130,6 +131,7 @@ function listText(view: LoopsView): string {
   }
   for (const entry of deleted) lines.push(`7 天内删掉的「${entry.title}」：打 /loops restore ${entry.id} 能恢复`)
   lines.push(`在等的 ${view.waiting} 件`)
+  if (view.quota !== undefined && view.quota.lines.length > 0) lines.push(`额度判定（读于 ${momentText(view.quota.at)}）：`, ...view.quota.lines)
   return lines.join('\n')
 }
 

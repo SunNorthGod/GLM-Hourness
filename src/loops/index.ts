@@ -21,9 +21,10 @@
  *   service reads from the tool node (`checksSeam`; refused while that row
  *   is off);
  * - runs the machine-level runner (machine.ts) at the start of every beat:
- *   the account's two channel events, GLM quota running low and the GLM
- *   login rejected, judged once for the whole machine and put into the inbox
- *   of the project the main agent last walked in (design §6.1, §6.4);
+ *   the account's channel events, GLM quota running low, a window that is on
+ *   pace to run out before its reset, a window whose reset has come and the
+ *   GLM login rejected, judged once for the whole machine and put into the
+ *   inbox of the project the main agent last walked in (design §6.1, §6.4);
  * - runs the end of a GLM peak itself (peak.ts): the harness action of the
  *   loop row's own hand-over takes the table of design §6.9 item 4 — the
  *   execute row's resume action when a hand-over lists it, otherwise the wake
@@ -71,17 +72,18 @@ import { projectHomeFor } from '../data/project-home.ts'
 import type { LockEnvironment } from '../data/lock.ts'
 import { graphService } from '../graph/service.ts'
 import { projectKey } from '../graph/main-agent-holder.ts'
-import { projectJournal } from '../memory/audit.ts'
+import { projectJournal, auditPaths } from '../memory/audit.ts'
 import { dataHomes } from '../shared/data-home.ts'
 import type { AgentCommandInvocationLike, AgentLike, CommandDefinitionLike, CommandResultLike, CommandsHost, InjectHost, PreExecuteHost, PreExecuteListener, ProvideHost, ServiceLookup, SessionEventHost, SessionEventOn, ToolsLike, WorkspaceRegistryService } from '../shared/dsh-min.ts'
 import { provideRowHealth, sessionIdOf, type HealthState, type RowHealth } from '../shared/health.ts'
 import { registerSessionProjection } from '../shared/row-support.ts'
 import type { StoreIo } from '../rules/store.ts'
 import { realStoreIo } from '../rules/store.ts'
-import { statSync } from 'node:fs'
+import { statSync, readFileSync } from 'node:fs'
 import { realLockEnvironment } from '../data/lock.ts'
 import { emitMetric } from '../shared/metrics.ts'
-import { nextPeakChange, pricingService } from '../shared/pricing.ts'
+import { nextPeakChange, pricingService, quotaOf } from '../shared/pricing.ts'
+import { quotaLines, type QuotaView } from '../shared/quota.ts'
 import { PEAK_LEVEL_WORDS, PEAK_REDUCE_GLM_WORKERS, peakModeService, type PeakModeState } from '../shared/peak-mode.ts'
 import { scheduleOf } from './bind.ts'
 import { createBoards, realDelay, type BoardLists, type Delay } from './boards.ts'
@@ -105,7 +107,8 @@ import { loopNoteTool, loopProposeTool, loopShowTool } from './tools.ts'
 import { LOOP_TOOL_NAMES } from '../shared/tool-names.ts'
 import { provideRowStatus } from '../shared/status-host.ts'
 import type { StatusItem } from '../shared/status.ts'
-import type { PeakView } from './view.ts'
+import { quotaEnduranceLines, quotaUsageFactsOfText } from './quota-endurance.ts'
+import type { LoopsView, PeakView } from './view.ts'
 
 /** cordis plugin identity: needs the commands and the tools service. */
 export const name = 'dsh-glm-hourness/loops'
@@ -367,14 +370,62 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
     }
   }
 
+  /** How long the board's quota judgment is reused before the journal and the view are read again (task-7). */
+  const QUOTA_BOARD_MS = 60_000
+  /** The judgment as it stands, with the moment it was read at; machine-level: the account's quota does not vary by project. */
+  let quotaBoard: { readonly at: number, readonly value: NonNullable<LoopsView['quota']> } | undefined
+  let quotaBoardFilling: Promise<void> | undefined
+
+  async function fillQuotaBoard(): Promise<void> {
+    const pricing = pricingService(ctx)
+    const read = pricing === undefined ? undefined : quotaOf(pricing)
+    if (read === undefined) {
+      quotaBoard = undefined
+      return
+    }
+    const at = io.now()
+    // The cached view only: the board's judgment starts no request of its own.
+    const view: QuotaView = await read({ waitMs: 0, read: false })
+    const userHome = dataHomes(ctx, config.home).userHome
+    const usage = userHome === undefined ? undefined : auditPaths({ userHome }).usage
+    let raw = ''
+    if (usage !== undefined) {
+      try {
+        raw = readFileSync(usage, 'utf8')
+      }
+      catch {
+        raw = ''
+      }
+    }
+    const facts = quotaUsageFactsOfText(raw, at)
+    quotaBoard = {
+      at,
+      value: { at: new Date(at).toISOString(), lines: [...quotaLines(view, at), ...quotaEnduranceLines(view.reading?.windows ?? [], facts, at)] },
+    }
+  }
+
+  /**
+   * The quota judgment the board's views carry (task-7): the reading the
+   * service already holds and the pace lines over the usage journal's facts,
+   * reused for a minute so a beat does not read the journal once for every
+   * project. A refill in flight is shared; a failing one leaves the last
+   * judgment standing and is swallowed by the boards' show.
+   */
+  async function quotaBoardOf(_projectRoot: string): Promise<LoopsView['quota']> {
+    if (quotaBoard === undefined || io.now() - quotaBoard.at >= QUOTA_BOARD_MS) {
+      quotaBoardFilling ??= fillQuotaBoard().finally(() => { quotaBoardFilling = undefined })
+      await quotaBoardFilling
+    }
+    return quotaBoard?.value
+  }
+
   /**
    * The board's status entries of one project (status hub design 0.3 §12
    * loops row): the two weekly lists worded as `loops/stale` and
    * `loops/timeouts`, from the same computed lists the service's readers
    * hand out. A project the board has not read yet has none, and the weekly
    * report omits its section.
-   */
-  function loopsStatusItemsOf(root: string): readonly StatusItem[] {
+   */  function loopsStatusItemsOf(root: string): readonly StatusItem[] {
     const lists = boards.listsOf(root)
     if (lists === undefined) return []
     const nowMs = io.now()
@@ -382,7 +433,7 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
     return [...staleItems(lists.stale, source, nowMs), ...timeoutItems(lists.timeouts, source, nowMs)]
   }
 
-  const boards = createBoards({ registry, io, delay, changed: () => { health.reactivate(...activation()) }, peakOf, itemsOf: loopsStatusItemsOf, ...(config.lock === undefined ? {} : { lock: config.lock }) })
+  const boards = createBoards({ registry, io, delay, changed: () => { health.reactivate(...activation()) }, peakOf, quotaOf: quotaBoardOf, itemsOf: loopsStatusItemsOf, ...(config.lock === undefined ? {} : { lock: config.lock }) })
   let pricing = hasPricing()
   let own = registry.contribute(LOOPS_SOURCE, ownContribution(pricing, ownRun))
   const disposers: Array<() => void> = []
@@ -772,7 +823,7 @@ export function apply(ctx: LoopsContext, config: LoopsConfig = {}): () => void {
   function startMachine(): void {
     const userHome = dataHomes(ctx, config.home).userHome
     if (userHome === undefined) {
-      say('没有用户级目录，账号一级的两项（额度快用完、登录失效）这个进程不跑', 'info')
+      say('没有用户级目录，账号一级的四项（额度快用完、额度重置、撑不到重置、登录失效）这个进程不跑', 'info')
       return
     }
     machine = createMachineRunner({

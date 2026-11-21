@@ -22,8 +22,9 @@
  * come from the service; nothing here knows a plan's hours or coefficients.
  */
 import type { UsageRecord } from '../memory/audit.ts'
+import { quotaEnduranceLines } from '../loops/quota-endurance.ts'
 import { PRICING_SERVICE, quotaOf, type UsagePricing } from '../shared/pricing.ts'
-import { formatMoment, peakLine, quotaLines, type MomentZone, type QuotaAsker, type QuotaView } from '../shared/quota.ts'
+import { formatMoment, peakLine, quotaLines, type MomentZone, type QuotaAsker, type QuotaUsageFact, type QuotaView } from '../shared/quota.ts'
 import type { StatusItem } from '../shared/status.ts'
 
 /** The native channel's provider id at the time of the usage-chunk defect (src/glm-llm/index.ts default). */
@@ -485,14 +486,19 @@ export function quotaStatusItems(lines: readonly string[], asOfMs: number): Stat
  * with something the lines cannot be made from becomes one line with the
  * reason, reported to `problem`. `asker` says who asks (the command and its
  * session), so the channel files the read's metric event under that project.
+ * `facts` are the usage journal's records (task-7): handed in, the pace
+ * lines of quota-endurance.ts follow the reading's lines — 撑不到, 用得太少,
+ * 待数据, a 撑得到 window says nothing; without them the section is the
+ * reading's alone, word for word what it has always been.
  */
-export async function quotaSection(pricing: UsagePricing, now: number, zone?: MomentZone, problem?: (message: string) => void, asker?: QuotaAsker): Promise<string[]> {
+export async function quotaSection(pricing: UsagePricing, now: number, zone?: MomentZone, problem?: (message: string) => void, asker?: QuotaAsker, facts?: readonly QuotaUsageFact[]): Promise<string[]> {
   const read = quotaOf(pricing, problem)
   if (read === undefined) return ['额度：GLM 通道包没有提供额度数据']
   try {
     const view: unknown = await read({ waitMs: QUOTA_WAIT_MS, ...(asker === undefined ? {} : { asker }) })
     if (typeof view !== 'object' || view === null) throw new Error('返回的不是对象')
-    return quotaLines(view as QuotaView, now, zone)
+    const lines = quotaLines(view as QuotaView, now, zone)
+    return facts === undefined ? lines : [...lines, ...quotaEnduranceLines((view as QuotaView).reading?.windows ?? [], facts, now, zone)]
   }
   catch (error) {
     problem?.(`${PRICING_SERVICE} quota failed (${failureWords(error)}); the quota section shows the failure only`)

@@ -1,15 +1,15 @@
 /**
  * The machine-level runner (docs/ORCHESTRATION.md §18.9; loop board design 0.6
  * §3.4 M6-L2 to M6-L5, §4.3, §6.1, §6.4 last paragraphs, §9.1): the account's
- * two channel events, judged in one place for the whole machine, so two host
+ * four channel events, judged in one place for the whole machine, so two host
  * processes do not each read the quota and each tell the main agent.
  *
  * One process runs it: the one that holds `<userHome>/loops/machine/runner.lock`
  * (the project lock's code, lock.ts; this lock is not handed over, since the
  * runner only writes inboxes). It goes for the lock only while the pricing
  * service has a quota reader and the board lists an active machine entry (the
- * GLM channel's `glm:quota-low`, `glm:login-rejected`, channel.ts), and lets it
- * go otherwise. Each beat:
+ * GLM channel's `glm:quota-low`, `glm:quota-reset-*`, `glm:quota-exhausts`,
+ * `glm:login-rejected`, channel.ts), and lets it go otherwise. Each beat:
  *
  * - the login (M6-L3): one `quota({waitMs: 0, read: false})`, which sends no
  *   request; the state turning `rejected` becomes one `channel.login-rejected`.
@@ -20,6 +20,10 @@
  *   failing, and a key that followed it would tell one rejection six times an
  *   hour. Back to `ok`, the told rejection is forgotten, so the next one is
  *   told;
+ * - the reset (design §3.4): the same cached reading, no request either. A
+ *   window whose reset instant has passed, in a period `told.json` has no
+ *   mark of, becomes one `channel.quota-reset` saying the window is fresh
+ *   again; a later reading names the next period and the line is said then;
  * - the quota (M6-L2): the lines the user-level usage journal gained since the
  *   last beat; a GLM record among them, with the last reading and the last read
  *   this runner started both at least `afterUsageMinutes` old, starts exactly
@@ -27,6 +31,13 @@
  *   not told yet (the window and a reset instant within 120 seconds of the told
  *   one), becomes `channel.quota-low`; every read leaves a `loop-read` in the
  *   metrics journal of the project the event would go to (M6-L5);
+ * - the pace (task-7): after that read answers with a reading, the journal is
+ *   read whole and each five-hour or weekly window is judged by
+ *   `windowEnduranceOf` (quota-endurance.ts, on shared/quota.ts). Only a
+ *   window that is 撑不到 becomes one `channel.quota-exhausts`, once per
+ *   window per period; 用得太少, 撑得到 and 待数据 say nothing here — they
+ *   are the loop board's and the morning report's lines, not the main
+ *   agent's (decision-4: the machine level speaks when it is high-risk);
  * - where an event goes (M6-L4): the inbox of the project the main agent last
  *   walked in (`last-step.json`, reminder.ts), when that project has a main
  *   agent; the event is appended first and told second, so a crash between
@@ -45,11 +56,12 @@ import { writeAtomic, type StoreIo } from '../rules/store.ts'
 import { quotaOf, type UsagePricing } from '../shared/pricing.ts'
 import { loginLine, quotaLowLine, quotaLowOf, type LoginView, type QuotaRequest, type QuotaView, type QuotaWindowView } from '../shared/quota.ts'
 import { isGlmModel } from '../shared/route.ts'
-import { CHANNEL_LOGIN_REJECTED, CHANNEL_QUOTA_LOW, loginRejectedKey, quotaLowKey } from './channel.ts'
+import { CHANNEL_LOGIN_REJECTED, CHANNEL_QUOTA_EXHAUSTS, CHANNEL_QUOTA_LOW, CHANNEL_QUOTA_RESET, loginRejectedKey, quotaExhaustsKey, quotaLowKey, quotaResetKey } from './channel.ts'
 import { createRunLock, type LockStand, type RunLock } from './lock.ts'
 import type { LoopEntry } from './model.ts'
 import type { ReadRecord } from './records.ts'
 import { machineStepFile, type MachineStepNote } from './reminder.ts'
+import { quotaEnduranceLines, quotaUsageFactsOfText, windowEnduranceOf } from './quota-endurance.ts'
 import type { EmitResult } from './service.ts'
 
 /** How long the quota read of the runner waits (M6-L2). */
@@ -209,7 +221,7 @@ export function createMachineRunner(deps: MachineDeps): MachineRunner {
     return lock
   }
 
-  /** The machine entries that listen to one of the two events. */
+  /** The machine entries that listen to one of the account's events. */
   const listening = (event: string): readonly LoopEntry[] => deps.entries().filter(entry => entry.when.kind === 'event' && entry.when.events.includes(event))
 
   async function save(): Promise<void> {
@@ -354,6 +366,48 @@ export function createMachineRunner(deps: MachineDeps): MachineRunner {
     }
   }
 
+  /**
+   * The reset (design §3.4): the windows of the cached reading whose reset
+   * instant has passed, one line each, once per period. The cached view is
+   * all this reads — the beat sends no request for it — and a reading that
+   * still shows the passed instant names the same period every beat, so the
+   * told mark is what keeps it to one line; the next reading names the next
+   * period and the window is said fresh again then.
+   */
+  async function resets(cached: QuotaView, project: string | undefined): Promise<void> {
+    if (state === undefined || told === undefined) return
+    const now = deps.now()
+    for (const window of cached.reading?.windows ?? []) {
+      if (window.resetAt === undefined || window.resetAt > now) continue
+      const period = iso(window.resetAt)
+      const key = quotaResetKey(window.name, period)
+      await put({
+        at: iso(now),
+        event: CHANNEL_QUOTA_RESET,
+        key,
+        payload: { window: window.name, resetAt: iso(window.resetAt), line: `${window.label}额度已重置` },
+        mark: { kind: 'quota', key, window: window.name, period, resetAt: window.resetAt },
+      }, project)
+    }
+  }
+
+  /** The usage journal in whole, for the pace's facts; a journal that cannot be read judges nothing and says no event. */
+  async function usageAll(): Promise<string> {
+    try {
+      const handle = await open(paths.usage, 'r')
+      try {
+        return await handle.readFile('utf8')
+      }
+      finally {
+        await handle.close()
+      }
+    }
+    catch (error) {
+      deps.report(`读不出用量流水：${message(error)}`, 'info')
+      return ''
+    }
+  }
+
   /** The period a low window belongs to: the reset instant told for it when this one is within two minutes of it, else this one, else the hour of the reading. */
   function periodOf(window: QuotaWindowView, readingAt: number): { readonly period: string, readonly resetAt?: number } {
     if (window.resetAt === undefined) return { period: iso(Math.floor(readingAt / HOUR_MS) * HOUR_MS) }
@@ -361,15 +415,23 @@ export function createMachineRunner(deps: MachineDeps): MachineRunner {
     return same === undefined ? { period: iso(window.resetAt), resetAt: window.resetAt } : { period: same.period, resetAt: same.resetAt ?? window.resetAt }
   }
 
-  /** The quota (M6-L2): one read when GLM was used and the last reading is old enough, then the windows against each entry's rule. */
-  async function quota(read: (request?: QuotaRequest) => Promise<QuotaView>, cached: QuotaView, entries: readonly LoopEntry[], project: string | undefined): Promise<void> {
+  /**
+   * The quota (M6-L2) and the pace (task-7): one read when GLM was used and
+   * the last reading is old enough — the threshold the quota-low entries'
+   * `afterUsageMinutes` names, the smallest of them, a quarter of an hour
+   * when only the pace listens — then the windows against each quota-low
+   * entry's rule, and, after a reading that answered whole, the endurance of
+   * the five-hour and weekly windows over the journal's facts.
+   */
+  async function quota(read: (request?: QuotaRequest) => Promise<QuotaView>, cached: QuotaView, lowEntries: readonly LoopEntry[], exhaustEntries: readonly LoopEntry[], project: string | undefined): Promise<void> {
     if (state === undefined) return
     if (!await glmUsage()) return
     const now = deps.now()
-    const thresholdMs = Math.min(...entries.map(entry => {
+    const minutesOf = (entry: LoopEntry): number => {
       const minutes = entry.when.kind === 'event' ? entry.when.params?.afterUsageMinutes : undefined
-      return (typeof minutes === 'number' ? minutes : 15) * 60_000
-    }))
+      return typeof minutes === 'number' ? minutes : 15
+    }
+    const thresholdMs = lowEntries.length === 0 ? 15 * 60_000 : Math.min(...lowEntries.map(entry => minutesOf(entry) * 60_000))
     const lastReading = cached.reading?.at
     if (lastReading !== undefined && now - lastReading < thresholdMs) return
     if (state.quotaReadAt !== undefined && now - state.quotaReadAt < thresholdMs) return
@@ -385,7 +447,7 @@ export function createMachineRunner(deps: MachineDeps): MachineRunner {
     }
     const ms = Math.max(0, Math.round(deps.now() - started))
     const ok = view?.reading !== undefined && view.failure === undefined && !view.pending
-    for (const entry of entries) {
+    for (const entry of lowEntries) {
       const params = entry.when.kind === 'event' ? entry.when.params : undefined
       const rule = { usedPercent: typeof params?.usedPercent === 'number' ? params.usedPercent : 100, exhaustsWithinMinutes: typeof params?.exhaustsWithinMinutes === 'number' ? params.exhaustsWithinMinutes : 0 }
       const low = view === undefined ? undefined : quotaLowOf(view, rule, deps.now())
@@ -407,6 +469,28 @@ export function createMachineRunner(deps: MachineDeps): MachineRunner {
         mark: { kind: 'quota', key, window: low.name, period, ...(resetAt === undefined ? {} : { resetAt }) },
       }, project)
     }
+    // The pace: only a window that is 撑不到 speaks, once per window per period; the rest is the board's and the report's lines (decision-4).
+    if (!ok || view?.reading === undefined || exhaustEntries.length === 0) return
+    const facts = quotaUsageFactsOfText(await usageAll(), deps.now())
+    for (const window of view.reading.windows) {
+      const end = windowEnduranceOf(window, facts, deps.now())
+      if (end.kind !== 'exhausts') continue
+      const [line] = quotaEnduranceLines([window], facts, deps.now())
+      const { period, resetAt } = periodOf(window, view.reading.at)
+      const key = quotaExhaustsKey(window.name, period)
+      await put({
+        at: iso(deps.now()),
+        event: CHANNEL_QUOTA_EXHAUSTS,
+        key,
+        payload: {
+          window: window.name,
+          ...(window.usedPercent === undefined ? {} : { usedPercent: window.usedPercent }),
+          ...(window.resetAt === undefined ? {} : { resetAt: iso(window.resetAt) }),
+          ...(line === undefined ? {} : { line }),
+        },
+        mark: { kind: 'quota', key, window: window.name, period, ...(resetAt === undefined ? {} : { resetAt }) },
+      }, project)
+    }
   }
 
   async function off(): Promise<void> {
@@ -423,7 +507,9 @@ export function createMachineRunner(deps: MachineDeps): MachineRunner {
         const read = pricing === undefined ? undefined : quotaOf(pricing)
         const loginEntries = listening(CHANNEL_LOGIN_REJECTED)
         const quotaEntries = listening(CHANNEL_QUOTA_LOW)
-        if (read === undefined || loginEntries.length + quotaEntries.length === 0) {
+        const resetEntries = listening(CHANNEL_QUOTA_RESET)
+        const exhaustEntries = listening(CHANNEL_QUOTA_EXHAUSTS)
+        if (read === undefined || loginEntries.length + quotaEntries.length + resetEntries.length + exhaustEntries.length === 0) {
           // Nothing of the account to judge in this process now: the lock goes to whoever needs it.
           if (current.kind !== 'off') await off()
           return
@@ -441,7 +527,8 @@ export function createMachineRunner(deps: MachineDeps): MachineRunner {
         await retryHeld(project)
         const cached = await read({ waitMs: 0, read: false })
         if (loginEntries.length > 0) await login(cached, project)
-        if (quotaEntries.length > 0) await quota(read, cached, quotaEntries, project)
+        if (resetEntries.length > 0) await resets(cached, project)
+        if (quotaEntries.length + exhaustEntries.length > 0) await quota(read, cached, quotaEntries, exhaustEntries, project)
         await save()
       }
       catch (error) {

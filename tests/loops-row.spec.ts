@@ -468,12 +468,15 @@ rowTest('with the GLM channel\'s pricing service the row lists its four entries 
   }
   assert.equal(told.login?.key, line?.key)
   assert.ok(calls.length > 0 && calls.every(call => call.read === false), 'the login is looked at without a request')
-  // /loops lists what the board lists: the loop row's own four and the channel's four (design §3.4 M6-L1).
+  // /loops lists what the board lists: the loop row's own five and the channel's seven — its four defaults and the three quota reminders the quota reader brings (design §3.4 M6-L1, task-7).
   const listed = await run('')
   assert.equal(listed.kind, 'success')
   const words = listed.text
-  assert.match(words, /插件带来的（9 项，只能看）/)
+  assert.match(words, /插件带来的（12 项，只能看）/)
   for (const entry of GLM_LOOP_DEFAULTS) assert.ok(words.includes(entry.title), `${entry.id} is listed`)
+  assert.ok(words.includes('5 小时额度重置时告诉你') && words.includes('GLM 额度撑不到重置时告诉你'), 'the quota reminders are listed')
+  // The quota judgment rides the list with the moment it was read at (task-7).
+  assert.match(words, /额度判定（读于 .+）：\n/)
 })
 
 test('the beat\'s word about a reminder it cannot delete stands alone in the row health and is taken back when the deletions succeed', async () => {

@@ -17,12 +17,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { GLM_LOOP_DEFAULTS } from '../src/glm-llm/loop-defaults.ts'
-import { CHANNEL_EVENTS, CHANNEL_LOGIN_REJECTED, CHANNEL_QUOTA_LOW, channelEntries, loginRejectedKey, quotaLowKey } from '../src/loops/channel.ts'
+import { CHANNEL_EVENTS, CHANNEL_LOGIN_REJECTED, CHANNEL_QUOTA_EXHAUSTS, CHANNEL_QUOTA_LOW, CHANNEL_QUOTA_RESET, channelEntries, loginRejectedKey, quotaExhaustsKey, quotaLowKey, quotaResetKey } from '../src/loops/channel.ts'
 import { createMachineRunner, machinePaths, QUOTA_WAIT_MS, type MachineRunner } from '../src/loops/machine.ts'
 import type { ReadRecord } from '../src/loops/records.ts'
 import { createRegistry } from '../src/loops/registry.ts'
 import type { UsagePricing } from '../src/shared/pricing.ts'
-import { loginLine, quotaLowLine, type LoginView, type QuotaRequest, type QuotaView, type QuotaWindowView } from '../src/shared/quota.ts'
+import { formatMoment, loginLine, quotaLowLine, type LoginView, type QuotaRequest, type QuotaView, type QuotaWindowView } from '../src/shared/quota.ts'
 import { quickIo } from './loops-helpers.ts'
 
 const AT = Date.parse('2026-11-04T08:00:00.000Z')
@@ -136,11 +136,11 @@ async function walkedIn(home: string, project: string): Promise<void> {
   await writeFile(file, `${JSON.stringify({ session: 'session-1', at: new Date(AT).toISOString(), projectKey: project.toLowerCase(), project }, null, 2)}\n`)
 }
 
-/** One record of the user-level usage journal (src/memory/audit.ts UsageRecord). */
+/** One record of the user-level usage journal (src/memory/audit.ts UsageRecord; the usage is TokenUsage's own vocabulary). */
 async function used(home: string, model: string, at: number): Promise<void> {
   const file = machinePaths(home).usage
   mkdirSync(join(home, 'audit'), { recursive: true })
-  await appendFile(file, `${JSON.stringify({ at: new Date(at).toISOString(), provider: model.startsWith('glm') ? 'glm-zcode' : 'deepseek', model, usage: { input: 10, output: 5 } })}\n`)
+  await appendFile(file, `${JSON.stringify({ at: new Date(at).toISOString(), provider: model.startsWith('glm') ? 'glm-zcode' : 'deepseek', model, usage: { inputTokens: 10, outputTokens: 5 } })}\n`)
 }
 
 function withHome(name: string, body: (home: string) => Promise<void>): void {
@@ -266,7 +266,7 @@ withHome('a rejection the channel gives no since for: the key, the payload and t
   await next.runner.stop()
 })
 
-withHome('the quota is read once when GLM was used and the last reading is 15 minutes old; not within the 15 minutes, not without GLM use; a low window is told once for its period (design §1.4 item 24, M6-L2)', async (home) => {
+withHome('the quota is read once when GLM was used and the last reading is 15 minutes old; not within the 15 minutes, not without GLM use; a low window and a window on pace to run out are each told once for their period (design §1.4 item 24, M6-L2, task-7)', async (home) => {
   const reset = AT + 3 * 3_600_000
   let percent = 85
   const machine = machineOf({ home, reading: () => ({ at: machine.now(), windows: [fiveHour(percent, reset)] }) })
@@ -286,9 +286,13 @@ withHome('the quota is read once when GLM was used and the last reading is 15 mi
   machine.move(MINUTE)
   await machine.runner.beat()
   assert.deepEqual(full(), [{ waitMs: QUOTA_WAIT_MS, asker: { kind: 'service', dir: PROJECT_A } }])
-  assert.equal(machine.emitted.length, 1)
+  assert.equal(machine.emitted.length, 2)
   assert.deepEqual([machine.emitted[0]?.event, machine.emitted[0]?.key], [CHANNEL_QUOTA_LOW, quotaLowKey('five-hour', new Date(reset).toISOString())])
   assert.deepEqual(machine.emitted[0]?.payload, { window: 'five-hour', usedPercent: 85, resetAt: new Date(reset).toISOString(), line: quotaLowLine(fiveHour(85, reset), machine.now()) })
+  // The pace: the journal's 30 tokens in the period are the 85% of the reading, 17 an hour, about 135 at the reset (quota-endurance.ts).
+  const pace = Math.round(85 + 17 * (reset - machine.now()) / 3_600_000)
+  assert.deepEqual([machine.emitted[1]?.event, machine.emitted[1]?.key], [CHANNEL_QUOTA_EXHAUSTS, quotaExhaustsKey('five-hour', new Date(reset).toISOString())])
+  assert.deepEqual(machine.emitted[1]?.payload, { window: 'five-hour', usedPercent: 85, resetAt: new Date(reset).toISOString(), line: `5 小时额度撑不到重置，已用 85%，到 ${formatMoment(reset, machine.now())} 重置，照 5 小时平均速度预计到时约 ${pace}%` })
   assert.deepEqual(machine.reads.map(read => [read.kind, read.project, read.entry, read.ok, read.hit]), [['loop-read', PROJECT_A, 'glm:quota-low', true, true]])
   // GLM use again within 15 minutes: no read.
   await used(home, 'glm-5.3', machine.now())
@@ -302,12 +306,88 @@ withHome('the quota is read once when GLM was used and the last reading is 15 mi
   machine.move(MINUTE)
   await machine.runner.beat()
   assert.equal(full().length, 2)
-  assert.equal(machine.emitted.length, 1, 'one period, one message')
+  assert.equal(machine.emitted.length, 2, 'one period, one message of each kind')
   assert.equal(machine.reads.length, 2)
   // Without GLM use in between, nothing is read however long it waits.
   machine.move(60 * MINUTE)
   await machine.runner.beat()
   assert.equal(full().length, 2)
+  await machine.runner.stop()
+})
+
+withHome('a window whose reset has come is told once for its period and again for the next one, from the cached view alone (task-7)', async (home) => {
+  const reset = AT + 30 * MINUTE
+  const machine = machineOf({ home, reading: () => ({ at: machine.now(), windows: [fiveHour(20, reset)] }) })
+  await walkedIn(home, PROJECT_A)
+  // No reading yet: nothing to judge. The reading arrives, then the reset passes.
+  await machine.runner.beat()
+  machine.view = { login: okLogin, pending: false, reading: { at: machine.now(), windows: [fiveHour(20, reset)] } }
+  machine.move(31 * MINUTE)
+  await machine.runner.beat()
+  assert.equal(machine.emitted.length, 1)
+  assert.deepEqual([machine.emitted[0]?.project, machine.emitted[0]?.event, machine.emitted[0]?.key], [PROJECT_A, CHANNEL_QUOTA_RESET, quotaResetKey('five-hour', new Date(reset).toISOString())])
+  assert.deepEqual(machine.emitted[0]?.payload, { window: 'five-hour', resetAt: new Date(reset).toISOString(), line: '5 小时额度已重置' })
+  // The same stale reading names the same period every beat: said once.
+  for (let beat = 0; beat < 3; beat++) {
+    machine.move(MINUTE)
+    await machine.runner.beat()
+  }
+  assert.equal(machine.emitted.length, 1)
+  // A fresh reading names the next period; when it passes, the window is said fresh again.
+  const nextReset = machine.now() + 30 * MINUTE
+  machine.view = { login: okLogin, pending: false, reading: { at: machine.now(), windows: [fiveHour(5, nextReset)] } }
+  machine.move(31 * MINUTE)
+  await machine.runner.beat()
+  assert.deepEqual(machine.emitted.map(item => item.key), [quotaResetKey('five-hour', new Date(reset).toISOString()), quotaResetKey('five-hour', new Date(nextReset).toISOString())])
+  // The whole path reads the cache: no read is started, no request sent.
+  assert.ok(machine.calls.every(call => call.read === false && call.waitMs === 0))
+  await machine.runner.stop()
+})
+
+withHome('the pace speaks only for a window that is 撑不到: 用得太少 and 待数据 stay quiet, and the weekly window has its own period (task-7)', async (home) => {
+  const reset = AT + 3 * 3_600_000
+  const weekReset = AT + 5 * 24 * 3_600_000
+  const weekOf = (usedPercent: number): QuotaWindowView => ({ name: 'weekly', label: '每周', usedPercent, resetAt: weekReset, projection: { kind: 'none', reason: '' } })
+  /** One gated-read rhythm: wait out the 15 minutes with use on either side, then beat. */
+  const gatedBeat = async (machine: Machine): Promise<void> => {
+    machine.move(16 * MINUTE)
+    await used(home, 'glm-5.3', machine.now())
+    machine.move(MINUTE)
+    await machine.runner.beat()
+  }
+  let windows: readonly QuotaWindowView[] = [fiveHour(50, reset)]
+  const machine = machineOf({ home, reading: () => ({ at: machine.now(), windows }) })
+  await walkedIn(home, PROJECT_A)
+  await machine.runner.beat()
+  // A record without a count feeds no sum: the judgment is 待数据, and 待数据 says nothing.
+  const file = machinePaths(home).usage
+  mkdirSync(join(home, 'audit'), { recursive: true })
+  await appendFile(file, `${JSON.stringify({ at: new Date(machine.now()).toISOString(), provider: 'glm-zcode', model: 'glm-5.3', usage: { inputTokens: 0, outputTokens: 3 } })}\n`)
+  machine.move(MINUTE)
+  await machine.runner.beat()
+  assert.equal(machine.emitted.length, 0)
+  // 用得太少: the tiny rate keeps both windows under the light half at the reset.
+  await used(home, 'glm-5.3', machine.now())
+  machine.move(16 * MINUTE)
+  await used(home, 'glm-5.3', machine.now())
+  machine.move(MINUTE)
+  windows = [fiveHour(20, reset), weekOf(20)]
+  await machine.runner.beat()
+  assert.equal(machine.emitted.length, 0, 'light is the board\'s line, not an event')
+  // 撑不到 on the five-hour window: the event, once; the weekly window keeps quiet.
+  windows = [fiveHour(85, reset), weekOf(20)]
+  await gatedBeat(machine)
+  assert.equal(machine.emitted.length, 2, 'the quota-low notice and the pace notice')
+  assert.deepEqual(machine.emitted[1]?.key, quotaExhaustsKey('five-hour', new Date(reset).toISOString()))
+  // The next gated read in the same period repeats neither.
+  await gatedBeat(machine)
+  assert.equal(machine.emitted.length, 2)
+  // The weekly window joins: its own window, its own period, its own notice.
+  windows = [fiveHour(85, reset), weekOf(95)]
+  await gatedBeat(machine)
+  const keys = machine.emitted.map(item => item.key)
+  assert.ok(keys.includes(quotaExhaustsKey('weekly', new Date(weekReset).toISOString())), JSON.stringify(keys))
+  assert.ok(keys.includes(quotaLowKey('weekly', new Date(weekReset).toISOString())), JSON.stringify(keys))
   await machine.runner.stop()
 })
 
@@ -326,15 +406,15 @@ withHome('a reset within two minutes of the told one is the same period; a windo
   await used(home, 'glm-5.3', machine.now())
   machine.move(MINUTE)
   await machine.runner.beat()
-  assert.equal(machine.emitted.length, 1)
+  assert.equal(machine.emitted.length, 2, 'the low window and the pace each speak once')
   // The period is the reset first told; a reading whose reset moved by 90 seconds keeps it.
   window = fiveHour(97, reset + 30_000)
   machine.move(16 * MINUTE)
   await used(home, 'glm-5.3', machine.now())
   machine.move(MINUTE)
   await machine.runner.beat()
-  assert.equal(machine.emitted.length, 1)
-  assert.deepEqual((await toldFile(home)).quota.map(item => item.period), [new Date(reset + 90_000).toISOString()])
+  assert.equal(machine.emitted.length, 2, 'one period, one message of each kind')
+  assert.deepEqual([...new Set((await toldFile(home)).quota.map(item => item.period))], [new Date(reset + 90_000).toISOString()])
   await machine.runner.stop()
 })
 

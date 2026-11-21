@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { CHANNEL_EVENTS, CHANNEL_LOGIN_REJECTED, CHANNEL_PEAK_CHANGED, CHANNEL_QUOTA_LOW, channelEntries, loginRejectedKey, quotaLowKey } from '../src/loops/channel.ts'
+import { CHANNEL_EVENTS, CHANNEL_LOGIN_REJECTED, CHANNEL_PEAK_CHANGED, CHANNEL_QUOTA_EXHAUSTS, CHANNEL_QUOTA_LOW, CHANNEL_QUOTA_RESET, channelEntries, loginRejectedKey, quotaExhaustsKey, quotaLowKey, quotaResetKey } from '../src/loops/channel.ts'
 import { LOOP_ACTIONS, LOOP_DEFAULTS, DEPENDENCY_FILES } from '../src/loops/defaults.ts'
 import { fileChangedKey, hostRestartedKey, LOOP_EVENT_TABLE, LOOP_EVENTS, waitingOnHumanKey } from '../src/loops/events.ts'
 import { apply, inject, name, type LoopsContext } from '../src/loops/index.ts'
@@ -789,8 +789,8 @@ test('src/loops/ holds no other row\'s table: nothing imports the execution, ope
   const directory = new URL('../src/loops/', import.meta.url)
   const files = readdirSync(directory).filter(file => file.endsWith('.ts'))
   assert.ok(files.includes('registry.ts') && files.includes('defaults.ts'))
-  // channel.ts declares the three channel events and is the one place the channel's loopDefaults become entries (design §3.4).
-  assert.deepEqual(CHANNEL_EVENTS.map(declared => declared.id), ['channel.peak-changed', 'channel.quota-low', 'channel.login-rejected'])
+  // channel.ts declares the five channel events and is the one place the channel's loopDefaults and quota reminders become entries (design §3.4).
+  assert.deepEqual(CHANNEL_EVENTS.map(declared => declared.id), ['channel.peak-changed', 'channel.quota-low', 'channel.quota-reset', 'channel.quota-exhausts', 'channel.login-rejected'])
   for (const file of files) {
     const text = readFileSync(new URL(file, directory), 'utf8')
     const specifiers = [...text.matchAll(/(?:^|\n)\s*(?:import|export)\s[^;]*?\sfrom\s+['"]([^'"]+)['"]/g)].map(match => match[1] ?? '')
@@ -808,17 +808,25 @@ test('src/loops/ holds no other row\'s table: nothing imports the execution, ope
 
 // ------------------------------------------------------------ the channel's entries (design §3.4, §4.3)
 
-const glmPricing = (loopDefaults: unknown): UsagePricing => ({ basis: 'probe', plan: 'GLM Coding Plan', charged: () => undefined, peak: () => false, loopDefaults } as unknown as UsagePricing)
+const glmPricing = (loopDefaults: unknown, quota?: unknown): UsagePricing =>
+  ({ basis: 'probe', plan: 'GLM Coding Plan', charged: () => undefined, peak: () => false, loopDefaults, ...(quota === undefined ? {} : { quota }) } as unknown as UsagePricing)
 
-test('the three channel events: the account-level two declare the fields and params of design §4.3, nobody picks them, and their keys name one occurrence', () => {
+test('the five channel events: the account-level four declare the fields of design §4.3, nobody picks them, and their keys name one occurrence', () => {
   const byId = new Map(CHANNEL_EVENTS.map(declared => [declared.id, declared]))
   const quota = byId.get(CHANNEL_QUOTA_LOW)
   assert.deepEqual(quota?.fields.map(field => [field.name, field.type]), [['window', 'string'], ['usedPercent', 'number'], ['resetAt', 'string'], ['line', 'string']])
   assert.deepEqual(quota?.params?.map(param => [param.name, param.required, param.min, param.max]), [['usedPercent', true, 1, 100], ['exhaustsWithinMinutes', true, 1, 1440], ['afterUsageMinutes', true, 1, 1440]])
+  const reset = byId.get(CHANNEL_QUOTA_RESET)
+  assert.deepEqual(reset?.fields.map(field => [field.name, field.type, field.filter]), [['window', 'string', 'in'], ['resetAt', 'string', undefined], ['line', 'string', undefined]])
+  const exhausts = byId.get(CHANNEL_QUOTA_EXHAUSTS)
+  assert.deepEqual(exhausts?.fields.map(field => [field.name, field.type]), [['window', 'string'], ['usedPercent', 'number'], ['resetAt', 'string'], ['line', 'string']])
+  assert.equal(exhausts?.params, undefined)
   const login = byId.get(CHANNEL_LOGIN_REJECTED)
   assert.deepEqual(login?.fields.map(field => [field.name, field.type]), [['since', 'string'], ['path', 'string'], ['line', 'string']])
   assert.ok(CHANNEL_EVENTS.every(declared => !declared.personSelectable))
   assert.equal(quotaLowKey('five-hour', '2026-11-04T13:30:00.000Z'), 'quota-low:five-hour:2026-11-04T13:30:00.000Z')
+  assert.equal(quotaResetKey('weekly', '2026-11-04T13:30:00.000Z'), 'quota-reset:weekly:2026-11-04T13:30:00.000Z')
+  assert.equal(quotaExhaustsKey('five-hour', '2026-11-04T13:30:00.000Z'), 'quota-exhausts:five-hour:2026-11-04T13:30:00.000Z')
   assert.equal(loginRejectedKey('', '2026-11-04T09:40:00.000Z'), 'login-rejected:glm:2026-11-04T09:40:00.000Z')
   assert.equal(loginRejectedKey('mint', '2026-11-04T09:40:00.000Z'), 'login-rejected:mint:2026-11-04T09:40:00.000Z')
   for (const declared of CHANNEL_EVENTS) assert.deepEqual(plainWordsIn([declared.title, ...declared.fields.map(field => field.title), ...(declared.params ?? []).map(param => param.title)].join('\n')), [], declared.id)
@@ -835,6 +843,23 @@ test('channelEntries turns the GLM channel\'s four defaults into entries by desi
   assert.ok(quota?.action.kind === 'tell-main' && quota.action.text.includes('"{line}"'))
   assert.deepEqual([login?.when, login?.action.kind, login?.scope], [{ kind: 'event', events: [CHANNEL_LOGIN_REJECTED] }, 'tell-main', 'machine'])
   // Every one is a sound plugin entry against the table the channel events are in.
+  const table = new Map([...LOOP_EVENT_TABLE, ...CHANNEL_EVENTS.map(declared => [declared.id, declared] as const)])
+  for (const entry of entries) assert.deepEqual(validateEntry(entry, 'plugin', { table, now: NOW }), [], entry.id)
+})
+
+test('channelEntries appends the three quota reminders while the pricing service can read the quota: machine scope, one filter each, sound and plainly worded', () => {
+  const entries = channelEntries(glmPricing(GLM_LOOP_DEFAULTS, () => Promise.resolve({ login: { state: 'ok' }, pending: false })))
+  assert.deepEqual(entries.map(entry => entry.id), ['glm:peak-reminder', 'glm:quota-on-command', 'glm:quota-low', 'glm:login-rejected', 'glm:quota-reset-five-hour', 'glm:quota-reset-weekly', 'glm:quota-exhausts'])
+  const [five, weekly, exhausts] = entries.slice(-3)
+  assert.deepEqual([five?.when, five?.filter, five?.scope], [{ kind: 'event', events: [CHANNEL_QUOTA_RESET] }, { window: { in: ['five-hour'] } }, 'machine'])
+  assert.deepEqual([weekly?.when, weekly?.filter, weekly?.scope], [{ kind: 'event', events: [CHANNEL_QUOTA_RESET] }, { window: { in: ['weekly'] } }, 'machine'])
+  assert.deepEqual([exhausts?.when, exhausts?.filter, exhausts?.scope], [{ kind: 'event', events: [CHANNEL_QUOTA_EXHAUSTS] }, undefined, 'machine'])
+  for (const entry of [five, weekly, exhausts]) {
+    assert.ok(entry?.action.kind === 'tell-main' && entry.action.wake === false && entry.action.text.includes('"{line}"'), entry?.id)
+    assert.ok(typeof entry?.why === 'string' && entry.why.length > 0, entry?.id)
+    assert.deepEqual(plainWordsIn(`${entry.title}\n${entry.why}`), [], entry.id)
+  }
+  // Every one is a sound plugin entry against the table the channel events are in; the machine scope only a hand-over may not have.
   const table = new Map([...LOOP_EVENT_TABLE, ...CHANNEL_EVENTS.map(declared => [declared.id, declared] as const)])
   for (const entry of entries) assert.deepEqual(validateEntry(entry, 'plugin', { table, now: NOW }), [], entry.id)
 })
