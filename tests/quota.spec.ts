@@ -1,9 +1,10 @@
 /**
  * The shared half of the quota contract (docs/ORCHESTRATION.md §11.3, §11.4):
  * the moment words, the peak line, the quota section, the low-quota test,
- * the login line, and the readers of the three optional members of the
- * pricing service. Pure functions; the channel package's reader of the
- * server is tested in tests/glm-quota.spec.ts.
+ * the rate of a window and its endurance against the reset, the login line,
+ * and the readers of the three optional members of the pricing service.
+ * Pure functions; the channel package's reader of the server is tested in
+ * tests/glm-quota.spec.ts.
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -15,8 +16,8 @@ import { projectWindow, samePeriod, type WindowPoint, type WindowState } from '.
 import { loopDefaultsOf, type ChannelLoopDefault, type ChannelTrigger } from '../src/shared/channel-loop.ts'
 import { peakHoursOf, quotaOf, type UsagePricing } from '../src/shared/pricing.ts'
 import {
-  formatMoment, loginLine, peakLine, quotaLines, quotaLowLine, quotaLowOf, quotaWaitOf,
-  type LoginView, type MomentZone, type QuotaBasis, type QuotaLowRule, type QuotaProjection, type QuotaReading, type QuotaRequest, type QuotaView, type QuotaWait, type QuotaWindowName, type QuotaWindowView,
+  formatMoment, loginLine, peakLine, quotaEnduranceOf, quotaLines, quotaLowLine, quotaLowOf, quotaRateOf, quotaWaitOf,
+  type LoginView, type MomentZone, type QuotaBasis, type QuotaEnduranceRule, type QuotaLowRule, type QuotaProjection, type QuotaReading, type QuotaRequest, type QuotaUsageFact, type QuotaView, type QuotaWait, type QuotaWindowName, type QuotaWindowRate, type QuotaWindowView,
 } from '../src/shared/quota.ts'
 
 const at = (iso: string): number => Date.parse(iso)
@@ -642,6 +643,104 @@ test('samePeriod: the name and the reset time agree within two minutes; an unnam
   assert.ok(!samePeriod({ name: 'window' }, { name: 'window' }))
   assert.ok(!samePeriod({ name: 'other' }, { name: 'other' }))
   assert.ok(samePeriod({ name: 'window', resetAt: reset }, { name: 'window', resetAt: reset }))
+})
+
+// The rate of a window over its last length and its endurance against the
+// reset (the third reader of the contract): the caller passes the window's
+// length and the thresholds, and maps the records of its usage journal onto
+// QuotaUsageFact.
+
+const fact = (clock: string, input: number, output?: number): QuotaUsageFact =>
+  ({ at: wed(clock), input, ...(output === undefined ? {} : { output }) })
+const fiveHourRate = (usedPercent: number | undefined, resetAt: number | undefined): QuotaWindowView =>
+  windowOf('five-hour', '5 小时', usedPercent, resetAt, NO_ESTIMATE)
+const FIVE_HOURS = 5 * HOUR_MS
+const SEVEN_DAYS = 7 * DAY_MS
+const rateOf = (window: QuotaWindowView | undefined, facts: readonly QuotaUsageFact[], lengthMs: number = FIVE_HOURS): QuotaWindowRate =>
+  quotaRateOf(window, facts, NOW, lengthMs)
+const ENDURANCE: QuotaEnduranceRule = { exhaustPercent: 100, lightPercent: 50 }
+const near = (actual: number, wanted: number, epsilon: number, note = ''): void =>
+  assert.ok(Math.abs(actual - wanted) <= epsilon, `${actual} ≈ ${wanted} ± ${epsilon}${note === '' ? '' : `（${note}）`}`)
+
+test('quotaRateOf: the rate is the tokens of the last length over the hours, and the percent rate stands on the period of the reading', () => {
+  // The five-hour window resets at 21:32: the period began at 16:32, half an hour back.
+  const reset = at('2026-10-28T21:32:00+08:00')
+  const facts = [fact('12:10', 500), fact('16:40', 700, 100), fact('17:00', 2700)]
+  const rate = rateOf(fiveHourRate(35, reset), facts)
+  assert.deepEqual(rate, { kind: 'rate', tokensPerHour: 800, percentPerHour: 8 }, '4000 tokens over 5 hours; the 3500 inside the period are the 35% of the reading')
+  assert.deepEqual(quotaEnduranceOf(rate, fiveHourRate(35, reset), NOW, ENDURANCE), { kind: 'lasts', percentAtReset: 71 }, '35 + 8 × the 4.5 hours to the reset')
+})
+
+test('quotaRateOf: a fact whose input is 0 counts toward no sum, and a fact before the length or in the future toward none', () => {
+  const reset = at('2026-10-28T21:32:00+08:00')
+  const facts = [fact('12:10', 500), fact('16:40', 700, 100), fact('17:00', 2700), fact('16:00', 0, 500), fact('11:00', 999)]
+  assert.deepEqual(rateOf(fiveHourRate(35, reset), [...facts, { at: NOW + MINUTE_MS, input: 999 }]), { kind: 'rate', tokensPerHour: 800, percentPerHour: 8 }, 'the record without a count, the one 11 hours back and the one in the future all stay out')
+})
+
+test('quotaRateOf: the edges of the length are inclusive', () => {
+  const reset = at('2026-10-28T21:32:00+08:00')
+  const period = [fact('16:40', 2000)]
+  assert.deepEqual(rateOf(fiveHourRate(20, reset), [...period, { at: NOW - FIVE_HOURS, input: 2000 }]), { kind: 'rate', tokensPerHour: 800, percentPerHour: 8 }, 'the fact exactly 5 hours back counts')
+  assert.deepEqual(rateOf(fiveHourRate(20, reset), [...period, { at: NOW - FIVE_HOURS - 1, input: 2000 }]), { kind: 'rate', tokensPerHour: 400, percentPerHour: 4 }, 'one millisecond earlier does not')
+  assert.deepEqual(rateOf(fiveHourRate(20, reset), [...period, { at: NOW, input: 2000 }]), { kind: 'rate', tokensPerHour: 800, percentPerHour: 4 }, 'a fact finished at now itself counts')
+})
+
+test('quotaRateOf: the weekly window rates over seven days; a fact inside them but before the period began only feeds the rate', () => {
+  const reset = at('2026-11-02T10:00:00+08:00')
+  const facts: QuotaUsageFact[] = [
+    { at: at('2026-10-20T12:00:00+08:00'), input: 999 },
+    { at: at('2026-10-23T12:00:00+08:00'), input: 7000 },
+    { at: at('2026-10-27T12:00:00+08:00'), input: 1400 },
+  ]
+  const window = windowOf('weekly', '每周', 14, reset, NO_ESTIMATE)
+  assert.deepEqual(rateOf(window, facts, SEVEN_DAYS), { kind: 'rate', tokensPerHour: 50, percentPerHour: 0.5 }, '8400 tokens over the 168 hours; the 1400 of the period that began on 10-26 are the 14% of the reading')
+})
+
+test('quotaRateOf: tokens and percent that grow together read as the share the reading shows per hour — the nail of the steady-share assumption', () => {
+  // Every minute of the last 5 hours bills the same 100 tokens; the reading says 30% after 2.5 hours of the period (the reset is at 19:32).
+  const facts = Array.from({ length: 301 }, (_, index): QuotaUsageFact => ({ at: NOW - (300 - index) * MINUTE_MS, input: 100 }))
+  const reset = at('2026-10-28T19:32:00+08:00')
+  const rate = rateOf(fiveHourRate(30, reset), facts)
+  assert.ok(rate.kind === 'rate')
+  near(rate.tokensPerHour, 6020, 1, '301 facts of 100 tokens over 5 hours')
+  near(rate.percentPerHour, 12, 0.1, 'the 30% of 2.5 hours is 12 per hour, whatever share of the consumption the facts cover')
+  const end = quotaEnduranceOf(rate, fiveHourRate(30, reset), NOW, ENDURANCE)
+  assert.ok(end.kind !== 'pending')
+  near(end.percentAtReset, 60, 0.3)
+})
+
+test('quotaRateOf: without the data to stand on there is no rate, and the reason says which piece is missing', () => {
+  const reset = at('2026-10-28T21:32:00+08:00')
+  const facts = [fact('16:40', 700), fact('17:00', 2700)]
+  const reason = (window: QuotaWindowView | undefined, windowFacts: readonly QuotaUsageFact[] = facts, lengthMs = FIVE_HOURS): string => {
+    const rate = rateOf(window, windowFacts, lengthMs)
+    assert.ok(rate.kind === 'pending')
+    return rate.reason
+  }
+  assert.equal(reason(undefined), '读数不足', 'no window at all')
+  assert.equal(reason(fiveHourRate(undefined, reset)), '读数不足', 'no share')
+  assert.equal(reason(fiveHourRate(30, undefined)), '读数不足', 'no reset time')
+  assert.equal(reason(fiveHourRate(30, NOW)), '即将重置')
+  assert.equal(reason(fiveHourRate(0, reset)), '本窗口还没有消耗', 'even with facts in the period')
+  assert.equal(reason(fiveHourRate(30, reset), [fact('12:30', 4000)]), '没有可计的用量记录', 'the facts sit before the period began')
+  assert.equal(reason(fiveHourRate(30, reset), []), '没有可计的用量记录')
+  assert.equal(reason(fiveHourRate(30, reset), [fact('16:40', 0), fact('17:00', 0)]), '没有可计的用量记录', 'only records without a count')
+})
+
+test('quotaEnduranceOf: at exhaustPercent or more the window 撑不到, under lightPercent it 用得太少, between the two it lasts; the projected share travels', () => {
+  const reset = at('2026-10-28T22:02:00+08:00') // exactly 5 hours ahead
+  const rate = (percentPerHour: number): QuotaWindowRate => ({ kind: 'rate', tokensPerHour: 1000, percentPerHour })
+  assert.deepEqual(quotaEnduranceOf(rate(12), fiveHourRate(40, reset), NOW, ENDURANCE), { kind: 'exhausts', percentAtReset: 100 }, 'exactly at the threshold counts')
+  assert.deepEqual(quotaEnduranceOf(rate(13), fiveHourRate(40, reset), NOW, ENDURANCE), { kind: 'exhausts', percentAtReset: 105 }, 'a share past the whole window is not capped')
+  assert.deepEqual(quotaEnduranceOf(rate(2), fiveHourRate(40, reset), NOW, ENDURANCE), { kind: 'lasts', percentAtReset: 50 }, 'exactly at lightPercent still lasts')
+  assert.deepEqual(quotaEnduranceOf(rate(1.5), fiveHourRate(40, reset), NOW, ENDURANCE), { kind: 'light', percentAtReset: 47.5 })
+  assert.deepEqual(quotaEnduranceOf(rate(4), fiveHourRate(40, reset), NOW, ENDURANCE), { kind: 'lasts', percentAtReset: 60 })
+})
+
+test('quotaEnduranceOf: a rate that is 待数据 stays 待数据, and so does a judgment without a window to project', () => {
+  const pending: QuotaWindowRate = { kind: 'pending', reason: '没有可计的用量记录' }
+  assert.deepEqual(quotaEnduranceOf(pending, fiveHourRate(40, at('2026-10-28T22:02:00+08:00')), NOW, ENDURANCE), pending)
+  assert.deepEqual(quotaEnduranceOf({ kind: 'rate', tokensPerHour: 1000, percentPerHour: 4 }, undefined, NOW, ENDURANCE), { kind: 'pending', reason: '读数不足' })
 })
 
 test('upstreamLimitOf: a body with one of the limit codes, as a string or a number, is a limit; the recovery time in the message is read as UTC+8 and must be within eight days', () => {

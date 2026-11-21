@@ -3,7 +3,10 @@
  * package (docs/ORCHESTRATION.md §11.3): what the pricing service's `quota`
  * member returns, and the pure functions both packages use to word it. One
  * set of functions renders the status command's section and the usage
- * panel's, so the two places print the same text.
+ * panel's, so the two places print the same text. The rate of a window and
+ * its endurance against the reset are computed here too, from the view and
+ * the usage facts the caller hands in; the window's length and the
+ * thresholds of the judgment stay the caller's, like every other size.
  *
  * Types and pure functions only; no Node built-in is imported, so both
  * packages and the client can use the file. The channel package reads the
@@ -96,6 +99,7 @@ export interface QuotaLowRule {
 }
 
 const MINUTE_MS = 60_000
+const HOUR_MS = 60 * MINUTE_MS
 const DAY_MS = 24 * 60 * MINUTE_MS
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
@@ -278,6 +282,89 @@ export function quotaWaitOf(view: QuotaView, now: number): QuotaWait | undefined
     ...(view.limited === undefined ? {} : { code: view.limited.code }),
     ...(named === undefined ? {} : { window: named }),
   }
+}
+
+/** One usage fact: the tokens one model call bills into the quota (the caller maps the records of its usage journal onto it). */
+export interface QuotaUsageFact {
+  /** Epoch milliseconds: when the call finished. */
+  readonly at: number
+  /**
+   * The input tokens the call billed. A record without a count (an early
+   * one, from before the journal kept input tokens) carries 0 and counts
+   * toward no sum: counting it would pull both the rate and the scale down.
+   */
+  readonly input: number
+  /** The output tokens, when the record has them; they bill as well. */
+  readonly output?: number
+}
+
+/** The average rate of one window over its last `lengthMs`, or why there is none yet (待数据). */
+export type QuotaWindowRate =
+  | { readonly kind: 'rate', readonly tokensPerHour: number, readonly percentPerHour: number }
+  | { readonly kind: 'pending', readonly reason: string }
+
+/**
+ * The average rate one window was consumed at over its last `lengthMs` (5
+ * hours for the five-hour window, 7 days for the weekly one; the caller
+ * passes the length, this file knows no window's size). The tokens come
+ * from the usage facts; a fact whose input is 0 counts toward no sum. The
+ * share comes from the reading: the scale is the tokens of the facts inside
+ * the window's current period (`resetAt - lengthMs` to `resetAt`) per
+ * percent of it, so a steady share of consumption through this client
+ * cancels out of the percent rate — the reading covers the other clients
+ * too, the facts do not. Without a reading, without a share or a reset
+ * ahead, without a fact inside the period (the window has not been
+ * consumed, or none of it through this client) there is no rate: `pending`
+ * with the reason, not a guess.
+ */
+export function quotaRateOf(window: QuotaWindowView | undefined, facts: readonly QuotaUsageFact[], now: number, lengthMs: number): QuotaWindowRate {
+  if (window === undefined || window.usedPercent === undefined || window.resetAt === undefined) return { kind: 'pending', reason: '读数不足' }
+  if (window.resetAt <= now) return { kind: 'pending', reason: '即将重置' }
+  if (window.usedPercent === 0) return { kind: 'pending', reason: '本窗口还没有消耗' }
+  const { usedPercent, resetAt } = window
+  const billed = (fact: QuotaUsageFact): number => fact.input + (fact.output ?? 0)
+  const counted = facts.filter(fact => fact.at <= now && fact.at >= now - lengthMs && fact.input > 0)
+  const periodTokens = counted
+    .filter(fact => fact.at >= resetAt - lengthMs)
+    .reduce((sum, fact) => sum + billed(fact), 0)
+  if (periodTokens <= 0) return { kind: 'pending', reason: '没有可计的用量记录' }
+  const tokensPerHour = counted.reduce((sum, fact) => sum + billed(fact), 0) / (lengthMs / HOUR_MS)
+  return { kind: 'rate', tokensPerHour, percentPerHour: tokensPerHour * usedPercent / periodTokens }
+}
+
+/** The thresholds of the endurance judgments, both the caller's: nothing here words a reminder or picks a line. */
+export interface QuotaEnduranceRule {
+  /** A projected share at the reset of this percent or more means the window 撑不到 the reset. */
+  readonly exhaustPercent: number
+  /** A projected share under this percent means the window 用得太少. */
+  readonly lightPercent: number
+}
+
+/** What one window projects to at its reset at the average rate: 撑不到, 用得太少, 撑得到, or 待数据. */
+export type QuotaEndurance =
+  | { readonly kind: 'exhausts', readonly percentAtReset: number }
+  | { readonly kind: 'light', readonly percentAtReset: number }
+  | { readonly kind: 'lasts', readonly percentAtReset: number }
+  | { readonly kind: 'pending', readonly reason: string }
+
+/**
+ * The endurance of one window against its reset, at the average rate
+ * (`quotaRateOf`): the share the reading shows plus what the rate adds
+ * until the reset, against the caller's thresholds — at `exhaustPercent` or
+ * above the window 撑不到 the reset, under `lightPercent` it 用得太少,
+ * between the two it lasts; the projected share travels with every kind, so
+ * the readers of it word the estimate where it stands. A rate that is 待数据
+ * stays 待数据.
+ */
+export function quotaEnduranceOf(rate: QuotaWindowRate, window: QuotaWindowView | undefined, now: number, rule: QuotaEnduranceRule): QuotaEndurance {
+  if (rate.kind === 'pending') return rate
+  if (window === undefined || window.usedPercent === undefined || window.resetAt === undefined || window.resetAt <= now) {
+    return { kind: 'pending', reason: '读数不足' }
+  }
+  const percentAtReset = window.usedPercent + rate.percentPerHour * (window.resetAt - now) / HOUR_MS
+  if (percentAtReset >= rule.exhaustPercent) return { kind: 'exhausts', percentAtReset }
+  if (percentAtReset < rule.lightPercent) return { kind: 'light', percentAtReset }
+  return { kind: 'lasts', percentAtReset }
 }
 
 /** 「GLM 登录在 17:40 被服务端拒绝，GLM 的请求会失败；运行 /glm-login 重新登录」 */
