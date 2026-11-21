@@ -196,4 +196,47 @@ test('classifyStartPlanFailover distinguishes login rejections, expired, empty, 
   assert.equal(classifyStartPlanFailover(400, JSON.stringify({ error: { message: 'invalid tool schema' } })), undefined)
   assert.equal(classifyStartPlanFailover(429, 'x'.repeat(70_000)), 'concurrency')
   assert.equal(classifyStartPlanFailover(502, 'x'.repeat(70_000)), undefined)
+  // Real Start Plan HTTP 200 JSON error envelopes fail over as expected.
+  assert.equal(classifyStartPlanFailover(200, JSON.stringify({ code: 1005, msg: 'exceed quota limit' })), 'empty')
+  assert.equal(classifyStartPlanFailover(200, JSON.stringify({ code: 403, msg: '套餐不支持该模型' })), 'unentitled')
+})
+
+test('start-plan balance reader sends X-Device-Mid and parses 3.19.1 remaining_units/total_units/unit_type fields', async () => {
+  const seenHeaders: Array<{ auth: string | null, mid: string | null }> = []
+  const reader = createStartPlanBalanceReader({
+    deviceMid: () => 'mid-test-1234',
+    fetchImpl: ((_input, init) => {
+      const headers = new Headers(init?.headers)
+      seenHeaders.push({ auth: headers.get('authorization'), mid: headers.get('x-device-mid') })
+      return Promise.resolve(Response.json({
+        code: 0,
+        msg: '',
+        data: {
+          server_time: 1795220175,
+          plans: [{ plan_id: 'zcode-v3-start-plan-wk-1120', user_plan_id: 'upl_1', name: 'ZCODE WEEKEND BUILD', status: 'active', ends_at: 1795395600 }],
+          balances: [{
+            plan_id: 'zcode-v3-start-plan-wk-1120',
+            user_plan_id: 'upl_1',
+            show_name: 'GLM-5.3-Flash',
+            unit_type: 'token',
+            capabilities: ['model:glm-5.3-flash'],
+            total_units: 500_000_000,
+            used_units: 451_379_864,
+            remaining_units: 48_620_136,
+            available_units: 48_620_136,
+          }],
+        },
+      }))
+    }),
+  })
+  const read = await reader.read('jwt-real')
+  assert.equal(read.ok, true)
+  assert.deepEqual(seenHeaders, [{ auth: 'Bearer jwt-real', mid: 'mid-test-1234' }])
+  if (read.ok) {
+    assert.equal(read.balances[0]?.remaining, 48_620_136)
+    assert.equal(read.balances[0]?.total, 500_000_000)
+    assert.equal(read.balances[0]?.used, 451_379_864)
+    assert.equal(read.balances[0]?.unit, 'token')
+  }
+  assert.match(formatStartPlanBalanceLine(read), /GLM-5\.3-Flash 剩余 48\.6M\/500M token \[glm-5\.3-flash\]/)
 })

@@ -68,7 +68,7 @@ export function mintRejectionOf(code: string): { readonly status: 401 | 403 } | 
   return undefined
 }
 
-const EMPTY_BALANCE_CODES: ReadonlySet<string> = new Set(['1113', '1308', '1309', '1310'])
+const EMPTY_BALANCE_CODES: ReadonlySet<string> = new Set(['1005', '1113', '1308', '1309', '1310'])
 const CONCURRENCY_CODES: ReadonlySet<string> = new Set(['1302', '1305'])
 const EXPIRED_TERMS = ['expired', '已过期'] as const
 const EMPTY_TERMS = ['insufficient', 'balance', 'exhausted', 'quota', '余额不足', '额度已用尽', '无可用额度'] as const
@@ -114,7 +114,7 @@ export function classifyStartPlanFailover(status: number, body: string): StartPl
     return 'empty'
   }
   if (status === 429 || codes.some(code => CONCURRENCY_CODES.has(code))) return 'concurrency'
-  if ((status === 403 || status === 400 || status === 404) && UNENTITLED_TERMS.some(term => text.includes(term))) {
+  if ((status === 200 || status === 403 || status === 400 || status === 404) && UNENTITLED_TERMS.some(term => text.includes(term))) {
     return 'unentitled'
   }
   return undefined

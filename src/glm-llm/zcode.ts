@@ -257,7 +257,7 @@ export class ZcodeAdapter {
   /** The login identity of the credential file as of its size and modification time. */
   private identity: { readonly size: number, readonly mtimeMs: number, readonly value: LoginIdentity } | undefined
   private activeStartPlanStreams = 0
-  private startPlanEmptyUntil: number | undefined
+  private readonly startPlanEmptyByModel = new Map<string, number>()
   private startPlanExpiredUntil: number | undefined
   private startPlanConcurrencyUntil: number | undefined
   private readonly startPlanUnentitledUntil = new Map<string, number>()
@@ -548,7 +548,7 @@ export class ZcodeAdapter {
       ? ''
       : loginFingerprintOf(`${jwt}\0${credential.oauthAccessToken?.trim() ?? ''}\0${credential.userId ?? ''}`)
     if (this.startPlanLastCredFingerprint !== undefined && fp !== this.startPlanLastCredFingerprint) {
-      this.startPlanEmptyUntil = undefined
+      this.startPlanEmptyByModel.clear()
       this.startPlanExpiredUntil = undefined
       this.startPlanConcurrencyUntil = undefined
       this.startPlanUnentitledUntil.clear()
@@ -560,7 +560,9 @@ export class ZcodeAdapter {
 
   private pruneStartPlanCooldowns(now: number): void {
     if (this.startPlanExpiredUntil !== undefined && this.startPlanExpiredUntil <= now) this.startPlanExpiredUntil = undefined
-    if (this.startPlanEmptyUntil !== undefined && this.startPlanEmptyUntil <= now) this.startPlanEmptyUntil = undefined
+    for (const [modelKey, until] of this.startPlanEmptyByModel) {
+      if (until <= now) this.startPlanEmptyByModel.delete(modelKey)
+    }
     if (this.startPlanConcurrencyUntil !== undefined && this.startPlanConcurrencyUntil <= now) this.startPlanConcurrencyUntil = undefined
     for (const [modelKey, until] of this.startPlanUnentitledUntil) {
       if (until <= now) this.startPlanUnentitledUntil.delete(modelKey)
@@ -570,7 +572,7 @@ export class ZcodeAdapter {
   private recordStartPlanFailover(reason: StartPlanFailoverReason, model: string): void {
     const until = this.clock() + START_PLAN_COOLDOWN_MS[reason]
     if (reason === 'expired') this.startPlanExpiredUntil = until
-    else if (reason === 'empty') this.startPlanEmptyUntil = until
+    else if (reason === 'empty') this.startPlanEmptyByModel.set(model.toLowerCase(), until)
     else if (reason === 'concurrency') this.startPlanConcurrencyUntil = until
     else this.startPlanUnentitledUntil.set(model.toLowerCase(), until)
     this.startPlanFailoverCount += 1
@@ -595,20 +597,32 @@ export class ZcodeAdapter {
       reason = 'expired'
       cooldownUntil = this.startPlanExpiredUntil
     }
-    else if (this.startPlanEmptyUntil !== undefined) {
-      reason = 'empty'
-      cooldownUntil = this.startPlanEmptyUntil
+    else if (model !== undefined) {
+      const modelKey = model.toLowerCase()
+      const emptyUntil = this.startPlanEmptyByModel.get(modelKey)
+      if (emptyUntil !== undefined) {
+        reason = 'empty'
+        cooldownUntil = emptyUntil
+      }
+      else if (this.startPlanConcurrencyUntil !== undefined) {
+        reason = 'concurrency'
+        cooldownUntil = this.startPlanConcurrencyUntil
+      }
+      else {
+        const modelUntil = this.startPlanUnentitledUntil.get(modelKey)
+        if (modelUntil !== undefined) {
+          reason = 'unentitled'
+          cooldownUntil = modelUntil
+        }
+      }
     }
     else if (this.startPlanConcurrencyUntil !== undefined) {
       reason = 'concurrency'
       cooldownUntil = this.startPlanConcurrencyUntil
     }
-    else if (model !== undefined) {
-      const modelUntil = this.startPlanUnentitledUntil.get(model.toLowerCase())
-      if (modelUntil !== undefined) {
-        reason = 'unentitled'
-        cooldownUntil = modelUntil
-      }
+    else if (GLM_MODELS.length > 0 && GLM_MODELS.every(candidate => this.startPlanEmptyByModel.has(candidate.id.toLowerCase()))) {
+      reason = 'empty'
+      cooldownUntil = Math.min(...this.startPlanEmptyByModel.values())
     }
     return {
       available: reason === 'ok',
@@ -750,7 +764,12 @@ export class ZcodeAdapter {
       if (token !== undefined) this.routingCredential = routingCredential
       const routed = await this.routing.resolve(upstreamBase, routingCredential).catch((): { routed: boolean, url: string, headers?: Record<string, string> } => ({ routed: false, url: upstreamBase }))
       // x-request-id is fresh per attempt (3.16.3 `Gdt` @4067222: `requestId ?? crypto.randomUUID()` per attempt).
-      const trace = { ...attribution, requestId: randomUUID() }
+      // ZCode Start Plan rejects `x-zcode-session-type: subagent` with 405/3012; send `main` while preserving `x-zcode-query-source: subagent` and traceId.
+      const trace: TraceContext = {
+        ...attribution,
+        sessionType: token === undefined && attribution.sessionType === 'subagent' ? 'main' : attribution.sessionType,
+        requestId: randomUUID(),
+      }
       const headers = buildModelRequestHeaders({
         token: token !== undefined ? token.token : startPlanJwt,
         includeApiKey: token !== undefined,
@@ -780,6 +799,26 @@ export class ZcodeAdapter {
     ): AsyncGenerator<LlmStreamChunk, StartPlanFailoverReason | undefined> {
       const prep = await preparePlanRequest(plan)
       let activeToken = prep.projectToken
+      const handleErrorResponse = async (status: number, detail: string): Promise<StartPlanFailoverReason> => {
+        if (plan === 'start-plan') {
+          const reason = canFailover ? classifyStartPlanFailover(status, detail) : undefined
+          if (reason !== undefined) {
+            this.recordStartPlanFailover(reason, options.model)
+            return reason
+          }
+          report('inactive', `上游返回 ${status}`)
+          if (status === 401 || hasStartPlanRejectionCode(detail)) {
+            const detailField: { readonly status: 401 | 403 } | { readonly code: string } =
+              status === 401 || status === 403 ? { status } : { code: '3012' }
+            await this.noteLoginRejected('model', startPlanJwt, detailField, where)
+          }
+        }
+        else {
+          report('inactive', `上游返回 ${status}`)
+          if (status === 429) await this.noteUpstreamLimit(detail, where)
+        }
+        throw new Error(`${prep.routeLabel} ${status}: ${detail.slice(0, 400)}`)
+      }
       if (plan === 'start-plan') this.activeStartPlanStreams += 1
       try {
         let response = await sendAttempt(prep.upstreamBase, prep.body, activeToken)
@@ -797,28 +836,13 @@ export class ZcodeAdapter {
           if (await isProjectTokenRejection(response)) await this.noteLoginRejected('model', credential.oauthAccessToken ?? '', { status: 401 }, where)
         }
         if (!response.ok) {
-          const detail = await response.text()
-          if (plan === 'start-plan') {
-            const reason = canFailover ? classifyStartPlanFailover(response.status, detail) : undefined
-            if (reason !== undefined) {
-              this.recordStartPlanFailover(reason, options.model)
-              return reason
-            }
-            report('inactive', `上游返回 ${response.status}`)
-            if (response.status === 401 || hasStartPlanRejectionCode(detail)) {
-              const detailField: { readonly status: 401 | 403 } | { readonly code: string } =
-                response.status === 401 || response.status === 403 ? { status: response.status } : { code: '3012' }
-              await this.noteLoginRejected('model', startPlanJwt, detailField, where)
-            }
-          }
-          else {
-            report('inactive', `上游返回 ${response.status}`)
-            if (response.status === 429) await this.noteUpstreamLimit(detail, where)
-          }
-          throw new Error(`${prep.routeLabel} ${response.status}: ${detail.slice(0, 400)}`)
+          return await handleErrorResponse(response.status, await response.text())
         }
-        if (plan === 'start-plan') {
+        const contentType = (response.headers.get('content-type') ?? '').toLowerCase()
+        const clearStartPlanCooldowns = (): void => {
+          if (plan !== 'start-plan') return
           this.startPlanConcurrencyUntil = undefined
+          this.startPlanEmptyByModel.delete(options.model.toLowerCase())
           this.startPlanUnentitledUntil.delete(options.model.toLowerCase())
         }
         const failoverNote = failoverFrom === undefined ? '' : `（自 start-plan 回退：${failoverFrom}）`
@@ -826,11 +850,17 @@ export class ZcodeAdapter {
         if (!wire.stream) {
           // The session title goes out as 3.16.3 `generateText` sends it: one JSON answer.
           const message: unknown = await response.json()
+          if (isZcodeErrorEnvelope(message)) return await handleErrorResponse(response.status, JSON.stringify(message))
+          clearStartPlanCooldowns()
           report('active', activeMessage)
           yield* decodeMessage(message, options.model) as LlmStreamChunk[]
           return undefined
         }
+        if (contentType.includes('application/json')) {
+          return await handleErrorResponse(response.status, await response.text())
+        }
         if (response.body === null) throw new Error(`${prep.routeLabel}: response has no stream body`)
+        clearStartPlanCooldowns()
         report('active', activeMessage)
         // decodeSse emits the internal structural chunk vocabulary; it is
         // field-compatible with the DSH StreamChunk protocol (only the branded id
@@ -906,6 +936,19 @@ function errorResponseRecords(body: unknown): {
     typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
   const envelope = asRecord(body)
   return { envelope, data: asRecord(envelope.data), failure: asRecord(envelope.error) }
+}
+
+function isZcodeErrorEnvelope(body: unknown): boolean {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return false
+  const record = body as Record<string, unknown>
+  if (Array.isArray(record.content)) return false
+  if (record.type === 'error') return true
+  if (typeof record.error === 'object' && record.error !== null) return true
+  if (typeof record.code === 'number' || typeof record.code === 'string') {
+    const normalized = String(record.code).trim()
+    return normalized.length > 0 && normalized !== '0' && normalized !== '200'
+  }
+  return false
 }
 
 /** Whether a Start Plan error body carries code 3012 (rejected/invalid plan token). */

@@ -467,6 +467,16 @@ export async function* decodeSse(body: ReadableStream<Uint8Array>, model?: strin
       let frame: unknown
       try { frame = JSON.parse(payload) } catch { continue }
       const event = frame as AnthropicEvent
+      if (event.type === 'error') {
+        const err = (frame as { error?: { type?: unknown, message?: unknown }, message?: unknown }).error
+        const msg = typeof err?.message === 'string'
+          ? err.message
+          : typeof (frame as { message?: unknown }).message === 'string'
+            ? (frame as { message: string }).message
+            : JSON.stringify(frame)
+        const kind = typeof err?.type === 'string' ? `${err.type}: ` : ''
+        throw new Error(`glm-zcode stream error: ${kind}${msg}`)
+      }
       if (event.type === 'message_start') usage = accumulateUsage(usage, event.message?.usage)
       if (event.type === 'message_delta') {
         usage = accumulateUsage(usage, event.usage)

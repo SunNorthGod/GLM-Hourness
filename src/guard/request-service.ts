@@ -407,7 +407,7 @@ export function createRequestDesk(deps: RequestDeskDeps): RequestDesk {
       }
       // Step 5a: a proposal shown since the human's last client message (design §5.3 step 5a): the tool-call block's name after the DeferredToolCall unwrap, its result not an error.
       const history = typeof agent.session?.deriveMessages === 'function' ? agent.session.deriveMessages() as readonly DerivedMessage[] : []
-      const lastClient = lastIndexOf(history, entry => entry.role === 'user' && entry.source?.kind === 'user' && typeof entry.source?.rpcId === 'string')
+      const lastClient = lastIndexOf(history, entry => entry.role === 'user' && entry.source?.kind === 'user' && entry.source?.form !== 'notice')
       const proposalShown = history.slice(lastClient + 1).some(entry => {
         if (entry.role !== 'assistant') return false
         const calls = (entry.content ?? []).filter(block => block.type === 'tool-call')

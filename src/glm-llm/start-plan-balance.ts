@@ -7,6 +7,8 @@
  * logs or exposes the bearer token. Handles expired plans where
  * `ends_at <= server_time`.
  */
+import { randomUUID } from 'node:crypto'
+import { ensureCliDeviceMid } from './device-mid.ts'
 import { ZCODE_APP_VERSION } from './identity.ts'
 import { cappedText } from './quota.ts'
 import { loginFingerprintOf } from './quota-journal.ts'
@@ -62,6 +64,7 @@ export type StartPlanBalanceRead =
 export interface StartPlanBalanceReaderOptions {
   readonly origin?: string
   readonly appVersion?: string
+  readonly deviceMid?: () => Promise<string> | string
   readonly fetchImpl?: typeof fetch
   readonly now?: () => number
   readonly timeoutMs?: number
@@ -126,10 +129,10 @@ function parseBalance(raw: unknown): StartPlanBalanceEntry | undefined {
     .filter(cap => cap.startsWith('model:'))
     .map(cap => cap.slice('model:'.length))
     .filter(id => id.length > 0)
-  const remaining = finiteNumber(raw.remaining) ?? finiteNumber(raw.balance) ?? finiteNumber(raw.available)
-  const total = finiteNumber(raw.total) ?? finiteNumber(raw.limit) ?? finiteNumber(raw.quota)
-  const used = finiteNumber(raw.used)
-  const unit = nonEmptyString(raw.unit)
+  const remaining = finiteNumber(raw.remaining_units) ?? finiteNumber(raw.available_units) ?? finiteNumber(raw.remaining) ?? finiteNumber(raw.balance) ?? finiteNumber(raw.available)
+  const total = finiteNumber(raw.total_units) ?? finiteNumber(raw.total) ?? finiteNumber(raw.limit) ?? finiteNumber(raw.quota)
+  const used = finiteNumber(raw.used_units) ?? finiteNumber(raw.used)
+  const unit = nonEmptyString(raw.unit_type) ?? nonEmptyString(raw.unit)
   return {
     ...(planId === undefined ? {} : { planId }),
     ...(userPlanId === undefined ? {} : { userPlanId }),
@@ -188,6 +191,22 @@ export function createStartPlanBalanceReader(options: StartPlanBalanceReaderOpti
   const timeoutMs = options.timeoutMs ?? START_PLAN_BALANCE_TIMEOUT_MS
   const url = `${origin}${START_PLAN_BALANCE_PATH}?app_version=${encodeURIComponent(appVersion)}`
 
+  const resolveDeviceMid = async (): Promise<string> => {
+    if (options.deviceMid !== undefined) {
+      try {
+        const value = await options.deviceMid()
+        if (value.trim().length > 0) return value.trim()
+      }
+      catch { /* fall back below */ }
+    }
+    try {
+      const ensured = await ensureCliDeviceMid()
+      if (ensured.value.trim().length > 0) return ensured.value.trim()
+    }
+    catch { /* fall back below */ }
+    return randomUUID()
+  }
+
   let lastFingerprint: string | undefined
   let lastStartedAt: number | undefined
   let lastResult: StartPlanBalanceRead | undefined
@@ -197,12 +216,13 @@ export function createStartPlanBalanceReader(options: StartPlanBalanceReaderOpti
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     const bearer = /^Bearer\s+/iu.test(token) ? token : `Bearer ${token}`
+    const deviceMid = await resolveDeviceMid()
     try {
       let response: Response
       try {
         response = await fetchImpl(url, {
           method: 'GET',
-          headers: { Authorization: bearer },
+          headers: { Authorization: bearer, 'X-Device-Mid': deviceMid },
           signal: controller.signal,
         })
       }
@@ -300,14 +320,22 @@ export function formatStartPlanBalanceLine(result: StartPlanBalanceRead): string
     const names = activePlans.map(p => p.name ?? p.planId).filter((n): n is string => n !== undefined)
     return names.length === 0 ? '免费套餐余额：无可用额度记录' : `免费套餐余额：${names.join('、')}（有效）`
   }
+  const formatUnitCount = (value: number, unit: string | undefined): string => {
+    if (unit === 'token') {
+      if (value >= 1_000_000) return `${Math.round((value / 1_000_000) * 10) / 10}M`
+      if (value >= 1_000) return `${Math.round((value / 1_000) * 10) / 10}K`
+    }
+    return String(value)
+  }
   const parts = activeBalances.map(entry => {
     const label = entry.showName ?? entry.planId ?? '免费额度'
+    const unitSuffix = entry.unit ?? ''
     const amount = entry.remaining !== undefined && entry.total !== undefined
-      ? `剩余 ${entry.remaining}/${entry.total}${entry.unit ?? ''}`
+      ? `剩余 ${formatUnitCount(entry.remaining, entry.unit)}/${formatUnitCount(entry.total, entry.unit)}${unitSuffix === '' ? '' : ` ${unitSuffix}`}`
       : entry.remaining !== undefined
-        ? `剩余 ${entry.remaining}${entry.unit ?? ''}`
+        ? `剩余 ${formatUnitCount(entry.remaining, entry.unit)}${unitSuffix === '' ? '' : ` ${unitSuffix}`}`
         : entry.used !== undefined
-          ? `已用 ${entry.used}${entry.unit ?? ''}`
+          ? `已用 ${formatUnitCount(entry.used, entry.unit)}${unitSuffix === '' ? '' : ` ${unitSuffix}`}`
           : '可用'
     const models = entry.models.length > 0 ? ` [${entry.models.join(', ')}]` : ''
     return `${label} ${amount}${models}`

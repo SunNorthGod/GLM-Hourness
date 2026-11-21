@@ -213,6 +213,14 @@ test('request_exception: a proposal since the last client message is busy (§5.3
   const proposal = errorOf(await environment.desk.requestException({ ref, purpose: 'p', reversibility: 'r', alternatives: 'a' }, agent, environment.root))
   assert.equal(proposal.code, 'busy')
   assert.ok(proposal.hint.includes('end this reply with the proposals you showed'))
+  // A headless user reply without rpcId after propose_to_human clears step 5a busy gating.
+  const afterHeadlessUser = agentOf([
+    { role: 'assistant', content: [{ type: 'tool-call', name: 'DeferredToolCall', arguments: JSON.stringify({ name: 'propose_to_human', arguments: '{}' }), id: 'c1' }] },
+    { role: 'tool', toolCallId: 'c1', content: [{ type: 'text', text: '{"outcome":"asked"}' }] },
+    person('同意'),
+  ], { session: 'session-headless-clear' })
+  const cleared = askOf(await environment.desk.requestException({ ref, purpose: 'p', reversibility: 'r', alternatives: 'a' }, afterHeadlessUser, environment.root))
+  assert.equal(cleared.ref, ref)
   // The target cannot be read (EACCES): unavailable with the code in the hint.
   const hostile: RequestDeskFs = {
     stat: () => Promise.reject(Object.assign(new Error('denied'), { code: 'EACCES' })),

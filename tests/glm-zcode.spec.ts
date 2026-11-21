@@ -3,6 +3,7 @@ import test from 'node:test'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ZcodeAdapter, ZcodeLogin, logout } from '../src/glm-llm/zcode.ts'
+import { decodeSse } from '../src/glm-llm/anthropic.ts'
 import { ZCODE_APP_VERSION } from '../src/glm-llm/identity.ts'
 import { runtimeUserAgent, upstreamSessionId, type SessionHeaderLike } from '../src/glm-llm/headers.ts'
 import { apply as loginApply } from '../src/glm-llm/login-row.ts'
@@ -1214,25 +1215,29 @@ test('StartPlan-first fails over seamlessly to Coding Plan on empty/expired/conc
   assert.ok(events.some(line => line.includes('cooldown bypass (empty) -> coding-plan')))
 })
 
+function startPlan53Fetch(wire: WireRequest[], onStart53: () => Response, startFlashText: string, codingText: string): typeof fetch {
+  const baseFetch = gatewayFetch(wire, { model: () => sseOkResponse(codingText) })
+  return (input, init) => {
+    const url = urlOf(input)
+    if (url !== START_PLAN_UPSTREAM) return baseFetch(input, init)
+    const body = typeof init?.body === 'string' ? init.body : ''
+    wire.push({ url, headers: sentHeaders(init), body })
+    const model = (JSON.parse(body || '{}') as { model?: string }).model
+    return Promise.resolve(model === 'GLM-5.3' ? onStart53() : sseOkResponse(startFlashText))
+  }
+}
+
 test('StartPlan unentitled failover is model-scoped (glm-5.3 fails over while glm-5.3-flash keeps using StartPlan) and resets on credential change', async () => {
   const store = memoryStore()
   await saveCredential(store.fs, STORE_PATH, { ...credential, jwt: 'start.jwt.a' })
   const clock = LIMIT_NOW
   const wire: WireRequest[] = []
-  const baseFetch = gatewayFetch(wire, { model: () => sseOkResponse('coding-53') })
-  const fetchImpl: typeof fetch = (input, init) => {
-    const url = urlOf(input)
-    if (url === START_PLAN_UPSTREAM) {
-      const body = typeof init?.body === 'string' ? init.body : ''
-      wire.push({ url, headers: sentHeaders(init), body })
-      const model = (JSON.parse(body || '{}') as { model?: string }).model
-      if (model === 'GLM-5.3') {
-        return Promise.resolve(new Response(JSON.stringify({ error: { message: 'Model not supported on start plan' } }), { status: 403 }))
-      }
-      return Promise.resolve(sseOkResponse('start-flash'))
-    }
-    return baseFetch(input, init)
-  }
+  const fetchImpl = startPlan53Fetch(
+    wire,
+    () => new Response(JSON.stringify({ error: { message: 'Model not supported on start plan' } }), { status: 403 }),
+    'start-flash',
+    'coding-53',
+  )
   const adapter = new ZcodeAdapter({ home: 'C:/ws/.llm', journal: memoryJournal(), now: () => clock, fetchImpl, storeFs: store.fs, env: isolatedEnv() })
 
   // glm-5.3 hits 403 unentitled -> fails over to Coding Plan and sets 600s cooldown for glm-5.3 only.
@@ -1307,4 +1312,59 @@ test('StartPlan tracks activeStreams during open streams and never fails over on
     for await (const chunk of noFailover.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3-flash', sessionId: 's-act' } as never)) void chunk
   }, /glm-start-plan 402/)
   assert.equal(noFailover.startPlanStatus('glm-5.3-flash').failoverCount, 0)
+})
+
+test('StartPlan HTTP 200 application/json code 1005 fails over per-model to Coding Plan while keeping flash on StartPlan, and clamps subagent session-type header', async () => {
+  const store = memoryStore()
+  await saveCredential(store.fs, STORE_PATH, { ...credential, jwt: 'start.jwt.real' })
+  const clock = LIMIT_NOW
+  const wire: WireRequest[] = []
+  const fetchImpl = startPlan53Fetch(
+    wire,
+    () => new Response(JSON.stringify({ code: 1005, msg: 'exceed quota limit' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+    }),
+    'from-start-flash',
+    'from-coding-53',
+  )
+  const adapter = new ZcodeAdapter({
+    home: 'C:/ws/.llm',
+    journal: memoryJournal(),
+    now: () => clock,
+    fetchImpl,
+    storeFs: store.fs,
+    env: isolatedEnv(),
+    sessionHeader: sessionId => sessionId === 'sub-1' ? { origin: 'subagent', parentSession: 'main-1' } : {},
+  })
+
+  // 1. Start Plan glm-5.3 HTTP 200 JSON code=1005 fails over cleanly and cools down glm-5.3 ONLY.
+  const chunks53: StreamChunk[] = []
+  for await (const chunk of adapter.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3', sessionId: 'main-1' } as never)) chunks53.push(chunk)
+  assert.ok(chunks53.some(c => c.type === 'block-end' && c.block.type === 'text' && c.block.text === 'from-coding-53'))
+  assert.equal(adapter.startPlanStatus('glm-5.3').available, false)
+  assert.equal(adapter.startPlanStatus('glm-5.3').reason, 'empty')
+  assert.equal(adapter.startPlanStatus('glm-5.3-flash').available, true)
+  assert.equal(adapter.startPlanStatus().available, true)
+
+  // 2. Dispatched subagent on glm-start-plan/glm-5.3-flash sends x-zcode-session-type: main (not 405-rejected subagent) while keeping query-source: subagent.
+  const subChunks: StreamChunk[] = []
+  for await (const chunk of adapter.stream({ ...request(), provider: 'glm-start-plan', model: 'glm-5.3-flash', sessionId: 'sub-1' } as never)) subChunks.push(chunk)
+  assert.ok(subChunks.some(c => c.type === 'block-end' && c.block.type === 'text' && c.block.text === 'from-start-flash'))
+  const startSubReq = wire.filter(e => e.url === START_PLAN_UPSTREAM).at(-1)
+  assert.equal(startSubReq?.headers['x-zcode-session-type'], 'main')
+  assert.equal(startSubReq?.headers['x-zcode-query-source'], 'subagent')
+
+  // 3. Coding Plan keeps x-zcode-session-type: subagent unchanged.
+  for await (const chunk of adapter.stream({ ...request(), provider: 'glm-zcode', model: 'glm-5.3-flash', sessionId: 'sub-1' } as never)) void chunk
+  const codingSubReq = wire.filter(isModelRequest).at(-1)
+  assert.equal(codingSubReq?.headers['x-zcode-session-type'], 'subagent')
+  assert.equal(codingSubReq?.headers['x-zcode-query-source'], 'subagent')
+})
+
+test('decodeSse throws on Anthropic SSE error events instead of silently ending the stream', async () => {
+  const body = sseBody(['data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}'])
+  await assert.rejects(async () => {
+    for await (const chunk of decodeSse(body, 'glm-5.3')) void chunk
+  }, /glm-zcode stream error: overloaded_error: Overloaded/)
 })
